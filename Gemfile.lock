@@ -1,0 +1,21 @@
+GIT
+  remote: https://github.com/raphyduck/t411.git
+  revision: f2894dd7d5fe73ce342243aa75a8fbe8a4e8940d
+  specs:
+    t411 (0.0.11)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  t411!
+
+RUBY VERSION
+   ruby 2.4.0p0
+
+BUNDLED WITH
+   1.14.3
