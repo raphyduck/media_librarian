@@ -1,3 +1,7 @@
+deluge:
+    host: host
+    username: username
+    password: password
 t411:
     username: username
     password: pwd
