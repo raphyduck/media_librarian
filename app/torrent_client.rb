@@ -59,6 +59,8 @@ class TorrentClient
       status = @deluge.core.get_torrent_status(torrent_id, ['name', 'files', 'total_size','progress'])
       opts = $deluge_options.select{|_,v| v['t_name'] == status['name']}
       if opts
+        did = opts.first[0]
+        opts = opts.first[1]
         File.delete($temp_dir + "/#{opts.first[0]}.torrent")
         set_options = {}
         if (opts['rename_main'] && opts['rename_main'] != '') || opts['main_only']
@@ -69,6 +71,7 @@ class TorrentClient
           end
         end
         @deluge.core.set_torrent_options([torrent_id], set_options) unless set_options.empty?
+        $deluge_options.delete(did)
       end
     end
   end
