@@ -10,6 +10,7 @@ class Library
   end
 
   def self.replace_movies(folder, imdb_name_check = 1, filter_criteria = {}, quality_keyword = '', interactive = 1)
+    $move_completed_torrent = folder
     self.search_folder(folder, filter_criteria).each do |film|
       next if File.basename(folder) == film[1]
       title = film[1]

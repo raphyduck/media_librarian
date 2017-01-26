@@ -62,7 +62,7 @@ class TorrentClient
           file = File.open(path, "r")
           torrent = file.read
           file.close
-          download_file(torrent, File.basename(path))
+          download_file(torrent, File.basename(path), $move_completed_torrent)
         end
       end
     end

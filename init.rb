@@ -4,6 +4,7 @@ $config_file = $config_dir + '/conf.yml'
 $temp_dir = $config_dir + '/tmp'
 $log_dir = $config_dir + '/log'
 $deluge_connected = nil
+$move_completed_torrent = nil
 #Some constants
 NEW_LINE = "\n"
 #Create default folders if doesn't exist
