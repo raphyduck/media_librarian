@@ -31,6 +31,10 @@ class Librarian
         Speaker.speak_up('Waiting for temporary folder to be cleaned')
         sleep 5
       end
+      while !$deluge_options.empty?
+        Speaker.speak_up('Waiting for cmpletion of all deluge operation')
+        sleep 5
+      end
       $t_client.disconnect
     end
   end

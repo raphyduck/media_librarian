@@ -7,7 +7,7 @@ class T411Search
     end
   end
 
-  def self.search(keyword = '', limit = 50, cid = nil, interactive = 1, filter_dead = 1)
+  def self.search(keyword = '', limit = 50, cid = nil, interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = false)
     success = false
     if keyword.nil? || keyword.empty?
       Speaker.speak_up('Missing arguments. usage: search keyword <limit> <categorie_id>')
@@ -41,7 +41,14 @@ class T411Search
     end
     if download_id.to_i > 0
       did = search['torrents'][download_id.to_i - 1]['id']
+      name = search['torrents'][download_id.to_i - 1]['name']
       T411::Torrents.download(did, $temp_dir)
+      $deluge_options[did] = {
+          't_name' => name,
+          'move_completed' => move_completed,
+          'rename_main' => rename_main,
+          'main_only' => main_only
+      }
       success = true
     end
     success

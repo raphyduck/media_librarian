@@ -29,7 +29,7 @@ class Library
         end
       end
       Speaker.speak_up("Looking for torrent of film #{title}") unless interactive == 0 && !found
-      replaced = interactive == 0 && !found ? false : T411Search.search(title + ' ' + quality_keyword, 10, 210, interactive)
+      replaced = interactive == 0 && !found ? false : T411Search.search(title + ' ' + quality_keyword, 10, 210, interactive, 1, folder, title, true)
       FileUtils.rm_r(File.dirname(path)) if replaced
     end
   rescue => e
