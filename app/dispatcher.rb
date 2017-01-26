@@ -1,10 +1,16 @@
 class Dispatcher
 
   def self.available_actions
-    {:help => ['Dispatcher','show_available'],
-     :reconfigure => ['Config', 'reconfigure'],
-     :t411 => {:search => ['T411Search', 'search']},
-     :usage => ['Dispatcher','show_available']
+    {
+        :help => ['Dispatcher', 'show_available'],
+        :reconfigure => ['Config', 'reconfigure'],
+        :library => {
+            :replace_movies => ['Library', 'replace_movies']
+        },
+        :t411 => {
+            :search => ['T411Search', 'search']
+        },
+        :usage => ['Dispatcher', 'show_available']
     }
   end
 

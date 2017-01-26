@@ -3,7 +3,7 @@ class Config
     $config = nil
     Dir.mkdir($config_dir) unless File.exist?($config_dir)
     unless File.exist?($config_file)
-      FileUtils.copy File.dirname(__FILE__) + '/config/conf.yml.example', $config_file
+      FileUtils.copy File.dirname(__FILE__) + '/../config/conf.yml.example', $config_file
       self.reconfigure
     end
     $config = YAML.load_file($config_file) unless $config

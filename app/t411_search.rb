@@ -1,13 +1,14 @@
 class T411Search
 
   def self.authenticate_all
-    if $config['t411']
+    if $config['t411'] && !T411.authenticated?
       T411.authenticate($config['t411']['username'], $config['t411']['password'])
       Speaker.speak_up("You are #{T411.authenticated? ? 'now' : 'NOT'} connected to T411")
     end
   end
 
   def self.search(keyword = '', limit = 50, cid = nil, interactive = 1, filter_dead = 1)
+    success = false
     if keyword.nil? || keyword.empty?
       Speaker.speak_up('Missing arguments. usage: search keyword <limit> <categorie_id>')
       return
@@ -20,7 +21,7 @@ class T411Search
       search = T411::Torrents.search(keyword, limit: limit)
     end
     search = JSON.load(search)
-    download_id = 1
+    download_id = search.empty? ? 0 : 1
     if interactive.to_i > 0
       Speaker.speak_up("Showing result for #{search['query']} (total #{search['total']}")
       i = 1
@@ -41,8 +42,9 @@ class T411Search
     if download_id.to_i > 0
       did = search['torrents'][download_id.to_i - 1]['id']
       T411::Torrents.download(did, $temp_dir)
+      success = true
     end
-    $t_client.process_download_torrents
+    success
   rescue => e
     Speaker.tell_error(e, "T411Search.search")
   end

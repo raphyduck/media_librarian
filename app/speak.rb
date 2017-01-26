@@ -1,5 +1,14 @@
 class Speaker
 
+  def self.ask_if_needed(question, interactive = 1, default = 'y')
+    ask_if_needed = default
+    if interactive > 0
+      self.speak_up(question)
+      ask_if_needed = STDIN.gets.strip
+    end
+    ask_if_needed
+  end
+
   def self.speak_up(str)
     puts str
     $logger.info(str)
