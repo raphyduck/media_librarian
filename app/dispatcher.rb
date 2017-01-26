@@ -5,7 +5,8 @@ class Dispatcher
         :help => ['Dispatcher', 'show_available'],
         :reconfigure => ['Config', 'reconfigure'],
         :library => {
-            :replace_movies => ['Library', 'replace_movies']
+            :replace_movies => ['Library', 'replace_movies'],
+            :compare_remote_files => ['Library', 'compare_remote_files']
         },
         :t411 => {
             :search => ['T411Search', 'search']

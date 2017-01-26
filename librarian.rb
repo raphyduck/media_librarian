@@ -1,4 +1,5 @@
 require 'active_support/time'
+require 'digest/md5'
 require 'yaml'
 require 'find'
 require 'base64'
@@ -11,6 +12,7 @@ require 'imdb'
 require 'deluge'
 require 'json'
 require 'fuzzystringmatch'
+require 'net/ssh'
 #Process.daemon
 
 class Librarian
@@ -41,6 +43,7 @@ class Librarian
       end
       $t_client.disconnect
     end
+    Speaker.speak_up("End of session, good bye...")
   end
 end
 
