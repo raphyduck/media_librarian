@@ -7,7 +7,7 @@ class T411Search
     end
   end
 
-  def self.search(keyword = '', limit = 50, cid = nil, interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = false)
+  def self.search(keyword = '', limit = 50, cid = nil, interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = false
     if keyword.nil? || keyword.empty?
       Speaker.speak_up('Missing arguments. usage: search keyword <limit> <categorie_id>')
@@ -23,10 +23,11 @@ class T411Search
     search = JSON.load(search)
     download_id = search.empty? ? 0 : 1
     if interactive.to_i > 0
-      Speaker.speak_up("Showing result for #{search['query']} (total #{search['total']}")
+      Speaker.speak_up("Showing result for #{search['query']} (total #{search['total']})")
       i = 1
+      return success if search['torrents'].nil? || search['torrents'].empty?
       search['torrents'].each do |torrent|
-        next if filter_dead > 1 && torrent['seeders'].to_i == 0
+        next if filter_dead.to_i > 1 && torrent['seeders'].to_i == 0
         Speaker.speak_up("Index: #{i}")
         Speaker.speak_up("Name: #{torrent['name']}")
         Speaker.speak_up("Size: #{(torrent['size'].to_f / 1024 / 1024 / 1024).round(2)} GB")
@@ -42,6 +43,7 @@ class T411Search
     if download_id.to_i > 0
       did = search['torrents'][download_id.to_i - 1]['id']
       name = search['torrents'][download_id.to_i - 1]['name']
+      Speaker.speak_up("Will download torrent '#{name}'")
       T411::Torrents.download(did, $temp_dir)
       $deluge_options[did] = {
           't_name' => name,

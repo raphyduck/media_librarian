@@ -39,7 +39,7 @@ class TorrentClient
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
-    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options)
+    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options) rescue Deluge::Rpc::Connection::InvokeTimeoutError
   end
 
   def find_main_file(status)
@@ -56,23 +56,7 @@ class TorrentClient
   def listen
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       Speaker.speak_up "Torrent #{torrent_id} was successfully added!"
-      status = @deluge.core.get_torrent_status(torrent_id, ['name', 'files', 'total_size','progress'])
-      opts = $deluge_options.select{|_,v| v['t_name'] == status['name']}
-      if opts
-        did = opts.first[0]
-        opts = opts.first[1]
-        File.delete($temp_dir + "/#{opts.first[0]}.torrent")
-        set_options = {}
-        if (opts['rename_main'] && opts['rename_main'] != '') || opts['main_only']
-          main_file = find_main_file(status)
-          if main_file
-            set_options.merge!(main_file_only(status, main_file)) if opts['main_only']
-            rename_main_file(torrent_id, main_file, opts['rename_main'])
-          end
-        end
-        @deluge.core.set_torrent_options([torrent_id], set_options) unless set_options.empty?
-        $deluge_options.delete(did)
-      end
+      $deluge_torrents_added << torrent_id
     end
   end
 
@@ -84,22 +68,53 @@ class TorrentClient
     {'file_priorities' => priorities}
   end
 
+  def process_added_torrents
+    while $deluge_torrents_added.length != 0
+      tid = $deluge_torrents_added.shift
+      status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size','progress'])
+      opts = $deluge_options.select{|_,v| v['t_name'] == status['name']}
+      if opts.nil? || opts.empty?
+        closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
+        opts = $deluge_options.select{|_,v| closeness.getDistance(v['t_name'], status['name']) > 0.9}
+      end
+      if opts && !opts.empty?
+        did = opts.first[0]
+        opts = opts.first[1]
+        set_options = {}
+        File.delete($temp_dir + "/#{did}.torrent") rescue nil
+        if (opts['rename_main'] && opts['rename_main'] != '') || (opts['main_only'] && opts['main_only'] > 0)
+          main_file = find_main_file(status)
+          if main_file
+            set_options = main_file_only(status, main_file) if opts['main_only']
+            rename_main_file(tid, status['files'], opts['rename_main'])
+          end
+        end
+        unless set_options.empty?
+          @deluge.core.set_torrent_options([tid], set_options)
+          Speaker.speak_up("Will set options: #{set_options}")
+        end
+        $deluge_options.delete(did)
+      end
+    end
+  end
+
   def process_download_torrents
-    Speaker.speak_up("Processing torrent(s) to download")
+    Speaker.speak_up("Downloading torrent(s) added during the session (if any)")
     Find.find($temp_dir).each do |path|
       unless FileTest.directory?(path)
         if path.end_with?('torrent')
           file = File.open(path, "r")
           torrent = file.read
           file.close
-          opts = $deluge_options[File.basename(path).gsub('.torrent', '').to_i]
-          download_file(torrent, File.basename(path), opts['move_completed'], opts['main_only'], opts['rename_main'])
+          opts = $deluge_options[File.basename(path).gsub('.torrent', '')]
+          download_file(torrent, File.basename(path), opts['move_completed'], opts['main_only'], opts['rename_main']) unless opts.nil?
         end
       end
     end
   end
 
   def rename_main_file(tid, files, new_dir_name)
+    Speaker.speak_up("Will move all files in torrent in a 'directory #{new_dir_name}'.")
     paths = []
     files.each do |file|
       old_name = File.basename(file['path'])

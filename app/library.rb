@@ -21,8 +21,13 @@ class Library
         #Look for duplicate
         dups = self.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*', 'exclude_strict' => film[1]})
         if dups.count > 0
-          if Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Duplicates are:#{NEW_LINE}" + dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
-            dups.each do |d|
+          corrected_dups = []
+          dups.each do |d|
+            d_title = self.moviedb_search(File.basename(File.dirname(d)))
+            corrected_dups << d if d_title == title
+          end
+          if Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
+            corrected_dups.each do |d|
               FileUtils.rm_r(d[0])
             end
           end
