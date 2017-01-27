@@ -1,4 +1,4 @@
 #!/bin/bash
 
 cd `dirname $0`
-ruby `dirname $0`/librarian.rb "$@"
+ruby `pwd`/librarian.rb "$@"

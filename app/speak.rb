@@ -2,7 +2,7 @@ class Speaker
 
   def self.ask_if_needed(question, interactive = 1, default = 'y')
     ask_if_needed = default
-    if interactive > 0
+    if interactive.to_i > 0
       self.speak_up(question)
       ask_if_needed = STDIN.gets.strip
     end

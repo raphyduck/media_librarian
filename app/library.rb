@@ -1,26 +1,34 @@
 class Library
 
   def self.compare_remote_files(path, remote_server, remote_user, filter_criteria = {}, ssh_opts = {}, interactive = 1)
-    list = FileTest.directory?(path) ? self.search_folder(folder, filter_criteria) : [path]
+    ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
+    list = FileTest.directory?(path) ? self.search_folder(path, filter_criteria) : [[path, '']]
     list.each do |f|
-      Speaker.speak_up("Comparing #{f} on local and remote #{remote_server}")
-      local_md5sum = Digest::MD5.hexdigest(File.read(f))
+      f_path = f[0]
+      Speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
+      local_md5sum = Utils.md5sum(f_path)
       remote_md5sum = ''
       Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
-        remote_md5sum = ssh.exec!("md5sum #{f}")
+        remote_md5sum = []
+        ssh.exec!("md5sum '#{f_path}'")
+        ssh.exec!("md5sum '#{f_path}'") do |_, stream, data|
+          remote_md5sum << data if stream == :stdout
+        end
+        remote_md5sum = remote_md5sum.first
+        remote_md5sum = remote_md5sum ? remote_md5sum.gsub(/(\w*)( .*\n)/,'\1') : ''
       end
       Speaker.speak_up("Local md5sum is #{local_md5sum}")
       Speaker.speak_up("Remote md5sum is #{remote_md5sum}")
       if local_md5sum != remote_md5sum || local_md5sum == '' || remote_md5sum == ''
         Speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
         if local_md5sum != '' && remote_md5sum != '' && Speaker.ask_if_needed("Delete the local file? (y/n)", interactive, 'n') == 'y'
-          FileUtils.rm_r(f)
+          FileUtils.rm_r(f_path)
         end
       else
         Speaker.speak_up("The 2 files are identical!")
         if Speaker.ask_if_needed("Delete the remote file? (y/n)", interactive, 'y') == 'y'
           Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
-            ssh.exec!("rm #{f}")
+            ssh.exec!("rm '#{f_path}'")
           end
         end
       end
