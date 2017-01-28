@@ -10,8 +10,7 @@ class Library
       remote_md5sum = ''
       Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
         remote_md5sum = []
-        ssh.exec!("md5sum '#{f_path}'")
-        ssh.exec!("md5sum '#{f_path}'") do |_, stream, data|
+        ssh.exec!("md5sum \"#{f_path}\"") do |_, stream, data|
           remote_md5sum << data if stream == :stdout
         end
         remote_md5sum = remote_md5sum.first
@@ -28,7 +27,7 @@ class Library
         Speaker.speak_up("The 2 files are identical!")
         if Speaker.ask_if_needed("Delete the remote file? (y/n)", interactive, 'y') == 'y'
           Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
-            ssh.exec!("rm '#{f_path}'")
+            ssh.exec!("rm \"#{f_path}\"")
           end
         end
       end
@@ -53,6 +52,7 @@ class Library
       title = film[1]
       path = film[0]
       next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)}? (y/n)", interactive) != 'y'
+      found = true
       if imdb_name_check.to_i > 0
         title, found = self.moviedb_search(title)
         #Look for duplicate
@@ -63,7 +63,7 @@ class Library
             d_title = self.moviedb_search(File.basename(File.dirname(d)))
             corrected_dups << d if d_title == title
           end
-          if Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
+          if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
             corrected_dups.each do |d|
               FileUtils.rm_r(d[0])
             end
@@ -71,7 +71,7 @@ class Library
         end
       end
       Speaker.speak_up("Looking for torrent of film #{title}") unless interactive == 0 && !found
-      replaced = interactive == 0 && !found ? false : T411Search.search(title + ' ' + quality_keyword, 10, 210, interactive, 1, folder, title, true)
+      replaced = interactive == 0 && !found ? false : TorrentSearch.search(title + ' ' + quality_keyword, 10, 210, interactive, 1, folder, title, true)
       FileUtils.rm_r(File.dirname(path)) if replaced
     end
   rescue => e

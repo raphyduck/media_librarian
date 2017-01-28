@@ -1,4 +1,11 @@
 #!/bin/bash
 
 cd `dirname $0`
+if [[ `pwd` == *media_librarian ]]
+then
+    cd_path=`pwd`
+else
+    cd_path=`pwd`/media_librarian
+fi
+cd $cd_path
 ruby `pwd`/librarian.rb "$@"

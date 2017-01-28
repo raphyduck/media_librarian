@@ -32,10 +32,10 @@ class TorrentClient
     @deluge.core.add_torrent_url(url, options.to_json)
   end
 
-  def download_file(file, filename, move_completed = nil, main_only = true, rename_main = '')
+  def download_file(file, filename, move_completed = nil)
     self.authenticate unless @deluge_connected
     options = {}
-    if move_completed
+    if move_completed && move_completed != ''
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
@@ -75,7 +75,7 @@ class TorrentClient
       opts = $deluge_options.select{|_,v| v['t_name'] == status['name']}
       if opts.nil? || opts.empty?
         closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
-        opts = $deluge_options.select{|_,v| closeness.getDistance(v['t_name'], status['name']) > 0.9}
+        opts = $deluge_options.select{|_,v| closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9}
       end
       if opts && !opts.empty?
         did = opts.first[0]
@@ -107,7 +107,7 @@ class TorrentClient
           torrent = file.read
           file.close
           opts = $deluge_options[File.basename(path).gsub('.torrent', '')]
-          download_file(torrent, File.basename(path), opts['move_completed'], opts['main_only'], opts['rename_main']) unless opts.nil?
+          download_file(torrent, File.basename(path), opts['move_completed']) unless opts.nil?
         end
       end
     end

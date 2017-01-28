@@ -8,8 +8,8 @@ class Dispatcher
             :replace_movies => ['Library', 'replace_movies'],
             :compare_remote_files => ['Library', 'compare_remote_files']
         },
-        :t411 => {
-            :search => ['T411Search', 'search']
+        :torrent => {
+            :search => ['TorrentSearch', 'search']
         },
         :usage => ['Dispatcher', 'show_available']
     }
