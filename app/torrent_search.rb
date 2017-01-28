@@ -7,31 +7,38 @@ class TorrentSearch
     end
   end
 
-  def self.get_cid(type, categorie)
-    return nil if categorie.nil? || categorie == ''
+  def self.get_cid(type, category)
+    return nil if category.nil? || category == ''
     case type
-      when 't411'
-        {
-            :movies => 210,
-            :tv => 210,
-            :music => 395,
-            :ebook => 404
-        }.fetch(categorie.to_sym, nil)
       when 'extratorrent'
         {
             :movies => 4,
             :tv => 8,
             :music => 5,
             :book => 2
-        }.fetch(categorie.to_sym, nil)
+        }.fetch(category.to_sym, nil)
+      when 't411'
+        {
+            :movies => 210,
+            :tv => 210,
+            :music => 395,
+            :ebook => 404
+        }.fetch(category.to_sym, nil)
+      when 'thepiratebay'
+        {
+            :movies => 200,
+            :tv => 200,
+            :music => 100,
+            :book => 601
+        }.fetch(category.to_sym, nil)
     end
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.get_cid")
   end
 
-  def self.get_results(type, keyword, limit, categorie = '', filter_dead = 1)
+  def self.get_results(type, keyword, limit, category = '', filter_dead = 1)
     get_results = {}
-    cid = self.get_cid(type, categorie)
+    cid = self.get_cid(type, category)
     case type
       when 't411'
         if cid
@@ -42,6 +49,9 @@ class TorrentSearch
         get_results = JSON.load(get_results)
       when 'extratorrent'
         search = Extratorrent::Search.new(keyword, cid)
+        get_results = search.links
+      when 'thepiratebay'
+        search = Tpb::Search.new(keyword, cid)
         get_results = search.links
     end
     if get_results['torrents']
@@ -66,26 +76,28 @@ class TorrentSearch
     false
   end
 
-  def self.search(keyword, limit = 50, categorie = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.search(keyword, limit = 50, category = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = false
-    if keyword.nil? || keyword.empty?
-      Speaker.speak_up('Missing arguments. usage: search keyword <limit> <{cid=> categorie_id}>')
-      return
-    end
     self.authenticate_all
-    ['t411', 'extratorrent'].each do |type|
+    ['t411', 'extratorrent', 'thepiratebay'].each do |type|
       break if success
-      success = self.t_search(type, keyword, limit, categorie, interactive, filter_dead, move_completed, rename_main, main_only)
+      next if Speaker.ask_if_needed("Search for #{keyword} torrent on #{type}? (y/n)", interactive, 'y') != 'y'
+      success = self.t_search(type, keyword, limit, category, interactive, filter_dead, move_completed, rename_main, main_only)
     end
     success
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.search")
   end
 
-  def self.t_search(type, keyword, limit = 50, categorie = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.get_site_keywords(type, category = '')
+    category && category != '' && $config[type] && $config[type]['site_specific_kw'] && $config[type]['site_specific_kw'][category] ? " #{$config[type]['site_specific_kw'][category]}" : ''
+  end
+
+  def self.t_search(type, keyword, limit = 50, category = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = false
     return false if !T411.authenticated? && type == 't411'
-    search = self.get_results(type, keyword, limit, categorie, filter_dead)
+    keyword += self.get_site_keywords(type, category)
+    search = self.get_results(type, keyword, limit, category, filter_dead)
     download_id = search.empty? || search['torrents'].nil? || search['torrents'].empty? ? 0 : 1
     if interactive.to_i > 0
       i = 1
@@ -112,12 +124,18 @@ class TorrentSearch
       did = search['torrents'][download_id.to_i - 1]['id']
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['link'] ? search['torrents'][download_id.to_i - 1]['link'] : ''
-      success = self.get_torrent_file(type, did, name, url)
+      magnet = search['torrents'][download_id.to_i - 1]['magnet_link']
+      if (url && url != '') || type == 't411'
+        success = self.get_torrent_file(type, did, name, url)
+      elsif magnet && magnet != ''
+        $pending_magnet_links[did] = magnet
+        success = true
+      end
       $deluge_options[did] = {
           't_name' => name,
           'move_completed' => move_completed,
           'rename_main' => rename_main,
-          'main_only' => main_only
+          'main_only' => main_only.to_i
       } if success
     end
     success

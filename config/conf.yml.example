@@ -5,3 +5,5 @@ deluge:
 t411:
     username: username
     password: pwd
+    site_specific_kw:
+        movies: ''

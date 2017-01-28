@@ -22,14 +22,18 @@ class TorrentClient
     @deluge_connected = nil
   end
 
-  def download(url, move_completed = nil)
+  def download(url, move_completed = nil, magnet = 0)
     authenticate unless @deluge_connected
     options = {}
     if move_completed
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
-    @deluge.core.add_torrent_url(url, options.to_json)
+    if magnet.to_i > 0
+      @deluge.core.add_torrent_magnet(url, options)
+    else
+      @deluge.core.add_torrent_url(url, options)
+    end
   end
 
   def download_file(file, filename, move_completed = nil)
@@ -39,7 +43,7 @@ class TorrentClient
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
-    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options) rescue Deluge::Rpc::Connection::InvokeTimeoutError
+    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options)
   end
 
   def find_main_file(status)
@@ -72,7 +76,8 @@ class TorrentClient
     while $deluge_torrents_added.length != 0
       tid = $deluge_torrents_added.shift
       status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size','progress'])
-      opts = $deluge_options.select{|_,v| v['t_name'] == status['name']}
+      opts = $deluge_options.select{|_,v| v['info_hash'] == tid}
+      opts = $deluge_options.select{|_,v| v['t_name'] == status['name']} if opts.nil?
       if opts.nil? || opts.empty?
         closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
         opts = $deluge_options.select{|_,v| closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9}
@@ -81,17 +86,20 @@ class TorrentClient
         did = opts.first[0]
         opts = opts.first[1]
         set_options = {}
-        File.delete($temp_dir + "/#{did}.torrent") rescue nil
-        if (opts['rename_main'] && opts['rename_main'] != '') || (opts['main_only'] && opts['main_only'] > 0)
-          main_file = find_main_file(status)
-          if main_file
-            set_options = main_file_only(status, main_file) if opts['main_only']
-            rename_main_file(tid, status['files'], opts['rename_main'])
+        magnet = $pending_magnet_links[did]
+        unless magnet
+          File.delete($temp_dir + "/#{did}.torrent") rescue nil
+          if (opts['rename_main'] && opts['rename_main'] != '') || (opts['main_only'] && opts['main_only'].to_i > 0)
+            main_file = find_main_file(status)
+            if main_file
+              set_options = main_file_only(status, main_file) if opts['main_only']
+              rename_main_file(tid, status['files'], opts['rename_main']) if opts['rename_main'] && opts['rename_main'] != ''
+            end
           end
-        end
-        unless set_options.empty?
-          @deluge.core.set_torrent_options([tid], set_options)
-          Speaker.speak_up("Will set options: #{set_options}")
+          unless set_options.empty?
+            @deluge.core.set_torrent_options([tid], set_options)
+            Speaker.speak_up("Will set options: #{set_options}")
+          end
         end
         $deluge_options.delete(did)
       end
@@ -106,15 +114,28 @@ class TorrentClient
           file = File.open(path, "r")
           torrent = file.read
           file.close
-          opts = $deluge_options[File.basename(path).gsub('.torrent', '')]
-          download_file(torrent, File.basename(path), opts['move_completed']) unless opts.nil?
+          did = File.basename(path).gsub('.torrent', '')
+          opts = $deluge_options[did]
+          unless opts.nil?
+            begin
+              meta = BEncode.load(torrent, {:ignore_trailing_junk=>1})
+              $deluge_options[did]['info_hash'] = Digest::SHA1.hexdigest(meta['info'].bencode)
+            rescue => e
+              Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
+            end
+            download_file(torrent, File.basename(path), opts['move_completed'])
+          end
         end
       end
+    end
+    $pending_magnet_links.each do |did, m|
+      opts = $deluge_options[did]
+      download(m, opts['move_completed'], 1) unless opts.nil?
     end
   end
 
   def rename_main_file(tid, files, new_dir_name)
-    Speaker.speak_up("Will move all files in torrent in a 'directory #{new_dir_name}'.")
+    Speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.")
     paths = []
     files.each do |file|
       old_name = File.basename(file['path'])

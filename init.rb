@@ -6,6 +6,7 @@ $log_dir = $config_dir + '/log'
 $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []
+$pending_magnet_links = {}
 #Some constants
 NEW_LINE = "\n"
 #Create default folders if doesn't exist
