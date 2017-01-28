@@ -20,9 +20,9 @@ class Dispatcher
     actions.each do |k, v|
       if arg == k.to_s
         if v.is_a?(Hash)
-          self.dispatch(args, v, arg)
+          self.dispatch(args, v, "#{parent} #{arg}")
         else
-          self.launch(v, args)
+          self.launch(v, args, "#{parent} #{arg}")
         end
         return
       end
@@ -31,14 +31,20 @@ class Dispatcher
     self.show_available(actions, parent)
   end
 
-  def self.launch(action, args)
-    dameth = Object.const_get(action[0]).method(action[1])
-    dameth.call(*args)
+  def self.launch(action, args, parent)
+    args = Hash[ args.flat_map{|s| s.scan(/--?([^=\s]+)(?:=(.+))?/) } ]
+    model = Object.const_get(action[0])
+    req_params = model.method(action[1].to_sym).parameters.map {|a| a.reverse!}
+    req_params.each do |param|
+      return self.show_available(Hash[req_params.map{|k| ["--#{k[0]}=<#{k[0]}>", k[1]]}], parent, ' ') if param[1] == :req && args[param[0].to_s].nil?
+    end
+    dameth = model.method(action[1])
+    dameth.call(*req_params.map{|k, _| args[k.to_s]})
   rescue => e
     Speaker.tell_error(e, "Dispatcher.launch")
   end
 
-  def self.show_available(available = self.available_actions, prepend = nil)
-    Speaker.speak_up("Usage: ruby librarian.rb #{prepend + ' ' if prepend}#{available.map{|k, _| k.to_s}}")
+  def self.show_available(available = self.available_actions, prepend = nil, join='|')
+    Speaker.speak_up("Usage: librarian #{prepend + ' ' if prepend}#{available.map{|k, v| "#{k.to_s}#{'(optional)' if v == :opt}"}.join(join)}")
   end
 end

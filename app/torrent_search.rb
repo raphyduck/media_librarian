@@ -81,7 +81,7 @@ class TorrentSearch
     self.authenticate_all
     ['t411', 'extratorrent', 'thepiratebay'].each do |type|
       break if success
-      next if Speaker.ask_if_needed("Search for #{keyword} torrent on #{type}? (y/n)", interactive, 'y') != 'y'
+      next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", interactive, 'y') != 'y'
       success = self.t_search(type, keyword, limit, category, interactive, filter_dead, move_completed, rename_main, main_only)
     end
     success
@@ -102,10 +102,10 @@ class TorrentSearch
     if interactive.to_i > 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?
-        Speaker.speak_up("No results for #{search['query']}")
+        Speaker.speak_up("No results for '#{search['query']}'")
         return success
       end
-      Speaker.speak_up("Showing result for #{search['query']} on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
+      Speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
       search['torrents'].each do |torrent|
         Speaker.speak_up('---------------------------------------------------------------')
         Speaker.speak_up("Index: #{i}")
