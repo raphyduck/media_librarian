@@ -21,3 +21,11 @@ Config.load_settings
 
 #Start torrent_client
 $t_client = TorrentClient.new
+
+#Start trakt client
+if $config['trakt']
+  $trakt = Trakt.new
+  $trakt.apikey = $config['apikey']
+  $trakt.username = $config['username']
+  $trakt.password = $config['password']
+end

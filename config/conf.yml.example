@@ -2,11 +2,15 @@ deluge:
     host: host
     username: username
     password: password
+imdb:
+    user: user
+    list: list
 t411:
     username: username
     password: pwd
     site_specific_kw:
         movies: ''
-imdb:
-    user: user
-    list: list
+trakt:
+    apikey: apikey
+    username: username
+    password: pwd

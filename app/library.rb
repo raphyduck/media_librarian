@@ -37,7 +37,7 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.imdb_list
+  def self.parse_imdb_list
     Imdb::Watchlist.new($config['imdb']['user'],$config['imdb']['list'])
   end
 

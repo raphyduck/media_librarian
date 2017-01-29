@@ -1,4 +1,11 @@
 GIT
+  remote: https://github.com/danielb2/trakt.git
+  revision: e49634903626fb9ad6cf14f2f20a232bc7ecf2f4
+  specs:
+    trakt (0.0.2)
+      excon
+
+GIT
   remote: https://github.com/raphyduck/deluge-rpc.git
   revision: 694a1caa9c7c1613c289e33bb217364ba6bbc4b4
   specs:
@@ -8,9 +15,10 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/imdb.git
-  revision: fe0bac7fb088384df86af59200caf4ddbf292fb1
+  revision: d01725b85b479c76a07c5ecf92bff06b5775c743
   specs:
-    imdb (0.8.4)
+    imdb (0.9)
+      httparty_with_cookies
       nokogiri (= 1.6.5)
 
 GIT
@@ -33,10 +41,13 @@ GEM
       tzinfo (~> 1.1)
     bencode (0.8.2)
     concurrent-ruby (0.9.2)
+    excon (0.54.0)
     fuzzy-string-match (0.9.7)
       RubyInline (>= 3.8.6)
     httparty (0.14.0)
       multi_xml (>= 0.5.2)
+    httparty_with_cookies (0.2.1)
+      httparty
     i18n (0.7.0)
     json (1.8.6)
     mini_portile (0.6.2)
@@ -63,6 +74,7 @@ DEPENDENCIES
   net-ssh
   nokogiri
   t411!
+  trakt!
 
 RUBY VERSION
    ruby 2.4.0p0

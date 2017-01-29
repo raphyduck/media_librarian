@@ -14,6 +14,7 @@ require 'logger'
 require 'net/ssh'
 require 'rubygems'
 require 't411'
+require 'trakt'
 require 'yaml'
 #Process.daemon
 
