@@ -2,6 +2,7 @@ class Library
 
   def self.compare_remote_files(path, remote_server, remote_user, filter_criteria = {}, ssh_opts = {}, interactive = 1)
     ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
+    ssh_opts = {} if ssh_opts.nil?
     list = FileTest.directory?(path) ? self.search_folder(path, filter_criteria) : [[path, '']]
     list.each do |f|
       f_path = f[0]
@@ -34,6 +35,10 @@ class Library
     end
   rescue => e
     Speaker.tell_error(e, "Library.compare_remote_files")
+  end
+
+  def self.imdb_list
+    Imdb::Watchlist.new($config['imdb']['user'],$config['imdb']['list'])
   end
 
   def self.moviedb_search(title)
@@ -80,6 +85,7 @@ class Library
 
   def self.search_folder(folder, filter_criteria = {})
     filter_criteria = eval(filter_criteria) if filter_criteria.is_a?(String)
+    filter_criteria = {} if filter_criteria.nil?
     search_folder = []
     Find.find(folder).each do |path|
       next if path == folder

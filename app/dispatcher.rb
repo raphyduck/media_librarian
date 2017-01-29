@@ -27,7 +27,9 @@ class Dispatcher
         return
       end
     end
-    Speaker.speak_up('Unknown command/option')
+    Speaker.speak_up('Unknown command/option
+
+')
     self.show_available(actions, parent)
   end
 

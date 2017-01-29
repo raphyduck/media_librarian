@@ -7,3 +7,6 @@ t411:
     password: pwd
     site_specific_kw:
         movies: ''
+imdb:
+    user: user
+    list: list

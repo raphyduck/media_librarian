@@ -27,7 +27,9 @@ class Librarian
   end
 
   def self.run
-    Speaker.speak_up('Welcome to your library assistant!')
+    Speaker.speak_up('Welcome to your library assistant!
+
+')
     Dispatcher.dispatch(ARGV)
   end
 

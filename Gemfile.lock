@@ -7,6 +7,13 @@ GIT
       rencoder (~> 0.1)
 
 GIT
+  remote: https://github.com/raphyduck/imdb.git
+  revision: fe0bac7fb088384df86af59200caf4ddbf292fb1
+  specs:
+    imdb (0.8.4)
+      nokogiri (= 1.6.5)
+
+GIT
   remote: https://github.com/raphyduck/t411.git
   revision: bb91593941a9ccd8d67ac577a784d6d64446a761
   specs:
@@ -31,15 +38,13 @@ GEM
     httparty (0.14.0)
       multi_xml (>= 0.5.2)
     i18n (0.7.0)
-    imdb (0.8.2)
-      nokogiri (= 1.6.2.1)
     json (1.8.6)
-    mini_portile (0.6.0)
+    mini_portile (0.6.2)
     minitest (5.10.1)
     multi_xml (0.6.0)
     net-ssh (4.0.1)
-    nokogiri (1.6.2.1)
-      mini_portile (= 0.6.0)
+    nokogiri (1.6.5)
+      mini_portile (~> 0.6.0)
     rencoder (0.1.1)
     thread_safe (0.3.5)
     tzinfo (1.2.2)
@@ -54,7 +59,7 @@ DEPENDENCIES
   deluge-rpc!
   fuzzy-string-match
   httparty
-  imdb (~> 0.8)
+  imdb!
   net-ssh
   nokogiri
   t411!

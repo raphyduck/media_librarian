@@ -107,7 +107,8 @@ class TorrentClient
   end
 
   def process_download_torrents
-    Speaker.speak_up("Downloading torrent(s) added during the session (if any)")
+    Speaker.speak_up("------------------------
+Downloading torrent(s) added during the session (if any)")
     Find.find($temp_dir).each do |path|
       unless FileTest.directory?(path)
         if path.end_with?('torrent')
