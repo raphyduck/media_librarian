@@ -1,7 +1,7 @@
 class Config
 
   def self.configure_node(node, name = '', current = nil)
-    if name == '' || Speaker.ask_if_needed("Do you want to configure #{name}? (y/n)", 1, 'y') == 'y'
+    if name == '' || Speaker.ask_if_needed("Do you want to configure #{name}? (y/n)", 0, 'y') == 'y'
       node.each do |k, v|
         curr_v = current ? current[k] : nil
         if v.is_a?(Hash)
