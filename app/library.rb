@@ -82,13 +82,13 @@ class Library
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
+      break if break_processing(no_prompt)
       if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title']}? (y/n)", no_prompt, 'y') != 'y'
         @refusal += 1
         next
       else
         @refusal == 0
       end
-      break if break_processing(no_prompt)
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
       found = TorrentSearch.search(movie['title'] + ' ' + extra_keywords, 10, 'movies', no_prompt, 1, dest_folder, movie['title'], true)
       TraktList.remove_from_list([movie.merge({'watched_at' => Time.now})], 'watchlist', 'movies') if found
