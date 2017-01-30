@@ -48,6 +48,7 @@ class Library
   end
 
   def self.duplicate_search(folder, title, original, interactive = 1, type = 'movies')
+    Speaker.speak_up("Looking for duplicates of #{title}...")
     dups = self.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*', 'exclude_strict' => original})
     if dups.count > 0
       corrected_dups = []

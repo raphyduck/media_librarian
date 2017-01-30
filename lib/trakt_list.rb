@@ -31,6 +31,7 @@ class TraktList
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
     authenticate!
+    items = [items] unless items.is_a?(Array)
     if list == 'watchlist'
       $trakt.sync.mark_watched(items, type)
     end
