@@ -22,10 +22,10 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
-  revision: e49634903626fb9ad6cf14f2f20a232bc7ecf2f4
+  revision: 934c9938ca4d3e60874dd4e9255ce791722a97d3
   specs:
-    trakt (0.0.2)
-      excon
+    trakt (0.0.3)
+      httparty
 
 GEM
   remote: http://rubygems.org/
@@ -41,7 +41,6 @@ GEM
       tzinfo (~> 1.1)
     bencode (0.8.2)
     concurrent-ruby (0.9.2)
-    excon (0.54.0)
     fuzzy-string-match (0.9.7)
       RubyInline (>= 3.8.6)
     httparty (0.14.0)
