@@ -76,7 +76,7 @@ class TorrentSearch
     false
   end
 
-  def self.search(keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.search(keyword:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)
     success = false
     self.authenticate_all
     ['t411', 'extratorrent', 'thepiratebay'].each do |type|
