@@ -1,5 +1,15 @@
 class Library
 
+  @refusal = 0
+
+  def self.break_processing(interactive = 1, threshold = 3)
+    if @refusal >= threshold
+      @refusal = 0
+      return Speaker.ask_if_needed("Do you want to stop processing the list now? (y/n)", interactive, 'n') == 'y'
+    end
+    false
+  end
+
   def self.compare_remote_files(path, remote_server, remote_user, filter_criteria = {}, ssh_opts = {}, interactive = 1)
     ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
     ssh_opts = {} if ssh_opts.nil?
@@ -37,8 +47,52 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.parse_imdb_list
-    Imdb::Watchlist.new($config['imdb']['user'],$config['imdb']['list'])
+  def self.duplicate_search(folder, title, original, interactive = 1, type = 'movies')
+    dups = self.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*', 'exclude_strict' => original})
+    if dups.count > 0
+      corrected_dups = []
+      dups.each do |d|
+        case type
+          when 'movies'
+            d_title = self.moviedb_search(File.basename(File.dirname(d)))
+          else
+            next
+        end
+        corrected_dups << d if d_title == title
+      end
+      if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
+        corrected_dups.each do |d|
+          FileUtils.rm_r(d[0])
+        end
+      end
+    end
+  end
+
+  def self.parse_watch_list(type = 'trakt')
+    case type
+      when 'imdb'
+        Imdb::Watchlist.new($config['imdb']['user'],$config['imdb']['list'])
+      when 'trakt'
+        TraktList.list('watchlist', 'movies')
+    end
+  end
+
+  def self.process_search_list(dest_folder, source = 'trakt', interactive = 1, type = 'trakt', extra_keywords = '')
+    self.parse_watch_list(source).each do |item|
+      movie = item['movie']
+      next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
+      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title']}? (y/n)", interactive, 'y') != 'y'
+        @refusal += 1
+        next
+      else
+        @refusal == 0
+      end
+      break if break_processing(interactive)
+      refusal = 0 if refusal >= 3
+      self.duplicate_search(dest_folder, movie['title'], nil, interactive, type)
+      found = TorrentSearch.search(movie['title'] + ' ' + extra_keywords, 10, 'movies', interactive, 1, dest_folder, movie['title'], true)
+      TraktList.remove_from_list([movie.merge({'watched_at' => Time.now})], 'watchlist', 'movies') if found
+    end
   end
 
   def self.moviedb_search(title)
@@ -61,19 +115,7 @@ class Library
       if imdb_name_check.to_i > 0
         title, found = self.moviedb_search(title)
         #Look for duplicate
-        dups = self.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*', 'exclude_strict' => film[1]})
-        if dups.count > 0
-          corrected_dups = []
-          dups.each do |d|
-            d_title = self.moviedb_search(File.basename(File.dirname(d)))
-            corrected_dups << d if d_title == title
-          end
-          if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', interactive) == 'y'
-            corrected_dups.each do |d|
-              FileUtils.rm_r(d[0])
-            end
-          end
-        end
+        self.duplicate_search(folder, title, film[1], interactive, 'movies') if found
       end
       Speaker.speak_up("Looking for torrent of film #{title}") unless interactive == 0 && !found
       replaced = interactive == 0 && !found ? false : TorrentSearch.search(title + ' ' + extra_keywords, 10, 'movies', interactive, 1, folder, title, true)
@@ -96,6 +138,7 @@ class Library
       next if filter_criteria['name'] && !File.basename(path).include?(filter_criteria['name'])
       next if filter_criteria['regex'] && !File.basename(path).match(filter_criteria['regex'])
       next if filter_criteria['exclude'] && File.basename(path).include?(filter_criteria['exclude'])
+      next if filter_criteria['exclude_path'] && path.include?(filter_criteria['exclude_path'])
       next if filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
       next if filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
       next if filter_criteria['days_older'] && File.mtime(path) > Time.now - filter_criteria['days_older'].to_i.days

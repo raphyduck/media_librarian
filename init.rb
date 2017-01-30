@@ -16,7 +16,7 @@ Dir.mkdir($temp_dir) unless File.exist?($temp_dir)
 $logger = Logger.new($log_dir + '/medialibrarian.log')
 $logger_error = Logger.new($log_dir + '/medialibrarian_errors.log')
 #Load app and settings
-Dir[File.dirname(__FILE__) + '/app/*.rb'].each {|file| require file }
+Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
 Config.load_settings
 
 #Start torrent_client
@@ -24,8 +24,14 @@ $t_client = TorrentClient.new
 
 #Start trakt client
 if $config['trakt']
-  $trakt = Trakt.new
-  $trakt.apikey = $config['apikey']
-  $trakt.username = $config['username']
-  $trakt.password = $config['password']
+  $trakt_account = $config['trakt']['account_id']
+  $trakt = Trakt.new({
+                         :client_id => $config['trakt']['client_id'],
+                         :client_secret => $config['trakt']['client_secret'],
+                         :account_id => $config['trakt']['account_id']
+                     })
 end
+
+#Set up and open app DB
+db_path=$config_dir +"/librarian.db"
+$db = Storage::Db.new(db_path)

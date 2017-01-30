@@ -11,6 +11,6 @@ t411:
     site_specific_kw:
         movies: ''
 trakt:
-    apikey: apikey
-    username: username
-    password: pwd
+    account_id: account_id
+    client_id: client_id
+    client_secret: client_secret

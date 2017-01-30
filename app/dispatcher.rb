@@ -5,8 +5,9 @@ class Dispatcher
         :help => ['Dispatcher', 'show_available'],
         :reconfigure => ['Config', 'reconfigure'],
         :library => {
-            :replace_movies => ['Library', 'replace_movies'],
-            :compare_remote_files => ['Library', 'compare_remote_files']
+            :compare_remote_files => ['Library', 'compare_remote_files'],
+            :process_search_list => ['Library', 'process_search_list'],
+            :replace_movies => ['Library', 'replace_movies']
         },
         :torrent => {
             :search => ['TorrentSearch', 'search']

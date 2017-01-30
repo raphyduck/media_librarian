@@ -6,8 +6,8 @@ class Config
         curr_v = current ? current[k] : nil
         if v.is_a?(Hash)
           node[k] = self.configure_node(v, name + ' ' + k, curr_v)
-        elsif k == 'password'
-          node[k] = STDIN.getpass("What is your #{name} password? ")
+        elsif ['password','client_secret'].include?(k)
+          node[k] = STDIN.getpass("What is your #{name} #{k}? ")
         else
           Speaker.speak_up "What is your #{name} #{k}? [#{curr_v}] "
           node[k] = gets.strip
