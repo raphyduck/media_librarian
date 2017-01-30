@@ -89,7 +89,6 @@ class Library
         @refusal == 0
       end
       break if break_processing(interactive)
-      refusal = 0 if refusal >= 3
       self.duplicate_search(dest_folder, movie['title'], nil, interactive, type)
       found = TorrentSearch.search(movie['title'] + ' ' + extra_keywords, 10, 'movies', interactive, 1, dest_folder, movie['title'], true)
       TraktList.remove_from_list([movie.merge({'watched_at' => Time.now})], 'watchlist', 'movies') if found
