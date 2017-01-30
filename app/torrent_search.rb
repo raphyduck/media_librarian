@@ -76,13 +76,13 @@ class TorrentSearch
     false
   end
 
-  def self.search(keyword, limit = 50, category = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.search(keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = false
     self.authenticate_all
     ['t411', 'extratorrent', 'thepiratebay'].each do |type|
       break if success
-      next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", interactive, 'y') != 'y'
-      success = self.t_search(type, keyword, limit, category, interactive, filter_dead, move_completed, rename_main, main_only)
+      next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+      success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
     end
     success
   rescue => e
@@ -93,13 +93,13 @@ class TorrentSearch
     category && category != '' && $config[type] && $config[type]['site_specific_kw'] && $config[type]['site_specific_kw'][category] ? " #{$config[type]['site_specific_kw'][category]}" : ''
   end
 
-  def self.t_search(type, keyword, limit = 50, category = '', interactive = 1, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = false
     return false if !T411.authenticated? && type == 't411'
     keyword += self.get_site_keywords(type, category)
     search = self.get_results(type, keyword, limit, category, filter_dead)
     download_id = search.empty? || search['torrents'].nil? || search['torrents'].empty? ? 0 : 1
-    if interactive.to_i > 0
+    if no_prompt.to_i == 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?
         Speaker.speak_up("No results for '#{search['query']}'")
