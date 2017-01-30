@@ -130,7 +130,7 @@ class Library
 
   def self.get_disk_size(path)
     size=0
-    Dir.glob(File.join(path, '**', '*')) { |file| size+=File.size(file) }
+    Find.find(path) { |file| size+= File.size(file)}
     size
   end
 
