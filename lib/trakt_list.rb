@@ -50,20 +50,22 @@ class TraktList
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil)
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
+    type_history = get_history((type == 'shows' ? 'episodes' : type))
     list.each do |item|
+      title = item[type[0...-1]]['title']
+      next if exception && exception.include?(title)
       case filter_type
         when 'watched'
           trakt_id = item[type[0...-1]]['ids']['trakt'].to_i
-          get_history((type == 'shows' ? 'episodes' : type)).each do |h|
+          type_history.each do |h|
             if h[type[0...-1]] && h[type[0...-1]]['ids'] && h[type[0...-1]]['ids']['trakt'] && h[type[0...-1]]['ids']['trakt'].to_i == trakt_id
-              list.delete(item) unless exception && exception.include?(item[type[0...-1]]['ids']['title'])
+              list.delete(item)
               break
             end
           end
         when 'ended', 'not ended'
-          title = item[type[0...-1]]['title']
           search, found = MediaInfo.tv_series_search(title)
-          list[type].delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended')) && !(exception && exception.include?(item[type[0...-1]]['ids']['title']))
+          list[type].delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
       end
       print '...'
     end
