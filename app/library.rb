@@ -47,7 +47,9 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.create_custom_list(name:, description:, origin: 'collection')
+  def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
+    Speaker.speak_up("Fetching items from #{origin}...")
+    criteria = eval(criteria) if criteria.is_a?(String)
     new_list = {
         'movies' => TraktList.list(origin, 'movies'),
         'shows' => TraktList.list(origin, 'shows')
@@ -64,25 +66,20 @@ class Library
     end
     Speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
     ['movies', 'shows'].each do |type|
-      if Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)") != 'y'
+      t_criteria = criteria[type] || {}
+      if t_criteria['noadd'] || Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
         new_list.delete(type)
         next
       end
-      folder = Speaker.ask_if_needed("What is the path of your folder where #{type} items are stored? (in full)")
-      if Speaker.ask_if_needed("Do you want to add items you already watched? (y/n)") != 'y'
-        prints 'Ok, will filter all watched items, it can take a long time...'
-        new_list[type].each do |item|
-          trakt_id = item['ids']['trakt'].to_i
-          begin
-            new_list[type].delete(item) unless $trakt.list.get_history((type == 'shows' ? 'episodes' : type), trakt_id).empty?
-          rescue => e
-            Speaker.tell_error(e, "codeblock")
-          end
-          prints '...'
+      folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
+      (type == 'shows' ? ['watched', 'ended', 'not ended'] : ['watched']).each do |cr|
+        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
+          TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
         end
       end
-      if Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+      if !t_criteria['no_review'].nil? || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
         new_list[type].each do |item|
+          title = item[type[0...-1]]['title']
           folders = search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*'})
           file = folders.first
           if file
@@ -95,10 +92,12 @@ class Library
               end
             end
           else
+            Speaker.speak_up("No folder found for #{title}, deleting...")
             new_list[type].delete(item)
           end
         end
       end
+      new_list.map!{|i| i[type[0...-1]]}
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
     Speaker.speak_up("List #{name} is up to date!")
@@ -114,7 +113,7 @@ class Library
       dups.each do |d|
         case type
           when 'movies'
-            d_title = self.moviedb_search(File.basename(File.dirname(d)))
+            d_title, _ = MediaInfo.moviedb_search(File.basename(File.dirname(d)))
           else
             next
         end
@@ -162,15 +161,6 @@ class Library
     Speaker.tell_error(e, "Library.process_search_list")
   end
 
-  def self.moviedb_search(title)
-    Speaker.speak_up("Starting IMDB lookup for #{title}")
-    res = Imdb::Search.new(title)
-    return res.movies.first.title, true
-  rescue => e
-    Speaker.tell_error(e, "Library.moviedb_search")
-    return title, false
-  end
-
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)
     $move_completed_torrent = folder
     self.search_folder(folder, filter_criteria).each do |film|
@@ -180,7 +170,7 @@ class Library
       next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)}? (y/n)", no_prompt) != 'y'
       found = true
       if imdb_name_check.to_i > 0
-        title, found = self.moviedb_search(title)
+        title, found = MediaInfo.moviedb_search(title)
         #Look for duplicate
         self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
       end

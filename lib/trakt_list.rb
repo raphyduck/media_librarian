@@ -11,6 +11,7 @@ class TraktList
     authenticate!
     items = [items] unless items.is_a?(Array)
     items.map! { |i| i.merge({'collected_at' => TIme.now}) } if list_type == 'collection'
+    puts items
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
@@ -37,18 +38,56 @@ class TraktList
     $trakt.token = token
   end
 
+  def self.get_history(type, trakt_id = '')
+    return [] if trakt_id <= 0
+    h = $trakt.list.get_history(type, trakt_id)
+    return [] if h.is_a?(Hash) && h['error']
+    h
+  rescue => e
+    Speaker.tell_error(e, "traktList.get_history")
+    []
+  end
+
+  def self.filter_trakt_list(list, type, filter_type, exception = nil)
+    print "Ok, will filter all #{filter_type} items, it can take a long time..."
+    list.each do |item|
+      case filter_type
+        when 'watched'
+          trakt_id = item[type[0...-1]]['ids']['trakt'].to_i
+          get_history((type == 'shows' ? 'episodes' : type)).each do |h|
+            if h[type[0...-1]] && h[type[0...-1]]['ids'] && h[type[0...-1]]['ids']['trakt'] && h[type[0...-1]]['ids']['trakt'].to_i == trakt_id
+              list.delete(item) unless exception && exception.include?(item[type[0...-1]]['ids']['title'])
+              break
+            end
+          end
+        when 'ended', 'not ended'
+          title = item[type[0...-1]]['title']
+          search, found = MediaInfo.tv_series_search(title)
+          list[type].delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended')) && !(exception && exception.include?(item[type[0...-1]]['ids']['title']))
+      end
+      print '...'
+    end
+    Speaker.speak_up('done!')
+    list
+  rescue => e
+    Speaker.tell_error(e, "TraktList.filter_trakt_list")
+    list
+  end
+
   def self.list(name = 'watchlist', type = 'movies')
     authenticate!
     case name
       when 'watchlist'
-        $trakt.list.watchlist(type)
+        list = $trakt.list.watchlist(type)
+        list.sort_by! { |i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now+100.years).year }
       when 'collection'
-        $trakt.list.collection(type)
+        list = $trakt.list.collection(type)
       when 'lists'
-        $trakt.list.get_user_lists
+        list = $trakt.list.get_user_lists
       else
-        $trakt.list.list(name)
+        list = $trakt.list.list(name)
     end
+    list
   rescue => e
     Speaker.tell_error(e, "TraktList.list")
     []

@@ -16,6 +16,7 @@ require 'rubygems'
 require 'sqlite3'
 require 't411'
 require 'trakt'
+require 'tvmaze'
 require 'yaml'
 #Process.daemon
 
