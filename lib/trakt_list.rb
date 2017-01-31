@@ -39,7 +39,7 @@ class TraktList
   end
 
   def self.get_history(type, trakt_id = '')
-    return [] if trakt_id <= 0
+    return [] if trakt_id.to_i <= 0
     h = $trakt.list.get_history(type, trakt_id)
     return [] if h.is_a?(Hash) && h['error']
     h
@@ -50,7 +50,7 @@ class TraktList
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil)
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
-    type_history = get_history((type == 'shows' ? 'episodes' : type))
+    type_history = filter_type == 'watched' ? get_history((type == 'shows' ? 'episodes' : type)) : nil
     list.each do |item|
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
