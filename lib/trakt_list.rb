@@ -65,7 +65,7 @@ class TraktList
           end
         when 'ended', 'not ended'
           search, found = MediaInfo.tv_series_search(title)
-          list[type].delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
+          list.delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
       end
       print '...'
     end
