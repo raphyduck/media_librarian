@@ -65,7 +65,7 @@ class Library
       end
       folder_names = paths.map { |p| File.basename(p) }
       Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
-        puts "FileUtils.rm_r(#{p})" if folder_names.include?(File.basename(p))
+        puts "FileUtils.rm_r(#{p})" unless folder_names.include?(File.basename(p))
       end
       paths.each do |p|
         Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive']) do |result|
@@ -94,7 +94,7 @@ class Library
       Speaker.speak_up("List #{name} exists, deleting any items in it...")
       existing = TraktList.list(name)
       to_delete = TraktList.parse_custom_list(existing)
-      TraktList.remove_from_list(to_delete, name, '')
+      TraktList.remove_from_list(to_delete, name, '') unless to_delete.nil? || to_delete.empty?
     else
       Speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktList.create_list(name, description)
@@ -106,10 +106,12 @@ class Library
         new_list.delete(type)
         next
       end
+      puts "list count #{new_list[type].length}"
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely watched', 'partially watched', 'ended', 'not ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
+          puts "list count #{new_list[type].length}"
         end
       end
       if (t_criteria['no_review'] && t_criteria['no_review'].to_i > 0) || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
@@ -128,7 +130,7 @@ class Library
                 item['seasons'].select! { |s| s['number'] != c.to_i }
               end
             end
-          else
+          elsif Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)") == 'y'
             Speaker.speak_up("No folder found for #{title}, deleting...")
             new_list[type].delete(item)
           end

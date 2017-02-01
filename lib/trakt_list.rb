@@ -56,7 +56,7 @@ class TraktList
         when 'movies'
           k = Xbmc::VideoLibrary.get_movies({:properties => ["title", "year", "lastplayed", "playcount", "imdbnumber"],
                                              :sort => {:order => 'ascending', :method => 'label'}})
-        when 'shows'
+        when 'shows', 'episodes'
           k = Xbmc::VideoLibrary.get_tv_shows({:properties => ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"],
                                                :sort => {:order => 'ascending', :method => 'label'}})
       end
@@ -80,8 +80,9 @@ class TraktList
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil)
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
-    type_history = filter_type.include?('watched') ? get_watched((type == 'shows' ? 'episodes' : type), filter_type.include?('entirely') ? 1 : 0) : []
+    type_history = filter_type.include?('watched') ? get_watched(type, filter_type.include?('entirely') ? 1 : 0) : []
     list.reverse_each do |item|
+      broke = 0
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
@@ -89,11 +90,16 @@ class TraktList
           type_history.each do |h|
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
-                if item[type[0...-1]]['ids'][k].to_i == id.to_i
+                if item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
                   list.delete(item)
+                  broke = 1
                   break
                 end
               end
+            end
+            if broke == 0 && item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
+              list.delete(item)
+              break
             end
           end
         when 'ended', 'not ended'
