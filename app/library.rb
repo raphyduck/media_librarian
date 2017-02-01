@@ -47,28 +47,29 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {})
+  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0)
     source_folders = Utils.recursive_symbolize_keys(eval(source_folders)) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?
     return Speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
-    list = TraktList.list(source_list, '')
-    return Speaker.speak_up("Empty list #{source_list}") if list.empty?
-    list = TraktList.parse_custom_list(list)
+    complete_list = TraktList.list(source_list, '')
+    return Speaker.speak_up("Empty list #{source_list}") if complete_list.empty?
+    list = TraktList.parse_custom_list(complete_list)
     list.each do |type, items|
       source_folder = source_folders[type] || Speaker.ask_if_needed("What is the source folder for #{type} media?")
-      list_size, paths = get_media_list_size(items, source_folder)
+      list_size, _ = get_media_list_size(complete_list, source_folder)
       free_space = Utils.get_free_space(dest_folder)
       while free_space <= list_size
         break if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{(list_size-free_space)/1024/1024/1024} GB to copy the list. Do you want to edit the list now?") != 'y'
-        create_custom_list(source_list, '')
-        list_size, paths = get_media_list_size(items, source_folder)
+        create_custom_list(source_list, '', source_list)
+        list_size, _ = get_media_list_size(complete_list, source_folder)
       end
+      _, paths = get_media_list_size(items, source_folder)
       folder_names = paths.map { |p| File.basename(p) }
       Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
         puts "FileUtils.rm_r(#{p})" unless folder_names.include?(File.basename(p))
       end
       paths.each do |p|
-        Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive']) do |result|
+        Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
               puts "#{change.filename} (#{change.summary})"
@@ -106,33 +107,33 @@ class Library
         new_list.delete(type)
         next
       end
-      puts "list count #{new_list[type].length}"
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely watched', 'partially watched', 'ended', 'not ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
-          puts "list count #{new_list[type].length}"
         end
       end
-      if (t_criteria['no_review'] && t_criteria['no_review'].to_i > 0) || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+      if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+        review_cr = t_criteria['review']
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
           folders = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1')).gsub(/^[Tt]he /, '') + '.*',
                                                  'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
           file = folders.first
-          if file
-            size = Utils.get_disk_size(file[0])
-            if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{size/1024/1024/1024} GB) to the list (y/n)") != 'y'
-              new_list[type].delete(item)
-            elsif type == 'shows' && Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)") != 'y'
-              choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3'").split(',')
-              choice.each do |c|
-                item['seasons'].select! { |s| s['number'] != c.to_i }
-              end
-            end
-          elsif Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)") == 'y'
-            Speaker.speak_up("No folder found for #{title}, deleting...")
+          if !file && ((review_cr['remove_deleted'] && review_cr['remove_deleted'].to_i > 0) || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
+            next
+          end
+          size = Utils.get_disk_size(file[0])
+          if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{size/1024/1024/1024} GB) to the list (y/n)") != 'y'
+            new_list[type].delete(item)
+          elsif type == 'shows' && ((review_cr['no_season'] && review_cr['no_season'].to_i > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].nil? ? 0 : 1, 'y') != 'y')
+            choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", (review_cr['no_season'] && review_cr['no_season'].to_i > 0) ? 1 : 0, '').split(',')
+            if choice.empty?
+              item['seasons'] = nil
+            else
+              item['seasons'].select! { |s| choice.map!{|n| n.to_i}.include?(s['number']) != s.to_i }
+            end
           end
         end
       end
