@@ -5,6 +5,10 @@ deluge:
 imdb:
     user: user
     list: list
+kodi:
+    host: http://host:port
+    username: username
+    password: password
 t411:
     username: username
     password: pwd

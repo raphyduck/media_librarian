@@ -6,6 +6,7 @@ class Dispatcher
         :reconfigure => ['Config', 'reconfigure'],
         :library => {
             :compare_remote_files => ['Library', 'compare_remote_files'],
+            :copy_media_from_list => ['Library', 'copy_media_from_list'],
             :create_custom_list => ['Library', 'create_custom_list'],
             :process_search_list => ['Library', 'process_search_list'],
             :replace_movies => ['Library', 'replace_movies']
@@ -43,7 +44,8 @@ class Dispatcher
       return self.show_available(Hash[req_params.map{|k| ["--#{k[0]}=<#{k[0]}>", k[1]]}], parent, ' ') if param[1] == :keyreq && args[param[0].to_s].nil?
     end
     dameth = model.method(action[1])
-    dameth.call(Hash[req_params.map{|k, _| [k, args[k.to_s]]}].select{|_, v| !v.nil?})
+    params = Hash[req_params.map{|k, _| [k, args[k.to_s]]}].select{|_, v| !v.nil?}
+    params.empty? ? dameth.call : dameth.call(params)
   rescue => e
     Speaker.tell_error(e, "Dispatcher.launch")
   end

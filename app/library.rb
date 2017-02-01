@@ -13,7 +13,7 @@ class Library
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
     ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
     ssh_opts = {} if ssh_opts.nil?
-    list = FileTest.directory?(path) ? self.search_folder(path, filter_criteria) : [[path, '']]
+    list = FileTest.directory?(path) ? Utils.search_folder(path, filter_criteria) : [[path, '']]
     list.each do |f|
       f_path = f[0]
       Speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
@@ -25,7 +25,7 @@ class Library
           remote_md5sum << data if stream == :stdout
         end
         remote_md5sum = remote_md5sum.first
-        remote_md5sum = remote_md5sum ? remote_md5sum.gsub(/(\w*)( .*\n)/,'\1') : ''
+        remote_md5sum = remote_md5sum ? remote_md5sum.gsub(/(\w*)( .*\n)/, '\1') : ''
       end
       Speaker.speak_up("Local md5sum is #{local_md5sum}")
       Speaker.speak_up("Remote md5sum is #{remote_md5sum}")
@@ -47,6 +47,35 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
+  def self.copy_media_from_list(source_folder:, source_list:, dest_folder:)
+    return Speaker.speak_up("Invalid source folder") if source_folder.nil? || source_folder == '' || !File.exist?(source_folder)
+    return Speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
+    list = TraktList.list(source_list)
+    return Speaker.speak_up("Empty list #{source_list}") if list.empty?
+    list_size, paths = get_media_list_size(list, source_folder)
+    free_space = Utils.get_free_space(dest_folder)
+    while free_space <= list_size
+      break if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{(list_size-free_space)/1024/1024/1024} GB to copy the list. Do you want to edit the list now?") != 'y'
+      create_custom_list(source_list, '')
+      list_size, paths = get_media_list_size(list, source_folder)
+    end
+    folder_names = paths.map { |p| File.basename(p) }
+    Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
+      puts "FileUtils.rm_r(#{p})" if folder_names.include?(File.basename(p))
+    end
+    paths.each do |p|
+      Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive']) do |result|
+        if result.success?
+          result.changes.each do |change|
+            puts "#{change.filename} (#{change.summary})"
+          end
+        else
+          puts result.error
+        end
+      end
+    end
+  end
+
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
     Speaker.speak_up("Fetching items from #{origin}...")
     criteria = eval(criteria) if criteria.is_a?(String)
@@ -59,7 +88,8 @@ class Library
     if dest_list
       Speaker.speak_up("List #{name} exists, deleting any items in it...")
       existing = TraktList.list(name)
-      TraktList.remove_from_list(existing)
+      to_delete = TraktList.parse_custom_list(existing)
+      TraktList.remove_from_list(to_delete, name, '')
     else
       Speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktList.create_list(name, description)
@@ -74,21 +104,23 @@ class Library
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['watched', 'ended', 'not ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
-          TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
+          new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
         end
       end
-      if !t_criteria['no_review'].nil? || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
-        new_list[type].each do |item|
+      if (t_criteria['no_review'] && t_criteria['no_review'].to_i > 0) || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+        new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
-          folders = search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*'})
+          folders = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1')).gsub(/^[Tt]he /, '') + '.*',
+                                                 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
           file = folders.first
           if file
-            size = get_disk_size(file[0])
-            new_list[type].delete(item) if Speaker.ask_if_needed("Do you want to add #{item['title']} (disk size #{size / 1024 / 1024} to this list (y/n)") != 'y'
-            if type == 'shows' && Speaker.ask_if_needed("Do you want to keep all seasons of #{item['title']}? (y/n)") != 'y'
+            size = Utils.get_disk_size(file[0])
+            if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{size/1024/1024/1024} GB) to the list (y/n)") != 'y'
+              new_list[type].delete(item)
+            elsif type == 'shows' && Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)") != 'y'
               choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3'").split(',')
               choice.each do |c|
-                item['seasons'].select!{|s| s['number'] != c.to_i }
+                item['seasons'].select! { |s| s['number'] != c.to_i }
               end
             end
           else
@@ -97,7 +129,10 @@ class Library
           end
         end
       end
-      new_list.map!{|i| i[type[0...-1]]}
+      new_list[type].map! do |i|
+        i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
+        i[type[0...-1]]
+      end
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
     Speaker.speak_up("List #{name} is up to date!")
@@ -107,7 +142,7 @@ class Library
 
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     Speaker.speak_up("Looking for duplicates of #{title}...")
-    dups = self.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/,'\1').strip.gsub(/ /,'.') + '.*', 'exclude_strict' => original})
+    dups = Utils.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*', 'exclude_strict' => original})
     if dups.count > 0
       corrected_dups = []
       dups.each do |d|
@@ -119,7 +154,7 @@ class Library
         end
         corrected_dups << d if d_title == title
       end
-      if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map{|d| "#{d[0]}#{NEW_LINE}"}.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
+      if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
         corrected_dups.each do |d|
           FileUtils.rm_r(d[0])
         end
@@ -127,16 +162,31 @@ class Library
     end
   end
 
-  def self.get_disk_size(path)
-    size=0
-    Find.find(path) { |file| size+= File.size(file)}
-    size
+  def self.get_media_list_size(list, folder)
+    list_size = 0
+    list_paths = []
+    list.each do |item|
+      type = item['type']
+      next unless ['movie', 'show'].include?(type)
+      title = item[type[0...-1]]['title']
+      folders = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1')).gsub(/^[Tt]he /, '') + '.*',
+                                             'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
+      file = folders.first
+      if file
+        list_size += Utils.get_disk_size(file[0])
+        list_paths << file[0]
+      end
+    end
+    return list_size, list_paths
+  rescue => e
+    Speaker.tell_error(e, "Library.get_media_list_size")
+    return 0, []
   end
 
   def self.parse_watch_list(type = 'trakt')
     case type
       when 'imdb'
-        Imdb::Watchlist.new($config['imdb']['user'],$config['imdb']['list'])
+        Imdb::Watchlist.new($config['imdb']['user'], $config['imdb']['list'])
       when 'trakt'
         TraktList.list('watchlist', 'movies')
     end
@@ -163,7 +213,7 @@ class Library
 
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)
     $move_completed_torrent = folder
-    self.search_folder(folder, filter_criteria).each do |film|
+    Utils.search_folder(folder, filter_criteria).each do |film|
       next if File.basename(folder) == film[1]
       title = film[1]
       path = film[0]
@@ -180,32 +230,6 @@ class Library
     end
   rescue => e
     Speaker.tell_error(e, "Library.replace_movies")
-  end
-
-  def self.search_folder(folder, filter_criteria = {})
-    filter_criteria = eval(filter_criteria) if filter_criteria.is_a?(String)
-    filter_criteria = {} if filter_criteria.nil?
-    search_folder = []
-    Find.find(folder).each do |path|
-      next if path == folder
-      next if FileTest.directory?(path)
-      parent = File.basename(File.dirname(path))
-      next if File.basename(path).start_with?('.')
-      next if parent.start_with?('.')
-      next if filter_criteria['name'] && !File.basename(path).include?(filter_criteria['name'])
-      next if filter_criteria['regex'] && !File.basename(path).match(filter_criteria['regex']) && !parent.match(filter_criteria['regex'])
-      next if filter_criteria['exclude'] && File.basename(path).include?(filter_criteria['exclude'])
-      next if filter_criteria['exclude_path'] && path.include?(filter_criteria['exclude_path'])
-      next if filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
-      next if filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
-      next if filter_criteria['days_older'] && File.mtime(path) > Time.now - filter_criteria['days_older'].to_i.days
-      next if filter_criteria['days_newer'] && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
-      search_folder << [path, parent]
-    end
-    search_folder
-  rescue => e
-    Speaker.tell_error(e, "Library.search_folder")
-    []
   end
 
 end

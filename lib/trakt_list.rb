@@ -11,7 +11,6 @@ class TraktList
     authenticate!
     items = [items] unless items.is_a?(Array)
     items.map! { |i| i.merge({'collected_at' => TIme.now}) } if list_type == 'collection'
-    puts items
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
@@ -50,8 +49,8 @@ class TraktList
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil)
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
-    type_history = filter_type == 'watched' ? get_history((type == 'shows' ? 'episodes' : type)) : nil
-    list.each do |item|
+    type_history = filter_type == 'watched' ? get_history((type == 'shows' ? 'episodes' : type)) : []
+    list.reverse_each do |item|
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
@@ -64,8 +63,11 @@ class TraktList
             end
           end
         when 'ended', 'not ended'
-          search, found = MediaInfo.tv_series_search(title)
-          list.delete(item) if found && (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
+          tvdb_id = item[type[0...-1]]['ids']['tvdb'].to_i
+          search, found = MediaInfo.tv_series_search(title, tvdb_id)
+          if !found || (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
+            list.delete(item)
+          end
       end
       print '...'
     end
@@ -95,9 +97,35 @@ class TraktList
     []
   end
 
+  def self.parse_custom_list(items)
+    parsed = {}
+    items.each do |i|
+      t = i['type']
+      type = ['show', 'season', 'episode'].include?(t) ? 'shows' : 'movies'
+      parsed[type] = {} unless parsed[type]
+      t_title = i[type[0...-1]]['title']
+      parsed[type][t_title] = i[type[0...-1]] if parsed[type][t_title].nil?
+      parsed[type][t_title]['ids'] = i[type[0...-1]]['ids'] if parsed[type][t_title]['ids'].nil? && i[type[0...-1]]['ids']
+      next unless ['season', 'episode'].include?(t)
+      parsed[type][t_title]['seasons'] = {} if parsed[type][t_title]['seasons'].nil?
+      s_number = i[t][t == 'season' ? 'number' : 'season']
+      parsed[type][t_title]['seasons'][s_number] = t == 'season' ? i[t] : {'number' => i[t]['season']} if parsed[type][t_title]['seasons'][s_number].nil?
+      parsed[type][t_title]['seasons'][s_number]['ids'] = i['season']['ids'] if parsed[type][t_title]['seasons'][s_number].nil? && i['season']['ids']
+      next unless t == 'episode'
+      parsed[type][t_title]['seasons'][s_number]['episodes'] = [] if parsed[type][t_title]['seasons'][s_number]['episodes'].nil?
+      parsed[type][t_title]['seasons'][s_number]['episodes'] << i[t]
+    end
+    parsed.each do |k, cat|
+      cat.each do |t, c|
+        parsed[k][t]['seasons'] = c['seasons'].map {|s,v| v } if c['seasons']
+      end
+      parsed[k] = cat.map {|s, i| i }
+    end
+    parsed
+  end
+
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
     authenticate!
-    items = [items] unless items.is_a?(Array)
     if list == 'watchlist'
       $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)
     else

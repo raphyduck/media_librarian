@@ -35,3 +35,10 @@ end
 #Set up and open app DB
 db_path=$config_dir +"/librarian.db"
 $db = Storage::Db.new(db_path)
+
+#start Kodi client
+if $config['kodi']
+  Xbmc.base_uri $config['kodi']['host']
+  Xbmc.basic_auth $config['kodi']['username'], $config['kodi']['password']
+  Xbmc.load_api! # This will call JSONRPC.Introspect and create all subclasses and methods dynamically
+end

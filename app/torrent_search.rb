@@ -137,6 +137,8 @@ class TorrentSearch
           'rename_main' => rename_main,
           'main_only' => main_only.to_i
       } if success
+      puts "move_completed #{move_completed}"
+      puts "$deluge_options #{$deluge_options}"
     end
     success
   end
