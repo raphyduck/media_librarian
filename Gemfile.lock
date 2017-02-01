@@ -22,9 +22,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
-  revision: b0857a9d58c019890841cf05ea17f95cc585f8f1
+  revision: 448a5267708233083a934600f4764147be848af7
   specs:
-    trakt (0.1.1)
+    trakt (0.1.2)
       httparty
 
 GIT
@@ -36,7 +36,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/xbmc-client.git
-  revision: 7b99aca861dc855d1aec7eca80ba080cc37c97da
+  revision: 559e6104b884c1b2e0d799ecb1c34c563e977f57
   specs:
     xbmc-client (0.1.2)
       activesupport (>= 3.0.0)
@@ -44,18 +44,21 @@ GIT
       i18n
       json (>= 1.4.5)
 
+PATH
+  remote: vendor/gems/activesupport-4.2.7.1
+  specs:
+    activesupport (4.2.7.1)
+      i18n (~> 0.7)
+      minitest (~> 5.1)
+      thread_safe (~> 0.3, >= 0.3.4)
+      tzinfo (~> 1.1)
+
 GEM
   remote: http://rubygems.org/
   specs:
     RubyInline (3.12.4)
       ZenTest (~> 4.3)
     ZenTest (4.11.1)
-    activesupport (4.2.7.1)
-      i18n (~> 0.7)
-      json (~> 1.7, >= 1.7.7)
-      minitest (~> 5.1)
-      thread_safe (~> 0.3, >= 0.3.4)
-      tzinfo (~> 1.1)
     bencode (0.8.2)
     concurrent-ruby (0.9.2)
     domain_name (0.5.20161129)
@@ -70,7 +73,7 @@ GEM
     httparty_with_cookies (0.2.1)
       httparty
     i18n (0.8.0)
-    json (1.8.6)
+    json (2.0.3)
     mime-types (3.1)
       mime-types-data (~> 3.2015)
     mime-types-data (3.2016.0521)
@@ -101,7 +104,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  activesupport
+  activesupport!
   bencode
   deluge-rpc!
   fuzzy-string-match

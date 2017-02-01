@@ -1,7 +1,7 @@
 source 'http://rubygems.org'
 ruby '2.4.0'
 
-gem 'activesupport'
+gem 'activesupport', :path => File.join(File.dirname(__FILE__), '/vendor/gems/activesupport-4.2.7.1')
 gem 'bencode'
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git'
 gem 'fuzzy-string-match'

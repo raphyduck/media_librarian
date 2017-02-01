@@ -15,6 +15,7 @@ class TraktList
   end
 
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
+    authenticate!
     $trakt.list.create_list({
                                 'name' => name,
                                 'description' => description,
@@ -38,7 +39,7 @@ class TraktList
   end
 
   def self.get_history(type, trakt_id = '')
-    return [] if trakt_id.to_i <= 0
+    authenticate!
     h = $trakt.list.get_history(type, trakt_id)
     return [] if h.is_a?(Hash) && h['error']
     h
@@ -47,19 +48,52 @@ class TraktList
     []
   end
 
+  def self.get_watched(type, complete = 0)
+    authenticate!
+    h, k = [], []
+    if $config['kodi']
+      case type
+        when 'movies'
+          k = Xbmc::VideoLibrary.get_movies({:properties => ["title", "year", "lastplayed", "playcount", "imdbnumber"],
+                                             :sort => {:order => 'ascending', :method => 'label'}})
+        when 'shows'
+          k = Xbmc::VideoLibrary.get_tv_shows({:properties => ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"],
+                                               :sort => {:order => 'ascending', :method => 'label'}})
+      end
+      k.each do |m|
+        next if complete.to_i > 0 && m['watchedepisodes'].to_i < m['episode'].to_i
+        c = {}
+        c[type[0...-1]] = m
+        c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
+        c['plays'] = m['playcount']
+        c['last_watched_at'] = m['lastplayed']
+        h << c
+      end
+    end
+    h = $trakt.list.get_watched(type) if h.nil? || h.empty?
+    return [] if h.is_a?(Hash) && h['error']
+    h
+  rescue => e
+    Speaker.tell_error(e, "TraktList.get_watched")
+    []
+  end
+
   def self.filter_trakt_list(list, type, filter_type, exception = nil)
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
-    type_history = filter_type == 'watched' ? get_history((type == 'shows' ? 'episodes' : type)) : []
+    type_history = filter_type.include?('watched') ? get_watched((type == 'shows' ? 'episodes' : type), filter_type.include?('entirely') ? 1 : 0) : []
     list.reverse_each do |item|
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
-        when 'watched'
-          trakt_id = item[type[0...-1]]['ids']['trakt'].to_i
+        when 'watched', 'entirely watched', 'partially watched'
           type_history.each do |h|
-            if h[type[0...-1]] && h[type[0...-1]]['ids'] && h[type[0...-1]]['ids']['trakt'] && h[type[0...-1]]['ids']['trakt'].to_i == trakt_id
-              list.delete(item)
-              break
+            if h[type[0...-1]] && h[type[0...-1]]['ids']
+              h[type[0...-1]]['ids'].each do |k, id|
+                if item[type[0...-1]]['ids'][k].to_i == id.to_i
+                  list.delete(item)
+                  break
+                end
+              end
             end
           end
         when 'ended', 'not ended'
@@ -117,9 +151,9 @@ class TraktList
     end
     parsed.each do |k, cat|
       cat.each do |t, c|
-        parsed[k][t]['seasons'] = c['seasons'].map {|s,v| v } if c['seasons']
+        parsed[k][t]['seasons'] = c['seasons'].map { |s, v| v } if c['seasons']
       end
-      parsed[k] = cat.map {|s, i| i }
+      parsed[k] = cat.map { |s, i| i }
     end
     parsed
   end

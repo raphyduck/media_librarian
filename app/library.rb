@@ -47,30 +47,35 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.copy_media_from_list(source_folder:, source_list:, dest_folder:)
-    return Speaker.speak_up("Invalid source folder") if source_folder.nil? || source_folder == '' || !File.exist?(source_folder)
+  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {})
+    source_folders = Utils.recursive_symbolize_keys(eval(source_folders)) if source_folders.is_a?(String)
+    source_folders = {} if source_folders.nil?
     return Speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
-    list = TraktList.list(source_list)
+    list = TraktList.list(source_list, '')
     return Speaker.speak_up("Empty list #{source_list}") if list.empty?
-    list_size, paths = get_media_list_size(list, source_folder)
-    free_space = Utils.get_free_space(dest_folder)
-    while free_space <= list_size
-      break if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{(list_size-free_space)/1024/1024/1024} GB to copy the list. Do you want to edit the list now?") != 'y'
-      create_custom_list(source_list, '')
-      list_size, paths = get_media_list_size(list, source_folder)
-    end
-    folder_names = paths.map { |p| File.basename(p) }
-    Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
-      puts "FileUtils.rm_r(#{p})" if folder_names.include?(File.basename(p))
-    end
-    paths.each do |p|
-      Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive']) do |result|
-        if result.success?
-          result.changes.each do |change|
-            puts "#{change.filename} (#{change.summary})"
+    list = TraktList.parse_custom_list(list)
+    list.each do |type, items|
+      source_folder = source_folders[type] || Speaker.ask_if_needed("What is the source folder for #{type} media?")
+      list_size, paths = get_media_list_size(items, source_folder)
+      free_space = Utils.get_free_space(dest_folder)
+      while free_space <= list_size
+        break if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{(list_size-free_space)/1024/1024/1024} GB to copy the list. Do you want to edit the list now?") != 'y'
+        create_custom_list(source_list, '')
+        list_size, paths = get_media_list_size(items, source_folder)
+      end
+      folder_names = paths.map { |p| File.basename(p) }
+      Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
+        puts "FileUtils.rm_r(#{p})" if folder_names.include?(File.basename(p))
+      end
+      paths.each do |p|
+        Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive']) do |result|
+          if result.success?
+            result.changes.each do |change|
+              puts "#{change.filename} (#{change.summary})"
+            end
+          else
+            puts result.error
           end
-        else
-          puts result.error
         end
       end
     end
@@ -102,7 +107,7 @@ class Library
         next
       end
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
-      (type == 'shows' ? ['watched', 'ended', 'not ended'] : ['watched']).each do |cr|
+      (type == 'shows' ? ['entirely watched', 'partially watched', 'ended', 'not ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
         end
