@@ -10,7 +10,7 @@ class Config
           node[k] = STDIN.getpass("What is your #{name} #{k}? ")
         else
           Speaker.speak_up "What is your #{name} #{k}? [#{curr_v}] "
-          node[k] = gets.strip
+          node[k] = STDIN.gets.strip
         end
         node[k] = curr_v if (node[k].nil? || node[k] == '') && !v.is_a?(Hash)
       end

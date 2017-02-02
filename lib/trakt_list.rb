@@ -78,10 +78,11 @@ class TraktList
     []
   end
 
-  def self.filter_trakt_list(list, type, filter_type, exception = nil)
+  def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [])
     print "Ok, will filter all #{filter_type} items, it can take a long time..."
     type_history = filter_type.include?('watched') ? get_watched(type, filter_type.include?('entirely') ? 1 : 0) : []
     list.reverse_each do |item|
+      next if add_only.to_i > 0 && !old_list.index(item).nil?
       broke = 0
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)

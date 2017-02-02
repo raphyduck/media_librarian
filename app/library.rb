@@ -47,29 +47,40 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0)
-    source_folders = Utils.recursive_symbolize_keys(eval(source_folders)) if source_folders.is_a?(String)
+  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
+    source_folders = eval(source_folders) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?
     return Speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
     complete_list = TraktList.list(source_list, '')
     return Speaker.speak_up("Empty list #{source_list}") if complete_list.empty?
+    abort = 0
     list = TraktList.parse_custom_list(complete_list)
-    list.each do |type, items|
-      source_folder = source_folders[type] || Speaker.ask_if_needed("What is the source folder for #{type} media?")
-      list_size, _ = get_media_list_size(complete_list, source_folder)
-      free_space = Utils.get_free_space(dest_folder)
-      while free_space <= list_size
-        break if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{(list_size-free_space)/1024/1024/1024} GB to copy the list. Do you want to edit the list now?") != 'y'
+    list.each do |type, _|
+      source_folders[type] = Speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
+      dest_type = "#{dest_folder}/#{type.titleize}/"
+      list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
+      _, total_space = Utils.get_disk_space(dest_folder)
+      while total_space <= list_size
+        if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
+          abort = 1
+          break
+        end
         create_custom_list(source_list, '', source_list)
-        list_size, _ = get_media_list_size(complete_list, source_folder)
+        list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       end
-      _, paths = get_media_list_size(items, source_folder)
-      folder_names = paths.map { |p| File.basename(p) }
-      Utils.search_folder(dest_folder, {'maxdepth' => 1}).each do |p|
-        puts "FileUtils.rm_r(#{p})" unless folder_names.include?(File.basename(p))
+      return Speaker.speak_up("Not enough disk space, aborting...") if abort > 0
+      return if Speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
+      _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
+      Speaker.speak_up 'Deleting extra media...'
+      Utils.search_folder(dest_folder, {'includedir' => 1}).sort_by{|x| -x[0].length}.each do |p|
+        FileUtils.rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
+      Dir.mkdir(dest_type) unless File.exist?(dest_type)
+      Speaker.speak_up('Syncing new media...')
       paths.each do |p|
-        Rsync.run("#{p}/", "#{dest_folder}/#{File.basename(p)}", ['--update', '--times', '--delete', '--recursive', "--bwlimit=#{bandwith_limit}"]) do |result|
+        final_path =  p.gsub("#{source_folders[type]}/", dest_type)
+        FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
+        Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
               puts "#{change.filename} (#{change.summary})"
@@ -91,6 +102,7 @@ class Library
     }
     existing_lists = TraktList.list('lists')
     dest_list = existing_lists.select { |l| l['name'] == name }.first
+    to_delete = {}
     if dest_list
       Speaker.speak_up("List #{name} exists, deleting any items in it...")
       existing = TraktList.list(name)
@@ -105,34 +117,35 @@ class Library
       t_criteria = criteria[type] || {}
       if t_criteria['noadd'] || Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
         new_list.delete(type)
+        new_list[type] = to_delete[type] if t_criteria['add_only'] && to_delete && to_delete[type]
         next
       end
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely watched', 'partially watched', 'ended', 'not ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
-          new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'])
+          new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
       if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
-        review_cr = t_criteria['review']
+        review_cr = t_criteria['review'] || {}
         new_list[type].reverse_each do |item|
+          next if t_criteria['add_only'] > 0 && !to_delete[type].index(item).nil?
           title = item[type[0...-1]]['title']
-          folders = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1')).gsub(/^[Tt]he /, '') + '.*',
-                                                 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
+          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
           file = folders.first
+          size = file ? Utils.get_disk_size(file[0]) : 0
           if !file && ((review_cr['remove_deleted'] && review_cr['remove_deleted'].to_i > 0) || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
             next
           end
-          size = Utils.get_disk_size(file[0])
-          if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{size/1024/1024/1024} GB) to the list (y/n)") != 'y'
+          if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)") != 'y'
             new_list[type].delete(item)
           elsif type == 'shows' && ((review_cr['no_season'] && review_cr['no_season'].to_i > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].nil? ? 0 : 1, 'y') != 'y')
             choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", (review_cr['no_season'] && review_cr['no_season'].to_i > 0) ? 1 : 0, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else
-              item['seasons'].select! { |s| choice.map!{|n| n.to_i}.include?(s['number']) != s.to_i }
+              item['seasons'].select! { |s| choice.map! { |n| n.to_i }.include?(s['number']) }
             end
           end
         end
@@ -170,21 +183,43 @@ class Library
     end
   end
 
-  def self.get_media_list_size(list, folder)
+  def self.get_media_list_size(list: [], folder: {}, type_filter: '')
+    folder = eval(folder) if folder.is_a?(String)
+    if list.nil? || list.empty?
+      list_name = Speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
+      list = TraktList.list(list_name, '')
+    end
+    parsed_media = {}
     list_size = 0
     list_paths = []
     list.each do |item|
-      type = item['type']
+      type = item['type'] == 'season' ? 'show' : item['type']
+      r_type = item['type']
       next unless ['movie', 'show'].include?(type)
-      title = item[type[0...-1]]['title']
-      folders = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1')).gsub(/^[Tt]he /, '') + '.*',
-                                             'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
+      l_type = type[-1] == 's' ? type : "#{type}s"
+      next if type_filter && type_filter != '' && type_filter != l_type
+      parsed_media[l_type] = {} unless parsed_media[l_type]
+      folder[l_type] = Speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
+      title = item[type]['title']
+      next if parsed_media[l_type][title] && r_type != 'season'
+      folders = Utils.search_folder(folder[l_type], {'regex' => Utils.title_match_string(title), 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
       file = folders.first
       if file
-        list_size += Utils.get_disk_size(file[0])
-        list_paths << file[0]
+        if r_type == 'season'
+          season = item[r_type]['number'].to_s
+          s_file = Utils.search_folder(file[0], {'regex' => "season.#{season}", 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1}).first
+          if s_file
+            list_size += Utils.get_disk_size(s_file[0])
+            list_paths << s_file[0]
+          end
+        else
+          list_size += Utils.get_disk_size(file[0])
+          list_paths << file[0]
+        end
       end
+      parsed_media[l_type][title] = item[type]
     end
+    Speaker.speak_up("The total disk size of this list is #{list_size/1024/1024/1024} GB")
     return list_size, list_paths
   rescue => e
     Speaker.tell_error(e, "Library.get_media_list_size")

@@ -7,9 +7,9 @@ class Utils
     size
   end
 
-  def self.get_free_space(path)
+  def self.get_disk_space(path)
     stat = Sys::Filesystem.stat(path)
-    stat.block_size * stat.blocks_available
+    return stat.block_size * stat.blocks_available, stat.blocks * stat.block_size
   end
 
   def self.get_path_depth(path, folder)
@@ -20,6 +20,13 @@ class Utils
     else
       1 + get_path_depth(File.dirname(path), folder)
     end
+  end
+
+  def self.is_in_path(path_list, folder)
+    path_list.each do |p|
+      return true if folder.gsub('//','/').include?(p.gsub('//','/')) || p.gsub('//','/').include?(folder.gsub('//','/'))
+    end
+    return false
   end
 
   def self.md5sum(file)
@@ -57,12 +64,12 @@ class Utils
     search_folder = []
     Find.find(folder).each do |path|
       next if path == folder
-      next if FileTest.directory?(path) && !filter_criteria['includedir']
       parent = File.basename(File.dirname(path))
       next if File.basename(path).start_with?('.')
       next if parent.start_with?('.')
       depth = get_path_depth(path, folder)
       breakflag = 0
+      breakflag = 1 if breakflag == 0 && FileTest.directory?(path) && !filter_criteria['includedir']
       breakflag = 1 if breakflag == 0 && filter_criteria['name'] && !File.basename(path).downcase.include?(filter_criteria['name'].downcase)
       breakflag = 1 if breakflag == 0 && filter_criteria['regex'] && !File.basename(path).downcase.match(filter_criteria['regex'].downcase) && !parent.match(filter_criteria['regex'])
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude'] && File.basename(path).include?(filter_criteria['exclude'])
@@ -72,9 +79,9 @@ class Utils
       breakflag = 1 if breakflag == 0 && filter_criteria['days_older'] && File.mtime(path) > Time.now - filter_criteria['days_older'].to_i.days
       breakflag = 1 if breakflag == 0 && filter_criteria['days_newer'] && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
       search_folder << [path, parent] if breakflag == 0
-      if breakflag > 0 && filter_criteria['maxdepth'] && depth >= filter_criteria['maxdepth'].to_i
+      if filter_criteria['maxdepth'] && depth >= filter_criteria['maxdepth'].to_i
         Find.prune if FileTest.directory?(path)
-        next
+        next if breakflag > 0
       end
       break if filter_criteria['return_first']
     end
@@ -82,5 +89,9 @@ class Utils
   rescue => e
     Speaker.tell_error(e, "Library.search_folder")
     []
+  end
+
+  def self.title_match_string(str)
+    '^([Tt]he )?' + regexify(str.gsub(/(\w*)\(\d+\)/, '\1').gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/,'').gsub(/ \(US\)$/,'')) + '.{0,7}$'
   end
 end
