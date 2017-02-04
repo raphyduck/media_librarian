@@ -3,16 +3,21 @@ $config_dir = Dir.home + '/.medialibrarian'
 $config_file = $config_dir + '/conf.yml'
 $temp_dir = $config_dir + '/tmp'
 $log_dir = $config_dir + '/log'
+$template_dir = $config_dir + '/templates'
 $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []
 $pending_magnet_links = {}
 #Some constants
 NEW_LINE = "\n"
+LINE_SEPARATOR = '---------------------------------------------------------'
 #Create default folders if doesn't exist
 Dir.mkdir($config_dir) unless File.exist?($config_dir)
 Dir.mkdir($log_dir) unless File.exist?($log_dir)
 Dir.mkdir($temp_dir) unless File.exist?($temp_dir)
+unless File.exist?($template_dir)
+  FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
+end
 $logger = Logger.new($log_dir + '/medialibrarian.log')
 $logger_error = Logger.new($log_dir + '/medialibrarian_errors.log')
 #Load app and settings

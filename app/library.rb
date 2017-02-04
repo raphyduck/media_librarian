@@ -72,13 +72,13 @@ class Library
       return if Speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       Speaker.speak_up 'Deleting extra media...'
-      Utils.search_folder(dest_folder, {'includedir' => 1}).sort_by{|x| -x[0].length}.each do |p|
+      Utils.search_folder(dest_folder, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
         FileUtils.rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       Dir.mkdir(dest_type) unless File.exist?(dest_type)
       Speaker.speak_up('Syncing new media...')
       paths.each do |p|
-        final_path =  p.gsub("#{source_folders[type]}/", dest_type)
+        final_path = p.gsub("#{source_folders[type]}/", dest_type)
         FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
         Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
@@ -115,33 +115,33 @@ class Library
     Speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
     ['movies', 'shows'].each do |type|
       t_criteria = criteria[type] || {}
-      if t_criteria['noadd'] || Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
+      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
         new_list.delete(type)
-        new_list[type] = to_delete[type] if t_criteria['add_only'] && to_delete && to_delete[type]
+        new_list[type] = to_delete[type] if t_criteria['add_only'].to_i > 0 && to_delete && to_delete[type]
         next
       end
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
-      (type == 'shows' ? ['entirely watched', 'partially watched', 'ended', 'not ended'] : ['watched']).each do |cr|
-        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
+      (type == 'shows' ? ['entirely_watched', 'partially_watched', 'ended', 'not_ended'] : ['watched']).each do |cr|
+        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_',' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
       if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
         review_cr = t_criteria['review'] || {}
         new_list[type].reverse_each do |item|
-          next if t_criteria['add_only'] > 0 && !to_delete[type].index(item).nil?
           title = item[type[0...-1]]['title']
           folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
           file = folders.first
           size = file ? Utils.get_disk_size(file[0]) : 0
-          if !file && ((review_cr['remove_deleted'] && review_cr['remove_deleted'].to_i > 0) || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
+          if !file && (review_cr['remove_deleted'].to_i > 0 || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
             next
           end
-          if Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)") != 'y'
+          if (t_criteria['add_only'] == 0 || to_delete[type].index(item).nil?) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
-          elsif type == 'shows' && ((review_cr['no_season'] && review_cr['no_season'].to_i > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].nil? ? 0 : 1, 'y') != 'y')
-            choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", (review_cr['no_season'] && review_cr['no_season'].to_i > 0) ? 1 : 0, '').split(',')
+          end
+          if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'] > 0) && ((review_cr['add_all'].to_i == 0 && review_cr['no_season'] > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
+            choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else

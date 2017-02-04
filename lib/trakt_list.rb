@@ -79,7 +79,7 @@ class TraktList
   end
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [])
-    print "Ok, will filter all #{filter_type} items, it can take a long time..."
+    print "Ok, will filter all #{filter_type.gsub('_',' ')} items, it can take a long time..."
     type_history = filter_type.include?('watched') ? get_watched(type, filter_type.include?('entirely') ? 1 : 0) : []
     list.reverse_each do |item|
       next if add_only.to_i > 0 && !old_list.index(item).nil?
@@ -87,7 +87,7 @@ class TraktList
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
-        when 'watched', 'entirely watched', 'partially watched'
+        when 'watched', 'entirely_watched', 'partially_watched'
           type_history.each do |h|
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
@@ -103,10 +103,10 @@ class TraktList
               break
             end
           end
-        when 'ended', 'not ended'
+        when 'ended', 'not_ended'
           tvdb_id = item[type[0...-1]]['ids']['tvdb'].to_i
           search, found = MediaInfo.tv_series_search(title, tvdb_id)
-          if !found || (search.status.downcase == filter_type || (filter_type == 'not ended' && search.status.downcase != 'ended'))
+          if !found || (search.status.downcase == filter_type || (filter_type == 'not_ended' && search.status.downcase != 'ended'))
             list.delete(item)
           end
       end

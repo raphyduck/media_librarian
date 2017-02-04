@@ -1,0 +1,7 @@
+bandwith_limit: 0
+dest_folder: '/destination/folder/disk'
+no_prompt: 1
+source_list: 'trakt list source'
+source_folders:
+  shows: '/path/to/shows'
+  movies: '/path/to/movies'

@@ -1,0 +1,31 @@
+name: 'list_name'
+description: 'Awesome list'
+origin: 'collection'
+criteria:
+  movies:
+    add_only: 0
+    folder: '/path/to/movies/'
+    include:
+      - A title to keep in the list
+      - A second title
+    noadd: 0
+    review:
+      add_all: 0
+      remove_deleted: 0
+      no_season: 0
+    watched: 1
+  shows:
+    add_only: 0
+    entirely_watched: 1
+    ended: 1
+    folder: '/path/to/movies/'
+    include:
+      - A title to keep in the list
+      - A second title
+    noadd: 0
+    not_ended: 1
+    partially_watched: 1
+    review:
+      add_all: 0
+      remove_deleted: 0
+      no_season: 0

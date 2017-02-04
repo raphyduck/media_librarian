@@ -29,6 +29,16 @@ class Utils
     return false
   end
 
+  def self.load_template(template_name)
+    if template_name.to_s != '' && File.exist?($template_dir + '/' + "#{template_name}.yml")
+      return YAML.load_file($template_dir + '/' + "#{template_name}.yml")
+    end
+    {}
+  rescue => e
+    Speaker.tell_error(e, "Utils.load_template")
+    {}
+  end
+
   def self.md5sum(file)
     md5 = File.open(file, 'rb') do |io|
       dig = Digest::MD5.new
