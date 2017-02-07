@@ -7,6 +7,7 @@ require 'digest/md5'
 require 'digest/sha1'
 require 'find'
 require 'fuzzystringmatch'
+require 'hanami/mailer'
 require 'io/console'
 require 'imdb'
 require 'json'
@@ -55,6 +56,7 @@ class Librarian
       end
       $t_client.disconnect
     end
+    Report.deliver(object_s: $action) if $email
     Speaker.speak_up("End of session, good bye...")
   end
 end

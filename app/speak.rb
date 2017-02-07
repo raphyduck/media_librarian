@@ -12,6 +12,9 @@ class Speaker
   def self.speak_up(str)
     puts str
     $logger.info(str)
+    if $email_msg
+      $email_msg += str + NEW_LINE
+    end
   end
 
   def self.log(str)

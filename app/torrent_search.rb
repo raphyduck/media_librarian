@@ -56,6 +56,7 @@ class TorrentSearch
     end
     if get_results['torrents']
       get_results['torrents'].select! { |t| t['seeders'].to_i != 0 } if filter_dead.to_i > 0
+      get_results['torrents'].map! { |t| t['link'] = T411::Torrents.torrent_url(t['rewritename']).to_s; t} if type == 't411'
       get_results['torrents'].sort_by!{ |t| -t['seeders'].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
     end
@@ -76,13 +77,17 @@ class TorrentSearch
     false
   end
 
-  def self.search(keyword:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)
+  def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)
     success = false
     self.authenticate_all
-    ['t411', 'extratorrent', 'thepiratebay'].each do |type|
-      break if success
-      next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
-      success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
+    keywords = eval(keywords) rescue keywords = [keywords]
+    keywords.each do |keyword|
+      success = false
+      ['t411', 'extratorrent', 'thepiratebay'].each do |type|
+        break if success
+        next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
+      end
     end
     success
   rescue => e
@@ -114,6 +119,7 @@ class TorrentSearch
         Speaker.speak_up("Seeders: #{torrent['seeders']}")
         Speaker.speak_up("Leechers: #{torrent['leechers']}")
         Speaker.speak_up("Added: #{torrent['added']}")
+        Speaker.speak_up("Link: #{torrent['link']}")
         Speaker.speak_up('---------------------------------------------------------------')
         i += 1
       end
@@ -137,8 +143,6 @@ class TorrentSearch
           'rename_main' => rename_main,
           'main_only' => main_only.to_i
       } if success
-      puts "move_completed #{move_completed}"
-      puts "$deluge_options #{$deluge_options}"
     end
     success
   end

@@ -5,6 +5,7 @@ gem 'activesupport', :path => File.join(File.dirname(__FILE__), '/vendor/gems/ac
 gem 'bencode'
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git'
 gem 'fuzzy-string-match'
+gem 'hanami-mailer'
 gem 'httparty'
 gem 'imdb', :git => 'https://github.com/raphyduck/imdb.git'
 gem 'net-ssh'

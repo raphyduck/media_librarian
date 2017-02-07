@@ -16,9 +16,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/t411.git
-  revision: bb91593941a9ccd8d67ac577a784d6d64446a761
+  revision: a1c7d0d229f15c721029ee66d38be02b18e5a37c
   specs:
-    t411 (0.0.12)
+    t411 (0.0.14)
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
@@ -66,6 +66,11 @@ GEM
     ffi (1.9.17)
     fuzzy-string-match (0.9.7)
       RubyInline (>= 3.8.6)
+    hanami-mailer (0.4.0)
+      hanami-utils (~> 0.9)
+      mail (~> 2.5)
+      tilt (~> 2.0, >= 2.0.1)
+    hanami-utils (0.9.2)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
     httparty (0.14.0)
@@ -74,6 +79,8 @@ GEM
       httparty
     i18n (0.8.0)
     json (2.0.3)
+    mail (2.6.4)
+      mime-types (>= 1.16, < 4)
     mime-types (3.1)
       mime-types-data (~> 3.2015)
     mime-types-data (3.2016.0521)
@@ -94,6 +101,7 @@ GEM
     sys-filesystem (1.1.7)
       ffi
     thread_safe (0.3.5)
+    tilt (2.0.6)
     tzinfo (1.2.2)
       thread_safe (~> 0.1)
     unf (0.1.4)
@@ -108,6 +116,7 @@ DEPENDENCIES
   bencode
   deluge-rpc!
   fuzzy-string-match
+  hanami-mailer
   httparty
   imdb!
   net-ssh

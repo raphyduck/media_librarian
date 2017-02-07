@@ -260,7 +260,7 @@ class Library
       next if File.basename(folder) == film[1]
       title = film[1]
       path = film[0]
-      next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)}? (y/n)", no_prompt) != 'y'
+      next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) != 'y'
       found = true
       if imdb_name_check.to_i > 0
         title, found = MediaInfo.moviedb_search(title)
