@@ -56,7 +56,7 @@ class Librarian
       end
       $t_client.disconnect
     end
-    Report.deliver(object_s: $action) if $email
+    Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
     Speaker.speak_up("End of session, good bye...")
   end
 end

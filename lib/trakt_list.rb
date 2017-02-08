@@ -61,7 +61,8 @@ class TraktList
                                                :sort => {:order => 'ascending', :method => 'label'}})
       end
       k.each do |m|
-        next if complete.to_i > 0 && m['watchedepisodes'].to_i < m['episode'].to_i
+        next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
+        next if type == 'movies' && m['playcount'].to_i == 0
         c = {}
         c[type[0...-1]] = m
         c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
@@ -78,27 +79,26 @@ class TraktList
     []
   end
 
-  def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [])
+  def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [], cr_value = 0, folder = '')
     print "Ok, will filter all #{filter_type.gsub('_',' ')} items, it can take a long time..."
     type_history = filter_type.include?('watched') ? get_watched(type, filter_type.include?('entirely') ? 1 : 0) : []
     list.reverse_each do |item|
-      next if add_only.to_i > 0 && !old_list.index(item).nil?
-      broke = 0
+      next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
         when 'watched', 'entirely_watched', 'partially_watched'
           type_history.each do |h|
+
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
-                if item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
+                if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
                   list.delete(item)
-                  broke = 1
                   break
                 end
               end
             end
-            if broke == 0 && item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
+            if item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
               list.delete(item)
               break
             end
@@ -109,6 +109,17 @@ class TraktList
           if !found || (search.status.downcase == filter_type || (filter_type == 'not_ended' && search.status.downcase != 'ended'))
             list.delete(item)
           end
+        when 'released_before','released_after'
+          next unless type == 'movies'
+          break if cr_value.to_i == 0
+          next if item[type[0...-1]]['year'].to_i == 0
+          list.delete(item) if item[type[0...-1]]['year'].to_i > cr_value.to_i && filter_type == 'released_before'
+          list.delete(item) if item[type[0...-1]]['year'].to_i < cr_value.to_i && filter_type == 'released_after'
+        when 'days_older', 'days_newer'
+          next unless type == 'movies'
+          break if cr_value.to_i == 0
+          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
+          list.delete(item) unless folders.first
       end
       print '...'
     end
@@ -171,6 +182,17 @@ class TraktList
       $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)
     else
       $trakt.sync.add_or_remove_item('remove', list, type, items, list)
+    end
+  end
+
+  def self.search_list(type, item, list)
+    title = item[type] && item[type]['title'] ? item[type]['title'] : nil
+    return false unless title && list && !list.empty?
+    r = list.select {|x| x['title'] && x['title'] == title}
+    if r && !r.empty?
+      return true
+    else
+      return false
     end
   end
 end

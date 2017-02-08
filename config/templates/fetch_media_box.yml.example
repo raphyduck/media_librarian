@@ -1,0 +1,15 @@
+local_folder: '/local/folder'
+remote_user: user
+remote_server: hostname.com
+remote_folder: 'remote/folder'
+move_if_finished:
+  - - '/move/this/folder'
+    - '/to/this/folder'
+clean_remote_folder:
+  - '/folder/to/clean'
+  - 'second/folder/to/clean'
+bandwith_limit: 0
+active_hours:
+  - 0
+  - 6
+ssh_opts:

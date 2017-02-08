@@ -79,8 +79,7 @@ class TorrentClient
       opts = $deluge_options.select{|_,v| v['info_hash'] == tid}
       opts = $deluge_options.select{|_,v| v['t_name'] == status['name']} if opts.nil?
       if opts.nil? || opts.empty?
-        closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
-        opts = $deluge_options.select{|_,v| closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9}
+        opts = $deluge_options.select{|_,v| $str_closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9}
       end
       if opts && !opts.empty?
         did = opts.first[0]

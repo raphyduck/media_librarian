@@ -1,6 +1,10 @@
 class Utils
   include Sys
 
+  def self.check_if_inactive(active_hours)
+    active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.utc.hour < active_hours[0].to_i || Time.now.utc.hour > active_hours[1].to_i)
+  end
+
   def self.get_disk_size(path)
     size=0
     Find.find(path) { |file| size+= File.size(file)}
@@ -65,7 +69,7 @@ class Utils
   end
 
   def self.regexify(str)
-    str.strip.gsub(/ /,'.').gsub(/[:,-\/]/,'.*').gsub("'","'?")
+    str.strip.gsub(/[:,-\/\[\]]/,'.{0,2}').gsub(/ /,'.').gsub("'","'?")
   end
 
   def self.search_folder(folder, filter_criteria = {})
@@ -86,13 +90,16 @@ class Utils
       breakflag = 1 if breakflag == 0 && (filter_criteria['exclude_path'] && path.include?(filter_criteria['exclude_path'])) || path.include?('@eaDir')
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
-      breakflag = 1 if breakflag == 0 && filter_criteria['days_older'] && File.mtime(path) > Time.now - filter_criteria['days_older'].to_i.days
-      breakflag = 1 if breakflag == 0 && filter_criteria['days_newer'] && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
+      breakflag = 1 if breakflag == 0 && filter_criteria['days_older'].to_i > 0 && File.ctime(path) > Time.now - filter_criteria['days_older'].to_i.days
+      breakflag = 1 if breakflag == 0 && filter_criteria['days_newer'].to_i > 0 && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
+      breakflag = 1 if breakflag == 0 && filter_criteria['str_closeness'].to_i > 0 && filter_criteria['str_closeness_comp'] &&
+          $str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&
+          $str_closeness.getDistance(parent, filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i
       search_folder << [path, parent] if breakflag == 0
-      if filter_criteria['maxdepth'] && depth >= filter_criteria['maxdepth'].to_i
+      if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
         Find.prune if FileTest.directory?(path)
-        next if breakflag > 0
       end
+      next if breakflag > 0
       break if filter_criteria['return_first']
     end
     search_folder

@@ -83,10 +83,10 @@ class Library
         Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
-              puts "#{change.filename} (#{change.summary})"
+              Speaker.speak_up "#{change.filename} (#{change.summary})"
             end
           else
-            puts result.error
+            Speaker.speak_up result.error
           end
         end
       end
@@ -104,10 +104,9 @@ class Library
     dest_list = existing_lists.select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
-      Speaker.speak_up("List #{name} exists, deleting any items in it...")
+      Speaker.speak_up("List #{name} exists")
       existing = TraktList.list(name)
       to_delete = TraktList.parse_custom_list(existing)
-      TraktList.remove_from_list(to_delete, name, '') unless to_delete.nil? || to_delete.empty?
     else
       Speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktList.create_list(name, description)
@@ -126,21 +125,32 @@ class Library
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
+      if type =='movies'
+        ['released_before','released_after','days_older','days_newer'].each do |cr|
+          if t_criteria[cr].to_i != 0 || Speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_',' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
+            new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
+          end
+        end
+      end
       if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
         review_cr = t_criteria['review'] || {}
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
-          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
+          year = item[type[0...-1]]['year']
+          title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
+          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
           file = folders.first
           size = file ? Utils.get_disk_size(file[0]) : 0
           if !file && (review_cr['remove_deleted'].to_i > 0 || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'] == 0 || to_delete[type].index(item).nil?) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
+            next
           end
-          if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'] > 0) && ((review_cr['add_all'].to_i == 0 && review_cr['no_season'] > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
+          if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'].to_i > 0) && ((review_cr['add_all'].to_i == 0 &&
+              review_cr['no_season'].to_i > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
             choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
             if choice.empty?
               item['seasons'] = nil
@@ -154,6 +164,8 @@ class Library
         i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
         i[type[0...-1]]
       end
+      Speaker.speak_up('Update items in the list...')
+      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
     Speaker.speak_up("List #{name} is up to date!")
@@ -183,6 +195,65 @@ class Library
     end
   end
 
+  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {})
+    loop do
+      if Utils.check_if_inactive(active_hours)
+        Speaker.speak_up('Outside of active hours, waiting...')
+        sleep 30
+        next
+      end
+      $email_msg = ''
+      exit_status = nil
+      while exit_status.nil? && !Utils.check_if_inactive(active_hours)
+        fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts)}
+        while fetcher.alive?
+          if Utils.check_if_inactive(active_hours)
+            Speaker.speak_up('Active hours finished, terminating current synchronisation')
+            `pgrep -f 'rsync' | xargs kill -15`
+          end
+          sleep 30
+        end
+        exit_status = fetcher.status
+      end
+      Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
+      $email_msg = ''
+      sleep 3600 unless exit_status.nil?
+    end
+  end
+
+  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {})
+    remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
+    rsynced_clean = false
+    Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
+    Rsync.run("#{remote_box}/", "#{local_folder}", ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
+      if result.success?
+        rsynced_clean = true
+        result.changes.each do |change|
+          Speaker.speak_up "#{change.filename} (#{change.summary})"
+        end
+      else
+        Speaker.speak_up result.error
+      end
+    end
+    if rsynced_clean && move_if_finished && move_if_finished.is_a?(Array)
+      move_if_finished.each do |m|
+        next unless m.is_a?(Array)
+        Speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
+        FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1])
+      end
+    end
+    if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
+      clean_remote_folder.each do |c|
+        Speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
+        Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
+          ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
+        end
+      end
+    end
+    Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
+    raise "Rsync failure" unless rsynced_clean
+  end
+
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
     folder = eval(folder) if folder.is_a?(String)
     if list.nil? || list.empty?
@@ -202,7 +273,7 @@ class Library
       folder[l_type] = Speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
       title = item[type]['title']
       next if parsed_media[l_type][title] && r_type != 'season'
-      folders = Utils.search_folder(folder[l_type], {'regex' => Utils.title_match_string(title), 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1})
+      folders = Utils.search_folder(folder[l_type], {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
       file = folders.first
       if file
         if r_type == 'season'
@@ -216,6 +287,8 @@ class Library
           list_size += Utils.get_disk_size(file[0])
           list_paths << file[0]
         end
+      else
+        Speaker.speak_up("#{title} NOT FOUND in #{folder[l_type]}")
       end
       parsed_media[l_type][title] = item[type]
     end

@@ -8,6 +8,7 @@ class Dispatcher
             :compare_remote_files => ['Library', 'compare_remote_files'],
             :copy_media_from_list => ['Library', 'copy_media_from_list'],
             :create_custom_list => ['Library', 'create_custom_list'],
+            :fetch_media_box => ['Library', 'fetch_media_box'],
             :get_media_list_size => ['Library', 'get_media_list_size'],
             :process_search_list => ['Library', 'process_search_list'],
             :replace_movies => ['Library', 'replace_movies']

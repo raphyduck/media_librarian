@@ -65,3 +65,6 @@ if $email
                     enable_starttls_auto: true
   end.load!
 end
+
+#String comparator
+$str_closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
