@@ -90,7 +90,7 @@ class Utils
       breakflag = 1 if breakflag == 0 && (filter_criteria['exclude_path'] && path.include?(filter_criteria['exclude_path'])) || path.include?('@eaDir')
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
-      breakflag = 1 if breakflag == 0 && filter_criteria['days_older'].to_i > 0 && File.ctime(path) > Time.now - filter_criteria['days_older'].to_i.days
+      breakflag = 1 if breakflag == 0 && filter_criteria['days_older'].to_i > 0 && File.mtime(path) > Time.now - filter_criteria['days_older'].to_i.days
       breakflag = 1 if breakflag == 0 && filter_criteria['days_newer'].to_i > 0 && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
       breakflag = 1 if breakflag == 0 && filter_criteria['str_closeness'].to_i > 0 && filter_criteria['str_closeness_comp'] &&
           $str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&

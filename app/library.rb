@@ -198,7 +198,7 @@ class Library
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {})
     loop do
       if Utils.check_if_inactive(active_hours)
-        Speaker.speak_up('Outside of active hours, waiting...')
+        #Speaker.speak_up('Outside of active hours, waiting...')
         sleep 30
         next
       end
@@ -250,6 +250,7 @@ class Library
         end
       end
     end
+    compare_remote_files(local_folder, remote_server, remote_user, {'days_newer' => 10}, ssh_opts, 1) unless rsynced_clean
     Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
     raise "Rsync failure" unless rsynced_clean
   end
