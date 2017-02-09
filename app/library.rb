@@ -250,7 +250,7 @@ class Library
         end
       end
     end
-    compare_remote_files(local_folder, remote_server, remote_user, {'days_newer' => 10}, ssh_opts, 1) unless rsynced_clean
+    compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean
     Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
     raise "Rsync failure" unless rsynced_clean
   end
@@ -321,7 +321,7 @@ class Library
         @refusal == 0
       end
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
-      found = TorrentSearch.search(keyword: movie['title'] + ' ' + movie['year'] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
+      found = TorrentSearch.search(keywords: movie['title'] + ' ' + movie['year'] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
       TraktList.remove_from_list([movie], 'watchlist', 'movies') if found
     end
   rescue => e
@@ -342,7 +342,7 @@ class Library
         self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
       end
       Speaker.speak_up("Looking for torrent of film #{title}") unless no_prompt > 0 && !found
-      replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(title + ' ' + extra_keywords, 10, 'movies', no_prompt, 1, folder, title, true)
+      replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: title + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: title, main_only: true)
       FileUtils.rm_r(File.dirname(path)) if replaced
     end
   rescue => e
