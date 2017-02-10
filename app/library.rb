@@ -72,7 +72,7 @@ class Library
       return if Speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       Speaker.speak_up 'Deleting extra media...'
-      Utils.search_folder(dest_folder, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
+      Utils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
         FileUtils.rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       Dir.mkdir(dest_type) unless File.exist?(dest_type)
@@ -91,6 +91,7 @@ class Library
         end
       end
     end
+    Speaker.speak_up("Finished copying media from #{source_list}!")
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
