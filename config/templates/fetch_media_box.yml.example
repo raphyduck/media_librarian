@@ -2,6 +2,8 @@ local_folder: '/local/folder'
 remote_user: user
 remote_server: hostname.com
 remote_folder: 'remote/folder'
+reverse_folder:
+  - '/folder/to/sync/from/local/to/remote'
 move_if_finished:
   - - '/move/this/folder'
     - '/to/this/folder'

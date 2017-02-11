@@ -239,7 +239,7 @@ class Library
     end
   end
 
-  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {})
+  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {})
     loop do
       if Utils.check_if_inactive(active_hours)
         #Speaker.speak_up('Outside of active hours, waiting...')
@@ -248,7 +248,7 @@ class Library
       end
       exit_status = nil
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
-        fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts)}
+        fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder)}
         while fetcher.alive?
           if Utils.check_if_inactive(active_hours)
             Speaker.speak_up('Active hours finished, terminating current synchronisation')
@@ -263,7 +263,7 @@ class Library
     end
   end
 
-  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {})
+  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = [], reverse_folder = [])
     $email_msg = ''
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
@@ -291,6 +291,22 @@ class Library
         Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
+      end
+    end
+    if !Utils.check_if_inactive(active_hours) && reverse_folder && reverse_folder.is_a?(Array)
+      reverse_folder.each do |f|
+        reverse_box = "#{remote_user}@#{remote_server}:#{f}"
+        Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
+        Rsync.run("#{reverse_folder}/", "#{reverse_box}", ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
+          if result.success?
+            result.changes.each do |change|
+              Speaker.speak_up "#{change.filename} (#{change.summary})"
+            end
+          else
+            Speaker.speak_up result.error
+          end
+        end
+        Speaker.speak_up("Finished reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
       end
     end
     Speaker.speak_up("rsynced_clean = #{rsynced_clean}")
