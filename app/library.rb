@@ -48,6 +48,48 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
+  def self.compress_archive(folder, name, extension = 'jpg')
+    Zip::Archive.open(name, Zip::CREATE) do |ar|
+      ar.add_dir(folder)
+      #Dir.glob("#{folder}/**/*").each do |path|
+      Utils.search_folder(folder,{'regex' => '.*\.' + extension.to_s, 'includedir' => 1}).each do |path|
+        if File.directory?(path)
+          ar.add_dir(path)
+        else
+          ar.add_file(path, path) # add_file(<entry name>, <source path>)
+        end
+      end
+    end
+  end
+
+  def self.convert_pdf_cbz(path:)
+    return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
+    if FileTest.directory?(path)
+      Utils.search_folder(path,{'regex' => '.*\.pdf'}).each do |f|
+        convert_pdf_cbz(f[0])
+      end
+    else
+      Dir.chdir(File.dirname(path)) do
+        name = File.basename(path).gsub(/(.*)\.[\w]{1,3}/,'\1')
+        dest_file = "#{name.gsub(/^_?/,'')}.cbz"
+        return if File.exist?(dest_file)
+        Speaker.speak_up("Will convert #{name} to CBZ format")
+        Dir.mkdir(name)
+        extractor = ExtractImages::Extractor.new
+        Dir.chdir(name) do
+          PDF::Reader.open('../' +File.basename(path)) do |reader|
+            reader.pages.each do |page|
+              extractor.page(page)
+            end
+          end
+        end
+        compress_archive(name, dest_file, 'jpg')
+        FileUtils.rm_r(name)
+        FileUtils.mv(File.basename(path), "_#{File.basename(path)}")
+      end
+    end
+  end
+
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
     source_folders = eval(source_folders) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?

@@ -13,6 +13,7 @@ require 'imdb'
 require 'json'
 require 'logger'
 require 'net/ssh'
+require 'pdf/reader'
 require 'rsync'
 require 'rubygems'
 require 'sqlite3'
@@ -22,6 +23,7 @@ require 'trakt'
 require 'tvmaze'
 require 'xbmc-client'
 require 'yaml'
+require 'zipruby'
 #Process.daemon
 
 class Librarian

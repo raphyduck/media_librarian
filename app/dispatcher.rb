@@ -6,6 +6,7 @@ class Dispatcher
         :reconfigure => ['Config', 'reconfigure'],
         :library => {
             :compare_remote_files => ['Library', 'compare_remote_files'],
+            :convert_pdf_cbz => ['Library', 'convert_pdf_cbz'],
             :copy_media_from_list => ['Library', 'copy_media_from_list'],
             :create_custom_list => ['Library', 'create_custom_list'],
             :fetch_media_box => ['Library', 'fetch_media_box'],
