@@ -204,7 +204,6 @@ class Library
         sleep 30
         next
       end
-      $email_msg = ''
       exit_status = nil
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
         fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts)}
@@ -213,17 +212,17 @@ class Library
             Speaker.speak_up('Active hours finished, terminating current synchronisation')
             `pgrep -f 'rsync' | xargs kill -15`
           end
-          sleep 30
+          sleep 10
         end
         exit_status = fetcher.status
       end
-      Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
       $email_msg = ''
       sleep 3600 unless exit_status.nil?
     end
   end
 
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {})
+    $email_msg = ''
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
@@ -252,8 +251,10 @@ class Library
         end
       end
     end
+    Speaker.speak_up("rsynced_clean = #{rsynced_clean}")
     compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean
     Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
+    Report.deliver(object_s: 'fetch_media_box - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
     raise "Rsync failure" unless rsynced_clean
   end
 
