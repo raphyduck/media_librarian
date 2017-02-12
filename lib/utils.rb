@@ -81,6 +81,7 @@ class Utils
       parent = File.basename(File.dirname(path))
       next if File.basename(path).start_with?('.')
       next if parent.start_with?('.')
+      next unless File.exist?(path)
       depth = get_path_depth(path, folder)
       breakflag = 0
       breakflag = 1 if breakflag == 0 && FileTest.directory?(path) && !filter_criteria['includedir']

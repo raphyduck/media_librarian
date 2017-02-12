@@ -12,9 +12,7 @@ class Speaker
   def self.speak_up(str)
     puts str
     $logger.info(str)
-    if $email_msg
-      $email_msg += str + NEW_LINE
-    end
+    $email_msg += str + NEW_LINE if $email_msg
   end
 
   def self.log(str)
@@ -26,6 +24,7 @@ class Speaker
     puts e
     $logger_error.error("ERROR #{Time.now.utc.to_s} #{src}")
     $logger_error.error(e)
-    $logger_error.error(e.backtrace.join("\n")) if e.backtrace
+    $email_msg += "ERROR #{Time.now.utc.to_s} #{src}" + NEW_LINE if $email_msg
+    $email_msg += e.to_s + NEW_LINE if $email_msg
   end
 end
