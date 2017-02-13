@@ -15,3 +15,6 @@ active_hours:
   - 0
   - 6
 ssh_opts:
+exclude_folders_in_check:
+  - '/folder/to/exclude'
+  - 'another/one'
