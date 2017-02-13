@@ -2,7 +2,7 @@ class Utils
   include Sys
 
   def self.check_if_inactive(active_hours)
-    active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.utc.hour < active_hours[0].to_i || Time.now.utc.hour > active_hours[1].to_i)
+    active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.hour < active_hours[0].to_i || Time.now.hour > active_hours[1].to_i)
   end
 
   def self.get_disk_size(path)
