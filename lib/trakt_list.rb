@@ -89,7 +89,6 @@ class TraktList
       case filter_type
         when 'watched', 'entirely_watched', 'partially_watched'
           type_history.each do |h|
-
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
                 if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
