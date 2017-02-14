@@ -308,7 +308,7 @@ class Library
         Speaker.speak_up("Finished reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
       end
     end
-    compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10, 'exclude_path' => exclude_folders}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean
+    compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10, 'exclude_path' => exclude_folders}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean || !Utils.check_if_inactive(active_hours)
     Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
     Report.deliver(object_s: 'fetch_media_box - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
     raise "Rsync failure" unless rsynced_clean
