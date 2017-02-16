@@ -18,3 +18,5 @@ ssh_opts:
 exclude_folders_in_check:
   - '/folder/to/exclude'
   - 'another/one'
+monitor_options:
+  network_card: eth0

@@ -1,6 +1,11 @@
 class Utils
   include Sys
 
+  def self.bash(command)
+    escaped_command = Shellwords.escape(command)
+    system "bash -c #{escaped_command}"
+  end
+
   def self.check_if_inactive(active_hours)
     active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.hour < active_hours[0].to_i || Time.now.hour > active_hours[1].to_i)
   end
@@ -24,6 +29,26 @@ class Utils
     else
       1 + get_path_depth(File.dirname(path), folder)
     end
+  end
+
+  def self.get_pid(process)
+    `ps ax | grep #{process} | grep -v grep | cut -f1 -d' '`.gsub(/\n/,'')
+  end
+
+  def self.get_traffic(network_card)
+    in_t, out_t, in_s, out_s = nil, nil, 0, 0
+    (1..2).each do |i|
+      _in_t, _out_t = in_t, out_t
+      in_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $1}'`.gsub(/\n/,'').to_i
+      out_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $9}'`.gsub(/\n/,'').to_i
+      if i == 2
+        in_s = (in_t - _in_t)
+        out_s = (out_t - _out_t)
+      else
+        sleep 1
+      end
+    end
+    return in_s/1024, out_s/1024
   end
 
   def self.is_in_path(path_list, folder)

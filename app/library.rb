@@ -239,7 +239,7 @@ class Library
     end
   end
 
-  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [])
+  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
       if Utils.check_if_inactive(active_hours)
         #Speaker.speak_up('Outside of active hours, waiting...')
@@ -247,11 +247,21 @@ class Library
         next
       end
       exit_status = nil
+      low_b = 0
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
         fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check)}
         while fetcher.alive?
-          if Utils.check_if_inactive(active_hours)
+          if Utils.check_if_inactive(active_hours) || low_b > 6
             `pgrep -f 'rsync' | xargs kill -15`
+          end
+          if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
+            in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
+            if in_speed < bandwith_limit / 4
+              low_b += 1
+              Speaker.speak_up("in_speed too low = #{in_speed}")
+            else
+              low_b = 0
+            end
           end
           sleep 10
         end
