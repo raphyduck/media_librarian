@@ -243,7 +243,9 @@ class Library
     loop do
       if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
         in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
-        Speaker.speak_up("in_speed too low = #{in_speed}kBps")
+        if in_speed < bandwith_limit / 4
+          Speaker.speak_up("in_speed too low (#{in_speed}kBps) on card #{monitor_options['network_card']}")
+        end
       end
       if Utils.check_if_inactive(active_hours)
         #Speaker.speak_up('Outside of active hours, waiting...')
