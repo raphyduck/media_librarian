@@ -241,14 +241,7 @@ class Library
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
-      if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
-        in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
-        if in_speed < bandwith_limit / 4
-          Speaker.speak_up("in_speed too low (#{in_speed}kBps) on card #{monitor_options['network_card']}")
-        end
-      end
       if Utils.check_if_inactive(active_hours)
-        #Speaker.speak_up('Outside of active hours, waiting...')
         sleep 30
         next
       end
