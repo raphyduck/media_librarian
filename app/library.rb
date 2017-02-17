@@ -53,10 +53,10 @@ class Library
       ar.add_dir(folder)
       #Dir.glob("#{folder}/**/*").each do |path|
       Utils.search_folder(folder,{'regex' => '.*\.' + extension.to_s, 'includedir' => 1}).each do |path|
-        if File.directory?(path)
-          ar.add_dir(path)
+        if File.directory?(path[0])
+          ar.add_dir(path[0])
         else
-          ar.add_file(path, path) # add_file(<entry name>, <source path>)
+          ar.add_file(path[0], path[0]) # add_file(<entry name>, <source path>)
         end
       end
     end
