@@ -48,11 +48,11 @@ class Library
     Speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.compress_archive(folder, name, extension = 'jpg')
+  def self.compress_archive(folder, name)
     Zip::Archive.open(name, Zip::CREATE) do |ar|
       ar.add_dir(folder)
       #Dir.glob("#{folder}/**/*").each do |path|
-      Utils.search_folder(folder,{'regex' => '.*\.' + extension.to_s, 'includedir' => 1}).each do |path|
+      Utils.search_folder(folder,{'includedir' => 1}).each do |path|
         if File.directory?(path[0])
           ar.add_dir(path[0])
         else
@@ -70,10 +70,10 @@ class Library
       end
     else
       Dir.chdir(File.dirname(path)) do
-        name = File.basename(path).gsub(/(.*)\.[\w]{1,3}/,'\1')
+        name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/,'\1')
         dest_file = "#{name.gsub(/^_?/,'')}.cbz"
         return if File.exist?(dest_file)
-        Speaker.speak_up("Will convert #{name} to CBZ format")
+        Speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
         Dir.mkdir(name)
         extractor = ExtractImages::Extractor.new
         Dir.chdir(name) do
@@ -83,9 +83,9 @@ class Library
             end
           end
         end
-        compress_archive(name, dest_file, 'jpg')
+        compress_archive(name, dest_file)
         FileUtils.rm_r(name)
-        FileUtils.mv(File.basename(path), "_#{File.basename(path)}")
+        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_")
       end
     end
   end
