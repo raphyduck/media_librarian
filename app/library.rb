@@ -66,7 +66,7 @@ class Library
     return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path,{'regex' => '.*\.pdf'}).each do |f|
-        convert_pdf_cbz(f[0])
+        convert_pdf_cbz(path: f[0])
       end
     else
       Dir.chdir(File.dirname(path)) do
