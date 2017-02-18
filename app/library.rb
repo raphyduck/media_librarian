@@ -251,7 +251,9 @@ class Library
         fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check)}
         while fetcher.alive?
           if Utils.check_if_inactive(active_hours) || low_b > 12
+            Speaker.speak_up('Bandwidth too low, restarting the synchronisation')
             `pgrep -f 'rsync' | xargs kill -15`
+            low_b = 0
           end
           if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
             in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
