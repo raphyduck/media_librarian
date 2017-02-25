@@ -15,6 +15,12 @@ GIT
       nokogiri (= 1.6.5)
 
 GIT
+  remote: https://github.com/raphyduck/ruby-mp3info.git
+  revision: 40f8f1a2945d2261232e90b4f34325649ccd86ad
+  specs:
+    ruby-mp3info (0.8.10)
+
+GIT
   remote: https://github.com/raphyduck/t411.git
   revision: a1c7d0d229f15c721029ee66d38be02b18e5a37c
   specs:
@@ -135,6 +141,7 @@ DEPENDENCIES
   nokogiri
   pdf-reader
   rsync
+  ruby-mp3info!
   sqlite3
   sys-filesystem
   t411!

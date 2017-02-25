@@ -1,0 +1,11 @@
+folder: 'folder/where/music/is/stored'
+move_untagged: '/folder/to/move/badly/tagged/files/to'
+remove_existing_playlists: 1
+random: 0
+criteria:
+  artist: 0
+  albumartist: 1
+  album: 0
+  year: 0
+  decade: 0
+  genre: 1

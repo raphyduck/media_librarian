@@ -52,7 +52,7 @@ class Library
     Zip::Archive.open(name, Zip::CREATE) do |ar|
       ar.add_dir(folder)
       #Dir.glob("#{folder}/**/*").each do |path|
-      Utils.search_folder(folder,{'includedir' => 1}).each do |path|
+      Utils.search_folder(folder, {'includedir' => 1}).each do |path|
         if File.directory?(path[0])
           ar.add_dir(path[0])
         else
@@ -65,13 +65,13 @@ class Library
   def self.convert_pdf_cbz(path:)
     return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
-      Utils.search_folder(path,{'regex' => '.*\.pdf'}).each do |f|
+      Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
         convert_pdf_cbz(path: f[0])
       end
     else
       Dir.chdir(File.dirname(path)) do
-        name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/,'\1')
-        dest_file = "#{name.gsub(/^_?/,'')}.cbz"
+        name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
+        dest_file = "#{name.gsub(/^_?/, '')}.cbz"
         return if File.exist?(dest_file)
         Speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
         Dir.mkdir(name)
@@ -137,6 +137,71 @@ class Library
     Speaker.speak_up("Finished copying media from #{source_list}!")
   end
 
+  def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
+    criteria = eval(criteria) if criteria.is_a?(String)
+    folder = "#{folder}/" unless folder[-1] == '/'
+    ordered_collection = {}
+    cpt = 0
+    crs = ['artist', 'albumartist', 'album', 'year', 'decade', 'genre']
+    library = {}
+    Speaker.speak_up("Listing all songs in #{folder}")
+    files = Utils.search_folder(folder, {'regex' => '.*\.[mM][pP]3'})
+    files.each do |p_song|
+      cpt += 1
+      song = Mp3Info.open(p_song[0])
+      f_song = {
+          :path => p_song[0].gsub(folder,''),
+          :length => song.length,
+          :artist => (song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/,''),
+          :albumartist => (song.tag2.TPE2 || song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/,''),
+          :title => (song.tag.title || song.tag2.TIT2).to_s.strip.gsub(/\u0000/,''),
+          :album => (song.tag.album || song.tag2.TALB).to_s.strip.gsub(/\u0000/,''),
+          :year => (song.tag.year || song.tag2.TYER || 0).to_s.strip.gsub(/\u0000/,''),
+          :track_nr => (song.tag.track_nr || song.tag2.TRCK).to_s.strip.gsub(/\u0000/,''),
+          :genre => (song.tag.genre_s || song.tag2.TCON).to_s.strip.gsub(/\(\d*\)/,'').gsub(/\u0000/,'')
+      }
+      f_song[:decade] = "#{f_song[:year][0...-1]}0"
+      f_song[:decade] = nil if f_song[:decade].to_i == 0
+      if f_song[:genre].to_s == '' || f_song[:artist].to_s == '' || f_song[:album].to_s == ''
+        if Speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
+          destination_folder = Speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
+          FileUtils.mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
+          FileUtils.mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
+        end
+        next
+      end
+      sorter_name = f_song[:genre].to_s+f_song[:albumartist].to_s+f_song[:year].to_s+f_song[:album].to_s
+      ordered_collection[sorter_name] = [] if ordered_collection[sorter_name].nil?
+      ordered_collection[sorter_name] << f_song
+      crs.each do |cr|
+        library[cr] = [] unless library[cr]
+        library[cr] << f_song[cr.to_sym] unless f_song[cr.to_sym].nil? || library[cr].include?(f_song[cr.to_sym])
+      end
+      print "Processed song #{cpt} / #{files.count}\r"
+    end
+    Speaker.speak_up("Finished processing songs, now generating playlists...")
+    collection = ordered_collection.sort_by{|k,_| k}.map{|x| x[1].sort_by {|s| s[:track_nr].to_i}}
+    collection.shuffle! if random.to_i > 0
+    collection.flatten!
+    if remove_existing_playlists.to_i > 0
+      Utils.search_folder(folder, {'regex' => '.*\.m3u', 'maxdepth' => 1}).each do |path|
+        FileUtils.rm(path[0])
+      end
+    end
+    crs.each do |cr|
+      if Speaker.ask_if_needed("Do you want to generate playlists based on #{cr}? (y/n)", criteria[cr].to_i, 'y') == 'y'
+        if library[cr].nil? || library[cr].empty?
+          Speaker.speak_up "No collection of #{cr} found!"
+          next
+        end
+        Speaker.speak_up("Will generate playlists based on #{cr}")
+        library[cr].each do |p|
+          generate_playlist("#{folder}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
+        end
+      end
+    end
+  end
+
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
     Speaker.speak_up("Fetching items from #{origin}...")
     criteria = eval(criteria) if criteria.is_a?(String)
@@ -165,13 +230,13 @@ class Library
       end
       folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely_watched', 'partially_watched', 'ended', 'not_ended'] : ['watched']).each do |cr|
-        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_',' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
+        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_', ' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
       if type =='movies'
-        ['released_before','released_after','days_older','days_newer'].each do |cr|
-          if t_criteria[cr].to_i != 0 || Speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_',' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
+        ['released_before', 'released_after', 'days_older', 'days_newer'].each do |cr|
+          if t_criteria[cr].to_i != 0 || Speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
             new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
           end
         end
@@ -248,7 +313,7 @@ class Library
       exit_status = nil
       low_b = 0
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
-        fetcher = Thread.new {fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check)}
+        fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check) }
         while fetcher.alive?
           if Utils.check_if_inactive(active_hours) || low_b > 12
             Speaker.speak_up('Bandwidth too low, restarting the synchronisation')
@@ -266,7 +331,6 @@ class Library
           sleep 10
         end
         exit_status = fetcher.status
-        Speaker.speak_up("exit_status is #{exit_status}")
       end
       $email_msg = ''
       sleep 3600 unless exit_status.nil?
@@ -323,6 +387,17 @@ class Library
     Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
     Report.deliver(object_s: 'fetch_media_box - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
     raise "Rsync failure" unless rsynced_clean
+  end
+
+  def self.generate_playlist(name, list)
+    Speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
+    File.open("#{name}.m3u", "w") do |playlist|
+      playlist.puts "#EXTM3U"
+      list.each do |s|
+        playlist.puts "\#EXTINF:#{s[:length].round},#{s[:artist]} - #{s[:title]}"
+        playlist.puts "#{s[:path]}"
+      end
+    end
   end
 
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
