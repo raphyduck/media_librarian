@@ -303,6 +303,8 @@ class Library
           FileUtils.rm_r(d[0])
         end
       end
+    else
+      Speaker.speak_up('No duplicates found')
     end
   end
 
@@ -468,7 +470,7 @@ class Library
         @refusal == 0
       end
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
-      found = TorrentSearch.search(keywords: movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
+      found = TorrentSearch.search(keywords:( movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
       TraktList.remove_from_list([movie], 'watchlist', 'movies') if found
     end
   rescue => e

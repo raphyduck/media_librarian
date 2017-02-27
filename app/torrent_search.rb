@@ -92,6 +92,7 @@ class TorrentSearch
     success
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.search")
+    false
   end
 
   def self.get_site_keywords(type, category = '')
