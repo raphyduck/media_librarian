@@ -63,6 +63,7 @@ class Library
   end
 
   def self.convert_pdf_cbz(path:)
+    return if Speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
@@ -392,7 +393,7 @@ class Library
 
   def self.generate_playlist(name, list)
     Speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
-    File.open("#{name}.m3u", "w") do |playlist|
+    File.open("#{name}.m3u", "w:UTF-8") do |playlist|
       playlist.puts "#EXTM3U"
       list.each do |s|
         playlist.puts "\#EXTINF:#{s[:length].round},#{s[:artist]} - #{s[:title]}"
@@ -467,7 +468,7 @@ class Library
         @refusal == 0
       end
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
-      found = TorrentSearch.search(keywords: movie['title'] + ' ' + movie['year'] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
+      found = TorrentSearch.search(keywords: movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
       TraktList.remove_from_list([movie], 'watchlist', 'movies') if found
     end
   rescue => e

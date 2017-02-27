@@ -21,11 +21,15 @@ module ExtractImages
           when :Image then
             count += 1
 
-            case stream.hash[:Filter]
+            filter = stream.hash[:Filter].is_a?(Array) ? stream.hash[:Filter].first : stream.hash[:Filter]
+            #puts "filter is #{filter}"
+            case filter
               when :CCITTFaxDecode then
                 ExtractImages::Tiff.new(stream).save("#{page.number}-#{count}-#{name}.tif")
               when :DCTDecode      then
                 ExtractImages::Jpg.new(stream).save("#{page.number}-#{count}-#{name}.jpg")
+              when :JPXDecode then
+                #TODO: Extract PPM
               else
                 ExtractImages::Raw.new(stream).save("#{page.number}-#{count}-#{name}.tif")
             end
