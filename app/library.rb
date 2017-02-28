@@ -292,7 +292,7 @@ class Library
       dups.each do |d|
         case type
           when 'movies'
-            d_title, _ = MediaInfo.moviedb_search(File.basename(File.dirname(d)))
+            d_title, _ = MediaInfo.movie_title_lookup(File.basename(File.dirname(d)))
           else
             next
         end
@@ -459,11 +459,20 @@ class Library
   end
 
   def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '')
+    movies = []
+    Speaker.speak_up('Parsing movie list, can take a long time...')
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
+      imdb_movie = MediaInfo.moviedb_search(movie['title'])
+      movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/,'').to_date rescue movie['release_date'] = Date.new(movie['year'])
+      next if movie['release_date'] >= Date.today
+      movies << movie
+      print '...'
+    end
+    movies.each do |movie|
       break if break_processing(no_prompt)
-      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'}? (y/n)", no_prompt, 'y') != 'y'
+      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt, 'y') != 'y'
         @refusal += 1
         next
       else
@@ -486,7 +495,7 @@ class Library
       next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) != 'y'
       found = true
       if imdb_name_check.to_i > 0
-        title, found = MediaInfo.moviedb_search(title)
+        title, found = MediaInfo.movie_title_lookup(title)
         #Look for duplicate
         self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
       end

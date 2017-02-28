@@ -22,12 +22,19 @@ class MediaInfo
     return nil, false
   end
 
+  def self.movie_title_lookup(title)
+    movie = moviedb_search(title)
+    return movie.title, true
+  rescue => e
+    Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
+    return title, false
+  end
+
   def self.moviedb_search(title)
     Speaker.speak_up("Starting IMDB lookup for #{title}")
-    res = Imdb::Search.new(title)
-    return res.movies.first.title, true
+    Imdb::Search.new(title).movies.first
   rescue => e
     Speaker.tell_error(e, "MediaInfo.moviedb_search")
-    return title, false
+    return nil
   end
 end
