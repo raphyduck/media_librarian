@@ -31,7 +31,7 @@ module Tpb
       {
           'name' => links[0].text,
           'size' => size,
-          'link' => links[2] && links[2]['href'] && links[2]['href'].end_with?('.torrent') ? links[2]['href'] : nil,
+          'link' => BASE_URL + links[0]['href'],
           'magnet_link' => links[1]['href'],
           'seeders' => cols[2].text.to_i,
           'leechers' => cols[3].text.to_i,

@@ -27,7 +27,7 @@ module Extratorrent
       {
           'name' => link.css('title')[0].text,
           'size' => link.css('size')[0].text,
-          'link' => link.css('enclosure').attr('url').value,
+          'link' => link.css('link')[0].text,
           'magnet_link' => link.css('magnetURI')[0].text,
           'seeders' => link.css('seeders')[0].text,
           'leechers' => link.css('leechers')[0].text,

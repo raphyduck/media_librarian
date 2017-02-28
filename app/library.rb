@@ -287,8 +287,8 @@ class Library
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     Speaker.speak_up("Looking for duplicates of #{title}...")
     dups = Utils.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*', 'exclude_strict' => original})
+    corrected_dups = []
     if dups.count > 0
-      corrected_dups = []
       dups.each do |d|
         case type
           when 'movies'
@@ -298,10 +298,10 @@ class Library
         end
         corrected_dups << d if d_title == title
       end
-      if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
-        corrected_dups.each do |d|
-          FileUtils.rm_r(d[0])
-        end
+    end
+    if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
+      corrected_dups.each do |d|
+        FileUtils.rm_r(d[0])
       end
     else
       Speaker.speak_up('No duplicates found')
@@ -463,14 +463,14 @@ class Library
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
       break if break_processing(no_prompt)
-      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title']}? (y/n)", no_prompt, 'y') != 'y'
+      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'}? (y/n)", no_prompt, 'y') != 'y'
         @refusal += 1
         next
       else
         @refusal == 0
       end
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
-      found = TorrentSearch.search(keywords:( movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'], main_only: 1)
+      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
       TraktList.remove_from_list([movie], 'watchlist', 'movies') if found
     end
   rescue => e
