@@ -470,6 +470,7 @@ class Library
       movies << movie
       print '...'
     end
+    movies.sort_by! { |m| m['release_date']}
     movies.each do |movie|
       break if break_processing(no_prompt)
       if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt, 'y') != 'y'
