@@ -30,8 +30,8 @@ class MediaInfo
     return title, false
   end
 
-  def self.moviedb_search(title)
-    Speaker.speak_up("Starting IMDB lookup for #{title}")
+  def self.moviedb_search(title, no_output = false)
+    Speaker.speak_up("Starting IMDB lookup for #{title}") unless no_output
     Imdb::Search.new(title).movies.first
   rescue => e
     Speaker.tell_error(e, "MediaInfo.moviedb_search")

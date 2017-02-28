@@ -464,7 +464,7 @@ class Library
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
-      imdb_movie = MediaInfo.moviedb_search(movie['title'])
+      imdb_movie = MediaInfo.moviedb_search(movie['title'], true)
       movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/,'').to_date rescue movie['release_date'] = Date.new(movie['year'])
       next if movie['release_date'] >= Date.today
       movies << movie
