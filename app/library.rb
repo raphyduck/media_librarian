@@ -62,12 +62,12 @@ class Library
     end
   end
 
-  def self.convert_pdf_cbz(path:)
-    return if Speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
+  def self.convert_pdf_cbz(path:, no_warning: false)
+    return if !no_warning && Speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
-        convert_pdf_cbz(path: f[0])
+        convert_pdf_cbz(path: f[0], no_warning: true)
       end
     else
       Dir.chdir(File.dirname(path)) do
@@ -77,16 +77,22 @@ class Library
         Speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
         Dir.mkdir(name)
         extractor = ExtractImages::Extractor.new
+        extracted = 0
         Dir.chdir(name) do
           PDF::Reader.open('../' +File.basename(path)) do |reader|
             reader.pages.each do |page|
-              extractor.page(page)
+              extracted = extractor.page(page)
             end
           end
+        end
+        unless extracted > 0
+          Speaker.speak_up("WARNING: Error extracting images, skipping #{name}!")
+          return
         end
         compress_archive(name, dest_file)
         FileUtils.rm_r(name)
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_")
+        Speaker.speak_up("#{name} converted!")
       end
     end
   end

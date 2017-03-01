@@ -30,8 +30,10 @@ module ExtractImages
                 ExtractImages::Jpg.new(stream).save("#{page.number}-#{count}-#{name}.jpg")
               when :JPXDecode then
                 #TODO: Extract PPM
+                return 0
               else
                 ExtractImages::Raw.new(stream).save("#{page.number}-#{count}-#{name}.tif")
+                return 0
             end
           when :Form then
             count = process_page(PDF::Reader::FormXObject.new(page, stream), count)
