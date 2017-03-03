@@ -352,7 +352,7 @@ class Library
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
-    Rsync.run("#{remote_box}/", "#{local_folder}", ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
+    Rsync.run("#{remote_box}/", "#{local_folder}", ['--verbose', '--progress', '--recursive', "--partial-dir=#{local_folder}/.rsync-partial", '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
       if result.success?
         rsynced_clean = true
         result.changes.each do |change|
