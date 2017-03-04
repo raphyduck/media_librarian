@@ -215,7 +215,7 @@ class Library
         i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
         i[type[0...-1]]
       end
-      Speaker.speak_up('Update items in the list...')
+      Speaker.speak_up('Updating items in the list...')
       TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
