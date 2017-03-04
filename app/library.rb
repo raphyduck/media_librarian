@@ -325,8 +325,8 @@ class Library
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
         fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check) }
         while fetcher.alive?
-          if Utils.check_if_inactive(active_hours) || low_b > 12
-            Speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 12
+          if Utils.check_if_inactive(active_hours) || low_b > 18
+            Speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
             `pgrep -f 'rsync' | xargs kill -15`
             low_b = 0
           end
@@ -381,7 +381,7 @@ class Library
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
         Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        Rsync.run("#{reverse_folder}/", "#{reverse_box}", ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
+        Rsync.run("#{f}/", "#{reverse_box}", ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
               Speaker.speak_up "#{change.filename} (#{change.summary})"
