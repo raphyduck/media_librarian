@@ -365,6 +365,8 @@ class Library
     if rsynced_clean && move_if_finished && move_if_finished.is_a?(Array)
       move_if_finished.each do |m|
         next unless m.is_a?(Array)
+        next unless FileTest.directory?(m[0])
+        Dir.mkdir(m[1]) unless FileTest.directory?(m[1])
         Speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
         FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1])
       end
