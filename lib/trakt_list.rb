@@ -62,6 +62,7 @@ class TraktList
       end
       k.each do |m|
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
+        next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i >= m['episode'].to_i
         next if type == 'movies' && m['playcount'].to_i == 0
         c = {}
         c[type[0...-1]] = m
@@ -81,7 +82,14 @@ class TraktList
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [], cr_value = 0, folder = '')
     print "Ok, will filter all #{filter_type.gsub('_',' ')} items, it can take a long time..."
-    type_history = filter_type.include?('watched') ? get_watched(type, filter_type.include?('entirely') ? 1 : 0) : []
+    complete = if filter_type.include?('entirely')
+                 1
+               elsif filter_type.include?('partially')
+                 -1
+               else
+                 0
+               end
+    type_history = filter_type.include?('watched') ? get_watched(type, complete) : []
     list.reverse_each do |item|
       next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
