@@ -86,7 +86,7 @@ class Library
           end
         end
         unless extracted > 0
-          Speaker.speak_up("WARNING: Error extracting images, skipping #{name}!")
+          Speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
           return
         end
         compress_archive(name, dest_file)
