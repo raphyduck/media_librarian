@@ -368,7 +368,7 @@ class Library
         next unless FileTest.directory?(m[0])
         Dir.mkdir(m[1]) unless FileTest.directory?(m[1])
         Speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
-        FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1])
+        FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1]) rescue nil
       end
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
