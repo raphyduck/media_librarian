@@ -131,10 +131,10 @@ class TraktList
       print '.'
     end
     Speaker.speak_up('done!')
-    return list
+    list
   rescue => e
     Speaker.tell_error(e, "TraktList.filter_trakt_list")
-    return list
+    list
   end
 
   def self.list(name = 'watchlist', type = 'movies')

@@ -37,6 +37,7 @@ class TorrentSearch
   end
 
   def self.get_results(type, keyword, limit, category = '', filter_dead = 1)
+    tries ||= 3
     get_results = {}
     cid = self.get_cid(type, category)
     case type
@@ -61,6 +62,9 @@ class TorrentSearch
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
     end
     get_results
+  rescue => e
+    Speaker.tell_error(e, "TorrentSearch.get_results")
+    retry unless (tries -= 1) <= 0
   end
 
   def self.get_torrent_file(type, did, name = '', url = '')
