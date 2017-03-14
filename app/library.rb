@@ -185,18 +185,26 @@ class Library
       end
       if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
         review_cr = t_criteria['review'] || {}
+        sizes = {}
+        Speaker.speak_up('Preparing list of files to review...')
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
           title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
           folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
           file = folders.first
-          size = file ? Utils.get_disk_size(file[0]) : 0
-          if !file && (review_cr['remove_deleted'].to_i > 0 || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
+          sizes["#{title.to_s}#{year.to_s}"] = file ? Utils.get_disk_size(file[0]) : -1
+          print '.'
+        end
+        new_list[type].reverse_each do |item|
+          title = item[type[0...-1]]['title']
+          year = item[type[0...-1]]['year']
+          title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
+          if sizes["#{title.to_s}#{year.to_s}"].to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{(size.to_d/1024/1024/1024).round(2)} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2),0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
             next
           end

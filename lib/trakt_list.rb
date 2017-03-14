@@ -125,16 +125,16 @@ class TraktList
         when 'days_older', 'days_newer'
           next unless type == 'movies'
           break if cr_value.to_i == 0
-          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
+          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value, 'return_first' => 1})
           list.delete(item) unless folders.first
       end
-      print '...'
+      print '.'
     end
     Speaker.speak_up('done!')
-    list
+    return list
   rescue => e
     Speaker.tell_error(e, "TraktList.filter_trakt_list")
-    list
+    return list
   end
 
   def self.list(name = 'watchlist', type = 'movies')
