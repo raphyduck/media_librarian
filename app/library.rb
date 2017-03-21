@@ -235,6 +235,7 @@ class Library
   def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
     criteria = eval(criteria) if criteria.is_a?(String)
     folder = "#{folder}/" unless folder[-1] == '/'
+    dest_folder = "#{folder}/playlists"
     ordered_collection = {}
     cpt = 0
     crs = ['artist', 'albumartist', 'album', 'year', 'decade', 'genre']
@@ -278,8 +279,9 @@ class Library
     collection = ordered_collection.sort_by{|k,_| k}.map{|x| x[1].sort_by {|s| s[:track_nr].to_i}}
     collection.shuffle! if random.to_i > 0
     collection.flatten!
+    Dir.mkdir(dest_folder) unless FileTest.directory?(dest_folder)
     if remove_existing_playlists.to_i > 0
-      Utils.search_folder(folder, {'regex' => '.*\.m3u', 'maxdepth' => 1}).each do |path|
+      Utils.search_folder(dest_folder, {'regex' => '.*\.m3u'}).each do |path|
         FileUtils.rm(path[0])
       end
     end
@@ -291,7 +293,8 @@ class Library
         end
         Speaker.speak_up("Will generate playlists based on #{cr}")
         library[cr].each do |p|
-          generate_playlist("#{folder}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
+          Dir.mkdir("#{dest_folder}/#{cr}/") unless FileTest.directory?("#{dest_folder}/#{cr}/")
+          generate_playlist("#{dest_folder}/#{cr}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
         end
         Speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
       end
