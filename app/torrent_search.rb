@@ -138,7 +138,7 @@ class TorrentSearch
     if download_id.to_i > 0
       did = search['torrents'][download_id.to_i - 1]['id']
       name = search['torrents'][download_id.to_i - 1]['name']
-      url = search['torrents'][download_id.to_i - 1]['link'] ? search['torrents'][download_id.to_i - 1]['link'] : ''
+      url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
       magnet = search['torrents'][download_id.to_i - 1]['magnet_link']
       if (url && url != '') || type == 't411'
         success = self.get_torrent_file(type, did, name, url)
