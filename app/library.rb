@@ -325,7 +325,7 @@ class Library
     end
   end
 
-  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {}, port = '')
+  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {}, rsync_shell: '')
     loop do
       if Utils.check_if_inactive(active_hours)
         sleep 30
@@ -334,7 +334,7 @@ class Library
       exit_status = nil
       low_b = 0
       while exit_status.nil? && !Utils.check_if_inactive(active_hours)
-        fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check, port) }
+        fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check, rsync_shell) }
         while fetcher.alive?
           if Utils.check_if_inactive(active_hours) || low_b > 18
             Speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
@@ -358,14 +358,14 @@ class Library
     end
   end
 
-  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = [], reverse_folder = [], exclude_folders = [], port = '')
+  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = [], reverse_folder = [], exclude_folders = [], rsync_shell = '')
     $email_msg = ''
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
     base_opts = ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
-    opts = opts + ["--port=#{port}"] if port.to_s != ''
+    opts = opts + ["-e=#{rsync_shell}"] if rsync_shell.to_s != ''
     Rsync.run("#{remote_box}/", "#{local_folder}", opts) do |result|
       if result.success?
         rsynced_clean = true
@@ -397,7 +397,7 @@ class Library
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
         Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        opts = port.to_s != '' ? base_opts + ["--port=#{port}"] : base_opts
+        opts = rsync_shell.to_s != '' ? base_opts + ["-e=#{rsync_shell}"] : base_opts
         Rsync.run("#{f}/", "#{reverse_box}", opts) do |result|
           if result.success?
             result.changes.each do |change|

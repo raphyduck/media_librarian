@@ -2,7 +2,7 @@ local_folder: '/local/folder'
 remote_user: user
 remote_server: hostname.com
 remote_folder: 'remote/folder'
-port: ''
+rsync_shell: ''
 reverse_folder:
   - '/folder/to/sync/from/local/to/remote'
 move_if_finished:
