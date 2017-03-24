@@ -397,8 +397,7 @@ class Library
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
         Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        opts = rsync_shell.to_s != '' ? base_opts + ["-e='#{rsync_shell}'"] if rsync_shell.to_s != ''
-        : base_opts
+        opts = rsync_shell.to_s != '' ? base_opts + ["-e='#{rsync_shell}'"] : base_opts
         Rsync.run("#{f}/", "#{reverse_box}", opts) do |result|
           if result.success?
             result.changes.each do |change|
