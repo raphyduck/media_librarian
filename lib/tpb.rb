@@ -32,11 +32,11 @@ module Tpb
       s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s
       case s_unit
         when 'MiB'
-          size *= 1024
-        when 'GiB'
           size *= 1024 * 1024
-        when 'TiB'
+        when 'GiB'
           size *= 1024 * 1024 * 1024
+        when 'TiB'
+          size *= 1024 * 1024 * 1024 * 1024
       end
       {
           'name' => links[0].text,
