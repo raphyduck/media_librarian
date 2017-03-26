@@ -27,7 +27,17 @@ module Tpb
       cols = link.xpath('.//td')
       links = cols[1].xpath('.//a')
       meta_col = cols[1].xpath('.//font').text.gsub("\u00a0", ' ')
-      _, created_at, size, _ = %r{Uploaded (.*), Size (.*), ULed by (.*)}.match(meta_col).to_a
+      _, created_at, raw_size, _ = %r{Uploaded (.*), Size (.*), ULed by (.*)}.match(meta_col).to_a
+      size = raw_size.match(/[\d\.]+/).to_s.to_d
+      s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s
+      case s_unit
+        when 'MiB'
+          size *= 1024
+        when 'GiB'
+          size *= 1024 * 1024
+        when 'TiB'
+          size *= 1024 * 1024 * 1024
+      end
       {
           'name' => links[0].text,
           'size' => size,

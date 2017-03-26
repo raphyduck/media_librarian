@@ -22,7 +22,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/t411.git
-  revision: a1c7d0d229f15c721029ee66d38be02b18e5a37c
+  revision: a1cd1dd1befcc9ee8a8101ca5691f25e70c6bc23
   specs:
     t411 (0.0.14)
 
@@ -117,9 +117,9 @@ GEM
     sys-filesystem (1.1.7)
       ffi
     thread_safe (0.3.6)
-    tilt (2.0.6)
+    tilt (2.0.7)
     ttfunk (1.5.0)
-    tzinfo (1.2.2)
+    tzinfo (1.2.3)
       thread_safe (~> 0.1)
     unf (0.1.4)
       unf_ext
