@@ -22,9 +22,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/t411.git
-  revision: a1cd1dd1befcc9ee8a8101ca5691f25e70c6bc23
+  revision: 2f6f0b011363368342d6e949a9bd774d13c0255e
   specs:
-    t411 (0.0.14)
+    t411 (0.0.15)
 
 GIT
   remote: https://github.com/raphyduck/trakt.git

@@ -5,6 +5,8 @@ class TorrentSearch
       T411.authenticate($config['t411']['username'], $config['t411']['password'])
       Speaker.speak_up("You are #{T411.authenticated? ? 'now' : 'NOT'} connected to T411")
     end
+  rescue => e
+    Speaker.tell_error(e, "TorrentSearch.authenticate_all")
   end
 
   def self.get_cid(type, category)

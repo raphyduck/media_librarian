@@ -25,6 +25,11 @@ t411:
     password: pwd
     site_specific_kw:
         movies: ''
+thepiratebay:
+    site_specific_kw:
+        tv: ''
+extratorrent:
+        movies: ''
 trakt:
     account_id: account_id
     client_id: client_id
