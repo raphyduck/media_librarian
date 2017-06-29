@@ -49,6 +49,7 @@ class Dispatcher
       return self.show_available(Hash[req_params.map { |k| ["--#{k[0]}=<#{k[0]}>", k[1]] }], parent, ' ') if param[1] == :keyreq && args[param[0].to_s].nil? && template_args[param[0].to_s].nil?
     end
     $email_msg = $email ? '' : nil
+    $email_msg = nil if args['email_notif'].to_i > 0 || template_args['email_notif'].to_i > 0
     $action = action[0] + ' ' + action[1]
     dameth = model.method(action[1])
     params = Hash[req_params.map { |k, _| [k, args[k.to_s] || template_args[k.to_s]] }].select { |_, v| !v.nil? }
