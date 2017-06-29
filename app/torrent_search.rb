@@ -93,7 +93,7 @@ class TorrentSearch
     end
     keywords.each do |keyword|
       success = false
-      ['t411', 'extratorrent', 'thepiratebay'].each do |type|
+      ['thepiratebay'].each do |type|
         break if success
         next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
