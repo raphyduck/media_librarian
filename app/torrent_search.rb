@@ -91,11 +91,12 @@ class TorrentSearch
     rescue Exception
       keywords = [keywords]
     end
+    tcks = ['thepiratebay']
     keywords.each do |keyword|
       success = false
-      ['thepiratebay'].each do |type|
+      tcks.each do |type|
         break if success
-        next if Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if tcks.count > 1 && Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
       end
     end
