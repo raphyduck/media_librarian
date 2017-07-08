@@ -61,6 +61,7 @@ class TraktList
                                                :sort => {:order => 'ascending', :method => 'label'}})
       end
       k.each do |m|
+        Speaker.speak_up("m is #{m}")
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i >= m['episode'].to_i
         next if type == 'movies' && m['playcount'].to_i == 0
