@@ -99,23 +99,23 @@ class TraktList
             Speaker.speak_up("item is #{item[type[0...-1]].reject{ |k, _| k == 'seasons'}} compared to #{h}")
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
-                Speaker.speak_up("------------------------------------") rescue nil
-                Speaker.speak_up("item[type[0...-1]]['ids'][k] = #{item[type[0...-1]]['ids'][k].gsub(/\D/,'')}") rescue nil
-                Speaker.speak_up("id = #{id.gsub(/\D/,'')}") rescue nil
-                Speaker.speak_up("compare = #{item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i}") rescue nil
+                Speaker.speak_up("------------------------------#{item[type[0...-1]]['title']}------------------------------------") rescue nil
+                Speaker.speak_up("#{item[type[0...-1]]['title']}: item[type[0...-1]]['ids'][k] = #{item[type[0...-1]]['ids'][k].gsub(/\D/,'')}") rescue nil
+                Speaker.speak_up("#{item[type[0...-1]]['title']}: id = #{id.gsub(/\D/,'')}") rescue nil
+                Speaker.speak_up("#{item[type[0...-1]]['title']}: compare = #{item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i}") rescue nil
                 if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
                   list.delete(item)
-                  Speaker.speak_up("Removed") rescue nil
+                  Speaker.speak_up("#{item[type[0...-1]]['title']}: Removed") rescue nil
                   break
                 end
               end
             end
-            Speaker.speak_up("item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s = #{item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s}") rescue nil
-            Speaker.speak_up("h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s = #{h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s}") rescue nil
-            Speaker.speak_up("compare = #{item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s}") rescue nil
+            Speaker.speak_up("#{item[type[0...-1]]['title']}: item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s = #{item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s}") rescue nil
+            Speaker.speak_up("#{item[type[0...-1]]['title']}: h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s = #{h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s}") rescue nil
+            Speaker.speak_up("#{item[type[0...-1]]['title']}: compare = #{item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s}") rescue nil
             if item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
               list.delete(item)
-              Speaker.speak_up("Removed") rescue nil
+              Speaker.speak_up("#{item[type[0...-1]]['title']}: Removed") rescue nil
               break
             end
           end
