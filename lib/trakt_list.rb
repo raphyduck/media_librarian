@@ -96,7 +96,7 @@ class TraktList
       case filter_type
         when 'watched', 'entirely_watched', 'partially_watched'
           get_watched(type, complete).each do |h|
-            Speaker.speak_up("item is #{item} compared to #{h}")
+            Speaker.speak_up("item is #{item[type[0...-1]].reject{ |k, _| k == 'seasons'}} compared to #{h}")
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
                 Speaker.speak_up("------------------------------------") rescue nil
