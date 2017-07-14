@@ -67,6 +67,7 @@ class TraktList
         c = {}
         c[type[0...-1]] = m
         c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
+        c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/,'').to_s
         c['plays'] = m['playcount']
         c['last_watched_at'] = m['lastplayed']
         h << c
