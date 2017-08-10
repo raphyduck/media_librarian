@@ -326,7 +326,12 @@ class Library
   end
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {}, rsync_shell: '')
+    $email_msg = ''
     loop do
+      if Utils.check_if_inactive(active_hours) && $email_msg != ''
+        Report.deliver(object_s: 'fetch_media_box - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
+        $email_msg = ''
+      end
       if Utils.check_if_inactive(active_hours)
         sleep 30
         next
@@ -352,10 +357,6 @@ class Library
           sleep 10
         end
         exit_status = fetcher.status
-      end
-      if Utils.check_if_inactive(active_hours)
-        Report.deliver(object_s: 'fetch_media_box - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
-        $email_msg = ''
       end
       sleep 3600 unless exit_status.nil?
     end
