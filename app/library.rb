@@ -485,7 +485,6 @@ class Library
 
   def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '')
     movies = []
-    $cleanup_trakt_list = []
     Speaker.speak_up('Parsing movie list, can take a long time...')
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
@@ -507,7 +506,7 @@ class Library
       end
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
       found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
-      $cleanup_trakt_list['movies'] << {:id => found, :c => [movie], :t => 'movies'} if found
+      $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
   rescue => e
     Speaker.tell_error(e, "Library.process_search_list")
