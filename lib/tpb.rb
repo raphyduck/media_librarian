@@ -51,7 +51,7 @@ module Tpb
     end
 
     def get_rows
-      page.xpath('.//table/tr')[1..31] || []
+      page.xpath('.//table/tr')[0..50] || []
     end
   end
 end
