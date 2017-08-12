@@ -118,7 +118,9 @@ Downloading torrent(s) added during the session (if any)")
           file = File.open(path, "r")
           torrent = file.read
           file.close
-          did = File.basename(path).gsub('.torrent', '')
+          did = File.basename(path).gsub('.torrent', '').to_i
+          puts "did #{did}"
+          puts "deluge_options[did] #{$deluge_options}"
           opts = $deluge_options[did]
           unless opts.nil?
             begin
