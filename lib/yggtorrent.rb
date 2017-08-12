@@ -17,8 +17,8 @@ module Yggtorrent
       if $ygg_agent.nil?
         $ygg_agent = Mechanize.new
         $ygg_agent.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        $ygg_logged = false
       end
-      $ygg_logged = false
     end
 
     def download(url, destination, name)
