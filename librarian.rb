@@ -55,10 +55,10 @@ class Librarian
         $deluge_torrents_added = ($deluge_torrents_added + $deluge_torrents_preadded).uniq
         $t_client.process_added_torrents
       end
-      while !$deluge_options.empty?
+      if !$deluge_options.empty?
         Speaker.speak_up('Waiting for completion of all deluge operation')
+        sleep 15
         $t_client.process_added_torrents
-        sleep 5
       end
       $t_client.disconnect
     end
