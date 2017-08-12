@@ -8,6 +8,7 @@ $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []
 $pending_magnet_links = {}
+$cleanup_trakt_list = {}
 #Some constants
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'

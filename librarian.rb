@@ -60,6 +60,7 @@ class Librarian
       end
       $t_client.disconnect
     end
+    TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
     Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg
     Speaker.speak_up("End of session, good bye...")
   end

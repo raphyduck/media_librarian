@@ -14,6 +14,14 @@ class TraktList
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
+  def self.clean_list(list_name)
+    $cleanup_trakt_list.each do |type, list|
+      list.each do |movie|
+        TraktList.remove_from_list(movie, list_name, type)
+      end
+    end
+  end
+
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
     authenticate!
     $trakt.list.create_list({
