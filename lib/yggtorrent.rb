@@ -1,11 +1,6 @@
 require File.dirname(__FILE__) + '/torrent_site'
 module Yggtorrent
   class Download < TorrentSite::Download
-    def self.download(url, destination, name)
-      authenticate unless @logged
-      return unless @logged
-      @agent.get(url).save("#{destination}/#{name}.torrent")
-    end
   end
   ##
   # Extract a list of results from your search
@@ -24,13 +19,19 @@ module Yggtorrent
       @logged = false
     end
 
+    def download(url, destination, name)
+      authenticate! unless @logged
+      return unless @logged
+      @agent.get(url).save("#{destination}/#{name}.torrent")
+    end
+
     private
 
-    def authenticate
+    def authenticate!
       if $config['yggtorrent']
         Speaker.speak_up('Authenticating on yggtorrent.')
         login = @agent.get(BASE_URL + '/user/login')
-        login_form = login.forms.first
+        login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
         login_form.pass = $config['yggtorrent']['password']
         @agent.submit login_form
@@ -47,9 +48,10 @@ module Yggtorrent
     def crawl_link(link)
       cols = link.xpath('.//td')
       links = cols[0].xpath('.//a')
+      puts links
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s
+      s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s
       case s_unit
         when 'MB'
           size *= 1024 * 1024
@@ -61,8 +63,8 @@ module Yggtorrent
       {
           'name' => links[0].text,
           'size' => size,
-          'link' => links[1]['href'],
-          'torrent_link' => links[2]['href'],
+          'link' => links[0]['href'],
+          'torrent_link' => links[1]['href'],
           'magnet_link' => '',
           'seeders' => cols[4].text.to_i,
           'leechers' => cols[5].text.to_i,

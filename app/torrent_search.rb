@@ -45,20 +45,20 @@ class TorrentSearch
     case type
       when 't411'
         if cid
-          get_results = T411::Torrents.search(keyword, limit: limit, cid: cid)
+          @search = T411::Torrents.search(keyword, limit: limit, cid: cid)
         else
-          get_results = T411::Torrents.search(keyword, limit: limit)
+          @search = T411::Torrents.search(keyword, limit: limit)
         end
         get_results = JSON.load(get_results)
       when 'extratorrent'
-        search = Extratorrent::Search.new(keyword, cid)
-        get_results = search.links
+        @search = Extratorrent::Search.new(keyword, cid)
+        get_results = @search.links
       when 'thepiratebay'
-        search = Tpb::Search.new(keyword, cid)
-        get_results = search.links
+        @search = Tpb::Search.new(keyword, cid)
+        get_results = @search.links
       when 'yggtorrent'
-        search = Yggtorrent::Search.new(keyword)
-        get_results = search.links
+        @search = Yggtorrent::Search.new(keyword)
+        get_results = @search.links
     end
     if get_results['torrents']
       get_results['torrents'].select! { |t| t['seeders'].to_i != 0 } if filter_dead.to_i > 0
@@ -80,7 +80,7 @@ class TorrentSearch
       when 'extratorrent'
         Extratorrent::Download.download(url, $temp_dir, did)
       when 'yggtorrent'
-        Yggtorrent::Download.download(url, $temp_dir, did)
+        @search.download(url, $temp_dir, did)
     end
     true
   rescue => e
