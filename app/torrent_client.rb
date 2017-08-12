@@ -124,10 +124,12 @@ Downloading torrent(s) added during the session (if any)")
             begin
               meta = BEncode.load(torrent, {:ignore_trailing_junk=>1})
               $deluge_options[did]['info_hash'] = Digest::SHA1.hexdigest(meta['info'].bencode)
+              download_file(torrent, File.basename(path), opts['move_completed'])
             rescue => e
+              $cleanup_trakt_list.select!{|x| x[:id] != did}
+              File.delete($temp_dir + "/#{did}.torrent") rescue nil
               Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
             end
-            download_file(torrent, File.basename(path), opts['move_completed'])
           end
         end
       end

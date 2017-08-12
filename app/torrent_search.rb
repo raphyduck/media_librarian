@@ -82,14 +82,14 @@ class TorrentSearch
       when 'yggtorrent'
         @search.download(url, $temp_dir, did)
     end
-    true
+    did
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.get_torrent_file")
-    false
+    nil
   end
 
   def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)
-    success = false
+    success = nil
     self.authenticate_all
     begin
       keywords = eval(keywords)
@@ -98,7 +98,7 @@ class TorrentSearch
     end
     tcks = ['yggtorrent', 'thepiratebay']
     keywords.each do |keyword|
-      success = false
+      success = nil
       tcks.each do |type|
         break if success
         next if tcks.count > 1 && Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
@@ -108,7 +108,7 @@ class TorrentSearch
     success
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.search")
-    false
+    nil
   end
 
   def self.get_site_keywords(type, category = '')
@@ -116,8 +116,8 @@ class TorrentSearch
   end
 
   def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
-    success = false
-    return false if !T411.authenticated? && type == 't411'
+    success = nil
+    return nil if !T411.authenticated? && type == 't411'
     keyword += self.get_site_keywords(type, category)
     search = self.get_results(type, keyword, limit, category, filter_dead)
     download_id = search.empty? || search['torrents'].nil? || search['torrents'].empty? ? 0 : 1
@@ -144,7 +144,7 @@ class TorrentSearch
       download_id = STDIN.gets.strip
     end
     if download_id.to_i > 0
-      did = search['torrents'][download_id.to_i - 1]['id']
+      did = (Time.now.to_f * 1000).to_i
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
       magnet = search['torrents'][download_id.to_i - 1]['magnet_link']
@@ -152,7 +152,7 @@ class TorrentSearch
         success = self.get_torrent_file(type, did, name, url)
       elsif magnet && magnet != ''
         $pending_magnet_links[did] = magnet
-        success = true
+        success = did
       end
       $deluge_options[did] = {
           't_name' => name,

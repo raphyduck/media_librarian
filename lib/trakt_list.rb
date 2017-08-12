@@ -15,10 +15,8 @@ class TraktList
   end
 
   def self.clean_list(list_name)
-    $cleanup_trakt_list.each do |type, list|
-      list.each do |movie|
-        TraktList.remove_from_list(movie, list_name, type)
-      end
+    $cleanup_trakt_list.each do |movie|
+      TraktList.remove_from_list(movie[:c], list_name, movie[:t])
     end
   end
 
