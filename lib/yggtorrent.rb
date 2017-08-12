@@ -14,15 +14,17 @@ module Yggtorrent
       #@url = "#{BASE_URL}/engine/search?q=the+circle+2017"
       @query = search
       @url = "#{BASE_URL}/engine/search?q=#{URI.escape(search)}"
-      @agent = Mechanize.new
-      @agent.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-      @logged = false
+      if $ygg_agent.nil?
+        $ygg_agent = Mechanize.new
+        $ygg_agent.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+      end
+      $ygg_logged = false
     end
 
     def download(url, destination, name)
-      authenticate! unless @logged
-      return unless @logged
-      @agent.get(url).save("#{destination}/#{name}.torrent")
+      authenticate! unless $ygg_logged
+      return unless $ygg_logged
+      $ygg_agent.get(url).save("#{destination}/#{name}.torrent")
     end
 
     private
@@ -30,19 +32,19 @@ module Yggtorrent
     def authenticate!
       if $config['yggtorrent']
         Speaker.speak_up('Authenticating on yggtorrent.')
-        login = @agent.get(BASE_URL + '/user/login')
+        login = $ygg_agent.get(BASE_URL + '/user/login')
         login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
         login_form.pass = $config['yggtorrent']['password']
-        @agent.submit login_form
-        @logged = true
+        $ygg_agent.submit login_form
+        $ygg_logged = true
       else
         Speaker.speak_up('YggTorrent not configured, cannot authenticate')
       end
     end
 
     def page
-      @page ||= @agent.get(@url)
+      @page ||= $ygg_agent.get(@url)
     end
 
     def crawl_link(link)
