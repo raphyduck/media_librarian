@@ -119,14 +119,14 @@ Downloading torrent(s) added during the session (if any)")
           torrent = file.read
           file.close
           did = File.basename(path).gsub('.torrent', '').to_i
-          puts "did #{did}"
-          puts "deluge_options[did] #{$deluge_options}"
           opts = $deluge_options[did]
           unless opts.nil?
             begin
               meta = BEncode.load(torrent, {:ignore_trailing_junk=>1})
-              $deluge_options[did]['info_hash'] = Digest::SHA1.hexdigest(meta['info'].bencode)
+              meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
+              $deluge_options[did]['info_hash'] = meta_id
               download_file(torrent, File.basename(path), opts['move_completed'])
+              $deluge_torrents_preadded << meta_id
             rescue => e
               $cleanup_trakt_list.select!{|x| x[:id] != did}
               File.delete($temp_dir + "/#{did}.torrent") rescue nil

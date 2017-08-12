@@ -50,7 +50,6 @@ module Yggtorrent
     def crawl_link(link)
       cols = link.xpath('.//td')
       links = cols[0].xpath('.//a')
-      puts links
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s

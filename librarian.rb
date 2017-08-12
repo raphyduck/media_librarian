@@ -51,8 +51,9 @@ class Librarian
       $t_client.process_added_torrents
       while Find.find($temp_dir).count > 1
         Speaker.speak_up('Waiting for temporary folder to be cleaned')
+        sleep 10
+        $deluge_torrents_added = ($deluge_torrents_added + $deluge_torrents_preadded).uniq
         $t_client.process_added_torrents
-        sleep 5
       end
       while !$deluge_options.empty?
         Speaker.speak_up('Waiting for completion of all deluge operation')

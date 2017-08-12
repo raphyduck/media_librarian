@@ -7,6 +7,7 @@ $template_dir = $config_dir + '/templates'
 $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []
+$deluge_torrents_preadded = []
 $pending_magnet_links = {}
 $cleanup_trakt_list = []
 #Some constants
