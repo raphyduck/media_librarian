@@ -56,6 +56,9 @@ class TorrentSearch
       when 'thepiratebay'
         search = Tpb::Search.new(keyword, cid)
         get_results = search.links
+      when 'yggtorrent'
+        search = Yggtorrent::Search.new(keyword)
+        get_results = search.links
     end
     if get_results['torrents']
       get_results['torrents'].select! { |t| t['seeders'].to_i != 0 } if filter_dead.to_i > 0
@@ -76,6 +79,8 @@ class TorrentSearch
         T411::Torrents.download(did.to_i, $temp_dir)
       when 'extratorrent'
         Extratorrent::Download.download(url, $temp_dir, did)
+      when 'yggtorrent'
+        Yggtorrent::Download.download(url, $temp_dir, did)
     end
     true
   rescue => e
@@ -91,7 +96,7 @@ class TorrentSearch
     rescue Exception
       keywords = [keywords]
     end
-    tcks = ['thepiratebay']
+    tcks = ['yggtorrent', 'thepiratebay']
     keywords.each do |keyword|
       success = false
       tcks.each do |type|

@@ -69,37 +69,50 @@ GEM
     afm (0.2.2)
     bencode (0.8.2)
     concurrent-ruby (0.9.2)
-    domain_name (0.5.20170223)
+    domain_name (0.5.20170404)
       unf (>= 0.0.5, < 1.0.0)
     ffi (1.9.18)
-    fuzzy-string-match (1.0.0)
+    fuzzy-string-match (1.0.1)
       RubyInline (>= 3.8.6)
-    hanami-mailer (0.4.0)
-      hanami-utils (~> 0.9)
+    hanami-mailer (1.0.0)
+      hanami-utils (~> 1.0)
       mail (~> 2.5)
       tilt (~> 2.0, >= 2.0.1)
-    hanami-utils (0.9.2)
+    hanami-utils (1.0.2)
+      transproc (~> 1.0)
     hashery (2.1.2)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
-    httparty (0.14.0)
+    httparty (0.15.6)
       multi_xml (>= 0.5.2)
-    httparty_with_cookies (0.2.1)
+    httparty_with_cookies (0.2.2)
       httparty
-    i18n (0.8.1)
-    json (2.0.3)
-    mail (2.6.4)
+    i18n (0.8.6)
+    json (2.1.0)
+    mail (2.6.6)
       mime-types (>= 1.16, < 4)
+    mechanize (2.7.5)
+      domain_name (~> 0.5, >= 0.5.1)
+      http-cookie (~> 1.0)
+      mime-types (>= 1.17.2)
+      net-http-digest_auth (~> 1.1, >= 1.1.1)
+      net-http-persistent (~> 2.5, >= 2.5.2)
+      nokogiri (~> 1.6)
+      ntlm-http (~> 0.1, >= 0.1.1)
+      webrobots (>= 0.0.9, < 0.2)
     mime-types (3.1)
       mime-types-data (~> 3.2015)
     mime-types-data (3.2016.0521)
     mini_portile (0.6.2)
-    minitest (5.10.1)
+    minitest (5.10.3)
     multi_xml (0.6.0)
+    net-http-digest_auth (1.4.1)
+    net-http-persistent (2.9.4)
     net-ssh (4.1.0)
     netrc (0.11.0)
     nokogiri (1.6.5)
       mini_portile (~> 0.6.0)
+    ntlm-http (0.1.1)
     pdf-reader (2.0.0)
       Ascii85 (~> 1.0.0)
       afm (~> 0.2.1)
@@ -107,7 +120,7 @@ GEM
       ruby-rc4
       ttfunk
     rencoder (0.1.1)
-    rest-client (2.0.1)
+    rest-client (2.0.2)
       http-cookie (>= 1.0.2, < 2.0)
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
@@ -117,13 +130,15 @@ GEM
     sys-filesystem (1.1.7)
       ffi
     thread_safe (0.3.6)
-    tilt (2.0.7)
-    ttfunk (1.5.0)
+    tilt (2.0.8)
+    transproc (1.0.2)
+    ttfunk (1.5.1)
     tzinfo (1.2.3)
       thread_safe (~> 0.1)
     unf (0.1.4)
       unf_ext
-    unf_ext (0.0.7.2)
+    unf_ext (0.0.7.4)
+    webrobots (0.1.2)
     zipruby (0.3.6)
 
 PLATFORMS
@@ -137,6 +152,7 @@ DEPENDENCIES
   hanami-mailer
   httparty
   imdb!
+  mechanize
   net-ssh
   nokogiri
   pdf-reader
@@ -154,4 +170,4 @@ RUBY VERSION
    ruby 2.4.0p0
 
 BUNDLED WITH
-   1.14.3
+   1.15.1

@@ -24,8 +24,14 @@ thepiratebay:
     site_specific_kw:
         tv: ''
 extratorrent:
+    site_specific_kw:
         movies: ''
 trakt:
     account_id: account_id
     client_id: client_id
     client_secret: client_secret
+yggtorrent:
+    username: username
+    password: password
+    site_specific_kw:
+        movies: 'multi'
