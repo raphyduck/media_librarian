@@ -138,6 +138,11 @@ Downloading torrent(s) added during the session (if any)")
     end
     $pending_magnet_links.each do |did, m|
       opts = $deluge_options[did]
+      begin
+      rescue => e
+        $cleanup_trakt_list.select!{|x| x[:id] != did}
+        Speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
+      end
       download(m, opts['move_completed'], 1) unless opts.nil?
     end
   end
