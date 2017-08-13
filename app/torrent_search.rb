@@ -118,7 +118,7 @@ class TorrentSearch
   def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = nil
     return nil if !T411.authenticated? && type == 't411'
-    keyword_s += self.get_site_keywords(type, category)
+    keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead)
     search = self.get_results(type, keyword, limit, category, filter_dead) if search.empty? || search['torrents'].nil? || search['torrents'].empty?
     download_id = search.empty? || search['torrents'].nil? || search['torrents'].empty? ? 0 : 1
