@@ -309,7 +309,7 @@ class Library
       dups.each do |d|
         case type
           when 'movies'
-            d_title, _ = MediaInfo.movie_title_lookup(File.basename(File.dirname(d)))
+            d_title, _ = MediaInfo.movie_title_lookup(d[1])
           else
             next
         end
