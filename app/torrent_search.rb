@@ -73,7 +73,7 @@ class TorrentSearch
   end
 
   def self.get_torrent_file(type, did, name = '', url = '')
-    Speaker.speak_up("Will download torrent '#{name}'")
+    Speaker.speak_up("Will download torrent '#{name}' from #{url}")
     case type
       when 't411'
         T411::Torrents.download(did.to_i, $temp_dir)

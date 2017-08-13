@@ -50,6 +50,8 @@ module Yggtorrent
     def crawl_link(link)
       cols = link.xpath('.//td')
       links = cols[0].xpath('.//a')
+      tlink = links[1]['href']
+      tlink = links[2]['href'] if !tlink.match('download_torrent')
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s
@@ -65,7 +67,7 @@ module Yggtorrent
           'name' => links[0].text,
           'size' => size,
           'link' => links[0]['href'],
-          'torrent_link' => links[1]['href'],
+          'torrent_link' => tlink,
           'magnet_link' => '',
           'seeders' => cols[4].text.to_i,
           'leechers' => cols[5].text.to_i,

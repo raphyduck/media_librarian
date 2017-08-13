@@ -73,10 +73,11 @@ class TorrentClient
   end
 
   def process_added_torrents
+    self.authenticate unless @deluge_connected
     while $deluge_torrents_added.length != 0
       tid = $deluge_torrents_added.shift
       begin
-        status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size','progress'])
+        status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size','progress']) rescue @deluge_connected = nil
         opts = $deluge_options.select{|_,v| v['info_hash'] == tid}
         opts = $deluge_options.select{|_,v| v['t_name'] == status['name']} if opts.nil?
         if opts.nil? || opts.empty?
