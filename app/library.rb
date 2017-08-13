@@ -526,7 +526,7 @@ class Library
         self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
       end
       Speaker.speak_up("Looking for torrent of film #{title}") unless no_prompt > 0 && !found
-      replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: title + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: title, main_only: true)
+      replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: title + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: title, main_only: 1)
       FileUtils.rm_r(File.dirname(path)) if replaced
     end
   rescue => e
