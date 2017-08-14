@@ -516,9 +516,15 @@ class Library
     $move_completed_torrent = folder
     Utils.search_folder(folder, filter_criteria).each do |film|
       next if File.basename(folder) == film[1]
+      break if break_processing(no_prompt)
       title = film[1]
       path = film[0]
-      next if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) != 'y'
+      if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) != 'y'
+        @refusal += 1
+        next
+      else
+        @refusal == 0
+      end
       found = true
       if imdb_name_check.to_i > 0
         title, found = MediaInfo.movie_title_lookup(title)
