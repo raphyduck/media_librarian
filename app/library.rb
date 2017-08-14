@@ -10,6 +10,17 @@ class Library
     false
   end
 
+
+  def self.skip_loop_item(question, no_prompt = 0)
+    if Speaker.ask_if_needed(question, no_prompt) != 'y'
+      @refusal += 1
+      return 1
+    else
+      @refusal == 0
+      return 0
+    end
+  end
+
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
     Speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
     ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
@@ -498,12 +509,7 @@ class Library
     movies.sort_by! { |m| m['release_date']}
     movies.each do |movie|
       break if break_processing(no_prompt)
-      if Speaker.ask_if_needed("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt, 'y') != 'y'
-        @refusal += 1
-        next
-      else
-        @refusal == 0
-      end
+      next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
       self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
       found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
       $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
@@ -519,12 +525,7 @@ class Library
       break if break_processing(no_prompt)
       title = film[1]
       path = film[0]
-      if Speaker.ask_if_needed("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) != 'y'
-        @refusal += 1
-        next
-      else
-        @refusal == 0
-      end
+      next if skip_loop_item("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
       found = true
       if imdb_name_check.to_i > 0
         title, found = MediaInfo.movie_title_lookup(title)
