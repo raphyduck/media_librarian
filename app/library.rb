@@ -10,7 +10,6 @@ class Library
     false
   end
 
-
   def self.skip_loop_item(question, no_prompt = 0)
     if Speaker.ask_if_needed(question, no_prompt) != 'y'
       @refusal += 1
