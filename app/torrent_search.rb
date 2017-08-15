@@ -38,7 +38,7 @@ class TorrentSearch
     Speaker.tell_error(e, "TorrentSearch.get_cid")
   end
 
-  def self.get_results(type, keyword, limit, category = '', filter_dead = 1)
+  def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [])
     tries ||= 3
     get_results = {}
     cid = self.get_cid(type, category)
@@ -57,13 +57,16 @@ class TorrentSearch
         @search = Tpb::Search.new(keyword, cid)
         get_results = @search.links
       when 'yggtorrent'
-        @search = Yggtorrent::Search.new(keyword)
+        @search = Yggtorrent::Search.new(keyword, url)
         get_results = @search.links
     end
     if get_results['torrents']
+      filter_out.each do |fout|
+        get_results['torrents'].select! { |t| t[fout].to_i != 0 }
+      end
       get_results['torrents'].select! { |t| t['seeders'].to_i != 0 } if filter_dead.to_i > 0
       get_results['torrents'].map! { |t| t['link'] = T411::Torrents.torrent_url(t['rewritename']).to_s; t } if type == 't411'
-      get_results['torrents'].sort_by! { |t| -t['seeders'].to_i }
+      get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
     end
     get_results
@@ -72,20 +75,36 @@ class TorrentSearch
     retry unless (tries -= 1) <= 0
   end
 
-  def self.get_torrent_file(type, did, name = '', url = '')
+  def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)
     Speaker.speak_up("Will download torrent '#{name}' from #{url}")
     case type
       when 't411'
-        T411::Torrents.download(did.to_i, $temp_dir)
+        T411::Torrents.download(did.to_i, destination_folder)
       when 'extratorrent'
-        Extratorrent::Download.download(url, $temp_dir, did)
+        Extratorrent::Download.download(url, destination_folder, did)
       when 'yggtorrent'
-        @search.download(url, $temp_dir, did)
+        @search.download(url, destination_folder, did)
     end
     did
   rescue => e
     Speaker.tell_error(e, "TorrentSearch.get_torrent_file")
     nil
+  end
+
+  def self.random_pick(site:, url:, sort_by:, output: 1, destination_folder: $temp_dir)
+    case site
+      when 'yggtorrent'
+        search = get_results(site, '', 25, 'movies', 1, url, sort_by, ['leechers'])
+      else
+        search = []
+    end
+    (1..[output.to_i,1].max).each do |i|
+      download_id = search.empty? || search['torrents'].nil? || search['torrents'][i - 1].nil? ? 0 : i
+      return if download_id == 0
+      name = search['torrents'][download_id.to_i - 1]['name']
+      url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
+      self.get_torrent_file(site, name, name, url, destination_folder) if (url && url != '') || type == 't411'
+    end
   end
 
   def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)

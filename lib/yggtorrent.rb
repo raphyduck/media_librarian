@@ -9,11 +9,11 @@ module Yggtorrent
 
     attr_accessor :url
 
-    def initialize(search)
+    def initialize(search, url = nil)
       # Order by seeds desc
       #@url = "#{BASE_URL}/engine/search?q=the+circle+2017"
       @query = search
-      @url = "#{BASE_URL}/engine/search?q=#{URI.escape(search)}"
+      @url = url || "#{BASE_URL}/engine/search?q=#{URI.escape(search)}"
       if $ygg_agent.nil?
         $ygg_agent = Mechanize.new
         $ygg_agent.pluggable_parser['application/x-bittorrent'] = Mechanize::Download

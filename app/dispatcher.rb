@@ -16,7 +16,8 @@ class Dispatcher
             :replace_movies => ['Library', 'replace_movies']
         },
         :torrent => {
-            :search => ['TorrentSearch', 'search']
+            :search => ['TorrentSearch', 'search'],
+            :random_pick => ['TorrentSearch', 'random_pick']
         },
         :usage => ['Dispatcher', 'show_available']
     }
