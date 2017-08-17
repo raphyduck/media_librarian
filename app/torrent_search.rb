@@ -94,7 +94,7 @@ class TorrentSearch
   def self.random_pick(site:, url:, sort_by:, output: 1, destination_folder: $temp_dir)
     case site
       when 'yggtorrent'
-        search = get_results(site, '', 25, 'movies', 1, url, sort_by, ['leechers'])
+        search = get_results(site, '', 25, 'movies', 2, url, sort_by, ['leechers'])
       else
         search = []
     end
