@@ -64,7 +64,7 @@ class TorrentSearch
       filter_out.each do |fout|
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
       end
-      get_results['torrents'].select! { |t| t['seeders'].to_i != 0 } if filter_dead.to_i > 0
+      get_results['torrents'].select! { |t| t['seeders'].to_i > filter_dead.to_i } if filter_dead.to_i > 0
       get_results['torrents'].map! { |t| t['link'] = T411::Torrents.torrent_url(t['rewritename']).to_s; t } if type == 't411'
       get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
