@@ -313,7 +313,7 @@ class Library
 
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     Speaker.speak_up("Looking for duplicates of #{title}...")
-    dups = Utils.search_folder(folder, {'regex' => '.*' + title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*', 'exclude_strict' => original})
+    dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original})
     corrected_dups = []
     if dups.count > 0
       dups.each do |d|
