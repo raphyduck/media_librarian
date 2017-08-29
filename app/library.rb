@@ -319,7 +319,7 @@ class Library
       dups.each do |d|
         case type
           when 'movies'
-            d_title, _ = MediaInfo.movie_title_lookup(d[1])
+            d_title, _, _ = MediaInfo.movie_title_lookup(d[1])
           else
             next
         end
@@ -528,11 +528,11 @@ class Library
       next if skip_loop_item("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
       found = true
       if imdb_name_check.to_i > 0
-        title, found = MediaInfo.movie_title_lookup(title)
+        title, url, found = MediaInfo.movie_title_lookup(title)
         #Look for duplicate
         self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
       end
-      Speaker.speak_up("Looking for torrent of film #{title}") unless no_prompt > 0 && !found
+      Speaker.speak_up("Looking for torrent of film #{title} (#{url})") unless no_prompt > 0 && !found
       replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: title + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: title, main_only: 1)
       FileUtils.rm_r(File.dirname(path)) if replaced
     end

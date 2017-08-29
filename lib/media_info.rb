@@ -28,10 +28,10 @@ class MediaInfo
 
   def self.movie_title_lookup(title)
     movie = moviedb_search(title)
-    return clean_title(movie.title), true
+    return clean_title(movie.title), movie.url, true
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    return title, false
+    return title, nil, false
   end
 
   def self.moviedb_search(title, no_output = false)
