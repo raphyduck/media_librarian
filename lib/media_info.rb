@@ -2,6 +2,10 @@ class MediaInfo
 
   @last_tvmaze_req = Time.now - 1.day
 
+  def self.clean_title(title)
+    title.gsub(/\(I+\) /,'')
+  end
+
   def self.tv_series_search(title, tvdb_id = '')
     while Time.now - @last_tvmaze_req < 1
       sleep 1
@@ -24,7 +28,7 @@ class MediaInfo
 
   def self.movie_title_lookup(title)
     movie = moviedb_search(title)
-    return movie.title, true
+    return clean_title(movie.title), true
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
     return title, false
@@ -32,7 +36,14 @@ class MediaInfo
 
   def self.moviedb_search(title, no_output = false)
     Speaker.speak_up("Starting IMDB lookup for #{title}") unless no_output
-    Imdb::Search.new(title).movies.first
+    movies = Imdb::Search.new(title).movies
+    movie = nil
+    movies.each do |m|
+      movie = m
+      next if m.title.match(/\(TV .+\)/)
+      break
+    end
+    return movie
   rescue => e
     Speaker.tell_error(e, "MediaInfo.moviedb_search")
     return nil
