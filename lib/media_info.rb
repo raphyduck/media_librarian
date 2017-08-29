@@ -3,7 +3,7 @@ class MediaInfo
   @last_tvmaze_req = Time.now - 1.day
 
   def self.clean_title(title)
-    title.gsub(/\(I+\) /,'')
+    title.gsub(/\(I+\) /,'').gsub(' (Video)','')
   end
 
   def self.tv_series_search(title, tvdb_id = '')
