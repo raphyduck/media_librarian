@@ -313,7 +313,8 @@ class Library
 
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     Speaker.speak_up("Looking for duplicates of #{title}...")
-    dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original})
+    replaced = false
+    dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original[1]})
     corrected_dups = []
     processed = []
     if dups.count > 0
@@ -321,7 +322,8 @@ class Library
         case type
           when 'movies'
             next if processed.include?(d[1])
-            d_title, _, _ = MediaInfo.movie_title_lookup(d[1])
+            titles, _ = MediaInfo.movie_title_lookup(d[1])
+            d_title, _ = titles[0]
             processed << d[1]
           else
             next
@@ -333,9 +335,13 @@ class Library
       corrected_dups.each do |d|
         FileUtils.rm_r(d[0])
       end
+    elsif corrected_dups.length > 0 && !original[1].nil? && Speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
+      FileUtils.rm_r(original[0])
+      replaced = true
     else
       Speaker.speak_up('No duplicates found')
     end
+    return replaced
   end
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {}, rsync_shell: '')
@@ -503,7 +509,7 @@ class Library
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
-      imdb_movie = MediaInfo.moviedb_search(movie['title'], true)
+      imdb_movie = MediaInfo.moviedb_search(movie['title'], true).first
       movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/,'').to_date rescue movie['release_date'] = Date.new(movie['year'])
       next if movie['release_date'] >= Date.today
       movies << movie
@@ -513,7 +519,7 @@ class Library
     movies.each do |movie|
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
-      self.duplicate_search(dest_folder, movie['title'], nil, no_prompt, type)
+      self.duplicate_search(dest_folder, movie['title'], [nil,nil], no_prompt, type)
       found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
       $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
@@ -526,17 +532,37 @@ class Library
     Utils.search_folder(folder, filter_criteria).each do |film|
       next if File.basename(folder) == film[1]
       break if break_processing(no_prompt)
-      title = film[1]
       path = film[0]
+      titles = [[film[1], '']]
       next if skip_loop_item("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
-      found = true
+      found, replaced, cpt = true, false, 0
       if imdb_name_check.to_i > 0
-        title, url, found = MediaInfo.movie_title_lookup(title)
+        titles, found = MediaInfo.movie_title_lookup(titles[0])
         #Look for duplicate
-        self.duplicate_search(folder, title, film[1], no_prompt, 'movies') if found
+        replaced = self.duplicate_search(folder, titles[0][0], film, no_prompt, 'movies') if found
       end
-      Speaker.speak_up("Looking for torrent of film #{title} (#{url})") unless no_prompt > 0 && !found
-      replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: title + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: title, main_only: 1)
+      next if replaced
+      loop do
+        choice = cpt
+        break if cpt >= titles.count
+        if cpt > 0 && Speaker.ask_if_needed("Look for alternative titles for this file? (y/n)'", no_prompt, 'n') == 'y'
+          Speaker.speak_up("Alternatives titles found:")
+          idxs = 1
+          titles.each do |m|
+            Speaker.speak_up("#{idxs}: #{m[0]} (info IMDB: #{URI.escape(m[1])})")
+            idxs += 1
+          end
+          choice = Speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
+          break if choice < 0
+        else
+          break
+        end
+        t = titles[choice]
+        Speaker.speak_up("Looking for torrent of film #{t[0]} (info IMD: #{URI.escape(t[1])})") unless no_prompt > 0 && !found
+        replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
+        break if replaced
+        cpt += 1
+      end
       FileUtils.rm_r(File.dirname(path)) if replaced
     end
   rescue => e

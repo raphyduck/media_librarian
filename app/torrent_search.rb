@@ -120,7 +120,7 @@ class TorrentSearch
       success = nil
       tcks.each do |type|
         break if success
-        next if tcks.count > 1 && Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if tcks.first != type && Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
       end
     end
@@ -140,7 +140,6 @@ class TorrentSearch
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead)
     search = self.get_results(type, keyword, limit, category, filter_dead) if search.empty? || search['torrents'].nil? || search['torrents'].empty?
-    download_id = search.empty? || search['torrents'].nil? || search['torrents'].empty? ? 0 : 1
     if no_prompt.to_i == 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?
@@ -156,13 +155,12 @@ class TorrentSearch
         Speaker.speak_up("Seeders: #{torrent['seeders']}")
         Speaker.speak_up("Leechers: #{torrent['leechers']}")
         Speaker.speak_up("Added: #{torrent['added']}")
-        Speaker.speak_up("Link: #{torrent['link']}")
+        Speaker.speak_up("Link: #{URI.escape(torrent['link'])}")
         Speaker.speak_up('---------------------------------------------------------------')
         i += 1
       end
-      Speaker.speak_up('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ')
-      download_id = STDIN.gets.strip
     end
+    download_id = Speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
     if download_id.to_i > 0
       did = (Time.now.to_f * 1000).to_i
       name = search['torrents'][download_id.to_i - 1]['name']
