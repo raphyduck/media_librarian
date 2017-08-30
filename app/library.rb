@@ -534,10 +534,10 @@ class Library
       break if break_processing(no_prompt)
       path = film[0]
       titles = [[film[1], '']]
-      next if skip_loop_item("Replace #{title} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
+      next if skip_loop_item("Replace #{film[1]} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
       found, replaced, cpt = true, false, 0
       if imdb_name_check.to_i > 0
-        titles, found = MediaInfo.movie_title_lookup(titles[0])
+        titles, found = MediaInfo.movie_title_lookup(titles[0][0])
         #Look for duplicate
         replaced = self.duplicate_search(folder, titles[0][0], film, no_prompt, 'movies') if found
       end
