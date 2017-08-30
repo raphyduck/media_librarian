@@ -28,7 +28,7 @@ class MediaInfo
 
   def self.movie_title_lookup(title)
     movies = moviedb_search(title)
-    return movies.map { |m| [clean_title(m.title), m.url]}, true
+    return movies.map { |m| [clean_title(m.title), m.url]}, !movies.empty?
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
     return [[title, nil]], false
