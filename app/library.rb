@@ -333,10 +333,10 @@ class Library
     end
     if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
       corrected_dups.each do |d|
-        FileUtils.rm_r(d[0])
+        FileUtils.rm_r(File.dirname(d[0]))
       end
     elsif corrected_dups.length > 0 && !original[1].nil? && Speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
-      FileUtils.rm_r(original[0])
+      FileUtils.rm_r(File.dirname(original[0]))
       replaced = true
     else
       Speaker.speak_up('No duplicates found')
