@@ -28,18 +28,21 @@ class MediaInfo
 
   def self.movie_title_lookup(title)
     movies = moviedb_search(title)
-    return movies.map { |m| [clean_title(m.title), m.url]}, !movies.empty?
+    if movies.empty?
+      return [[title, nil]], false
+    else
+      movies.map { |m| [clean_title(m.title), m.url]}, true
+    end
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
     return [[title, nil]], false
   end
 
   def self.moviedb_search(title, no_output = false)
-    Speaker.speak_up("Starting IMDB lookup for #{title}") unless no_output
     results = []
     movies = Imdb::Search.new(title).movies
     movies.each do |m|
-      results << m unless m.title.match(/\(TV .+\)/)
+      results << m unless m.title.match(/\(TV .+\)/) && !m.title.match(/\(TV Movie\)/)
     end
     return results
   rescue => e
