@@ -31,7 +31,7 @@ class MediaInfo
     if movies.empty?
       return [[title, nil]], false
     else
-      movies.map { |m| [clean_title(m.title), m.url]}, true
+      return movies.map { |m| [clean_title(m.title), m.url]}, true
     end
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
