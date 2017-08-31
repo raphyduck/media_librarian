@@ -320,7 +320,7 @@ class Library
 
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     Speaker.speak_up("Looking for duplicates of #{title}...")
-    replaced = false
+    replaced = nil
     dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original[1]})
     corrected_dups = []
     processed = []
@@ -344,7 +344,7 @@ class Library
       end
     elsif corrected_dups.length > 0 && !original[1].nil? && Speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
       FileUtils.rm_r(File.dirname(original[0]))
-      replaced = true
+      replaced = 1
     else
       Speaker.speak_up('No duplicates found')
     end
@@ -546,10 +546,7 @@ class Library
       found, replaced, cpt = true, false, 0
       if imdb_name_check.to_i > 0
         titles, found = MediaInfo.movie_title_lookup(titles[0][0])
-        #Look for duplicate
-        replaced = self.duplicate_search(folder, titles[0][0], film, no_prompt, 'movies') if found
       end
-      next if replaced
       loop do
         choice = cpt
         break if cpt >= titles.count
@@ -566,6 +563,9 @@ class Library
           break
         end
         t = titles[choice]
+        #Look for duplicate
+        replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
+        next if replaced
         Speaker.speak_up("Looking for torrent of film #{t[0]} (info IMD: #{URI.escape(t[1])})") unless no_prompt > 0 && !found
         replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
