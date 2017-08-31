@@ -14,7 +14,7 @@ class Utils
     return if $move_completed_torrent.nil?
     $dir_to_delete.each do |f|
       next if f[:d].to_s == '' || f[:d].to_s == '/'
-      puts "FileUtils.rm_r(#{$move_completed_torrent + '/' + f[:d]})"
+      FileUtils.rm_r($move_completed_torrent + '/' + f[:d])
     end
   end
 
