@@ -1,6 +1,13 @@
 class Library
 
   @refusal = 0
+  @processed = []
+
+  def self.already_processed?(item)
+    already_processed = @processed.include?(item)
+    @processed << item
+    return already_processed
+  end
 
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
@@ -530,6 +537,7 @@ class Library
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)
     $move_completed_torrent = folder
     Utils.search_folder(folder, filter_criteria).each do |film|
+      next if already_processed?(film[1])
       next if File.basename(folder) == film[1]
       break if break_processing(no_prompt)
       path = film[0]
