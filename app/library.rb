@@ -344,7 +344,7 @@ class Library
       end
     elsif corrected_dups.length > 0 && !original[1].nil? && Speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
       FileUtils.rm_r(File.dirname(original[0]))
-      replaced = 1
+      replaced = 0
     else
       Speaker.speak_up('No duplicates found')
     end
@@ -565,13 +565,13 @@ class Library
         t = titles[choice]
         #Look for duplicate
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
-        next if replaced
+        break if replaced
         Speaker.speak_up("Looking for torrent of film #{t[0]} (info IMD: #{URI.escape(t[1])})") unless no_prompt > 0 && !found
         replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1
       end
-      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder,'')} if replaced
+      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder,'')} if replaced.to_i > 0
     end
   rescue => e
     Speaker.tell_error(e, "Library.replace_movies")
