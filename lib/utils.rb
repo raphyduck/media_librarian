@@ -10,6 +10,14 @@ class Utils
     active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.hour < active_hours[0].to_i || Time.now.hour > active_hours[1].to_i)
   end
 
+  def self.cleanup_folder()
+    return if $move_completed_torrent.nil?
+    $dir_to_delete.each do |f|
+      next if f[:d].to_s == '' || f[:d].to_s == '/'
+      puts "FileUtils.rm_r(#{$move_completed_torrent + '/' + f[:d]})"
+    end
+  end
+
   def self.get_disk_size(path)
     size=0
     Find.find(path) { |file| size+= File.size(file)}

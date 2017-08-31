@@ -559,11 +559,11 @@ class Library
         end
         t = titles[choice]
         Speaker.speak_up("Looking for torrent of film #{t[0]} (info IMD: #{URI.escape(t[1])})") unless no_prompt > 0 && !found
-        replaced = no_prompt > 0 && !found ? false : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
+        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1
       end
-      FileUtils.rm_r(File.dirname(path)) if replaced
+      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder,'')} if replaced
     end
   rescue => e
     Speaker.tell_error(e, "Library.replace_movies")

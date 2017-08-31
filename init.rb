@@ -4,12 +4,14 @@ $config_file = $config_dir + '/conf.yml'
 $temp_dir = $config_dir + '/tmp'
 $log_dir = $config_dir + '/log'
 $template_dir = $config_dir + '/templates'
+$move_completed_torrent = nil
 $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []
 $deluge_torrents_preadded = []
 $pending_magnet_links = {}
 $cleanup_trakt_list = []
+$dir_to_delete = []
 #Some constants
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
