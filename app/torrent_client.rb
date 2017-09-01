@@ -129,6 +129,7 @@ Downloading torrent(s) added during the session (if any)")
               download_file(torrent, File.basename(path), opts['move_completed'])
               $deluge_torrents_preadded << meta_id
             rescue => e
+              @deluge_connected = nil
               $cleanup_trakt_list.select!{|x| x[:id] != did}
               File.delete($temp_dir + "/#{did}.torrent") rescue nil
               Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
@@ -142,6 +143,7 @@ Downloading torrent(s) added during the session (if any)")
       begin
         download(m, opts['move_completed'], 1) unless opts.nil?
       rescue => e
+        @deluge_connected = nil
         $cleanup_trakt_list.select!{|x| x[:id] != did}
         $dir_to_delete.select!{|x| x[:id] != did}
         Speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
