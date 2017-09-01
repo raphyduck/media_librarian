@@ -12,6 +12,7 @@ class TorrentClient
 
   def authenticate
     return if @deluge_connected
+    @deluge.close rescue nil
     @deluge.connect
     @deluge_connected = 1
     listen
