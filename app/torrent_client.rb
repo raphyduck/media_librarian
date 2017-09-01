@@ -31,10 +31,11 @@ class TorrentClient
       options['move_completed'] = true
     end
     if magnet.to_i > 0
-      @deluge.core.add_torrent_magnet(url, options)
+      @deluge.core.add_torrent_magnet(url, options) rescue @deluge_connected = nil
     else
-      @deluge.core.add_torrent_url(url, options)
+      @deluge.core.add_torrent_url(url, options) rescue @deluge_connected = nil
     end
+    raise 'Lost connection' if @deluge_connected.nil?
   end
 
   def download_file(file, filename, move_completed = nil)
@@ -44,7 +45,8 @@ class TorrentClient
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
-    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options)
+    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options) rescue @deluge_connected = nil
+    raise 'Lost connection' if @deluge_connected.nil?
   end
 
   def find_main_file(status)
@@ -130,8 +132,8 @@ Downloading torrent(s) added during the session (if any)")
               download_file(torrent, File.basename(path), opts['move_completed'])
               $deluge_torrents_preadded << meta_id
             rescue => e
-              @deluge_connected = nil
               $cleanup_trakt_list.select!{|x| x[:id] != did}
+              $dir_to_delete.select!{|x| x[:id] != did}
               File.delete($temp_dir + "/#{did}.torrent") rescue nil
               Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
             end
@@ -144,7 +146,6 @@ Downloading torrent(s) added during the session (if any)")
       begin
         download(m, opts['move_completed'], 1) unless opts.nil?
       rescue => e
-        @deluge_connected = nil
         $cleanup_trakt_list.select!{|x| x[:id] != did}
         $dir_to_delete.select!{|x| x[:id] != did}
         Speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
