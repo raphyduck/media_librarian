@@ -42,7 +42,7 @@ class MediaInfo
     results = []
     movies = Imdb::Search.new(title).movies
     movies.each do |m|
-      results << m unless m.title.match(/\(TV .+\)/) && !m.title.match(/\(TV Movie\)/)
+      results << m unless (m.title.match(/\(TV .+\)/) && !m.title.match(/\(TV Movie\)/)) || m.title.match(/ \(Short\)/)
     end
     return results
   rescue => e
