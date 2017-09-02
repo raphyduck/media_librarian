@@ -29,6 +29,7 @@ class TorrentClient
     if move_completed
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
+      options['queue'] = 1 if magnet.to_i > 0
     end
     if magnet.to_i > 0
       @deluge.core.add_torrent_magnet(url, options) rescue @deluge_connected = nil
