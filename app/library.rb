@@ -559,7 +559,7 @@ class Library
             idxs += 1
           end
           choice = Speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
-          break if choice < 0
+          break if choice < 0 || choice > titles.count
         elsif cpt > 0
           break
         end
