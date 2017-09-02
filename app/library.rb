@@ -547,7 +547,7 @@ class Library
       if imdb_name_check.to_i > 0
         titles, found = MediaInfo.movie_title_lookup(titles[0][0])
       end
-      titles += ['Edit title manually','']
+      titles += [['Edit title manually','']]
       loop do
         choice = cpt
         break if cpt >= titles.count
