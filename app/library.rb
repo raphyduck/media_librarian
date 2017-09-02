@@ -567,7 +567,6 @@ class Library
         if t[0] == 'Edit title manually'
           Speaker.speak_up('Enter the title to look for:')
           t[0] = STDIN.gets.strip
-          t, found = MediaInfo.movie_title_lookup(titles[0][0], true) if imdb_name_check.to_i > 0
         end
         #Look for duplicate
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
