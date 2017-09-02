@@ -571,7 +571,7 @@ class Library
         #Look for duplicate
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
         break if replaced
-        Speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if m[1].to_s != ''}") unless no_prompt > 0 && !found
+        Speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
         replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1
