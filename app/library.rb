@@ -547,6 +547,7 @@ class Library
       if imdb_name_check.to_i > 0
         titles, found = MediaInfo.movie_title_lookup(titles[0][0])
       end
+      titles += ['Edit title manually','']
       loop do
         choice = cpt
         break if cpt >= titles.count
@@ -554,7 +555,7 @@ class Library
           Speaker.speak_up("Alternatives titles found:")
           idxs = 1
           titles.each do |m|
-            Speaker.speak_up("#{idxs}: #{m[0]} (info IMDB: #{URI.escape(m[1])})")
+            Speaker.speak_up("#{idxs}: #{m[0]}#{' (info IMDB: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
             idxs += 1
           end
           choice = Speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
@@ -563,10 +564,15 @@ class Library
           break
         end
         t = titles[choice]
+        if t[0] == 'Edit title manually'
+          Speaker.speak_up('Enter the title to look for:')
+          t[0] = STDIN.gets.strip
+          t, found = MediaInfo.movie_title_lookup(titles[0][0], true) if imdb_name_check.to_i > 0
+        end
         #Look for duplicate
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
         break if replaced
-        Speaker.speak_up("Looking for torrent of film #{t[0]} (info IMD: #{URI.escape(t[1])})") unless no_prompt > 0 && !found
+        Speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if m[1].to_s != ''}") unless no_prompt > 0 && !found
         replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1

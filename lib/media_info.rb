@@ -26,16 +26,19 @@ class MediaInfo
     return nil, false
   end
 
-  def self.movie_title_lookup(title)
+  def self.movie_title_lookup(title, first_only = false)
     movies = moviedb_search(title)
+    found = false
     if movies.empty?
-      return [[title, '']], false
+      results = [[title, '']]
     else
-      return movies.map { |m| [clean_title(m.title), m.url]}, true
+      results =  movies.map { |m| [clean_title(m.title), m.url]}
+      found = true
     end
+    return (first_only ? results.first : results), found
   rescue => e
     Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    return [[title, '']], false
+    return (first_only ? [title, ''] : [[title, '']]), false
   end
 
   def self.moviedb_search(title, no_output = false)
