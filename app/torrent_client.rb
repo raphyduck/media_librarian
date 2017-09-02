@@ -80,35 +80,34 @@ class TorrentClient
     while $deluge_torrents_added.length != 0
       tid = $deluge_torrents_added.shift
       begin
-        status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size','progress']) rescue @deluge_connected = nil
-        opts = $deluge_options.select{|_,v| v['info_hash'] == tid}
-        opts = $deluge_options.select{|_,v| v['t_name'] == status['name']} if opts.nil?
+        status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
+        opts = $deluge_options.select { |_, v| v['info_hash'] == tid }
+        opts = $deluge_options.select { |_, v| v['t_name'] == status['name'] } if opts.nil?
         if opts.nil? || opts.empty?
-          opts = $deluge_options.select{|_,v| $str_closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9}
+          opts = $deluge_options.select { |_, v| $str_closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9 }
         end
         if opts && !opts.empty?
           did = opts.first[0]
           opts = opts.first[1]
           set_options = {}
-          magnet = $pending_magnet_links[did]
-          unless magnet
-            File.delete($temp_dir + "/#{did}.torrent") rescue nil
-            if (opts['rename_main'] && opts['rename_main'] != '') || (opts['main_only'] && opts['main_only'].to_i > 0)
-              main_file = find_main_file(status)
-              if main_file
-                set_options = main_file_only(status, main_file) if opts['main_only']
-                rename_main_file(tid, status['files'], opts['rename_main']) if opts['rename_main'] && opts['rename_main'] != ''
-              end
+          File.delete($temp_dir + "/#{did}.torrent") rescue nil
+          if (opts['rename_main'] && opts['rename_main'] != '') || (opts['main_only'] && opts['main_only'].to_i > 0)
+            main_file = find_main_file(status)
+            if main_file
+              set_options = main_file_only(status, main_file) if opts['main_only']
+              rename_main_file(tid, status['files'], opts['rename_main']) if opts['rename_main'] && opts['rename_main'] != ''
             end
-            unless set_options.empty?
-              @deluge.core.set_torrent_options([tid], set_options)
-              Speaker.speak_up("Will set options: #{set_options}")
-            end
+          end
+          unless set_options.empty?
+            @deluge.core.set_torrent_options([tid], set_options)
+            Speaker.speak_up("Will set options: #{set_options}")
           end
           $deluge_options.delete(did)
         end
       rescue => e
         Speaker.tell_error(e, "TorrentClient.process_added_torrents")
+        @deluge_connected = nil
+        $deluge_torrents_added << tid
       end
     end
   end
@@ -126,14 +125,14 @@ Downloading torrent(s) added during the session (if any)")
           opts = $deluge_options[did]
           unless opts.nil?
             begin
-              meta = BEncode.load(torrent, {:ignore_trailing_junk=>1})
+              meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
               meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
               $deluge_options[did]['info_hash'] = meta_id
               download_file(torrent, File.basename(path), opts['move_completed'])
               $deluge_torrents_preadded << meta_id
             rescue => e
-              $cleanup_trakt_list.select!{|x| x[:id] != did}
-              $dir_to_delete.select!{|x| x[:id] != did}
+              $cleanup_trakt_list.select! { |x| x[:id] != did }
+              $dir_to_delete.select! { |x| x[:id] != did }
               File.delete($temp_dir + "/#{did}.torrent") rescue nil
               Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
             end
@@ -146,8 +145,8 @@ Downloading torrent(s) added during the session (if any)")
       begin
         download(m, opts['move_completed'], 1) unless opts.nil?
       rescue => e
-        $cleanup_trakt_list.select!{|x| x[:id] != did}
-        $dir_to_delete.select!{|x| x[:id] != did}
+        $cleanup_trakt_list.select! { |x| x[:id] != did }
+        $dir_to_delete.select! { |x| x[:id] != did }
         Speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
       end
     end

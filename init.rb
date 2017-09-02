@@ -12,6 +12,7 @@ $deluge_torrents_preadded = []
 $pending_magnet_links = {}
 $cleanup_trakt_list = []
 $dir_to_delete = []
+$dowloaded_links = []
 #Some constants
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'

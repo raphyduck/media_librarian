@@ -143,7 +143,7 @@ class TorrentSearch
     if no_prompt.to_i == 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?
-        Speaker.speak_up("No results for '#{search['query']}'")
+        Speaker.speak_up("No results for '#{search['query']}' on #{type}")
         return success
       end
       Speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
