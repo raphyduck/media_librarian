@@ -66,7 +66,6 @@ class TorrentClient
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       Speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       $deluge_torrents_added << torrent_id
-      @processed_count[torrent_id] = 0
     end
   end
 
@@ -82,6 +81,7 @@ class TorrentClient
     self.authenticate unless @deluge_connected rescue nil
     while $deluge_torrents_added.length != 0
       tid = $deluge_torrents_added.shift
+      @processed_count[tid] = 0 if @processed_count[tid].nil?
       @processed_count[tid] += 1
       next if @processed_count[tid] > 60
       begin
