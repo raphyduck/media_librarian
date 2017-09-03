@@ -1,5 +1,7 @@
 class TorrentClient
 
+  @processed_count = {}
+
   def initialize()
     @deluge = Deluge::Rpc::Client.new(
         host: $config['deluge']['host'], port: 58846,
@@ -64,6 +66,7 @@ class TorrentClient
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       Speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       $deluge_torrents_added << torrent_id
+      @processed_count[torrent_id] = 0
     end
   end
 
@@ -79,6 +82,8 @@ class TorrentClient
     self.authenticate unless @deluge_connected rescue nil
     while $deluge_torrents_added.length != 0
       tid = $deluge_torrents_added.shift
+      @processed_count[tid] += 1
+      next if @processed_count[tid] > 60
       begin
         status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
         Speaker.speak_up("Processing added torrent #{status['name']}")
@@ -110,6 +115,7 @@ class TorrentClient
         Speaker.tell_error(e, "TorrentClient.process_added_torrents")
         @deluge_connected = nil
         $deluge_torrents_added << tid
+        sleep 10
       end
     end
   end
