@@ -54,7 +54,7 @@ class TorrentSearch
         @search = Extratorrent::Search.new(keyword, cid)
         get_results = @search.links
       when 'thepiratebay'
-        @search = Tpb::Search.new(keyword, cid)
+        @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
         get_results = @search.links
       when 'yggtorrent'
         @search = Yggtorrent::Search.new(keyword, url)
