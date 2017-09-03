@@ -10,6 +10,7 @@ $deluge_options = {}
 $deluge_torrents_added = []
 $deluge_torrents_preadded = []
 $pending_magnet_links = {}
+$processed_torrent_id = {}
 $cleanup_trakt_list = []
 $dir_to_delete = []
 $dowloaded_links = []
