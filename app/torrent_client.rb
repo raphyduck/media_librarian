@@ -82,6 +82,7 @@ class TorrentClient
       tid = $deluge_torrents_added.shift
       begin
         status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
+        Speaker.speak_up("Processing added torrent #{status['name']}")
         opts = $deluge_options.select { |_, v| v['info_hash'] == tid }
         opts = $deluge_options.select { |_, v| v['t_name'] == status['name'] } if opts.nil?
         if opts.nil? || opts.empty?

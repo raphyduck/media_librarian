@@ -48,6 +48,9 @@ class Librarian
   def self.leave
     if $t_client
       $t_client.process_download_torrents
+      #Cleanup list
+      TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
+      Utils.cleanup_folder unless $dir_to_delete.empty?
       $t_client.process_added_torrents
       while Find.find($temp_dir).count > 1
         Speaker.speak_up('Waiting for temporary folder to be cleaned')
@@ -62,8 +65,6 @@ class Librarian
       end
       $t_client.disconnect
     end
-    TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
-    Utils.cleanup_folder unless $dir_to_delete.empty?
     Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg
     Speaker.speak_up("End of session, good bye...")
   end
