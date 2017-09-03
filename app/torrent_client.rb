@@ -29,7 +29,7 @@ class TorrentClient
     if move_completed
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
-      options['queue'] = 1 if magnet.to_i > 0
+      options['queue_new_to_top'] = true if magnet.to_i > 0
     end
     if magnet.to_i > 0
       @deluge.core.add_torrent_magnet(url, options) rescue @deluge_connected = nil
@@ -105,6 +105,7 @@ class TorrentClient
             Speaker.speak_up("Will set options: #{set_options}")
           end
           $deluge_options.delete(did)
+          @deluge.core.queue_bottom([tid]) if $pending_magnet_links[did]
         end
       rescue => e
         Speaker.tell_error(e, "TorrentClient.process_added_torrents")
