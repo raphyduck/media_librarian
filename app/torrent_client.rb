@@ -64,7 +64,6 @@ class TorrentClient
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       Speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       $deluge_torrents_added << torrent_id
-      @deluge.core.queue_top([torrent_id]) #Queue all torrents to top to download magnet files listing
     end
   end
 
