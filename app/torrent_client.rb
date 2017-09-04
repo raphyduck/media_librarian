@@ -76,8 +76,8 @@ class TorrentClient
   end
 
   def process_added_torrents
-    self.authenticate unless @deluge_connected rescue nil
     while $deluge_torrents_added.length != 0
+      self.authenticate unless @deluge_connected rescue nil
       tid = $deluge_torrents_added.shift
       $processed_torrent_id[tid] = 0 if $processed_torrent_id[tid].nil?
       $processed_torrent_id[tid] += 1
