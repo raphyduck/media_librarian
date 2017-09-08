@@ -128,7 +128,9 @@ class Library
       list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       _, total_space = Utils.get_disk_space(dest_folder)
       while total_space <= list_size
-        if Speaker.ask_if_needed("There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
+        size_error = "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
+        if Speaker.ask_if_needed("#{size_error}. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
+          Report.deliver(object_s: 'copy_media_from_list - Not enough space on disk to copy list ' + source_list.to_s + ' - ' + type.to_s, body_s: size_error)
           abort = 1
           break
         end
@@ -144,6 +146,7 @@ class Library
       end
       Dir.mkdir(dest_type) unless File.exist?(dest_type)
       Speaker.speak_up('Syncing new media...')
+      sync_error = ''
       paths.each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
         FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
@@ -153,10 +156,12 @@ class Library
               Speaker.speak_up "#{change.filename} (#{change.summary})"
             end
           else
+            sync_error += result.error.to_s
             Speaker.speak_up result.error
           end
         end
       end
+      Report.deliver(object_s: 'copy_media_from_list - Errors syncing list ' + source_list.to_s + ' to disk ' + type.to_s, body_s: sync_error) if sync_error != ''
     end
     Speaker.speak_up("Finished copying media from #{source_list}!")
   end

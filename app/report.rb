@@ -12,7 +12,7 @@ class Report
   end
 
   def body
-    $email_msg
+    body_s.nil? ? $email_msg : body_s
   end
 
   private
