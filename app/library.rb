@@ -31,9 +31,9 @@ class Library
     Speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
     ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
     ssh_opts = {} if ssh_opts.nil?
+    tries = 10
     list = FileTest.directory?(path) ? Utils.search_folder(path, filter_criteria) : [[path, '']]
     list.each do |f|
-      tries = 3
       begin
         f_path = f[0]
         Speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
