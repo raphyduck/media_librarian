@@ -21,6 +21,12 @@ GIT
     ruby-mp3info (0.8.10)
 
 GIT
+  remote: https://github.com/raphyduck/ruby-rsync.git
+  revision: 17360ce3592eac7dde51e198aa4ee9c8cb60fd88
+  specs:
+    rsync (1.0.9)
+
+GIT
   remote: https://github.com/raphyduck/t411.git
   revision: 2f6f0b011363368342d6e949a9bd774d13c0255e
   specs:
@@ -49,12 +55,6 @@ GIT
       httparty (>= 0.6.0)
       i18n
       json (>= 1.4.5)
-
-GIT
-  remote: https://github.com/xanview/ruby-rsync.git
-  revision: 16780dd09fb51564c09bdf8be3b32d9a591f6f6d
-  specs:
-    rsync (1.0.9)
 
 PATH
   remote: vendor/gems/activesupport-4.2.7.1
