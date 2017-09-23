@@ -405,7 +405,7 @@ class Library
     Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
     base_opts = ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
-    opts = opts + ["-e=#{rsync_shell}"] if rsync_shell.to_s != ''
+    opts = opts + ["--rsh=#{rsync_shell}"] if rsync_shell.to_s != ''
     Speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
     Rsync.run("#{remote_box}/", "#{local_folder}", opts) do |result|
       if result.success?
