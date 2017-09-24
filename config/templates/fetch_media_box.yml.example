@@ -2,7 +2,9 @@ local_folder: '/local/folder'
 remote_user: user
 remote_server: hostname.com
 remote_folder: 'remote/folder'
-rsync_shell: ''
+ssh_opts:
+  port: 22
+  i: 'path/to/identity/file'
 reverse_folder:
   - '/folder/to/sync/from/local/to/remote'
 move_if_finished:
@@ -15,7 +17,6 @@ bandwith_limit: 0
 active_hours:
   - 0
   - 6
-ssh_opts:
 exclude_folders_in_check:
   - '/folder/to/exclude'
   - 'another/one'
