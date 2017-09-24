@@ -321,8 +321,7 @@ class Library
         end
         Speaker.speak_up("Will generate playlists based on #{cr}")
         library[cr].each do |p|
-          Dir.mkdir("#{dest_folder}/#{cr}/") unless FileTest.directory?("#{dest_folder}/#{cr}/")
-          generate_playlist("#{dest_folder}/#{cr}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
+          generate_playlist("#{dest_folder}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
         end
         Speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
       end
