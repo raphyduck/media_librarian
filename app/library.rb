@@ -64,7 +64,7 @@ class Library
         end
       rescue => e
         Speaker.tell_error(e, "Library.compare_remote_files - file #{f[0]}")
-        retry if (tries -= 1) <= 0
+        retry if (tries -= 1) > 0
       end
     end
   rescue => e
