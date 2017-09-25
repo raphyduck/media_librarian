@@ -22,7 +22,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/ruby-rsync.git
-  revision: ebaa0329f52313b728517ae318d5a58ea0ec6425
+  revision: f1467e50e55b120be2d741313811b13d234ad358
   specs:
     rsync (1.0.9)
 
