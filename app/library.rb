@@ -404,7 +404,7 @@ class Library
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
     Speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
-    Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'], ssh_opts['i']) do |result|
+    Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'], ssh_opts['keys']) do |result|
       result.changes.each do |change|
         Speaker.speak_up "#{change.filename} (#{change.summary})"
       end
@@ -435,7 +435,7 @@ class Library
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
         Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        Rsync.run("#{f}/", "#{reverse_box}", opts, opts, ssh_opts['port'], ssh_opts['i']) do |result|
+        Rsync.run("#{f}/", "#{reverse_box}", opts, opts, ssh_opts['port'], ssh_opts['keys']) do |result|
           if result.success?
             result.changes.each do |change|
               Speaker.speak_up "#{change.filename} (#{change.summary})"
