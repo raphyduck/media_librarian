@@ -232,7 +232,7 @@ class Library
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2),0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
             next
           end
@@ -273,15 +273,15 @@ class Library
       cpt += 1
       song = Mp3Info.open(p_song[0])
       f_song = {
-          :path => p_song[0].gsub(folder,''),
+          :path => p_song[0].gsub(folder, ''),
           :length => song.length,
-          :artist => (song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/,''),
-          :albumartist => (song.tag2.TPE2 || song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/,''),
-          :title => (song.tag.title || song.tag2.TIT2).to_s.strip.gsub(/\u0000/,''),
-          :album => (song.tag.album || song.tag2.TALB).to_s.strip.gsub(/\u0000/,''),
-          :year => (song.tag.year || song.tag2.TYER || 0).to_s.strip.gsub(/\u0000/,''),
-          :track_nr => (song.tag.track_nr || song.tag2.TRCK).to_s.strip.gsub(/\u0000/,''),
-          :genre => (song.tag.genre_s || song.tag2.TCON).to_s.strip.gsub(/\(\d*\)/,'').gsub(/\u0000/,'')
+          :artist => (song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/, ''),
+          :albumartist => (song.tag2.TPE2 || song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/, ''),
+          :title => (song.tag.title || song.tag2.TIT2).to_s.strip.gsub(/\u0000/, ''),
+          :album => (song.tag.album || song.tag2.TALB).to_s.strip.gsub(/\u0000/, ''),
+          :year => (song.tag.year || song.tag2.TYER || 0).to_s.strip.gsub(/\u0000/, ''),
+          :track_nr => (song.tag.track_nr || song.tag2.TRCK).to_s.strip.gsub(/\u0000/, ''),
+          :genre => (song.tag.genre_s || song.tag2.TCON).to_s.strip.gsub(/\(\d*\)/, '').gsub(/\u0000/, '')
       }
       f_song[:decade] = "#{f_song[:year][0...-1]}0"
       f_song[:decade] = nil if f_song[:decade].to_i == 0
@@ -303,7 +303,7 @@ class Library
       print "Processed song #{cpt} / #{files.count}\r"
     end
     Speaker.speak_up("Finished processing songs, now generating playlists...")
-    collection = ordered_collection.sort_by{|k,_| k}.map{|x| x[1].sort_by {|s| s[:track_nr].to_i}}
+    collection = ordered_collection.sort_by { |k, _| k }.map { |x| x[1].sort_by { |s| s[:track_nr].to_i } }
     collection.shuffle! if random.to_i > 0
     collection.flatten!
     Dir.mkdir(folder) unless FileTest.directory?(folder)
@@ -320,7 +320,7 @@ class Library
         end
         Speaker.speak_up("Will generate playlists based on #{cr}")
         library[cr].each do |p|
-          generate_playlist("#{folder}/#{cr}s-#{p.gsub('/','').gsub(/[^\u0000-\u007F]+/,'_').gsub(' ','_')}".gsub(/\/*$/,''), collection.select{|s| s[cr.to_sym] == p})
+          generate_playlist("#{folder}/#{cr}s-#{p.gsub('/', '').gsub(/[^\u0000-\u007F]+/, '_').gsub(' ', '_')}".gsub(/\/*$/, ''), collection.select { |s| s[cr.to_sym] == p })
         end
         Speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
       end
@@ -401,15 +401,15 @@ class Library
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
-    base_opts = ['--verbose', '--progress', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
+    base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
     Speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
     Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'], ssh_opts['i']) do |result|
+      result.changes.each do |change|
+        Speaker.speak_up "#{change.filename} (#{change.summary})"
+      end
       if result.success?
         rsynced_clean = true
-        result.changes.each do |change|
-          Speaker.speak_up "#{change.filename} (#{change.summary})"
-        end
       else
         Speaker.speak_up result.error
       end
@@ -524,17 +524,17 @@ class Library
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
       imdb_movie = MediaInfo.moviedb_search(movie['title'], true).first
-      movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/,'').to_date rescue movie['release_date'] = Date.new(movie['year'])
+      movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/, '').to_date rescue movie['release_date'] = Date.new(movie['year'])
       next if movie['release_date'] >= Date.today
       movies << movie
       print '...'
     end
-    movies.sort_by! { |m| m['release_date']}
+    movies.sort_by! { |m| m['release_date'] }
     movies.each do |movie|
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
-      self.duplicate_search(dest_folder, movie['title'], [nil,nil], no_prompt, type)
-      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/,''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
+      self.duplicate_search(dest_folder, movie['title'], [nil, nil], no_prompt, type)
+      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
       $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
   rescue => e
@@ -554,7 +554,7 @@ class Library
       if imdb_name_check.to_i > 0
         titles, found = MediaInfo.movie_title_lookup(titles[0][0])
       end
-      titles += [['Edit title manually','']]
+      titles += [['Edit title manually', '']]
       loop do
         choice = cpt
         break if cpt >= titles.count
@@ -583,7 +583,7 @@ class Library
         break if replaced
         cpt += 1
       end
-      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder,'')} if replaced.to_i > 0
+      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder, '')} if replaced.to_i > 0
     end
   rescue => e
     Speaker.tell_error(e, "Library.replace_movies")
