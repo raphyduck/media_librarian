@@ -29,7 +29,8 @@ class Library
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
     Speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
-    ssh_opts = Utils.recursive_symbolize_keys(eval(ssh_opts)) if ssh_opts.is_a?(String)
+    ssh_opts = eval(ssh_opts) if ssh_opts.is_a?(String)
+    ssh_opts = Utils.recursive_symbolize_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
     tries = 10
     list = FileTest.directory?(path) ? Utils.search_folder(path, filter_criteria) : [[path, '']]
