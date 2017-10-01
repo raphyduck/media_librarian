@@ -6,7 +6,7 @@ class TorrentClient
         login: $config['deluge']['username'], password: $config['deluge']['password']
     )
   rescue => e
-    Speaker.tell_error(e, "TorrentClient.new")
+    $speaker.tell_error(e, "TorrentClient.new")
     raise
   end
 
@@ -57,12 +57,12 @@ class TorrentClient
     end
     return nil
   rescue => e
-    Speaker.tell_error(e, "torrentclient.find_main_file")
+    $speaker.tell_error(e, "torrentclient.find_main_file")
   end
 
   def listen
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
-      Speaker.speak_up "Torrent #{torrent_id} was successfully added!"
+      $speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       $deluge_torrents_added << torrent_id
     end
   end
@@ -84,7 +84,7 @@ class TorrentClient
       next if $processed_torrent_id[tid] > 60
       begin
         status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
-        Speaker.speak_up("Processing added torrent #{status['name']}")
+        $speaker.speak_up("Processing added torrent #{status['name']}")
         opts = $deluge_options.select { |_, v| v['info_hash'] == tid }
         opts = $deluge_options.select { |_, v| v['t_name'] == status['name'] } if opts.nil?
         if opts.nil? || opts.empty?
@@ -104,13 +104,13 @@ class TorrentClient
           end
           unless set_options.empty?
             @deluge.core.set_torrent_options([tid], set_options)
-            Speaker.speak_up("Will set options: #{set_options}")
+            $speaker.speak_up("Will set options: #{set_options}")
           end
           $deluge_options.delete(did)
           @deluge.core.queue_bottom([tid]) #Queue to bottom once all processed
         end
       rescue => e
-        Speaker.tell_error(e, "TorrentClient.process_added_torrents")
+        $speaker.tell_error(e, "TorrentClient.process_added_torrents")
         @deluge_connected = nil
         $deluge_torrents_added << tid
         sleep 10
@@ -119,7 +119,7 @@ class TorrentClient
   end
 
   def process_download_torrents
-    Speaker.speak_up("#{LINE_SEPARATOR}
+    $speaker.speak_up("#{LINE_SEPARATOR}
 Downloading torrent(s) added during the session (if any)")
     Find.find($temp_dir).each do |path|
       unless FileTest.directory?(path)
@@ -140,7 +140,7 @@ Downloading torrent(s) added during the session (if any)")
               $cleanup_trakt_list.select! { |x| x[:id] != did }
               $dir_to_delete.select! { |x| x[:id] != did }
               File.delete($temp_dir + "/#{did}.torrent") rescue nil
-              Speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
+              $speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
             end
           end
         end
@@ -153,13 +153,13 @@ Downloading torrent(s) added during the session (if any)")
       rescue => e
         $cleanup_trakt_list.select! { |x| x[:id] != did }
         $dir_to_delete.select! { |x| x[:id] != did }
-        Speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
+        $speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
       end
     end
   end
 
   def rename_main_file(tid, files, new_dir_name)
-    Speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.")
+    $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.")
     paths = []
     files.each do |file|
       old_name = File.basename(file['path'])

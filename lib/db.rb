@@ -12,7 +12,7 @@ module Storage
     def get_rows(table, conditions = '')
       @s_db.execute( "select * from #{table}#{' where ' + conditions if conditions && conditions != ''}" )
     rescue => e
-      Speaker.tell_error(e, "Storage::Db.new.get_rows")
+      $speaker.tell_error(e, "Storage::Db.new.get_rows")
       []
     end
 

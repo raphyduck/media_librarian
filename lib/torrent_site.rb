@@ -15,7 +15,7 @@ module TorrentSite
     def self.request(url)
       HTTParty.get(url).body
     rescue => e
-      Speaker.tell_error(e, "Extratorrent::Download.request")
+      $speaker.tell_error(e, "Extratorrent::Download.request")
       nil
     end
   end

@@ -72,7 +72,7 @@ class Utils
     end
     {}
   rescue => e
-    Speaker.tell_error(e, "Utils.load_template")
+    $speaker.tell_error(e, "Utils.load_template")
     {}
   end
 
@@ -138,7 +138,7 @@ class Utils
     end
     search_folder
   rescue => e
-    Speaker.tell_error(e, "Library.search_folder")
+    $speaker.tell_error(e, "Library.search_folder")
     []
   end
 

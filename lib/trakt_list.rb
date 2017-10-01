@@ -51,7 +51,7 @@ class TraktList
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    Speaker.tell_error(e, "traktList.get_history")
+    $speaker.tell_error(e, "traktList.get_history")
     []
   end
 
@@ -84,7 +84,7 @@ class TraktList
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    Speaker.tell_error(e, "TraktList.get_watched")
+    $speaker.tell_error(e, "TraktList.get_watched")
     []
   end
 
@@ -132,15 +132,15 @@ class TraktList
         when 'days_older', 'days_newer'
           next unless type == 'movies'
           break if cr_value.to_i == 0
-          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value, 'return_first' => 1})
+          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
           list.delete(item) unless folders.first
       end
       print '.'
     end
-    Speaker.speak_up('done!')
+    $speaker.speak_up('done!')
     list
   rescue => e
-    Speaker.tell_error(e, "TraktList.filter_trakt_list")
+    $speaker.tell_error(e, "TraktList.filter_trakt_list")
     list
   end
 
@@ -159,7 +159,7 @@ class TraktList
     end
     list
   rescue => e
-    Speaker.tell_error(e, "TraktList.list")
+    $speaker.tell_error(e, "TraktList.list")
     []
   end
 

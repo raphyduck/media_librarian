@@ -19,6 +19,9 @@ require 'pdf/reader'
 require 'rsync'
 require 'rubygems'
 require 'shellwords'
+require 'simple_args_dispatch'
+require 'simple_config_man'
+require 'simple_speaker'
 require 'sqlite3'
 require 'sys/filesystem'
 require 't411'
@@ -31,6 +34,27 @@ require 'zipruby'
 
 class Librarian
 
+  @available_actions = {
+      :help => ['Librarian', 'help'],
+      :reconfigure => ['Librarian', 'reconfigure'],
+      :library => {
+          :compare_remote_files => ['Library', 'compare_remote_files'],
+          :convert_pdf_cbz => ['Library', 'convert_pdf_cbz'],
+          :copy_media_from_list => ['Library', 'copy_media_from_list'],
+          :create_playlists => ['Library', 'create_playlists'],
+          :create_custom_list => ['Library', 'create_custom_list'],
+          :fetch_media_box => ['Library', 'fetch_media_box'],
+          :get_media_list_size => ['Library', 'get_media_list_size'],
+          :process_search_list => ['Library', 'process_search_list'],
+          :replace_movies => ['Library', 'replace_movies']
+      },
+      :torrent => {
+          :search => ['TorrentSearch', 'search'],
+          :random_pick => ['TorrentSearch', 'random_pick']
+      },
+      :usage => ['Librarian', 'help']
+  }
+
   def initialize
     #Require libraries
     Dir[File.dirname(__FILE__) + '/lib/*.rb'].each {|file| require file }
@@ -39,10 +63,11 @@ class Librarian
   end
 
   def self.run
-    Speaker.speak_up('Welcome to your library assistant!
+    $speaker.speak_up('Welcome to your library assistant!
 
 ')
-    Dispatcher.dispatch(ARGV)
+    $action = ARGV[0].to_s + ' ' + ARGV[1].to_s
+    SimpleArgsDispatch.dispatch('librarian', ARGV, @available_actions)
   end
 
   def self.leave
@@ -53,20 +78,28 @@ class Librarian
       Utils.cleanup_folder unless $dir_to_delete.empty?
       $t_client.process_added_torrents
       while Find.find($temp_dir).count > 1
-        Speaker.speak_up('Waiting for temporary folder to be cleaned')
+        $speaker.speak_up('Waiting for temporary folder to be cleaned')
         sleep 10
         $deluge_torrents_added = ($deluge_torrents_added + $deluge_torrents_preadded).uniq
         $t_client.process_added_torrents
       end
       if !$deluge_options.empty?
-        Speaker.speak_up('Waiting for completion of all deluge operation')
+        $speaker.speak_up('Waiting for completion of all deluge operation')
         sleep 15
         $t_client.process_added_torrents
       end
       $t_client.disconnect
     end
     Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg
-    Speaker.speak_up("End of session, good bye...")
+    $speaker.speak_up("End of session, good bye...")
+  end
+
+  def self.reconfigure
+    SimpleConfigMan.reconfigure($config_file, $config_example)
+  end
+
+  def self.help
+    SimpleArgsDispatch.show_available('librarian', @available_actions)
   end
 end
 

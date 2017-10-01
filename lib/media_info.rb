@@ -15,14 +15,14 @@ class MediaInfo
       begin
         res = TVMaze::Show.lookup({'thetvdb' => tvdb_id.to_i})
       rescue => e
-        Speaker.tell_error(e, "tvmaze::show.lookup")
+        $speaker.tell_error(e, "tvmaze::show.lookup")
       end
     end
     res = TVMaze::Show.search(title).first if res.nil?
     @last_tvmaze_req = Time.now
     return res, !res.nil?
   rescue => e
-    Speaker.tell_error(e, "MediaInfo.tv_series_search")
+    $speaker.tell_error(e, "MediaInfo.tv_series_search")
     return nil, false
   end
 
@@ -37,7 +37,7 @@ class MediaInfo
     end
     return (first_only ? results.first : results), found
   rescue => e
-    Speaker.tell_error(e, "MediaInfo.movie_title_lookup")
+    $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
     return (first_only ? [title, ''] : [[title, '']]), false
   end
 
@@ -49,7 +49,7 @@ class MediaInfo
     end
     return results
   rescue => e
-    Speaker.tell_error(e, "MediaInfo.moviedb_search")
+    $speaker.tell_error(e, "MediaInfo.moviedb_search")
     return []
   end
 end

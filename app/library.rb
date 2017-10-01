@@ -12,13 +12,13 @@ class Library
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
       @refusal = 0
-      return Speaker.ask_if_needed("Do you want to stop processing the list now? (y/n)", no_prompt, 'n') == 'y'
+      return $speaker.ask_if_needed("Do you want to stop processing the list now? (y/n)", no_prompt, 'n') == 'y'
     end
     false
   end
 
   def self.skip_loop_item(question, no_prompt = 0)
-    if Speaker.ask_if_needed(question, no_prompt) != 'y'
+    if $speaker.ask_if_needed(question, no_prompt) != 'y'
       @refusal += 1
       return 1
     else
@@ -28,7 +28,7 @@ class Library
   end
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
-    Speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
+    $speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
     ssh_opts = eval(ssh_opts) if ssh_opts.is_a?(String)
     ssh_opts = Utils.recursive_symbolize_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
@@ -37,7 +37,7 @@ class Library
     list.each do |f|
       begin
         f_path = f[0]
-        Speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
+        $speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
         local_md5sum = Utils.md5sum(f_path)
         remote_md5sum = ''
         Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
@@ -48,28 +48,28 @@ class Library
           remote_md5sum = remote_md5sum.first
           remote_md5sum = remote_md5sum ? remote_md5sum.gsub(/(\w*)( .*\n)/, '\1') : ''
         end
-        Speaker.speak_up("Local md5sum is #{local_md5sum}")
-        Speaker.speak_up("Remote md5sum is #{remote_md5sum}")
+        $speaker.speak_up("Local md5sum is #{local_md5sum}")
+        $speaker.speak_up("Remote md5sum is #{remote_md5sum}")
         if local_md5sum != remote_md5sum || local_md5sum == '' || remote_md5sum == ''
-          Speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
-          if local_md5sum != '' && remote_md5sum != '' && Speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
+          $speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
+          if local_md5sum != '' && remote_md5sum != '' && $speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
             FileUtils.rm_r(f_path)
           end
         else
-          Speaker.speak_up("The 2 files are identical!")
-          if Speaker.ask_if_needed("Delete the remote file? (y/n)", no_prompt, 'y') == 'y'
+          $speaker.speak_up("The 2 files are identical!")
+          if $speaker.ask_if_needed("Delete the remote file? (y/n)", no_prompt, 'y') == 'y'
             Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
               ssh.exec!("rm \"#{f_path}\"")
             end
           end
         end
       rescue => e
-        Speaker.tell_error(e, "Library.compare_remote_files - file #{f[0]}")
+        $speaker.tell_error(e, "Library.compare_remote_files - file #{f[0]}")
         retry if (tries -= 1) > 0
       end
     end
   rescue => e
-    Speaker.tell_error(e, "Library.compare_remote_files")
+    $speaker.tell_error(e, "Library.compare_remote_files")
   end
 
   def self.compress_archive(folder, name)
@@ -87,8 +87,8 @@ class Library
   end
 
   def self.convert_pdf_cbz(path:, no_warning: false)
-    return if !no_warning && Speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
-    return Speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
+    return if !no_warning && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
+    return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
         convert_pdf_cbz(path: f[0], no_warning: true)
@@ -98,7 +98,7 @@ class Library
         name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
         dest_file = "#{name.gsub(/^_?/, '')}.cbz"
         return if File.exist?(dest_file)
-        Speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
+        $speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
         Dir.mkdir(name)
         extractor = ExtractImages::Extractor.new
         extracted = 0
@@ -110,13 +110,13 @@ class Library
           end
         end
         unless extracted > 0
-          Speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
+          $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
           return
         end
         compress_archive(name, dest_file)
         FileUtils.rm_r(name)
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_")
-        Speaker.speak_up("#{name} converted!")
+        $speaker.speak_up("#{name} converted!")
       end
     end
   end
@@ -124,19 +124,19 @@ class Library
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
     source_folders = eval(source_folders) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?
-    return Speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
+    return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
     complete_list = TraktList.list(source_list, '')
-    return Speaker.speak_up("Empty list #{source_list}") if complete_list.empty?
+    return $speaker.speak_up("Empty list #{source_list}") if complete_list.empty?
     abort = 0
     list = TraktList.parse_custom_list(complete_list)
     list.each do |type, _|
-      source_folders[type] = Speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
+      source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
       dest_type = "#{dest_folder}/#{type.titleize}/"
       list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       _, total_space = Utils.get_disk_space(dest_folder)
       while total_space <= list_size
         size_error = "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
-        if Speaker.ask_if_needed("#{size_error}. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
+        if $speaker.ask_if_needed("#{size_error}. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
           Report.deliver(object_s: 'copy_media_from_list - Not enough space on disk to copy list ' + source_list.to_s + ' - ' + type.to_s, body_s: size_error)
           abort = 1
           break
@@ -144,15 +144,15 @@ class Library
         create_custom_list(source_list, '', source_list)
         list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       end
-      return Speaker.speak_up("Not enough disk space, aborting...") if abort > 0
-      return if Speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
+      return $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
+      return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
-      Speaker.speak_up 'Deleting extra media...'
+      $speaker.speak_up 'Deleting extra media...'
       Utils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
         FileUtils.rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       Dir.mkdir(dest_type) unless File.exist?(dest_type)
-      Speaker.speak_up('Syncing new media...')
+      $speaker.speak_up('Syncing new media...')
       sync_error = ''
       paths.each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
@@ -160,21 +160,21 @@ class Library
         Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
-              Speaker.speak_up "#{change.filename} (#{change.summary})"
+              $speaker.speak_up "#{change.filename} (#{change.summary})"
             end
           else
             sync_error += result.error.to_s
-            Speaker.speak_up result.error
+            $speaker.speak_up result.error
           end
         end
       end
       Report.deliver(object_s: 'copy_media_from_list - Errors syncing list ' + source_list.to_s + ' to disk ' + type.to_s, body_s: sync_error) if sync_error != ''
     end
-    Speaker.speak_up("Finished copying media from #{source_list}!")
+    $speaker.speak_up("Finished copying media from #{source_list}!")
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
-    Speaker.speak_up("Fetching items from #{origin}...")
+    $speaker.speak_up("Fetching items from #{origin}...")
     criteria = eval(criteria) if criteria.is_a?(String)
     new_list = {
         'movies' => TraktList.list(origin, 'movies'),
@@ -184,38 +184,38 @@ class Library
     dest_list = existing_lists.select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
-      Speaker.speak_up("List #{name} exists")
+      $speaker.speak_up("List #{name} exists")
       existing = TraktList.list(name)
       to_delete = TraktList.parse_custom_list(existing)
     else
-      Speaker.speak_up("List #{name} doesn't exist, creating it...")
+      $speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktList.create_list(name, description)
     end
-    Speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
+    $speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
     ['movies', 'shows'].each do |type|
       t_criteria = criteria[type] || {}
-      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || Speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
+      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || $speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
         new_list.delete(type)
         new_list[type] = to_delete[type] if t_criteria['add_only'].to_i > 0 && to_delete && to_delete[type]
         next
       end
-      folder = Speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
+      folder = $speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely_watched', 'partially_watched', 'ended', 'not_ended'] : ['watched']).each do |cr|
-        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || Speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_', ' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
+        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || $speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_', ' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
           new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
       if type =='movies'
         ['released_before', 'released_after', 'days_older', 'days_newer'].each do |cr|
-          if t_criteria[cr].to_i != 0 || Speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
+          if t_criteria[cr].to_i != 0 || $speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
             new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
           end
         end
       end
-      if t_criteria['review'] || Speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+      if t_criteria['review'] || $speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
         review_cr = t_criteria['review'] || {}
         sizes = {}
-        Speaker.speak_up('Preparing list of files to review...')
+        $speaker.speak_up('Preparing list of files to review...')
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
@@ -229,17 +229,17 @@ class Library
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
           title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
-          if sizes["#{title.to_s}#{year.to_s}"].to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || Speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
+          if sizes["#{title.to_s}#{year.to_s}"].to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || $speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && Speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && $speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
             next
           end
           if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'].to_i > 0) && ((review_cr['add_all'].to_i == 0 &&
-              review_cr['no_season'].to_i > 0) || Speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
-            choice = Speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
+              review_cr['no_season'].to_i > 0) || $speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
+            choice = $speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else
@@ -252,13 +252,13 @@ class Library
         i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
         i[type[0...-1]]
       end
-      Speaker.speak_up('Updating items in the list...')
+      $speaker.speak_up('Updating items in the list...')
       TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
-    Speaker.speak_up("List #{name} is up to date!")
+    $speaker.speak_up("List #{name} is up to date!")
   rescue => e
-    Speaker.tell_error(e, "Library.create_custom_list")
+    $speaker.tell_error(e, "Library.create_custom_list")
   end
 
   def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
@@ -268,7 +268,7 @@ class Library
     cpt = 0
     crs = ['artist', 'albumartist', 'album', 'year', 'decade', 'genre']
     library = {}
-    Speaker.speak_up("Listing all songs in #{folder}")
+    $speaker.speak_up("Listing all songs in #{folder}")
     files = Utils.search_folder(folder, {'regex' => '.*\.[mM][pP]3'})
     files.each do |p_song|
       cpt += 1
@@ -287,8 +287,8 @@ class Library
       f_song[:decade] = "#{f_song[:year][0...-1]}0"
       f_song[:decade] = nil if f_song[:decade].to_i == 0
       if f_song[:genre].to_s == '' || f_song[:artist].to_s == '' || f_song[:album].to_s == ''
-        if Speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
-          destination_folder = Speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
+        if $speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
+          destination_folder = $speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
           FileUtils.mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
           FileUtils.mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
         end
@@ -303,7 +303,7 @@ class Library
       end
       print "Processed song #{cpt} / #{files.count}\r"
     end
-    Speaker.speak_up("Finished processing songs, now generating playlists...")
+    $speaker.speak_up("Finished processing songs, now generating playlists...")
     collection = ordered_collection.sort_by { |k, _| k }.map { |x| x[1].sort_by { |s| s[:track_nr].to_i } }
     collection.shuffle! if random.to_i > 0
     collection.flatten!
@@ -314,22 +314,22 @@ class Library
       end
     end
     crs.each do |cr|
-      if Speaker.ask_if_needed("Do you want to generate playlists based on #{cr}? (y/n)", criteria[cr].to_s != '' ? 1 : 0, criteria[cr].to_i > 0 ? 'y' : 'n') == 'y'
+      if $speaker.ask_if_needed("Do you want to generate playlists based on #{cr}? (y/n)", criteria[cr].to_s != '' ? 1 : 0, criteria[cr].to_i > 0 ? 'y' : 'n') == 'y'
         if library[cr].nil? || library[cr].empty?
-          Speaker.speak_up "No collection of #{cr} found!"
+          $speaker.speak_up "No collection of #{cr} found!"
           next
         end
-        Speaker.speak_up("Will generate playlists based on #{cr}")
+        $speaker.speak_up("Will generate playlists based on #{cr}")
         library[cr].each do |p|
           generate_playlist("#{folder}/#{cr}s-#{p.gsub('/', '').gsub(/[^\u0000-\u007F]+/, '_').gsub(' ', '_')}".gsub(/\/*$/, ''), collection.select { |s| s[cr.to_sym] == p })
         end
-        Speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
+        $speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
       end
     end
   end
 
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
-    Speaker.speak_up("Looking for duplicates of #{title}...")
+    $speaker.speak_up("Looking for duplicates of #{title}...")
     replaced = nil
     dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original[1]})
     corrected_dups = []
@@ -348,15 +348,15 @@ class Library
         corrected_dups << d if d_title == title
       end
     end
-    if corrected_dups.length > 0 && Speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
+    if corrected_dups.length > 0 && $speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
       corrected_dups.each do |d|
         FileUtils.rm_r(File.dirname(d[0]))
       end
-    elsif corrected_dups.length > 0 && !original[1].nil? && Speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
+    elsif corrected_dups.length > 0 && !original[1].nil? && $speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
       FileUtils.rm_r(File.dirname(original[0]))
       replaced = 0
     else
-      Speaker.speak_up('No duplicates found')
+      $speaker.speak_up('No duplicates found')
     end
     return replaced
   end
@@ -378,7 +378,7 @@ class Library
         fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check) }
         while fetcher.alive?
           if Utils.check_if_inactive(active_hours) || low_b > 18
-            Speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
+            $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
             `pgrep -f 'rsync' | xargs kill -15`
             low_b = 0
           end
@@ -401,18 +401,18 @@ class Library
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = [], reverse_folder = [], exclude_folders = [])
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
-    Speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
+    $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
-    Speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
+    $speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
     Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'], ssh_opts['keys']) do |result|
       result.changes.each do |change|
-        Speaker.speak_up "#{change.filename} (#{change.summary})"
+        $speaker.speak_up "#{change.filename} (#{change.summary})"
       end
       if result.success?
         rsynced_clean = true
       else
-        Speaker.speak_up result.error
+        $speaker.speak_up result.error
       end
     end
     if rsynced_clean && move_if_finished && move_if_finished.is_a?(Array)
@@ -420,13 +420,13 @@ class Library
         next unless m.is_a?(Array)
         next unless FileTest.directory?(m[0])
         Dir.mkdir(m[1]) unless FileTest.directory?(m[1])
-        Speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
+        $speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
         FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1]) rescue nil
       end
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
-        Speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
+        $speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
         Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
@@ -435,26 +435,26 @@ class Library
     if !Utils.check_if_inactive(active_hours) && reverse_folder && reverse_folder.is_a?(Array)
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
-        Speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
+        $speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
         Rsync.run("#{f}/", "#{reverse_box}", opts, opts, ssh_opts['port'], ssh_opts['keys']) do |result|
           if result.success?
             result.changes.each do |change|
-              Speaker.speak_up "#{change.filename} (#{change.summary})"
+              $speaker.speak_up "#{change.filename} (#{change.summary})"
             end
           else
-            Speaker.speak_up result.error
+            $speaker.speak_up result.error
           end
         end
-        Speaker.speak_up("Finished reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
+        $speaker.speak_up("Finished reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
       end
     end
     compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10, 'exclude_path' => exclude_folders}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean || !Utils.check_if_inactive(active_hours)
-    Speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
+    $speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
     raise "Rsync failure" unless rsynced_clean
   end
 
   def self.generate_playlist(name, list)
-    Speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
+    $speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
     File.open("#{name}.m3u", "w:UTF-8") do |playlist|
       playlist.puts "#EXTM3U"
       list.each do |s|
@@ -467,7 +467,7 @@ class Library
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
     folder = eval(folder) if folder.is_a?(String)
     if list.nil? || list.empty?
-      list_name = Speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
+      list_name = $speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
       list = TraktList.list(list_name, '')
     end
     parsed_media = {}
@@ -480,7 +480,7 @@ class Library
       l_type = type[-1] == 's' ? type : "#{type}s"
       next if type_filter && type_filter != '' && type_filter != l_type
       parsed_media[l_type] = {} unless parsed_media[l_type]
-      folder[l_type] = Speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
+      folder[l_type] = $speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
       title = item[type]['title']
       next if parsed_media[l_type][title] && r_type != 'season'
       folders = Utils.search_folder(folder[l_type], {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
@@ -498,14 +498,14 @@ class Library
           list_paths << file[0]
         end
       else
-        Speaker.speak_up("#{title} NOT FOUND in #{folder[l_type]}")
+        $speaker.speak_up("#{title} NOT FOUND in #{folder[l_type]}")
       end
       parsed_media[l_type][title] = item[type]
     end
-    Speaker.speak_up("The total disk size of this list is #{list_size/1024/1024/1024} GB")
+    $speaker.speak_up("The total disk size of this list is #{list_size/1024/1024/1024} GB")
     return list_size, list_paths
   rescue => e
-    Speaker.tell_error(e, "Library.get_media_list_size")
+    $speaker.tell_error(e, "Library.get_media_list_size")
     return 0, []
   end
 
@@ -520,7 +520,7 @@ class Library
 
   def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '')
     movies = []
-    Speaker.speak_up('Parsing movie list, can take a long time...')
+    $speaker.speak_up('Parsing movie list, can take a long time...')
     self.parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
@@ -539,7 +539,7 @@ class Library
       $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
   rescue => e
-    Speaker.tell_error(e, "Library.process_search_list")
+    $speaker.tell_error(e, "Library.process_search_list")
   end
 
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)
@@ -559,27 +559,27 @@ class Library
       loop do
         choice = cpt
         break if cpt >= titles.count
-        if cpt > 0 && Speaker.ask_if_needed("Look for alternative titles for this file? (y/n)'", no_prompt, 'n') == 'y'
-          Speaker.speak_up("Alternatives titles found:")
+        if cpt > 0 && $speaker.ask_if_needed("Look for alternative titles for this file? (y/n)'", no_prompt, 'n') == 'y'
+          $speaker.speak_up("Alternatives titles found:")
           idxs = 1
           titles.each do |m|
-            Speaker.speak_up("#{idxs}: #{m[0]}#{' (info IMDB: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
+            $speaker.speak_up("#{idxs}: #{m[0]}#{' (info IMDB: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
             idxs += 1
           end
-          choice = Speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
+          choice = $speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
           break if choice < 0 || choice > titles.count
         elsif cpt > 0
           break
         end
         t = titles[choice]
         if t[0] == 'Edit title manually'
-          Speaker.speak_up('Enter the title to look for:')
+          $speaker.speak_up('Enter the title to look for:')
           t[0] = STDIN.gets.strip
         end
         #Look for duplicate
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
         break if replaced
-        Speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
+        $speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
         replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1
@@ -587,7 +587,7 @@ class Library
       $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder, '')} if replaced.to_i > 0
     end
   rescue => e
-    Speaker.tell_error(e, "Library.replace_movies")
+    $speaker.tell_error(e, "Library.replace_movies")
   end
 
 end

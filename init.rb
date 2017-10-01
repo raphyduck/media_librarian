@@ -1,9 +1,10 @@
 #Set global variables
-$config_dir = Dir.home + '/.medialibrarian'
-$config_file = $config_dir + '/conf.yml'
-$temp_dir = $config_dir + '/tmp'
-$log_dir = $config_dir + '/log'
-$template_dir = $config_dir + '/templates'
+config_dir = Dir.home + '/.medialibrarian'
+$config_file = config_dir + '/conf.yml'
+$config_example = File.dirname(__FILE__) + '/../config/conf.yml.example'
+$temp_dir = config_dir + '/tmp'
+log_dir = config_dir + '/log'
+$template_dir = config_dir + '/templates'
 $move_completed_torrent = nil
 $deluge_connected = nil
 $deluge_options = {}
@@ -18,17 +19,16 @@ $dowloaded_links = []
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
 #Create default folders if doesn't exist
-Dir.mkdir($config_dir) unless File.exist?($config_dir)
-Dir.mkdir($log_dir) unless File.exist?($log_dir)
+Dir.mkdir(config_dir) unless File.exist?(config_dir)
+Dir.mkdir(log_dir) unless File.exist?(log_dir)
 Dir.mkdir($temp_dir) unless File.exist?($temp_dir)
 unless File.exist?($template_dir)
   FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
 end
-$logger = Logger.new($log_dir + '/medialibrarian.log')
-$logger_error = Logger.new($log_dir + '/medialibrarian_errors.log')
+$speaker = SimpleSpeaker::Speaker.new(log_dir + '/medialibrarian.log', log_dir + '/medialibrarian_errors.log')
 #Load app and settings
 Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
-Config.load_settings
+$config = SimpleConfigMan.load_settings(config_dir, $config_file, $config_example)
 
 #Start torrent_client
 $t_client = TorrentClient.new
@@ -44,7 +44,7 @@ if $config['trakt']
 end
 
 #Set up and open app DB
-db_path=$config_dir +"/librarian.db"
+db_path=config_dir +"/librarian.db"
 $db = Storage::Db.new(db_path)
 
 #start Kodi client
@@ -71,6 +71,7 @@ if $email
                     enable_starttls_auto: true
   end.load!
 end
+$email_msg = $email ? '' : nil
 
 #String comparator
 $str_closeness = FuzzyStringMatch::JaroWinkler.create( :pure )

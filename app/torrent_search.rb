@@ -3,10 +3,10 @@ class TorrentSearch
   def self.authenticate_all
     if $config['t411'] && !T411.authenticated?
       T411.authenticate($config['t411']['username'], $config['t411']['password'])
-      Speaker.speak_up("You are #{T411.authenticated? ? 'now' : 'NOT'} connected to T411")
+      $speaker.speak_up("You are #{T411.authenticated? ? 'now' : 'NOT'} connected to T411")
     end
   rescue => e
-    Speaker.tell_error(e, "TorrentSearch.authenticate_all")
+    $speaker.tell_error(e, "TorrentSearch.authenticate_all")
   end
 
   def self.get_cid(type, category)
@@ -35,7 +35,7 @@ class TorrentSearch
         }.fetch(category.to_sym, nil)
     end
   rescue => e
-    Speaker.tell_error(e, "TorrentSearch.get_cid")
+    $speaker.tell_error(e, "TorrentSearch.get_cid")
   end
 
   def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [])
@@ -71,12 +71,12 @@ class TorrentSearch
     end
     get_results
   rescue => e
-    Speaker.tell_error(e, "TorrentSearch.get_results")
+    $speaker.tell_error(e, "TorrentSearch.get_results")
     retry unless (tries -= 1) <= 0
   end
 
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)
-    Speaker.speak_up("Will download torrent '#{name}' from #{url}")
+    $speaker.speak_up("Will download torrent '#{name}' from #{url}")
     case type
       when 't411'
         T411::Torrents.download(did.to_i, destination_folder)
@@ -87,7 +87,7 @@ class TorrentSearch
     end
     did
   rescue => e
-    Speaker.tell_error(e, "TorrentSearch.get_torrent_file")
+    $speaker.tell_error(e, "TorrentSearch.get_torrent_file")
     nil
   end
 
@@ -120,13 +120,13 @@ class TorrentSearch
       success = nil
       tcks.each do |type|
         break if success
-        next if tcks.first != type && Speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if tcks.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
       end
     end
     success
   rescue => e
-    Speaker.tell_error(e, "TorrentSearch.search")
+    $speaker.tell_error(e, "TorrentSearch.search")
     nil
   end
 
@@ -143,24 +143,24 @@ class TorrentSearch
     if no_prompt.to_i == 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?
-        Speaker.speak_up("No results for '#{search['query']}' on #{type}")
+        $speaker.speak_up("No results for '#{search['query']}' on #{type}")
         return success
       end
-      Speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
+      $speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
       search['torrents'].each do |torrent|
-        Speaker.speak_up('---------------------------------------------------------------')
-        Speaker.speak_up("Index: #{i}")
-        Speaker.speak_up("Name: #{torrent['name']}")
-        Speaker.speak_up("Size: #{(torrent['size'].to_f / 1024 / 1024 / 1024).round(2)} GB")
-        Speaker.speak_up("Seeders: #{torrent['seeders']}")
-        Speaker.speak_up("Leechers: #{torrent['leechers']}")
-        Speaker.speak_up("Added: #{torrent['added']}")
-        Speaker.speak_up("Link: #{URI.escape(torrent['link'])}")
-        Speaker.speak_up('---------------------------------------------------------------')
+        $speaker.speak_up('---------------------------------------------------------------')
+        $speaker.speak_up("Index: #{i}")
+        $speaker.speak_up("Name: #{torrent['name']}")
+        $speaker.speak_up("Size: #{(torrent['size'].to_f / 1024 / 1024 / 1024).round(2)} GB")
+        $speaker.speak_up("Seeders: #{torrent['seeders']}")
+        $speaker.speak_up("Leechers: #{torrent['leechers']}")
+        $speaker.speak_up("Added: #{torrent['added']}")
+        $speaker.speak_up("Link: #{URI.escape(torrent['link'])}")
+        $speaker.speak_up('---------------------------------------------------------------')
         i += 1
       end
     end
-    download_id = Speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
+    download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
     if download_id.to_i > 0
       did = (Time.now.to_f * 1000).to_i
       name = search['torrents'][download_id.to_i - 1]['name']

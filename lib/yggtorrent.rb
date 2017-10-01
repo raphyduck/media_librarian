@@ -31,7 +31,7 @@ module Yggtorrent
 
     def authenticate!
       if $config['yggtorrent']
-        Speaker.speak_up('Authenticating on yggtorrent.')
+        $speaker.speak_up('Authenticating on yggtorrent.')
         login = $ygg_agent.get(BASE_URL + '/user/login')
         login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
@@ -39,7 +39,7 @@ module Yggtorrent
         $ygg_agent.submit login_form
         $ygg_logged = true
       else
-        Speaker.speak_up('YggTorrent not configured, cannot authenticate')
+        $speaker.speak_up('YggTorrent not configured, cannot authenticate')
       end
     end
 
