@@ -86,7 +86,7 @@ class Library
     end
   end
 
-  def self.convert_pdf_cbz(path:, no_warning: false)
+  def self.convert_pdf_cbz(path:, no_warning: false, rename_original: true)
     return if !no_warning && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
@@ -115,7 +115,7 @@ class Library
         end
         compress_archive(name, dest_file)
         FileUtils.rm_r(name)
-        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_")
+        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original
         $speaker.speak_up("#{name} converted!")
       end
     end
