@@ -87,11 +87,12 @@ class Library
   end
 
   def self.convert_pdf_cbz(path:, no_warning: 0, rename_original: 1, move_destination: '')
+    puts "rename_original #{rename_original}"
     return if no_warning.to_i == 0 && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
-        convert_pdf_cbz(path: f[0], no_warning: no_warning)
+        convert_pdf_cbz(path: f[0], no_warning: 1)
       end
     else
       Dir.chdir(File.dirname(path)) do
