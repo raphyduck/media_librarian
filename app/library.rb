@@ -92,7 +92,7 @@ class Library
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
         convert_pdf_cbz(path: f[0], no_warning: 1, rename_original: rename_original, move_destination: move_destination)
-      endrename_original
+      end
     else
       Dir.chdir(File.dirname(path)) do
         name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
