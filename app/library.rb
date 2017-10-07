@@ -86,12 +86,12 @@ class Library
     end
   end
 
-  def self.convert_pdf_cbz(path:, no_warning: false, rename_original: true)
-    return if !no_warning && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
+  def self.convert_pdf_cbz(path:, no_warning: 0, rename_original: 1)
+    return if no_warning.to_i == 0 && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
-        convert_pdf_cbz(path: f[0], no_warning: true)
+        convert_pdf_cbz(path: f[0], no_warning: no_warning)
       end
     else
       Dir.chdir(File.dirname(path)) do
@@ -115,7 +115,7 @@ class Library
         end
         compress_archive(name, dest_file)
         FileUtils.rm_r(name)
-        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original
+        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         $speaker.speak_up("#{name} converted!")
       end
     end
