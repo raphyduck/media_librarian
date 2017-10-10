@@ -72,53 +72,72 @@ class Library
     $speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.compress_archive(folder, name)
-    Zip::Archive.open(name, Zip::CREATE) do |ar|
-      ar.add_dir(folder)
-      #Dir.glob("#{folder}/**/*").each do |path|
-      Utils.search_folder(folder, {'includedir' => 1}).each do |path|
-        if File.directory?(path[0])
-          ar.add_dir(path[0])
-        else
-          ar.add_file(path[0], path[0]) # add_file(<entry name>, <source path>)
-        end
-      end
+  def self.compress_comics(path:, destination: '', output_format: 'cbz', remove_original: 1, skip_compress: 0)
+    destination = path.gsub(/\/$/,'') + '.' + output_format if destination.to_s == ''
+    case output_format
+      when 'cbz'
+        Utils.compress_archive(path, destination) if skip_compress.to_i == 0
+      else
+        $speaker.speak_up('Nothing to do, skipping')
+        skip_compress = 1
     end
+    FileUtils.rm_r(path) if remove_original.to_i > 0
+    $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic")
+    return skip_compress
+  rescue => e
+    $speaker.tell_error(e, "Library.compress_comics")
   end
 
-  def self.convert_pdf_cbz(path:, no_warning: 0, rename_original: 1, move_destination: '')
-    return if no_warning.to_i == 0 && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
+  def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '')
+    name = ''
+    valid_inputs = ['cbz', 'pdf', 'cbr']
+    valid_outputs = ['cbz']
+    return $speaker.speak_up("Invalid input format, needs to be one of #{valid_inputs}") unless valid_inputs.include?(input_format)
+    return $speaker.speak_up("Invalid output format, needs to be one of #{valid_outputs}") unless valid_outputs.include?(output_format)
+    return if no_warning.to_i == 0 && input_format == 'pdf' && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
-      Utils.search_folder(path, {'regex' => '.*\.pdf'}).each do |f|
-        convert_pdf_cbz(path: f[0], no_warning: 1, rename_original: rename_original, move_destination: move_destination)
+      Utils.search_folder(path, {'regex' => ".*\.#{input_format}"}).each do |f|
+        convert_comics(path: f[0], no_warning: 1, rename_original: rename_original, move_destination: move_destination)
       end
     else
+      skipping = 0
       Dir.chdir(File.dirname(path)) do
         name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
-        dest_file = "#{move_destination}#{name.gsub(/^_?/, '')}.cbz"
+        dest_file = "#{move_destination}#{name.gsub(/^_?/, '')}.#{output_format}"
         return if File.exist?(dest_file)
-        $speaker.speak_up("Will convert #{name} to CBZ format #{dest_file}")
-        Dir.mkdir(name)
-        extractor = ExtractImages::Extractor.new
-        extracted = 0
+        $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
+        Dir.mkdir(name) unless File.exist?(name)
         Dir.chdir(name) do
-          PDF::Reader.open('../' +File.basename(path)) do |reader|
-            reader.pages.each do |page|
-              extracted = extractor.page(page)
-            end
+          case input_format
+            when 'pdf'
+              extractor = ExtractImages::Extractor.new
+              extracted = 0
+              PDF::Reader.open('../' +File.basename(path)) do |reader|
+                reader.pages.each do |page|
+                  extracted = extractor.page(page)
+                end
+              end
+              unless extracted > 0
+                $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
+                skipping = 1
+              end
+            when 'cbr', 'cbz'
+              Utils.extract_archive(input_format, '../' +File.basename(path), '.')
+            else
+              $speaker.speak_up('Nothing to do, skipping')
+              skipping = 1
           end
         end
-        unless extracted > 0
-          $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
-          return
-        end
-        compress_archive(name, dest_file)
-        FileUtils.rm_r(name)
+        skipping = compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
+        return if skipping > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         $speaker.speak_up("#{name} converted!")
       end
     end
+  rescue => e
+    $speaker.tell_error(e, "Library.convert_pdf_cbz")
+    name.to_s != '' && Dir.exist?(name) && FileUtils.rm_r(name)
   end
 
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
@@ -427,7 +446,7 @@ class Library
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
         $speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
-        Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
+        Net::SSH.start(remote_server, remote_user, Utils.recursive_symbolize_keys(ssh_opts)) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
       end

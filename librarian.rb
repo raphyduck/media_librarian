@@ -27,6 +27,7 @@ require 'sys/filesystem'
 require 't411'
 require 'trakt'
 require 'tvmaze'
+require 'unrar'
 require 'xbmc-client'
 require 'yaml'
 require 'zipruby'
@@ -39,7 +40,8 @@ class Librarian
       :reconfigure => ['Librarian', 'reconfigure'],
       :library => {
           :compare_remote_files => ['Library', 'compare_remote_files'],
-          :convert_pdf_cbz => ['Library', 'convert_pdf_cbz'],
+          :compress_comics => ['Library', 'compress_comics'],
+          :convert_comics => ['Library', 'convert_comics'],
           :copy_media_from_list => ['Library', 'copy_media_from_list'],
           :create_playlists => ['Library', 'create_playlists'],
           :create_custom_list => ['Library', 'create_custom_list'],

@@ -18,6 +18,31 @@ class Utils
     end
   end
 
+  def self.compress_archive(folder, name)
+    Zip::Archive.open(name, Zip::CREATE) do |ar|
+      ar.add_dir(folder)
+      #Dir.glob("#{folder}/**/*").each do |path|
+      Utils.search_folder(folder, {'includedir' => 1}).each do |path|
+        if File.directory?(path[0])
+          ar.add_dir(path[0])
+        else
+          ar.add_file(path[0], path[0]) # add_file(<entry name>, <source path>)
+        end
+      end
+    end
+  end
+
+  def self.extract_archive(type, archive, destination)
+    case type
+      when 'cbr','rar'
+        $unrar = Unrar::Archive.new(archive)
+        $unrar.extract
+      when 'cbz','zip'
+
+    end
+    #TODO: Finish this
+  end
+
   def self.get_disk_size(path)
     size=0
     Find.find(path) { |file| size+= File.size(file)}

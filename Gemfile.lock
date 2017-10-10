@@ -47,6 +47,12 @@ GIT
       rest-client (~> 2.0.0)
 
 GIT
+  remote: https://github.com/raphyduck/unrar.git
+  revision: 7c89a7c6c625646af3c4e9696f61d68b8bc9d144
+  specs:
+    unrar (0.0.3)
+
+GIT
   remote: https://github.com/raphyduck/xbmc-client.git
   revision: 559e6104b884c1b2e0d799ecb1c34c563e977f57
   specs:
@@ -84,7 +90,7 @@ GEM
       hanami-utils (~> 1.0)
       mail (~> 2.5)
       tilt (~> 2.0, >= 2.0.1)
-    hanami-utils (1.0.3)
+    hanami-utils (1.0.4)
       transproc (~> 1.0)
     hashery (2.1.2)
     http-cookie (1.0.3)
@@ -176,6 +182,7 @@ DEPENDENCIES
   t411!
   trakt!
   tvmaze!
+  unrar!
   xbmc-client!
   zipruby
 
@@ -183,4 +190,4 @@ RUBY VERSION
    ruby 2.4.0p0
 
 BUNDLED WITH
-   1.15.1
+   1.16.0.pre.3
