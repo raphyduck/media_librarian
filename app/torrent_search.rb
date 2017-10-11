@@ -59,6 +59,9 @@ class TorrentSearch
       when 'yggtorrent'
         @search = Yggtorrent::Search.new(keyword, url)
         get_results = @search.links
+      when 'wop'
+        @search = Wop::Search.new(keyword, url)
+        get_results = @search.links
     end
     if get_results['torrents']
       filter_out.each do |fout|
@@ -82,7 +85,7 @@ class TorrentSearch
         T411::Torrents.download(did.to_i, destination_folder)
       when 'extratorrent'
         Extratorrent::Download.download(url, destination_folder, did)
-      when 'yggtorrent'
+      when 'yggtorrent', 'wop'
         @search.download(url, destination_folder, did)
     end
     did
@@ -115,7 +118,7 @@ class TorrentSearch
     rescue Exception
       keywords = [keywords]
     end
-    tcks = ['yggtorrent', 'thepiratebay']
+    tcks = ['yggtorrent', 'wop', 'thepiratebay']
     keywords.each do |keyword|
       success = nil
       tcks.each do |type|

@@ -455,7 +455,7 @@ class Library
       reverse_folder.each do |f|
         reverse_box = "#{remote_user}@#{remote_server}:#{f}"
         $speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        Rsync.run("#{f}/", "#{reverse_box}", opts, opts, ssh_opts['port'], ssh_opts['keys']) do |result|
+        Rsync.run("#{f}/", "#{reverse_box}", opts, ssh_opts['port'], ssh_opts['keys']) do |result|
           if result.success?
             result.changes.each do |change|
               $speaker.speak_up "#{change.filename} (#{change.summary})"

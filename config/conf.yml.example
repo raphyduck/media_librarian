@@ -35,3 +35,8 @@ yggtorrent:
     password: password
     site_specific_kw:
         movies: 'multi'
+worldofp2p:
+    username: username
+    password: password
+    site_specific_kw:
+        movies: 'multi'
