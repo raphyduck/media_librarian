@@ -2,6 +2,7 @@ source 'http://rubygems.org'
 ruby '2.4.0'
 
 gem 'activesupport', :path => File.join(File.dirname(__FILE__), '/vendor/gems/activesupport-4.2.7.1')
+gem 'archive-zip'
 gem 'bencode'
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git'
 gem 'fuzzy-string-match'
@@ -24,4 +25,3 @@ gem 'trakt', :git => 'https://github.com/raphyduck/trakt.git'
 gem 'tvmaze', :git => 'https://github.com/raphyduck/tvmaze.git'
 gem 'unrar', :git => 'https://github.com/raphyduck/unrar.git'
 gem 'xbmc-client', :git => 'https://github.com/raphyduck/xbmc-client.git'
-gem 'zipruby'

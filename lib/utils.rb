@@ -19,33 +19,26 @@ class Utils
   end
 
   def self.compress_archive(folder, name)
-    Zip::Archive.open(name, Zip::CREATE) do |ar|
-      ar.add_dir(folder)
-      #Dir.glob("#{folder}/**/*").each do |path|
-      Utils.search_folder(folder, {'includedir' => 1}).each do |path|
-        if File.directory?(path[0])
-          ar.add_dir(path[0])
-        else
-          ar.add_file(path[0], path[0]) # add_file(<entry name>, <source path>)
-        end
-      end
-    end
+    pwd = Dir.pwd
+    Dir.chdir(File.dirname(folder))
+    Archive::Zip.archive(name, File.basename(folder))
+    Dir.chdir(pwd)
   end
 
   def self.extract_archive(type, archive, destination)
     case type
-      when 'cbr','rar'
+      when 'cbr', 'rar'
         $unrar = Unrar::Archive.new(archive)
         $unrar.extract
-      when 'cbz','zip'
-
+        #TODO: Finish this
+      when 'cbz', 'zip'
+        Archive::Zip.extract(archive, destination)
     end
-    #TODO: Finish this
   end
 
   def self.get_disk_size(path)
     size=0
-    Find.find(path) { |file| size+= File.size(file)}
+    Find.find(path) { |file| size+= File.size(file) }
     size
   end
 
@@ -56,7 +49,7 @@ class Utils
 
   def self.get_path_depth(path, folder)
     folder = folder + '/' unless folder[-1] == '/'
-    parent = File.dirname(path.gsub(folder,''))
+    parent = File.dirname(path.gsub(folder, ''))
     if parent == '.'
       1
     else
@@ -65,15 +58,15 @@ class Utils
   end
 
   def self.get_pid(process)
-    `ps ax | grep #{process} | grep -v grep | cut -f1 -d' '`.gsub(/\n/,'')
+    `ps ax | grep #{process} | grep -v grep | cut -f1 -d' '`.gsub(/\n/, '')
   end
 
   def self.get_traffic(network_card)
     in_t, out_t, in_s, out_s = nil, nil, 0, 0
     (1..2).each do |i|
       _in_t, _out_t = in_t, out_t
-      in_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $1}'`.gsub(/\n/,'').to_i
-      out_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $9}'`.gsub(/\n/,'').to_i
+      in_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $1}'`.gsub(/\n/, '').to_i
+      out_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $9}'`.gsub(/\n/, '').to_i
       if i == 2
         in_s = (in_t - _in_t)
         out_s = (out_t - _out_t)
@@ -86,7 +79,7 @@ class Utils
 
   def self.is_in_path(path_list, folder)
     path_list.each do |p|
-      return true if folder.gsub('//','/').include?(p.gsub('//','/')) || p.gsub('//','/').include?(folder.gsub('//','/'))
+      return true if folder.gsub('//', '/').include?(p.gsub('//', '/')) || p.gsub('//', '/').include?(folder.gsub('//', '/'))
     end
     return false
   end
@@ -116,7 +109,7 @@ class Utils
       when Hash
         Hash[
             h.map do |k, v|
-              [ k.respond_to?(:to_sym) ? k.to_sym : k, recursive_symbolize_keys(v) ]
+              [k.respond_to?(:to_sym) ? k.to_sym : k, recursive_symbolize_keys(v)]
             end
         ]
       when Enumerable
@@ -127,7 +120,7 @@ class Utils
   end
 
   def self.regexify(str)
-    str.strip.gsub(/[:,-\/\[\]]/,'.{0,2}').gsub(/ /,'.').gsub("'","'?")
+    str.strip.gsub(/[:,-\/\[\]]/, '.{0,2}').gsub(/ /, '.').gsub("'", "'?")
   end
 
   def self.search_folder(folder, filter_criteria = {})
@@ -168,6 +161,6 @@ class Utils
   end
 
   def self.title_match_string(str)
-    '^([Tt]he )?' + regexify(str.gsub(/(\w*)\(\d+\)/, '\1').gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/,'').gsub(/ \(US\)$/,'')) + '.{0,7}$'
+    '^([Tt]he )?' + regexify(str.gsub(/(\w*)\(\d+\)/, '\1').gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/ \(US\)$/, '')) + '.{0,7}$'
   end
 end

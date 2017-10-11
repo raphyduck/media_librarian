@@ -1,3 +1,4 @@
+require 'archive/zip'
 require 'bundler/setup'
 require 'active_support/time'
 require 'base64'
@@ -30,7 +31,6 @@ require 'tvmaze'
 require 'unrar'
 require 'xbmc-client'
 require 'yaml'
-require 'zipruby'
 #Process.daemon
 
 class Librarian
