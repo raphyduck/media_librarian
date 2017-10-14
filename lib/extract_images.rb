@@ -1,3 +1,5 @@
+require 'zlib'
+
 module ExtractImages
 
   class Extractor
@@ -26,11 +28,8 @@ module ExtractImages
             case filter
               when :CCITTFaxDecode then
                 ExtractImages::Tiff.new(stream).save("#{page.number}-#{count}-#{name}.tif")
-              when :DCTDecode      then
+              when :DCTDecode, :JPXDecode, :JBIG2Decode then
                 ExtractImages::Jpg.new(stream).save("#{page.number}-#{count}-#{name}.jpg")
-              when :JPXDecode then
-                #TODO: Extract PPM
-                return 0
               else
                 ExtractImages::Raw.new(stream).save("#{page.number}-#{count}-#{name}.tif")
                 return 0

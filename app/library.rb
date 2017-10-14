@@ -98,13 +98,13 @@ class Library
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       Utils.search_folder(path, {'regex' => ".*\.#{input_format}"}).each do |f|
-        convert_comics(path: f[0], no_warning: 1, rename_original: rename_original, move_destination: move_destination)
+        convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
       end
     else
       skipping = 0
       Dir.chdir(File.dirname(path)) do
         name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
-        dest_file = "#{move_destination}#{name.gsub(/^_?/, '')}.#{output_format}"
+        dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.#{output_format}"
         return if File.exist?(dest_file)
         $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
         Dir.mkdir(name) unless File.exist?(name)
@@ -136,8 +136,9 @@ class Library
       end
     end
   rescue => e
-    $speaker.tell_error(e, "Library.convert_pdf_cbz")
-    name.to_s != '' && Dir.exist?(name) && FileUtils.rm_r(name)
+    $speaker.tell_error(e, "Library.convert_comics")
+    name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
+    $speaker.ask_if_needed("Continue?")
   end
 
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
