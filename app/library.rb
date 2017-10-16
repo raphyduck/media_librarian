@@ -119,7 +119,7 @@ class Library
                 end
               end
               unless extracted > 0
-                $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!")
+                $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
                 skipping = 1
               end
             when 'cbr', 'cbz'
@@ -138,7 +138,6 @@ class Library
   rescue => e
     $speaker.tell_error(e, "Library.convert_comics")
     name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
-    $speaker.ask_if_needed("Continue?")
   end
 
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
@@ -259,18 +258,15 @@ class Library
           end
           if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'].to_i > 0) && ((review_cr['add_all'].to_i == 0 &&
               review_cr['no_season'].to_i > 0) || $speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
-            choice = $speaker.ask_if_needed("Which seasons do you want to keep? (spearated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
+            choice = $speaker.ask_if_needed("Which seasons do you want to keep? (separated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else
               item['seasons'].select! { |s| choice.map! { |n| n.to_i }.include?(s['number']) }
             end
+            item['seasons'].map! { |s| s.select { |k, _| k != 'episodes' } } if item['seasons'] unless $speaker.ask_if_needed("Do you want to add all episodes as well? (y/n)", review_cr['add_episodes'].to_i, 'y') == 'y'
           end
         end
-      end
-      new_list[type].map! do |i|
-        i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
-        i[type[0...-1]]
       end
       $speaker.speak_up('Updating items in the list...')
       TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
