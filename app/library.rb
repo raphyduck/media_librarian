@@ -267,9 +267,11 @@ class Library
           end
         end
       end
-      new_list[type].map! do |i|
-        i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons'] && t_criteria['add_episodes'].to_i == 0
-        i[type[0...-1]]
+      if t_criteria['add_episodes'].to_i == 0
+        new_list[type].map! do |i|
+          i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
+          i[type[0...-1]]
+        end
       end
       $speaker.speak_up('Updating items in the list...')
       TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
