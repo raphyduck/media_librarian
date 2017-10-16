@@ -268,7 +268,7 @@ class Library
         end
       end
       new_list[type].map! do |i|
-        i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons'] && $speaker.ask_if_needed("Do you want to add all episodes as well? (y/n)", t_criteria['add_episodes'].to_i, 'y') != 'y'
+        i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons'] && t_criteria['add_episodes'].to_i == 0
         i[type[0...-1]]
       end
       $speaker.speak_up('Updating items in the list...')
