@@ -654,9 +654,6 @@ class Library
             new_name = new_name.gsub(/\.\.+/, '.').gsub("'",'')
             $speaker.speak_up("Moving '#{ep_filename}' to '#{new_name}'")
             FileUtils.mv(ep[0], File.dirname(ep[0]) + '/' + new_name)
-            if File.exist?(ep[0].gsub(/\.\w{2,4}$/,'.srt'))
-              FileUtils.mv(ep[0].gsub(/\.\w{2,4}$/,'.srt'), File.dirname(ep[0]) + '/' + new_name.gsub(/\.\w{2,4}$/,'.srt'))
-            end
           end
         end
       rescue => e
