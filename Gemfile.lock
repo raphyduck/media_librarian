@@ -152,6 +152,8 @@ GEM
     tilt (2.0.8)
     transproc (1.0.2)
     ttfunk (1.5.1)
+    tvdb_party (0.9.1)
+      httparty (>= 0.6.1)
     tzinfo (1.2.3)
       thread_safe (~> 0.1)
     unf (0.1.4)
@@ -184,6 +186,7 @@ DEPENDENCIES
   sys-filesystem
   t411!
   trakt!
+  tvdb_party
   tvmaze!
   unrar!
   xbmc-client!

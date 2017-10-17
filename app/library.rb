@@ -73,7 +73,7 @@ class Library
   end
 
   def self.compress_comics(path:, destination: '', output_format: 'cbz', remove_original: 1, skip_compress: 0)
-    destination = path.gsub(/\/$/,'') + '.' + output_format if destination.to_s == ''
+    destination = path.gsub(/\/$/, '') + '.' + output_format if destination.to_s == ''
     case output_format
       when 'cbz'
         Utils.compress_archive(path, destination) if skip_compress.to_i == 0
@@ -190,6 +190,30 @@ class Library
       Report.deliver(object_s: 'copy_media_from_list - Errors syncing list ' + source_list.to_s + ' to disk ' + type.to_s, body_s: sync_error) if sync_error != ''
     end
     $speaker.speak_up("Finished copying media from #{source_list}!")
+  end
+
+  def self.copy_trakt_list(name:, description:, origin: 'collection', criteria: {})
+    $speaker.speak_up("Fetching items from #{origin}...")
+    criteria = eval(criteria) if criteria.is_a?(String)
+    new_list = {}
+    (criteria['types'] || []).each do |t|
+      new_list[t] = TraktList.list(origin, t)
+    end
+    existing_lists = TraktList.list('lists')
+    dest_list = existing_lists.select { |l| l['name'] == name }.first
+    to_delete = {}
+    if dest_list
+      $speaker.speak_up("List #{name} exists")
+      existing = TraktList.list(name)
+      to_delete = TraktList.parse_custom_list(existing)
+    else
+      $speaker.speak_up("List #{name} doesn't exist, creating it...")
+      TraktList.create_list(name, description)
+    end
+    ['movies', 'shows', 'episodes'].each do |type|
+      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
+      TraktList.add_to_list(new_list[type], 'custom', name, type) if new_list[type]
+    end
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
@@ -559,6 +583,83 @@ class Library
     end
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")
+  end
+
+  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
+    qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
+    Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
+      begin
+        series_name = File.basename(series[0])
+        episodes = []
+        if search_tvdb.to_i > 0
+          go_on = 0
+          while go_on.to_i == 0
+            tvdb_show = $tvdb.search(series_name).first
+            tvdb_show = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')).first if tvdb_show.nil?
+            if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == series_name.downcase.gsub(/[ \(\)\.\:]/, '')
+              go_on = 1
+            else
+              go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{series_name}, proceed with that? (y/n)", no_prompt, 'y') == 'y' ? 1 : 0
+            end
+          end
+          unless tvdb_show.nil?
+            show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
+            episodes = $tvdb.get_all_episodes(show)
+          end
+        end
+        Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
+          ep_filename = File.basename(ep[0])
+          identifiers = ep_filename.downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})/)
+          identifiers = ep_filename.scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
+          season = ''
+          ep_nb = []
+          unless identifiers.first.nil?
+            identifiers.each do |m|
+              bd = m[1].to_s.scan(/^(\d{1,3})[ex]/)
+              if bd.first.nil?
+                case m[1].to_s.length
+                  when 3
+                    season = m[1].to_s.gsub(/^(\d)\d+/, '\1') if season == ''
+                    nb = m[1].gsub(/^\d(\d+)/, '\1').to_i
+                  when 4
+                    season = m[1].to_s.gsub(/^(\d{2})\d+/, '\1') if season == ''
+                    nb = m[1].gsub(/^\d{2}(\d+)/, '\1').to_i
+                  else
+                    nb = 0
+                end
+              else
+                season = bd.first[0].to_s.to_i if season == ''
+                nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
+              end
+              ep_nb << nb.to_i if nb.to_i > 0
+            end
+          end
+          if season == '' || ep_nb.empty?
+            season = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
+            ep_nb = [$speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i]
+          end
+          q = ep_filename.downcase.gsub('-', '').scan(qualities).join('.').gsub('-','')
+          tvdb_ep = !episodes.empty? && season != '' && ep_nb.first.to_i > 0 ? episodes.select { |e| e.season_number == season.to_i.to_s && e.number == ep_nb.first.to_s }.first : nil
+          tvdb_ep_name = tvdb_ep.nil? ? '' : tvdb_ep.name
+          extension = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
+          new_name = "#{series_name.downcase.gsub(/[ \:\,\-\[\]\(\)]/, '.')}."
+          new_identifier = ''
+          ep_nb.each do |n|
+            new_identifier += "S#{format('%02d', season.to_i)}E#{format('%02d', n)}." if n.to_i > 0
+          end
+          new_name += "#{new_identifier}#{tvdb_ep_name.downcase.gsub(/[ \:\,\-\[\]\(\)]/, '.')}.#{q}.#{extension.downcase}"
+          new_name = $speaker.ask_if_needed("File #{ep_filename} has not been recognized
+          Please enter the new file name (empty to skip)?", no_prompt, '') if new_identifier == ''
+          if new_name != '' && new_identifier != ''
+            new_name = new_name.gsub(/\.\.+/, '.').gsub("'",'')
+            $speaker.speak_up("Moving '#{ep_filename}' to '#{new_name}'")
+            FileUtils.mv(ep[0], File.dirname(ep[0]) + '/' + new_name)
+          end
+        end
+      rescue => e
+        $speaker.tell_error(e, "Rename tv series block #{series_name}")
+      end
+    end
   end
 
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)

@@ -27,6 +27,7 @@ require 'sqlite3'
 require 'sys/filesystem'
 require 't411'
 require 'trakt'
+require 'tvdb_party'
 require 'tvmaze'
 require 'unrar'
 require 'xbmc-client'
@@ -43,11 +44,13 @@ class Librarian
           :compress_comics => ['Library', 'compress_comics'],
           :convert_comics => ['Library', 'convert_comics'],
           :copy_media_from_list => ['Library', 'copy_media_from_list'],
+          :copy_trakt_list => ['Library', 'copy_trakt_list'],
           :create_playlists => ['Library', 'create_playlists'],
           :create_custom_list => ['Library', 'create_custom_list'],
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
           :process_search_list => ['Library', 'process_search_list'],
+          :rename_tv_series => ['Library', 'rename_tv_series'],
           :replace_movies => ['Library', 'replace_movies']
       },
       :torrent => {

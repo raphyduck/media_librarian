@@ -30,6 +30,8 @@ trakt:
     account_id: account_id
     client_id: client_id
     client_secret: client_secret
+tvdb:
+    api_key: api_key
 yggtorrent:
     username: username
     password: password
