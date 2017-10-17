@@ -585,7 +585,7 @@ class Library
     $speaker.tell_error(e, "Library.process_search_list")
   end
 
-  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
+  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0, prompt_at_each_series: 0)
     qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
@@ -594,10 +594,11 @@ class Library
         episodes = []
         if search_tvdb.to_i > 0
           go_on = 0
+          tvdb_shows = $tvdb.search(series_name).first
+          tvdb_shows = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
           while go_on.to_i == 0
-            tvdb_show = $tvdb.search(series_name).first
-            tvdb_show = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')).first if tvdb_show.nil?
-            if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == series_name.downcase.gsub(/[ \(\)\.\:]/, '')
+            tvdb_show = tvdb_shows.shift
+            if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == series_name.downcase.gsub(/[ \(\)\.\:]/, '') && prompt_at_each_series.to_i == 0
               go_on = 1
             else
               go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{series_name}, proceed with that? (y/n)", no_prompt, 'y') == 'y' ? 1 : 0
