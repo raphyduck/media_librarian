@@ -604,6 +604,7 @@ class Library
               go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{series_name}, proceed with that? (y/n)", no_prompt, 'y') == 'y' ? 1 : 0
             end
           end
+          next unless go_on > 1
           unless tvdb_show.nil?
             show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
             episodes = $tvdb.get_all_episodes(show)
