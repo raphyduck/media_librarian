@@ -591,7 +591,6 @@ class Library
       next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
-        next if series_name != "ReGenesis"
         episodes = []
         if search_tvdb.to_i > 0
           go_on = 0
