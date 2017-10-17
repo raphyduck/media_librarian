@@ -594,7 +594,7 @@ class Library
         episodes = []
         if search_tvdb.to_i > 0
           go_on = 0
-          tvdb_shows = $tvdb.search(series_name).first
+          tvdb_shows = $tvdb.search(series_name)
           tvdb_shows = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
           while go_on.to_i == 0
             tvdb_show = tvdb_shows.shift
