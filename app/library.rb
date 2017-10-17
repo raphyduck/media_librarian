@@ -588,8 +588,10 @@ class Library
   def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
     qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
+      next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
+        next if series_name != "ReGenesis"
         episodes = []
         if search_tvdb.to_i > 0
           go_on = 0
@@ -609,7 +611,7 @@ class Library
         end
         Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
           ep_filename = File.basename(ep[0])
-          identifiers = ep_filename.downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})/)
+          identifiers = ep_filename.downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
           identifiers = ep_filename.scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
           season = ''
           ep_nb = []
@@ -617,6 +619,7 @@ class Library
             identifiers.each do |m|
               bd = m[1].to_s.scan(/^(\d{1,3})[ex]/)
               if bd.first.nil?
+                nb2 = 0
                 case m[1].to_s.length
                   when 3
                     season = m[1].to_s.gsub(/^(\d)\d+/, '\1') if season == ''
@@ -630,8 +633,10 @@ class Library
               else
                 season = bd.first[0].to_s.to_i if season == ''
                 nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
+                nb2 = m[2].gsub(/[ex](\d{1,4})/, '\1') if m[2].to_s != ''
               end
               ep_nb << nb.to_i if nb.to_i > 0
+              ep_nb << nb2.to_i if nb2.to_i > 0
             end
           end
           if season == '' || ep_nb.empty?
@@ -639,8 +644,12 @@ class Library
             ep_nb = [$speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i]
           end
           q = ep_filename.downcase.gsub('-', '').scan(qualities).join('.').gsub('-','')
-          tvdb_ep = !episodes.empty? && season != '' && ep_nb.first.to_i > 0 ? episodes.select { |e| e.season_number == season.to_i.to_s && e.number == ep_nb.first.to_s }.first : nil
-          tvdb_ep_name = tvdb_ep.nil? ? '' : tvdb_ep.name
+          tvdb_ep_name = []
+          ep_nb.each do |n|
+            tvdb_ep = !episodes.empty? && season != '' && ep_nb.first.to_i > 0 ? episodes.select { |e| e.season_number == season.to_i.to_s && e.number == n.to_s }.first : nil
+            tvdb_ep_name << (tvdb_ep.nil? ? '' : tvdb_ep.name)
+          end
+          tvdb_ep_name = tvdb_ep_name.join('.')[0..50]
           extension = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
           new_name = "#{series_name.downcase.gsub(/[ \:\,\-\[\]\(\)]/, '.')}."
           new_identifier = ''
