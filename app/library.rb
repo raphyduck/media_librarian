@@ -598,6 +598,7 @@ class Library
           tvdb_shows = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
           while go_on.to_i == 0
             tvdb_show = tvdb_shows.shift
+            next if tvdb_show.nil?
             if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == series_name.downcase.gsub(/[ \(\)\.\:]/, '')
               go_on = 1
             else
