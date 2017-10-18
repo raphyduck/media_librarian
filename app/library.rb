@@ -663,9 +663,12 @@ class Library
           Please enter the new file name (empty to skip)?", no_prompt, '') if new_identifier == ''
           if new_name != '' && new_identifier != ''
             new_name = new_name.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:\/]/,'')
-            next if File.exists?(File.dirname(ep[0]) + '/' + new_name)
-            $speaker.speak_up("Moving '#{ep_filename}' to '#{new_name}'")
-            FileUtils.mv(ep[0], File.dirname(ep[0]) + '/' + new_name)
+            if File.exists?(File.dirname(ep[0]) + '/' + new_name)
+              $speaker.speak_up("File #{ep_filename} is correctly named, skipping...")
+            else
+              $speaker.speak_up("Moving '#{ep_filename}' to '#{new_name}'")
+              FileUtils.mv(ep[0], File.dirname(ep[0]) + '/' + new_name)
+            end
           end
         end
       rescue => e
