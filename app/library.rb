@@ -556,7 +556,6 @@ class Library
     #First, extract archives if any
     Utils.search_folder(torrent_path + '/' + torrent_name, {'regex' => ".*\.(rar|zip)$"}).each do |a|
       Utils.extract_archive(a[0].gsub(/.*\.(rar|zip)$/, '\1'), a[0], File.dirname(a[0]))
-      FileUtils.rm(Dir.glob(a[0].gsub(/(.*\.)(rar|zip)$/, '\1') + 'r*'))
     end
     #Then, find desired files and hard link them to the destination folder to be picked up by other programs
     if handling['file_types']
