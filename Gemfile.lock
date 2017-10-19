@@ -48,7 +48,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/unrar.git
-  revision: 7c89a7c6c625646af3c4e9696f61d68b8bc9d144
+  revision: 8dae0ca90f55ab7cd30be1f0c515bbcfb51d40ad
   specs:
     unrar (0.0.3)
 
@@ -150,6 +150,7 @@ GEM
       ffi
     thread_safe (0.3.6)
     tilt (2.0.8)
+    titleize (1.4.1)
     transproc (1.0.2)
     ttfunk (1.5.1)
     tvdb_party (0.9.1)
@@ -185,6 +186,7 @@ DEPENDENCIES
   sqlite3
   sys-filesystem
   t411!
+  titleize
   trakt!
   tvdb_party
   tvmaze!

@@ -552,6 +552,32 @@ class Library
     return 0, []
   end
 
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {})
+    #First, extract archives if any
+    Utils.search_folder(torrent_path + '/' + torrent_name, {'regex' => ".*\.(rar|zip)$"}).each do |a|
+      Utils.extract_archive(a[0].gsub(/.*\.(rar|zip)$/, '\1'), a[0], File.dirname(a[0]))
+      FileUtils.rm(Dir.glob(a[0].gsub(/(.*\.)(rar|zip)$/, '\1') + 'r*'))
+    end
+    #Then, find desired files and hard link them to the destination folder to be picked up by other programs
+    if handling['file_types']
+      Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
+        type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        series_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        type.downcase!
+        if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
+          season, ep_nb = MediaInfo.identify_tv_episodes_numbering(f[0])
+          rename_tv_series_file(f[0], series_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1)
+        else
+          #TODO: Handle movies, flac,...
+          destination = f[0].gsub(completed_folder, destination_folder)
+          Utils.move_file(f[0], destination, 1)
+        end
+      end
+    end
+  rescue => e
+    $speaker.tell_error(e, "Library.handle_completed_download")
+  end
+
   def self.parse_watch_list(type = 'trakt')
     case type
       when 'imdb'
@@ -586,90 +612,21 @@ class Library
   end
 
   def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
-    qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
         episodes = []
-        if search_tvdb.to_i > 0
-          go_on = 0
-          tvdb_shows = $tvdb.search(series_name)
-          tvdb_shows = $tvdb.search(series_name.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
-          while go_on.to_i == 0
-            tvdb_show = tvdb_shows.shift
-            break if tvdb_show.nil?
-            if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == series_name.downcase.gsub(/[ \(\)\.\:]/, '')
-              go_on = 1
-            else
-              go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{series_name}, proceed with that? (y/n)", no_prompt, 'y') == 'y' ? 1 : 0
-            end
-          end
-          next unless go_on > 0
-          unless tvdb_show.nil?
-            show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
-            episodes = $tvdb.get_all_episodes(show)
-          end
-        end
+        _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt) if search_tvdb.to_i > 0
         Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
           ep_filename = File.basename(ep[0])
-          identifiers = ep_filename.downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
-          identifiers = ep_filename.scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
-          season = ''
-          ep_nb = []
-          unless identifiers.first.nil?
-            identifiers.each do |m|
-              bd = m[1].to_s.scan(/^(\d{1,3})[ex]/)
-              if bd.first.nil?
-                nb2 = 0
-                case m[1].to_s.length
-                  when 3
-                    season = m[1].to_s.gsub(/^(\d)\d+/, '\1') if season == ''
-                    nb = m[1].gsub(/^\d(\d+)/, '\1').to_i
-                  when 4
-                    season = m[1].to_s.gsub(/^(\d{2})\d+/, '\1') if season == ''
-                    nb = m[1].gsub(/^\d{2}(\d+)/, '\1').to_i
-                  else
-                    nb = 0
-                end
-              else
-                season = bd.first[0].to_s.to_i if season == ''
-                nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
-                nb2 = m[2].gsub(/[ex](\d{1,4})/, '\1') if m[2].to_s != ''
-              end
-              ep_nb << nb.to_i if nb.to_i > 0
-              ep_nb << nb2.to_i if nb2.to_i > 0
-            end
-          end
+          season, ep_nb = MediaInfo.identify_tv_episodes_numbering(ep_filename)
           if season == '' || ep_nb.empty?
             season = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
             ep_nb = [$speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i]
           end
-          q = ep_filename.downcase.gsub('-', '').scan(qualities).join('.').gsub('-','')
-          tvdb_ep_name = []
-          ep_nb.each do |n|
-            tvdb_ep = !episodes.empty? && season != '' && ep_nb.first.to_i > 0 ? episodes.select { |e| e.season_number == season.to_i.to_s && e.number == n.to_s }.first : nil
-            tvdb_ep_name << (tvdb_ep.nil? ? '' : tvdb_ep.name)
-          end
-          tvdb_ep_name = tvdb_ep_name.join('.')[0..50]
-          extension = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
-          new_name = "#{series_name.downcase.gsub(/[ \:\,\-\[\]\(\)]/, '.')}."
-          new_identifier = ''
-          ep_nb.each do |n|
-            new_identifier += "S#{format('%02d', season.to_i)}E#{format('%02d', n)}." if n.to_i > 0
-          end
-          new_name += "#{new_identifier}#{tvdb_ep_name.downcase.gsub(/[ \:\,\-\[\]\(\)]/, '.')}.#{q}.#{extension.downcase}"
-          new_name = $speaker.ask_if_needed("File #{ep_filename} has not been recognized
-          Please enter the new file name (empty to skip)?", no_prompt, '') if new_identifier == ''
-          if new_name != '' && new_identifier != ''
-            new_name = new_name.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:\/]/,'')
-            if File.exists?(File.dirname(ep[0]) + '/' + new_name)
-              $speaker.speak_up("File #{ep_filename} is correctly named, skipping...")
-            else
-              $speaker.speak_up("Moving '#{ep_filename}' to '#{new_name}'")
-              FileUtils.mv(ep[0], File.dirname(ep[0]) + '/' + new_name)
-            end
-          end
+          destination = "#{File.dirname(ep[0])}/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}"
+          rename_tv_series_file(ep[0], series_name, season, ep_nb, destination, episodes)
         end
       rescue => e
         $speaker.tell_error(e, "Rename tv series block #{series_name}")
@@ -677,7 +634,31 @@ class Library
     end
   end
 
-  def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0)
+  def self.rename_tv_series_file(original, series_name, episode_season, episodes_nbs, destination, episodes = nil, quality = nil, hard_link = 0)
+    _, episodes = MediaInfo.tv_episodes_search(series_name, 1) if episodes.nil?
+    qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
+    quality = quality || File.basename(original).downcase.gsub('-', '').scan(qualities).join('.').gsub('-', '')
+    proper = File.basename(original).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
+    episode_name = []
+    episodes_nbs.each do |n|
+      tvdb_ep = !episodes.empty? && episode_season != '' && episodes_nbs.first.to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n.to_s }.first : nil
+      episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.downcase)
+    end
+    episode_name = episode_name.join(' ')[0..50]
+    extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
+    episode_numbering = []
+    episodes_nbs.each do |n|
+      episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n)}." if n.to_i > 0
+    end
+    episode_numbering = episode_numbering.join(' ')
+    FILENAME_NAMING_TEMPLATE.each do |k|
+      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)}
+    end
+    destination += ".#{extension.downcase}"
+    Utils.move_file(original, destination, hard_link) if episode_numbering != ''
+  end
+
+  def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil)
     $move_completed_torrent = folder
     Utils.search_folder(folder, filter_criteria).each do |film|
       next if already_processed?(film[1])
@@ -715,7 +696,7 @@ class Library
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
         break if replaced
         $speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
-        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: folder, rename_main: t[0], main_only: 1)
+        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: move_to || folder, rename_main: t[0], main_only: 1)
         break if replaced
         cpt += 1
       end

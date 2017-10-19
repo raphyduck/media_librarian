@@ -26,11 +26,12 @@ class Utils
   end
 
   def self.extract_archive(type, archive, destination)
+    Dir.mkdir(destination) unless Dir.exist?(destination)
     case type
       when 'cbr', 'rar'
-        $unrar = Unrar::Archive.new(archive)
-        $unrar.extract
-        #TODO: Finish this
+        $unrar = Unrar::Archive.new(archive, destination)
+        extracted = $unrar.extract
+        $speaker.speak_up("Extracted the following files:\n#{extracted.join('\n')}") if extracted
       when 'cbz', 'zip'
         Archive::Zip.extract(archive, destination)
     end
@@ -104,6 +105,21 @@ class Utils
     md5.to_s
   end
 
+  def self.move_file(original, destination, hard_link = 0)
+    destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
+    if File.exists?(destination)
+      $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
+    else
+      $speaker.speak_up("Moving '#{original}' to '#{destination}'")
+      FileUtils.mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
+      if hard_link.to_i > 0
+        FileUtils.ln(original, destination)
+      else
+        FileUtils.mv(original, destination)
+      end
+    end
+  end
+
   def self.recursive_symbolize_keys(h)
     case h
       when Hash
@@ -121,6 +137,14 @@ class Utils
 
   def self.regexify(str)
     str.strip.gsub(/[:,-\/\[\]]/, '.{0,2}').gsub(/ /, '.').gsub("'", "'?")
+  end
+
+  def self.regularise_media_filename(filename, formatting = '')
+    r = filename.to_s.gsub(/[\'\"\;\:\/]/, '')
+    r = r.downcase.titleize if formatting.to_s.match(/.*titleize.*/)
+    r = r.downcase if formatting.to_s.match(/.*downcase.*/)
+    r = r.gsub(/\ /, '.') if formatting.to_s.match(/.*nospace.*/)
+    r
   end
 
   def self.search_folder(folder, filter_criteria = {})

@@ -21,6 +21,14 @@ LINE_SEPARATOR = '---------------------------------------------------------'
 VALID_QUALITIES = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p bluray remux dvdrip webdl hdtv webrip bdscr
  dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 cam workprint 10bit h265 h264 x265 x264 xvid divx truehd dts dtshd flac
  dd+5.1 ac3 dd5.1 aac mp3)
+FILENAME_NAMING_TEMPLATE=%w(
+    series_name
+    episode_season
+    episode_numbering
+    episode_name
+    quality
+    proper
+)
 #Create default folders if doesn't exist
 Dir.mkdir(config_dir) unless File.exist?(config_dir)
 Dir.mkdir(log_dir) unless File.exist?(log_dir)

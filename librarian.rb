@@ -26,6 +26,7 @@ require 'simple_speaker'
 require 'sqlite3'
 require 'sys/filesystem'
 require 't411'
+require 'titleize'
 require 'trakt'
 require 'tvdb_party'
 require 'tvmaze'
@@ -49,6 +50,7 @@ class Librarian
           :create_custom_list => ['Library', 'create_custom_list'],
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
+          :handle_completed_download => ['Library', 'handle_completed_download'],
           :process_search_list => ['Library', 'process_search_list'],
           :rename_tv_series => ['Library', 'rename_tv_series'],
           :replace_movies => ['Library', 'replace_movies']
