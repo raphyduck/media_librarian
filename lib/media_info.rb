@@ -7,8 +7,8 @@ class MediaInfo
   end
 
   def self.identify_tv_episodes_numbering(filename)
-    identifiers = filename.downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
-    identifiers = filename.scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
+    identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
+    identifiers = File.basename(filename).scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
     season, ep_nb = '', []
     unless identifiers.first.nil?
       identifiers.each do |m|
@@ -30,8 +30,8 @@ class MediaInfo
           nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
           nb2 = m[2].gsub(/[ex](\d{1,4})/, '\1') if m[2].to_s != ''
         end
-        ep_nb << nb.to_i if nb.to_i > 0
-        ep_nb << nb2.to_i if nb2.to_i > 0
+        ep_nb << nb.to_i if nb.to_i > 0 && ep_nb.select{|x| x == nb.to_i}.empty?
+        ep_nb << nb2.to_i if nb2.to_i > 0 && ep_nb.select{|x| x == nb2.to_i}.empty?
       end
     end
     return season, ep_nb

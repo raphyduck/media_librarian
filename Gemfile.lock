@@ -48,7 +48,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/unrar.git
-  revision: 8dae0ca90f55ab7cd30be1f0c515bbcfb51d40ad
+  revision: fb2f10eb84baea71994ddc885a3a5c92cd2a8af2
   specs:
     unrar (0.0.3)
 
