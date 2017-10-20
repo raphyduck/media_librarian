@@ -31,7 +31,7 @@ class Utils
       when 'cbr', 'rar'
         $unrar = Unrar::Archive.new(archive, destination)
         extracted = $unrar.extract
-        $speaker.speak_up("Extracted the following files:\n#{extracted.join('\n')}") if extracted
+        $speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
       when 'cbz', 'zip'
         Archive::Zip.extract(archive, destination)
     end
