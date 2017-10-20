@@ -72,10 +72,14 @@ class MediaInfo
       end
     end
     unless go_on == 0 || tvdb_show.nil?
+      $speaker.speak_up("Using #{tvdb_show['SeriesName']} as series name")
       show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
       episodes = $tvdb.get_all_episodes(show)
     end
     return show, episodes
+  rescue => e
+    $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
+    return nil, []
   end
 
   def self.movie_title_lookup(title, first_only = false)

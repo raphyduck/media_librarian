@@ -562,13 +562,15 @@ class Library
       Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
         type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
         next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
-        series_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        item_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 _-]*)\/.*"), '\1')
         type.downcase!
         if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
           season, ep_nb = MediaInfo.identify_tv_episodes_numbering(f[0])
-          rename_tv_series_file(f[0], series_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1)
+          rename_tv_series_file(f[0], item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1)
+        elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
+          rename_movies_file(f[0], item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, 1)
         else
-          #TODO: Handle movies, flac,...
+          #TODO: Handle flac,...
           destination = f[0].gsub(completed_folder, destination_folder)
           Utils.move_file(f[0], destination, 1)
         end
@@ -585,18 +587,18 @@ class Library
         series_name = File.basename(series[0])
         episodes = []
         episodes_in_files= []
+        _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
         Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
           s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
           e.each do |n|
             episodes_in_files << [s,n]
           end
         end
-        _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
         episodes.each do |ep|
-          next unless ep.nil? || ep.air_date < Time.now - delta.days
+          next unless (ep.air_date.nil? || ep.air_date < Time.now - delta.days) && episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i + 1}.empty?
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
           if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i}.empty?
-            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}. Look for it:")
+            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}. Look for it:")
             $speaker.speak_up("flexget --test execute --tasks SearchEZTV --cli-config \"show=#{series_name},season=#{ep.season_number}\" --disable-advancement")
             $speaker.speak_up(LINE_SEPARATOR)
           end
@@ -663,10 +665,21 @@ class Library
     end
   end
 
+  def self.rename_movies_file(original, movies_name, destination, quality = nil, hard_link = 0)
+    title, _ = MediaInfo.movie_title_lookup(movies_name, true)
+    movies_name = title[0]
+    quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
+    extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
+    FILENAME_NAMING_TEMPLATE.each do |k|
+      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)} rescue nil
+    end
+    destination += ".#{extension.downcase}"
+    Utils.move_file(original, destination, hard_link) if episode_numbering != ''
+  end
+
   def self.rename_tv_series_file(original, series_name, episode_season, episodes_nbs, destination, episodes = nil, quality = nil, hard_link = 0)
     _, episodes = MediaInfo.tv_episodes_search(series_name, 1) if episodes.nil?
-    qualities = Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
-    quality = quality || File.basename(original).downcase.gsub('-', '').scan(qualities).join('.').gsub('-', '')
+    quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     proper = File.basename(original).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
     episode_name = []
     episodes_nbs.each do |n|
