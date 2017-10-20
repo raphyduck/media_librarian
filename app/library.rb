@@ -561,6 +561,7 @@ class Library
     if handling['file_types']
       Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
         type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
         series_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 _-]*)\/.*"), '\1')
         type.downcase!
         if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
@@ -575,6 +576,33 @@ class Library
     end
   rescue => e
     $speaker.tell_error(e, "Library.handle_completed_download")
+  end
+
+  def self.monitor_missing_tv_episodes(folder:, no_prompt: 0)
+    Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
+      next unless File.directory?(series[0])
+      begin
+        series_name = File.basename(series[0])
+        episodes = []
+        episodes_in_files= []
+        Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
+          s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
+          e.each do |n|
+            episodes_in_files << [s,n]
+          end
+        end
+        _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
+        episodes.each do |ep|
+          if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i}.empty?
+            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}. Look for it:")
+            $speaker.speak_up("flexget --test execute --tasks SearchEZTV --cli-config \"show=#{series_name},season=#{ep.season_number}\" --disable-advancement")
+            $speaker.speak_up(LINE_SEPARATOR)
+          end
+        end
+      rescue => e
+        $speaker.tell_error(e, "Rename tv series block #{series_name}")
+      end
+    end
   end
 
   def self.parse_watch_list(type = 'trakt')
