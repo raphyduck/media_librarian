@@ -560,31 +560,30 @@ class Library
     #Then, find desired files and hard link them to the destination folder to be picked up by other programs
     if handling['file_types']
       Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
-        type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
-        next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
-        if File.stat(f[0]).nlink > 1
-          $speaker.speak_up("File already copied, moving on...")
-          next
-        end
-        item_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 \.\:_-]*)\/.*"), '\1')
-        type.downcase!
-        if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
-          season, ep_nb = MediaInfo.identify_tv_episodes_numbering(f[0])
-          rename_tv_series_file(f[0], item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1)
-        elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
-          rename_movies_file(f[0], item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, 1)
-        else
-          #TODO: Handle flac,...
-          destination = f[0].gsub(completed_folder, destination_folder)
-          Utils.move_file(f[0], destination, 1)
+        begin
+          type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+          next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
+          next if File.stat(f[0]).nlink > 1 #File already hard linked eslwhere, moving on
+          item_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 \.\:_-]*)\/.*"), '\1')
+          type.downcase!
+          if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
+            season, ep_nb = MediaInfo.identify_tv_episodes_numbering(f[0])
+            rename_tv_series_file(f[0], item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1, 1)
+          elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
+            rename_movies_file(f[0], item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, 1, 1)
+          else
+            #TODO: Handle flac,...
+            destination = f[0].gsub(completed_folder, destination_folder)
+            Utils.move_file(f[0], destination, 1)
+          end
+        rescue => e
+          $speaker.tell_error(e, "Library.handle_completed_download block")
         end
       end
     end
-  rescue => e
-    $speaker.tell_error(e, "Library.handle_completed_download")
   end
 
-  def self.monitor_missing_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0)
+  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0)
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
@@ -646,7 +645,7 @@ class Library
     $speaker.tell_error(e, "Library.process_search_list")
   end
 
-  def self.rename_movies_file(original, movies_name, destination, quality = nil, hard_link = 0)
+  def self.rename_movies_file(original, movies_name, destination, quality = nil, hard_link = 0, replaced_outdated = 0)
     title, _ = MediaInfo.movie_title_lookup(movies_name, true)
     movies_name = title[0]
     quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
@@ -655,7 +654,7 @@ class Library
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)} rescue nil
     end
     destination += ".#{extension.downcase}"
-    Utils.move_file(original, destination, hard_link) if episode_numbering != ''
+    Utils.move_file(original, destination, hard_link, replaced_outdated)
   end
 
   def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
@@ -681,10 +680,10 @@ class Library
     end
   end
 
-  def self.rename_tv_series_file(original, series_name, episode_season, episodes_nbs, destination, episodes = nil, quality = nil, hard_link = 0)
+  def self.rename_tv_series_file(original, series_name, episode_season, episodes_nbs, destination, episodes = nil, quality = nil, hard_link = 0, replaced_outdated = 0)
     _, episodes = MediaInfo.tv_episodes_search(series_name, 1) if episodes.nil?
     quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
-    proper = File.basename(original).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
+    proper = MediaInfo.identify_proper(original)
     episode_name = []
     episodes_nbs.each do |n|
       tvdb_ep = !episodes.empty? && episode_season != '' && episodes_nbs.first.to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n.to_s }.first : nil
@@ -701,7 +700,7 @@ class Library
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)}
     end
     destination += ".#{extension.downcase}"
-    Utils.move_file(original, destination, hard_link) if episode_numbering != ''
+    Utils.move_file(original, destination, hard_link, replaced_outdated) if episode_numbering != ''
   end
 
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil)

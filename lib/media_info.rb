@@ -6,6 +6,10 @@ class MediaInfo
     title.gsub(/\(I+\) /,'').gsub(' (Video)','').gsub(/\(TV .+\)/, '') rescue title
   end
 
+  def self.identify_proper(filename)
+    File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
+  end
+
   def self.identify_tv_episodes_numbering(filename)
     identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
     identifiers = File.basename(filename).scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?

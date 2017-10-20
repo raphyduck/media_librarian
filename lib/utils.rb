@@ -105,18 +105,22 @@ class Utils
     md5.to_s
   end
 
-  def self.move_file(original, destination, hard_link = 0)
+  def self.move_file(original, destination, hard_link = 0, remove_outdated = 0)
     destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
     if File.exists?(destination)
-      $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
-    else
-      $speaker.speak_up("Moving '#{original}' to '#{destination}'")
-      FileUtils.mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
-      if hard_link.to_i > 0
-        FileUtils.ln(original, destination)
+      if remove_outdated.to_i > 0 && MediaInfo.identify_proper(original).to_s == 'proper'
+        $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file.")
+        FileUtils.rm(destination)
       else
-        FileUtils.mv(original, destination)
+        return $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
       end
+    end
+    $speaker.speak_up("Moving '#{original}' to '#{destination}'")
+    FileUtils.mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
+    if hard_link.to_i > 0
+      FileUtils.ln(original, destination)
+    else
+      FileUtils.mv(original, destination)
     end
   end
 

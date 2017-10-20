@@ -51,7 +51,7 @@ class Librarian
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
           :handle_completed_download => ['Library', 'handle_completed_download'],
-          :monitor_missing_tv_episodes => ['Library', 'monitor_missing_tv_episodes'],
+          :monitor_tv_episodes => ['Library', 'monitor_tv_episodes'],
           :process_search_list => ['Library', 'process_search_list'],
           :rename_tv_series => ['Library', 'rename_tv_series'],
           :replace_movies => ['Library', 'replace_movies']
