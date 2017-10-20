@@ -562,6 +562,10 @@ class Library
       Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
         type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
         next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
+        if File.stat(f[0]).nlink > 1
+          $speaker.speak_up("File already copied, moving on...")
+          next
+        end
         item_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([a-zA-Z1-9 \.\:_-]*)\/.*"), '\1')
         type.downcase!
         if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
