@@ -578,7 +578,7 @@ class Library
     $speaker.tell_error(e, "Library.handle_completed_download")
   end
 
-  def self.monitor_missing_tv_episodes(folder:, no_prompt: 0)
+  def self.monitor_missing_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0)
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
@@ -593,6 +593,8 @@ class Library
         end
         _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
         episodes.each do |ep|
+          next unless ep.nil? || ep.air_date < Time.now - delta.days
+          next if include_specials.to_i == 0 && ep.season_number.to_i == 0
           if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i}.empty?
             $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}. Look for it:")
             $speaker.speak_up("flexget --test execute --tasks SearchEZTV --cli-config \"show=#{series_name},season=#{ep.season_number}\" --disable-advancement")
