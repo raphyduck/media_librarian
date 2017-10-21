@@ -74,6 +74,7 @@ class Librarian
     $speaker.speak_up('Welcome to your library assistant!
 
 ')
+    $speaker.speak_up("Running command: #{ARGV.join(' ')}")
     $action = ARGV[0].to_s + ' ' + ARGV[1].to_s
     SimpleArgsDispatch.dispatch('librarian', ARGV, @available_actions)
   end
