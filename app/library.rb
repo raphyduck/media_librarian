@@ -559,7 +559,7 @@ class Library
     end
     #Then, find desired files and hard link them to the destination folder to be picked up by other programs
     if handling['file_types']
-      Utils.search_folder(completed_folder, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
+      Utils.search_folder(torrent_path + '/' + torrent_name, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
         begin
           type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
           next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
@@ -583,22 +583,35 @@ class Library
     end
   end
 
-  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0)
+  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0)
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
         episodes = []
         episodes_in_files= []
+        ep_details = {}
         _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
         Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
           s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
           e.each do |n|
             episodes_in_files << [s,n]
+            ep_details["#{s}#{n}"] = [] if ep_details["#{s}#{n}"].nil?
+            ep_details["#{s}#{n}"] << ep[0]
+          end
+        end
+        #TODO: Handle split episodes
+        dups = episodes_in_files.group_by{ |e| e }.select { |_, v| v.size > 1 }.map(&:first)
+        unless dups.empty?
+          dups.each do |d|
+            $speaker.speak_up("Duplicate episodes found for #{series_name} S#{format('%02d', d[0].to_i)}E#{format('%02d', d[1].to_i)}:")
+            ep_details["#{d[0]}#{d[1]}"].each do |f|
+              $speaker.speak_up("'#{f}'")
+            end
           end
         end
         episodes.each do |ep|
-          next unless (ep.air_date.nil? || ep.air_date < Time.now - delta.days) && episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i + 1}.empty?
+          next unless (ep.air_date.to_s == '' || ep.air_date < Time.now - delta.days) && episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i + 1}.empty?
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
           if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i}.empty?
             $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}. Look for it:")
@@ -606,6 +619,29 @@ class Library
             $speaker.speak_up(LINE_SEPARATOR)
           end
         end
+        #TODO: Deal with duplicates
+        # episode_rows.map!{|x| x['path'] = destination; x}
+        # episode_rows.each do |e|
+        #   dups = $db.get_rows('series_files', e.select{|k,_| ['series_name', 'episode_season', 'episodes_number'].include?(k)})
+        #   unless dups.empty?
+        #     $speaker.speak_up("Duplicate episode found:")
+        #     episodes_dups = episode_rows + dups
+        #     episodes_dups.map!{|e| e['quality'] = MediaInfo.media_qualities(e['quality']); e}
+        #     episodes_dups.sort_by!{|x| AUDIO.index x['qualities']['resolutions']}
+        #     episodes_dups.sort_by!{|x| CODECS.index x['qualities']['resolutions']}
+        #     episodes_dups.sort_by!{|x| SOURCES.index x['qualities']['resolutions']}
+        #     episodes_dups.sort_by!{|x| RESOLUTIONS.index x['qualities']['resolutions']}
+        #     episodes_dups.each do |d|
+        #       $speaker.speak_up("File #{d['path']}")
+        #     end
+        #     if remove_duplicate.to_i
+        #       episodes_dups.shift
+        #       episodes_dups.each do |e|
+        #         puts "FileUtils.rm(#{e['path']})"
+        #       end
+        #     end
+        #   end
+        # end
       rescue => e
         $speaker.tell_error(e, "Rename tv series block #{series_name}")
       end
@@ -685,16 +721,16 @@ class Library
     quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     proper = MediaInfo.identify_proper(original)
     episode_name = []
+    episode_numbering = []
     episodes_nbs.each do |n|
       tvdb_ep = !episodes.empty? && episode_season != '' && episodes_nbs.first.to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n.to_s }.first : nil
       episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.downcase)
+      if n.to_i > 0 && episode_season != ''
+        episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n)}."
+      end
     end
     episode_name = episode_name.join(' ')[0..50]
     extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
-    episode_numbering = []
-    episodes_nbs.each do |n|
-      episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n)}." if n.to_i > 0
-    end
     episode_numbering = episode_numbering.join(' ')
     FILENAME_NAMING_TEMPLATE.each do |k|
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)}

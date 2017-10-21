@@ -6,6 +6,15 @@ class MediaInfo
     title.gsub(/\(I+\) /,'').gsub(' (Video)','').gsub(/\(TV .+\)/, '') rescue title
   end
 
+  def self.media_qualities(filename)
+    {
+        'resolutions' => filename.downcase.match(Regexp.new('[ \.\(\)\-](' + RESOLUTIONS.join('|') + ')')).to_s,
+        'sources' => filename.downcase.match(Regexp.new('[ \.\(\)\-](' + SOURCES.join('|') + ')')).to_s,
+        'codecs' => filename.downcase.match(Regexp.new('[ \.\(\)\-](' + CODECS.join('|') + ')')).to_s,
+        'audio' => filename.downcase.match(Regexp.new('[ \.\(\)\-](' + AUDIO.join('|') + ')')).to_s
+    }
+  end
+
   def self.identify_proper(filename)
     File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
   end

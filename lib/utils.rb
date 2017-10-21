@@ -109,10 +109,11 @@ class Utils
     destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
     if File.exists?(destination)
       if remove_outdated.to_i > 0 && MediaInfo.identify_proper(original).to_s == 'proper'
-        $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file.")
+        $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
         FileUtils.rm(destination)
       else
-        return $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
+        $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
+        return false
       end
     end
     $speaker.speak_up("Moving '#{original}' to '#{destination}'")
@@ -122,6 +123,10 @@ class Utils
     else
       FileUtils.mv(original, destination)
     end
+    true
+  rescue => e
+    $speaker.tell_error(e, 'utils.move_file')
+    false
   end
 
   def self.recursive_symbolize_keys(h)

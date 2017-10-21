@@ -18,10 +18,13 @@ $dowloaded_links = []
 #Some constants
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
-VALID_QUALITIES = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p bluray remux dvdrip webdl hdtv webrip bdscr
- dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 cam workprint 10bit h265 h264 x265 x264 xvid divx truehd dts dtshd flac
- dd+5.1 ac3 dd5.1 aac mp3 multi)
+RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
+SOURCES = %w(bluray remux dvdrip webdl hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 cam workprint)
+CODECS = %w(10bit h265 h264 xvid divx)
+AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac mp3)
+VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + %w(multi)
 FILENAME_NAMING_TEMPLATE=%w(
+    movies_name
     series_name
     episode_season
     episode_numbering
