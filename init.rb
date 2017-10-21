@@ -33,6 +33,7 @@ FILENAME_NAMING_TEMPLATE=%w(
     proper
 )
 REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
+VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg)'
 #Create default folders if doesn't exist
 Dir.mkdir(config_dir) unless File.exist?(config_dir)
 Dir.mkdir(log_dir) unless File.exist?(log_dir)

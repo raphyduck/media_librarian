@@ -116,7 +116,7 @@ class Utils
         return false
       end
     end
-    $speaker.speak_up("Moving '#{original}' to '#{destination}'")
+    $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'")
     FileUtils.mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
     if hard_link.to_i > 0
       FileUtils.ln(original, destination)

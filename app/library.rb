@@ -592,28 +592,28 @@ class Library
         episodes_in_files= []
         ep_details = {}
         _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt)
-        Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
+        Utils.search_folder(series[0], {'regex' => VALID_VIDEO_EXT}).each do |ep|
           s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
           e.each do |n|
             episodes_in_files << [s,n]
-            ep_details["#{s}#{n}"] = [] if ep_details["#{s}#{n}"].nil?
-            ep_details["#{s}#{n}"] << ep[0]
+            ep_details["#{s}#{n[:ep]}#{n[:part]}"] = [] if ep_details["#{s}#{n[:ep]}#{n[:part]}"].nil?
+            ep_details["#{s}#{n[:ep]}#{n[:part]}"] << ep[0]
           end
         end
         #TODO: Handle split episodes
         dups = episodes_in_files.group_by{ |e| e }.select { |_, v| v.size > 1 }.map(&:first)
         unless dups.empty?
           dups.each do |d|
-            $speaker.speak_up("Duplicate episodes found for #{series_name} S#{format('%02d', d[0].to_i)}E#{format('%02d', d[1].to_i)}:")
-            ep_details["#{d[0]}#{d[1]}"].each do |f|
+            $speaker.speak_up("Duplicate episodes found for #{series_name} S#{format('%02d', d[0].to_i)}E#{format('%02d', d[1][:ep].to_i)}:")
+            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].each do |f|
               $speaker.speak_up("'#{f}'")
             end
           end
         end
         episodes.each do |ep|
-          next unless (ep.air_date.to_s == '' || ep.air_date < Time.now - delta.days) && episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i + 1}.empty?
+          next unless (ep.air_date.to_s == '' || ep.air_date < Time.now - delta.days) && !episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i + 1}.empty?
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
-          if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1].to_i == ep.number.to_i}.empty?
+          if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i}.empty?
             $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}. Look for it:")
             $speaker.speak_up("flexget --test execute --tasks SearchEZTV --cli-config \"show=#{series_name},season=#{ep.season_number}\" --disable-advancement")
             $speaker.speak_up(LINE_SEPARATOR)
@@ -700,14 +700,14 @@ class Library
         series_name = File.basename(series[0])
         episodes = []
         _, episodes = MediaInfo.tv_episodes_search(series_name, no_prompt) if search_tvdb.to_i > 0
-        Utils.search_folder(series[0], {'regex' => '.*\.(mkv|avi|mp4)'}).each do |ep|
+        Utils.search_folder(series[0], {'regex' => VALID_VIDEO_EXT}).each do |ep|
           ep_filename = File.basename(ep[0])
           season, ep_nb = MediaInfo.identify_tv_episodes_numbering(ep_filename)
           if season == '' || ep_nb.empty?
             season = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
-            ep_nb = [$speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i]
+            ep_nb = [{:ep => $speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i, :part => 0}]
           end
-          destination = "#{File.dirname(ep[0])}/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}"
+          destination = "#{folder}/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}"
           rename_tv_series_file(ep[0], series_name, season, ep_nb, destination, episodes)
         end
       rescue => e
@@ -723,10 +723,10 @@ class Library
     episode_name = []
     episode_numbering = []
     episodes_nbs.each do |n|
-      tvdb_ep = !episodes.empty? && episode_season != '' && episodes_nbs.first.to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n.to_s }.first : nil
+      tvdb_ep = !episodes.empty? && episode_season != '' && n[:ep].to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n[:ep].to_s }.first : nil
       episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.downcase)
-      if n.to_i > 0 && episode_season != ''
-        episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n)}."
+      if n[:ep].to_i > 0 && episode_season != ''
+        episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
       end
     end
     episode_name = episode_name.join(' ')[0..50]

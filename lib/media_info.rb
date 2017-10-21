@@ -20,14 +20,15 @@ class MediaInfo
   end
 
   def self.identify_tv_episodes_numbering(filename)
-    identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4})\&?([ex]\d{1,2})?/)
+    identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4}(\.\d[\. ])?)\&?([ex]\d{1,2}(\.\d[\. ])?)?/)
     identifiers = File.basename(filename).scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
     season, ep_nb = '', []
     unless identifiers.first.nil?
       identifiers.each do |m|
+        part, part2 = 0, 0
         bd = m[1].to_s.scan(/^(\d{1,3})[ex]/)
         nb2 = 0
-        if bd.first.nil?
+        if bd.first.nil? && m[1].to_s.match(/^\d/)
           case m[1].to_s.length
             when 3
               season = m[1].to_s.gsub(/^(\d)\d+/, '\1') if season == ''
@@ -41,10 +42,12 @@ class MediaInfo
         else
           season = bd.first[0].to_s.to_i if season == ''
           nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
-          nb2 = m[2].gsub(/[ex](\d{1,4})/, '\1') if m[2].to_s != ''
+          nb2 = m[3].gsub(/[ex](\d{1,4})/, '\1') if m[3].to_s != ''
         end
-        ep_nb << nb.to_i if nb.to_i > 0 && ep_nb.select{|x| x == nb.to_i}.empty?
-        ep_nb << nb2.to_i if nb2.to_i > 0 && ep_nb.select{|x| x == nb2.to_i}.empty?
+        part = m[2].to_s.gsub('.','').to_i
+        part2 = m[4].to_s.gsub('.','').to_i
+        ep_nb << {:ep => nb.to_i, :part => part.to_i} if nb.to_i > 0 && ep_nb.select{|x| x == nb.to_i}.empty?
+        ep_nb << {:ep => nb2.to_i, :part => part2.to_i} if nb2.to_i > 0 && ep_nb.select{|x| x == nb2.to_i}.empty?
       end
     end
     return season, ep_nb
