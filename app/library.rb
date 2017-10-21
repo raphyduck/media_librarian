@@ -600,7 +600,6 @@ class Library
             ep_details["#{s}#{n[:ep]}#{n[:part]}"] << ep[0]
           end
         end
-        #TODO: Handle split episodes
         dups = episodes_in_files.group_by{ |e| e }.select { |_, v| v.size > 1 }.map(&:first)
         unless dups.empty?
           dups.each do |d|
@@ -611,10 +610,10 @@ class Library
           end
         end
         episodes.each do |ep|
-          next unless (ep.air_date.to_s == '' || ep.air_date < Time.now - delta.days) && !episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i + 1}.empty?
+          next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || !episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i + 1}.empty?
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
           if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i}.empty?
-            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}. Look for it:")
+            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}). Look for it:")
             $speaker.speak_up("flexget --test execute --tasks SearchEZTV --cli-config \"show=#{series_name},season=#{ep.season_number}\" --disable-advancement")
             $speaker.speak_up(LINE_SEPARATOR)
           end
