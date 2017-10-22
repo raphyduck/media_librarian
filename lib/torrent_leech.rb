@@ -6,11 +6,11 @@ module TorrentLeech
 
     attr_accessor :url
 
-    def initialize(search, url = nil)
+    def initialize(search, url = nil, cid = '')
       @base_url = 'https://www.torrentleech.org'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search)}/newfilter/2/orderby/seeders/order/desc" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
+      @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search)}/newfilter/2/facets/category%253A#{cid}/orderby/seeders/order/desc" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
       if @client.nil?
         @client = Mechanize.new
         @client.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
@@ -41,7 +41,7 @@ module TorrentLeech
       raw_size = cols[4].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+/, '').gsub('</td>', '').to_s
-      case s_unit
+      case s_unit.strip
         when 'MB'
           size *= 1024 * 1024
         when 'GB'

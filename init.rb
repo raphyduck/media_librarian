@@ -19,8 +19,8 @@ $dowloaded_links = []
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
-SOURCES = %w(bluray remux dvdrip webdl hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 cam workprint)
-CODECS = %w(10bit h265 h264 xvid divx)
+SOURCES = %w(bluray remux dvdrip webdl hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
+CODECS = %w(10bit h265 h264 x264 x265 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac mp3)
 VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + %w(multi)
 FILENAME_NAMING_TEMPLATE=%w(
@@ -33,11 +33,11 @@ FILENAME_NAMING_TEMPLATE=%w(
     proper
 )
 REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
-VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg)'
+VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)'
 PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
                     {:name => 'wop', :url => 'https://worldofp2p.net'},
                     {:name => 'torrentleech', :url => 'https://www.torrentleech.org'}]
-TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'thepiratebay', :url => 'https://thepiratebay.se'}]
+TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
 
 #Create default folders if doesn't exist
 Dir.mkdir(config_dir) unless File.exist?(config_dir)

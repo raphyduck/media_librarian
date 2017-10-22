@@ -8,7 +8,7 @@ module Tpb
     attr_accessor :url
 
     def initialize(search, cid = '')
-      @base_url = 'https://thepiratebay.se'
+      @base_url = 'https://thepiratebay.org'
       @query = search
       @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
       @client = Mechanize.new if @client.nil?

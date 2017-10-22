@@ -27,12 +27,6 @@ GIT
     rsync (1.0.9)
 
 GIT
-  remote: https://github.com/raphyduck/t411.git
-  revision: 2f6f0b011363368342d6e949a9bd774d13c0255e
-  specs:
-    t411 (0.0.15)
-
-GIT
   remote: https://github.com/raphyduck/trakt.git
   revision: 448a5267708233083a934600f4764147be848af7
   specs:
@@ -185,7 +179,6 @@ DEPENDENCIES
   simple_speaker
   sqlite3
   sys-filesystem
-  t411!
   titleize
   trakt!
   tvdb_party

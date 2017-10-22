@@ -25,6 +25,16 @@ class Utils
     Dir.chdir(pwd)
   end
 
+  def self.entry_deja_vu?(category, entry)
+    dejavu = $db.get_rows('seen', {'category' => 'global', 'entry' => entry.downcase.gsub(' ','')})
+    dejavu = $db.get_rows('seen', {'category' => category, 'entry' => entry.downcase.gsub(' ','')}) if dejavu.empty?
+    !dejavu.empty?
+  end
+
+  def self.entry_seen(category, entry)
+    $db.insert_row('seen', { 'categorie' => category, 'entry' => entry, 'created_at' => Time.now})
+  end
+
   def self.extract_archive(type, archive, destination)
     Dir.mkdir(destination) unless Dir.exist?(destination)
     case type
@@ -150,7 +160,7 @@ class Utils
 
   def self.regularise_media_filename(filename, formatting = '')
     r = filename.to_s.gsub(/[\'\"\;\:\/]/, '')
-    r = r.downcase.titleize if formatting.to_s.match(/.*titleize.*/)
+    r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/,'').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
     r = r.gsub(/\ /, '.') if formatting.to_s.match(/.*nospace.*/)
     r

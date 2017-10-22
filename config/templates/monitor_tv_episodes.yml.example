@@ -1,0 +1,18 @@
+folder: /folder/to/monitor
+no_prompt: 0
+delta: 10
+include_specials: 0
+remove_duplicates: 0
+handle_missing:
+  download: 0
+  move_to: '/folder/to/move/completed/to'
+  main_only: 1
+  only_on_trackers:
+    - wop
+    - torrentleech
+    - thepiratebay
+  quality:
+    - 1080p x264
+    - 1080p x265
+    - 720p x264
+    - 720p x265

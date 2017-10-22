@@ -1,14 +1,5 @@
 class TorrentSearch
 
-  def self.authenticate_all
-    if $config['t411'] && !T411.authenticated?
-      T411.authenticate($config['t411']['username'], $config['t411']['password'])
-      $speaker.speak_up("You are #{T411.authenticated? ? 'now' : 'NOT'} connected to T411")
-    end
-  rescue => e
-    $speaker.tell_error(e, "TorrentSearch.authenticate_all")
-  end
-
   def self.get_cid(type, category)
     return nil if category.nil? || category == ''
     case type
@@ -19,19 +10,18 @@ class TorrentSearch
             :music => 5,
             :book => 2
         }.fetch(category.to_sym, nil)
-      when 't411'
-        {
-            :movies => 210,
-            :tv => 210,
-            :music => 395,
-            :ebook => 404
-        }.fetch(category.to_sym, nil)
       when 'thepiratebay'
         {
             :movies => 200,
             :tv => 200,
             :music => 100,
             :book => 601
+        }.fetch(category.to_sym, nil)
+      when 'torrentleech'
+        {
+            :movies => 'Movies',
+            :tv => 'TV',
+            :book => 'Books'
         }.fetch(category.to_sym, nil)
     end
   rescue => e
@@ -43,18 +33,11 @@ class TorrentSearch
     get_results = {}
     cid = self.get_cid(type, category)
     case type
-      when 't411'
-        if cid
-          @search = T411::Torrents.search(keyword, limit: limit, cid: cid)
-        else
-          @search = T411::Torrents.search(keyword, limit: limit)
-        end
-        get_results = JSON.load(get_results)
       when 'thepiratebay'
         @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
         get_results = @search.links
       when 'torrentleech'
-        @search = TorrentLeech::Search.new(keyword, url)
+        @search = TorrentLeech::Search.new(keyword, url, cid)
         get_results = @search.links
       when 'yggtorrent'
         @search = Yggtorrent::Search.new(keyword, url)
@@ -68,7 +51,6 @@ class TorrentSearch
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
       end
       get_results['torrents'].select! { |t| t['seeders'].to_i > filter_dead.to_i } if filter_dead.to_i > 0
-      get_results['torrents'].map! { |t| t['link'] = T411::Torrents.torrent_url(t['rewritename']).to_s; t } if type == 't411'
       get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
     end
@@ -81,8 +63,6 @@ class TorrentSearch
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)
     $speaker.speak_up("Will download torrent '#{name}' from #{url}")
     case type
-      when 't411'
-        T411::Torrents.download(did.to_i, destination_folder)
       when 'yggtorrent', 'wop', 'torrentleech'
         @search.download(url, destination_folder, did)
     end
@@ -104,13 +84,12 @@ class TorrentSearch
       return if download_id == 0
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
-      self.get_torrent_file(site, name, name, url, destination_folder) if (url && url != '') || type == 't411'
+      self.get_torrent_file(site, name, name, url, destination_folder) if (url && url != '')
     end
   end
 
-  def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0)
+  def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0, only_on_trackers: [])
     success = nil
-    self.authenticate_all
     begin
       keywords = eval(keywords)
     rescue Exception
@@ -120,6 +99,7 @@ class TorrentSearch
       success = nil
       TORRENT_TRACKERS.map{|x| x[:name]}.each do |type|
         break if success
+        next if !only_on_trackers.nil? && !only_on_trackers.empty? && !only_on_trackers.include?(type)
         next if TORRENT_TRACKERS.map{|x| x[:name]}.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
       end
@@ -136,7 +116,6 @@ class TorrentSearch
 
   def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
     success = nil
-    return nil if !T411.authenticated? && type == 't411'
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead)
     search = self.get_results(type, keyword, limit, category, filter_dead) if search.empty? || search['torrents'].nil? || search['torrents'].empty?
@@ -166,7 +145,7 @@ class TorrentSearch
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
       magnet = search['torrents'][download_id.to_i - 1]['magnet_link']
-      if (url && url != '') || type == 't411'
+      if (url && url != '')
         success = self.get_torrent_file(type, did, name, url)
       elsif magnet && magnet != ''
         $pending_magnet_links[did] = magnet

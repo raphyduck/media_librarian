@@ -10,7 +10,7 @@ module Storage
     end
 
     def get_rows(table, conditions = '')
-      r = @s_db.execute( "select * from #{table}#{' where ' + conditions.map{|k,v| "#{k} = '#{v}'"}.join(', ') if conditions && conditions != ''}" )
+      r = @s_db.execute( "select * from #{table}#{' where ' + conditions.map{|k,v| "#{k} = '#{v}'"}.join(' and ') if conditions && conditions != ''}" )
       i = -1
       res = []
       r.each do |l|
@@ -42,18 +42,23 @@ module Storage
               'created_at' => 'datetime',
               'expires_in' => 'datetime'
           },
+          'movies_files' => {
+              'movies_name' => 'varchar(200)',
+              'movies_year' => 'varchar(200)',
+              'quality' => 'varchar(200)',
+              'path' => 'text',
+              'created_at' => 'datetime'
+          },
+          'seen' => {
+              'category' => 'varchar(200)',
+              'entry' => 'text',
+              'created_at' => 'datetime'
+          },
           'series_files' => {
               'series_name' => 'varchar(200)',
               'episode_name' => 'varchar(200)',
               'episode_season' => 'integer',
               'episodes_number' => 'integer',
-              'quality' => 'varchar(200)',
-              'path' => 'text',
-              'created_at' => 'datetime'
-          },
-          'movies_files' => {
-              'movies_name' => 'varchar(200)',
-              'movies_year' => 'varchar(200)',
               'quality' => 'varchar(200)',
               'path' => 'text',
               'created_at' => 'datetime'
