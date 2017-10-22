@@ -41,7 +41,6 @@ module TorrentLeech
       raw_size = cols[4].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+/, '').gsub('</td>', '').to_s
-      puts cols[1].css('span[class="addedInLine"]').text.to_s
       case s_unit
         when 'MB'
           size *= 1024 * 1024
