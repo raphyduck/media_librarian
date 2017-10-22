@@ -1,44 +1,47 @@
 deluge:
-    host: host
-    username: username
-    password: password
+  host: host
+  username: username
+  password: password
 email:
-    host: host
-    port: 587
-    domain: example.com
-    username: username
-    password: pwd
-    auth_type: plain
-    notification_from: 'noreply@sender.com'
-    notification_to: 'noreply@recipient.com'
-    notification_cc: ''
-    notification_bcc: ''
+  host: host
+  port: 587
+  domain: example.com
+  username: username
+  password: pwd
+  auth_type: plain
+  notification_from: 'noreply@sender.com'
+  notification_to: 'noreply@recipient.com'
+  notification_cc: ''
+  notification_bcc: ''
 imdb:
-    user: user
-    list: list
+  user: user
+  list: list
 kodi:
-    host: http://host:port
-    username: username
-    password: password
+  host: http://host:port
+  username: username
+  password: password
 thepiratebay:
-    site_specific_kw:
-        tv: ''
+  site_specific_kw:
+      tv: ''
 extratorrent:
-    site_specific_kw:
-        movies: ''
+  site_specific_kw:
+      movies: ''
+torrentleech:
+  username: username
+  password: password
 trakt:
-    account_id: account_id
-    client_id: client_id
-    client_secret: client_secret
+  account_id: account_id
+  client_id: client_id
+  client_secret: client_secret
 tvdb:
-    api_key: api_key
+  api_key: api_key
 yggtorrent:
-    username: username
-    password: password
-    site_specific_kw:
-        movies: 'multi'
+  username: username
+  password: password
+  site_specific_kw:
+      movies: 'multi'
 worldofp2p:
-    username: username
-    password: password
-    site_specific_kw:
-        movies: 'multi'
+  username: username
+  password: password
+  site_specific_kw:
+      movies: 'multi'

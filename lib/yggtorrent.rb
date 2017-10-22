@@ -1,30 +1,21 @@
 require File.dirname(__FILE__) + '/torrent_site'
 module Yggtorrent
-  class Download < TorrentSite::Download
-  end
   ##
   # Extract a list of results from your search
   class Search < TorrentSite::Search
-    BASE_URL = 'https://yggtorrent.com'.freeze
 
     attr_accessor :url
 
     def initialize(search, url = nil)
+      @base_url = 'https://yggtorrent.com'
       # Order by seeds desc
-      #@url = "#{BASE_URL}/engine/search?q=the+circle+2017"
       @query = search
-      @url = url || "#{BASE_URL}/engine/search?q=#{URI.escape(search)}"
-      if $ygg_agent.nil?
-        $ygg_agent = Mechanize.new
-        $ygg_agent.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        $ygg_logged = false
+      @url = url || "#{@base_url}/engine/search?q=#{URI.escape(search)}"
+      if @client.nil?
+        @client = Mechanize.new
+        @client.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        @client_logged = false
       end
-    end
-
-    def download(url, destination, name)
-      authenticate! unless $ygg_logged
-      return unless $ygg_logged
-      $ygg_agent.get(url).save("#{destination}/#{name}.torrent")
     end
 
     private
@@ -32,19 +23,15 @@ module Yggtorrent
     def authenticate!
       if $config['yggtorrent']
         $speaker.speak_up('Authenticating on yggtorrent.')
-        login = $ygg_agent.get(BASE_URL + '/user/login')
+        login = @client.get(@base_url + '/user/login')
         login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
         login_form.pass = $config['yggtorrent']['password']
-        $ygg_agent.submit login_form
-        $ygg_logged = true
+        @client.submit login_form
+        @client_logged = true
       else
         $speaker.speak_up('YggTorrent not configured, cannot authenticate')
       end
-    end
-
-    def page
-      @page ||= $ygg_agent.get(@url)
     end
 
     def crawl_link(link)

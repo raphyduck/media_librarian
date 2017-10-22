@@ -1,27 +1,24 @@
 require File.dirname(__FILE__) + '/torrent_site'
 module Tpb
-  class Download < TorrentSite::Download
-  end
   ##
   # Extract a list of results from your search
   # ExtratorrentSearch::Search.new("Suits s05e16")
   class Search < TorrentSite::Search
-    BASE_URL = 'https://thepiratebay.se'.freeze
 
     attr_accessor :url
 
     def initialize(search, cid = '')
-      # Order by seeds desc
-      #@url = "#{BASE_URL}/search/?search=#{ERB::Util.url_encode(search)}&srt=seeds&order=desc"
+      @base_url = 'https://thepiratebay.se'
       @query = search
-      @url = "#{BASE_URL}/search/#{URI.escape(search)}/0/7/#{cid}"
+      @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
+      @client = Mechanize.new if @client.nil?
+    end
+
+    def download(url, destination, name)
+      $speaker.speak_up('ThePirateBay do not provide torrent link')
     end
 
     private
-
-    def page
-      @page ||= Nokogiri::HTML(open(@url))
-    end
 
     def crawl_link(link)
       cols = link.xpath('.//td')
@@ -41,7 +38,7 @@ module Tpb
       {
           'name' => links[0].text,
           'size' => size,
-          'link' => BASE_URL + links[0]['href'],
+          'link' => @base_url + links[0]['href'],
           'magnet_link' => links[1]['href'],
           'seeders' => cols[2].text.to_i,
           'leechers' => cols[3].text.to_i,

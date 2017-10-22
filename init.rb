@@ -34,6 +34,11 @@ FILENAME_NAMING_TEMPLATE=%w(
 )
 REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
 VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg)'
+PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
+                    {:name => 'wop', :url => 'https://worldofp2p.net'},
+                    {:name => 'torrentleech', :url => 'https://www.torrentleech.org'}]
+TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'thepiratebay', :url => 'https://thepiratebay.se'}]
+
 #Create default folders if doesn't exist
 Dir.mkdir(config_dir) unless File.exist?(config_dir)
 Dir.mkdir(log_dir) unless File.exist?(log_dir)

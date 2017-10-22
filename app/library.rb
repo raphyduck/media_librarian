@@ -723,7 +723,7 @@ class Library
     episode_numbering = []
     episodes_nbs.each do |n|
       tvdb_ep = !episodes.empty? && episode_season != '' && n[:ep].to_i > 0 ? episodes.select { |e| e.season_number == episode_season.to_i.to_s && e.number == n[:ep].to_s }.first : nil
-      episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.downcase)
+      episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
       if n[:ep].to_i > 0 && episode_season != ''
         episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
       end

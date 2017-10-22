@@ -5,20 +5,6 @@ require 'yaml'
 require 'cgi'
 require 'httparty'
 module TorrentSite
-  class Download
-    def self.download(url, destination, name)
-      File.open("#{destination}/#{name}.torrent", 'ab+') do |line|
-        line.puts self.request(url)
-      end
-    end
-
-    def self.request(url)
-      HTTParty.get(url).body
-    rescue => e
-      $speaker.tell_error(e, "Extratorrent::Download.request")
-      nil
-    end
-  end
   ##
   # Extract a list of results from your search
   # ExtratorrentSearch::Search.new("Suits s05e16")
@@ -36,7 +22,18 @@ module TorrentSite
       @results_found = false
     end
 
+    def download(url, destination, name)
+      authenticate! unless logged_in?
+      return unless logged_in?
+      @client.get(url).save("#{destination}/#{name}.torrent")
+    end
+
     private
+
+    def page
+      authenticate! if PRIVATE_TRACKERS.map{|x| x[:url]}.include?(@base_url) && !@client_logged
+      @page ||= @client.get(@url)
+    end
 
     def generate_links(limit = NUMBER_OF_LINKS)
       links = {'torrents' => [], 'query' => @query}

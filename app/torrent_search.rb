@@ -50,11 +50,11 @@ class TorrentSearch
           @search = T411::Torrents.search(keyword, limit: limit)
         end
         get_results = JSON.load(get_results)
-      when 'extratorrent'
-        @search = Extratorrent::Search.new(keyword, cid)
-        get_results = @search.links
       when 'thepiratebay'
         @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
+        get_results = @search.links
+      when 'torrentleech'
+        @search = TorrentLeech::Search.new(keyword, url)
         get_results = @search.links
       when 'yggtorrent'
         @search = Yggtorrent::Search.new(keyword, url)
@@ -83,9 +83,7 @@ class TorrentSearch
     case type
       when 't411'
         T411::Torrents.download(did.to_i, destination_folder)
-      when 'extratorrent'
-        Extratorrent::Download.download(url, destination_folder, did)
-      when 'yggtorrent', 'wop'
+      when 'yggtorrent', 'wop', 'torrentleech'
         @search.download(url, destination_folder, did)
     end
     did
@@ -96,7 +94,7 @@ class TorrentSearch
 
   def self.random_pick(site:, url:, sort_by:, output: 1, destination_folder: $temp_dir)
     case site
-      when 'yggtorrent'
+      when 'yggtorrent', 'torrentleech'
         search = get_results(site, '', 25, 'movies', 2, url, sort_by, ['leechers'])
       else
         search = []
@@ -118,12 +116,11 @@ class TorrentSearch
     rescue Exception
       keywords = [keywords]
     end
-    tcks = ['yggtorrent', 'wop', 'thepiratebay']
     keywords.each do |keyword|
       success = nil
-      tcks.each do |type|
+      TORRENT_TRACKERS.map{|x| x[:name]}.each do |type|
         break if success
-        next if tcks.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if TORRENT_TRACKERS.map{|x| x[:name]}.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
       end
     end
