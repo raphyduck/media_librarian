@@ -159,7 +159,7 @@ class Utils
   end
 
   def self.regularise_media_filename(filename, formatting = '')
-    r = filename.to_s.gsub(/[\'\"\;\:\/]/, '')
+    r = filename.to_s.gsub(/[\'\"\;\:\/\,]/, '')
     r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/,'').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
     r = r.gsub(/\ /, '.') if formatting.to_s.match(/.*nospace.*/)

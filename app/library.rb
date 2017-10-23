@@ -553,31 +553,38 @@ class Library
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {})
-    #First, extract archives if any
-    Utils.search_folder(torrent_path + '/' + torrent_name, {'regex' => ".*\.(rar|zip)$"}).each do |a|
-      Utils.extract_archive(a[0].gsub(/.*\.(rar|zip)$/, '\1'), a[0], File.dirname(a[0]))
-    end
-    #Then, find desired files and hard link them to the destination folder to be picked up by other programs
-    if handling['file_types']
-      Utils.search_folder(torrent_path + '/' + torrent_name, {'regex' => Regexp.new('.*\.(' + handling['file_types'].join('|') + '$)').to_s}).each do |f|
-        begin
-          type = f[0].gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
-          next if f[1].downcase == 'sample' || File.basename(f[0]).match(/([\. -])?sample([\. -])?/)
-          next if File.stat(f[0]).nlink > 1 #File already hard linked eslwhere, moving on
-          item_name = f[0].gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([^\/]*)\/.*"), '\1')
-          type.downcase!
-          if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
-            season, ep_nb = MediaInfo.identify_tv_episodes_numbering(f[0])
-            rename_tv_series_file(f[0], item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, nil, 1, 1)
-          elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
-            rename_movies_file(f[0], item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder,''), nil, 1, 1)
-          else
-            #TODO: Handle flac,...
-            destination = f[0].gsub(completed_folder, destination_folder)
-            Utils.move_file(f[0], destination, 1)
+    full_p = torrent_path + '/' + torrent_name
+    if FileTest.directory?(full_p)
+      handled_files = (!handling['file_types'].nil? && handling['file_types'].is_a?(Array)) ? handling['file_types'] + ['rar', 'zip'] : ['rar', 'zip']
+      Utils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s}).each do |f|
+        handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling)
+      end
+    else
+      extension = torrent_name.gsub(/.*\.(\w{2,4}$)/, '\1')
+      if ['rar', 'zip'].include?(extension)
+        Utils.extract_archive(extension, full_p, torrent_path + '/extracted')
+        handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling)
+      else
+        if handling['file_types']
+          begin
+            type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+            return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
+            return if File.stat(full_p).nlink > 1 #File already hard linked eslwhere, moving on
+            item_name = full_p.gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([^\/]*)\/.*"), '\1')
+            type.downcase!
+            if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
+              season, ep_nb = MediaInfo.identify_tv_episodes_numbering(full_p)
+              rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, nil, 1, 1)
+            elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
+              rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+            else
+              #TODO: Handle flac,...
+              destination = full_p.gsub(completed_folder, destination_folder)
+              Utils.move_file(full_p, destination, 1)
+            end
+          rescue => e
+            $speaker.tell_error(e, "Library.handle_completed_download block")
           end
-        rescue => e
-          $speaker.tell_error(e, "Library.handle_completed_download block")
         end
       end
     end
@@ -596,19 +603,19 @@ class Library
           s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
           e.each do |n|
             qs = MediaInfo.media_qualities(File.basename(ep[0]))
-            episodes_in_files << [s,n]
+            episodes_in_files << [s, n]
             ep_details["#{s}#{n[:ep]}#{n[:part]}"] = [] if ep_details["#{s}#{n[:ep]}#{n[:part]}"].nil?
             ep_details["#{s}#{n[:ep]}#{n[:part]}"] << [ep[0], qs['resolutions'], qs['sources'], qs['codecs'], qs['audio']]
           end
         end
-        dups = episodes_in_files.group_by{ |e| e }.select { |_, v| v.size > 1 }.map(&:first)
+        dups = episodes_in_files.group_by { |e| e }.select { |_, v| v.size > 1 }.map(&:first)
         unless dups.empty?
           dups.each do |d|
             $speaker.speak_up("Duplicate episodes found for #{series_name} S#{format('%02d', d[0].to_i)}E#{format('%02d', d[1][:ep].to_i)}:")
-            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by!{|x| AUDIO.index x[4]}
-            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by!{|x| CODECS.index x[3]}
-            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by!{|x| SOURCES.index x[2]}
-            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by!{|x| RESOLUTIONS.index x[1]}
+            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by! { |x| AUDIO.index x[4] }
+            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by! { |x| CODECS.index x[3] }
+            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by! { |x| SOURCES.index x[2] }
+            ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].sort_by! { |x| RESOLUTIONS.index x[1] }
             ep_details["#{d[0]}#{d[1][:ep]}#{d[1][:part]}"].each do |f|
               if remove_duplicates.to_i > 0
                 next if f.index == 0
@@ -620,9 +627,9 @@ class Library
           end
         end
         episodes.each do |ep|
-          next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || !episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i + 1}.empty?
+          next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || !episodes_in_files.select { |e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i + 1 }.empty?
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
-          if episodes_in_files.select{|e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i}.empty?
+          if episodes_in_files.select { |e| e[0].to_i == ep.season_number.to_i && e[1][:ep].to_i == ep.number.to_i }.empty?
             $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}). Look for it:")
             if handle_missing['download'].to_i > 0
               if Utils.entry_deja_vu?(__method__.to_s, "#{series_name}S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}")
@@ -630,7 +637,7 @@ class Library
               else
                 success = nil
                 (handle_missing['quality'] || ['']).each do |q|
-                  success = TorrentSearch.search(keywords: series_name.gsub(/\(\d{4}\)/,'').gsub(/[\(\)\:]/,'') + " S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} " + q, limit:10, category:'tv',no_prompt: no_prompt, filter_dead: 1, move_completed: handle_missing['move_to'], main_only: handle_missing['main_only'], only_on_trackers: handle_missing['only_on_trackers'])
+                  success = TorrentSearch.search(keywords: series_name.gsub(/\(\d{4}\)/, '').gsub(/[\(\)\:]/, '') + " S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} " + q, limit: 10, category: 'tv', no_prompt: no_prompt, filter_dead: 1, move_completed: handle_missing['move_to'], main_only: handle_missing['main_only'], only_on_trackers: handle_missing['only_on_trackers'])
                   break if success
                 end
                 Utils.entry_seen(__method__.to_s, "#{series_name}S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}") if success
@@ -683,7 +690,7 @@ class Library
     quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
     FILENAME_NAMING_TEMPLATE.each do |k|
-      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)} rescue nil
+      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(eval(k), $1) } rescue nil
     end
     destination += ".#{extension.downcase}"
     Utils.move_file(original, destination, hard_link, replaced_outdated)
@@ -729,7 +736,7 @@ class Library
     extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
     episode_numbering = episode_numbering.join(' ')
     FILENAME_NAMING_TEMPLATE.each do |k|
-      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')){ Utils.regularise_media_filename(eval(k), $1)}
+      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(eval(k), $1) }
     end
     destination += ".#{extension.downcase}"
     Utils.move_file(original, destination, hard_link, replaced_outdated) if episode_numbering != ''
