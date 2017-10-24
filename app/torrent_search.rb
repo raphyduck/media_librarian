@@ -34,7 +34,7 @@ class TorrentSearch
     cid = self.get_cid(type, category)
     case type
       when 'thepiratebay'
-        @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
+        @search = Tpb::Search.new(keyword.gsub(/\'\w/, ''), cid)
         get_results = @search.links
       when 'torrentleech'
         @search = TorrentLeech::Search.new(keyword, url, cid)
@@ -85,7 +85,7 @@ class TorrentSearch
       else
         search = []
     end
-    (1..[output.to_i,1].max).each do |i|
+    (1..[output.to_i, 1].max).each do |i|
       download_id = search.empty? || search['torrents'].nil? || search['torrents'][i - 1].nil? ? 0 : i
       return if download_id == 0
       name = search['torrents'][download_id.to_i - 1]['name']
@@ -103,10 +103,10 @@ class TorrentSearch
     end
     keywords.each do |keyword|
       success = nil
-      TORRENT_TRACKERS.map{|x| x[:name]}.each do |type|
+      TORRENT_TRACKERS.map { |x| x[:name] }.each do |type|
         break if success
         next if !only_on_trackers.nil? && !only_on_trackers.empty? && !only_on_trackers.include?(type)
-        next if TORRENT_TRACKERS.map{|x| x[:name]}.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if TORRENT_TRACKERS.map { |x| x[:name] }.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only, qualities)
       end
     end
@@ -117,7 +117,7 @@ class TorrentSearch
   end
 
   def self.sort_results(results, qualities)
-    MediaInfo.sort_media_files(results.map{|t|t[:file] = t['name']; t}, qualities)
+    MediaInfo.sort_media_files(results.map { |t| t[:file] = t['name']; t }, qualities)
   end
 
   def self.get_site_keywords(type, category = '')
@@ -130,27 +130,25 @@ class TorrentSearch
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities)
     search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
-    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,''), limit, category, filter_dead, nil, 'seeders', [],  qualities) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/, ''), limit, category, filter_dead, nil, 'seeders', [], qualities) if keyword.gsub(/\(?\d{4}\)?/, '') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
     search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
-    if no_prompt.to_i == 0
-      i = 1
-      if search['torrents'].nil? || search['torrents'].empty?
-        $speaker.speak_up("No results for '#{search['query']}' on #{type}")
-        return success
-      end
-      $speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
-      search['torrents'].each do |torrent|
-        $speaker.speak_up('---------------------------------------------------------------')
-        $speaker.speak_up("Index: #{i}")
-        $speaker.speak_up("Name: #{torrent['name']}")
-        $speaker.speak_up("Size: #{(torrent['size'].to_f / 1024 / 1024 / 1024).round(2)} GB")
-        $speaker.speak_up("Seeders: #{torrent['seeders']}")
-        $speaker.speak_up("Leechers: #{torrent['leechers']}")
-        $speaker.speak_up("Added: #{torrent['added']}")
-        $speaker.speak_up("Link: #{URI.escape(torrent['link'])}")
-        $speaker.speak_up('---------------------------------------------------------------')
-        i += 1
-      end
+    i = 1
+    if search['torrents'].nil? || search['torrents'].empty?
+      $speaker.speak_up("No results for '#{search['query']}' on #{type}")
+      return success
+    end
+    $speaker.speak_up("Showing result for '#{search['query']}' on #{type} (#{search['torrents'].length} out of total #{search['total'].to_i})")
+    search['torrents'].each do |torrent|
+      $speaker.speak_up('---------------------------------------------------------------')
+      $speaker.speak_up("Index: #{i}")
+      $speaker.speak_up("Name: #{torrent['name']}")
+      $speaker.speak_up("Size: #{(torrent['size'].to_f / 1024 / 1024 / 1024).round(2)} GB")
+      $speaker.speak_up("Seeders: #{torrent['seeders']}")
+      $speaker.speak_up("Leechers: #{torrent['leechers']}")
+      $speaker.speak_up("Added: #{torrent['added']}")
+      $speaker.speak_up("Link: #{URI.escape(torrent['link'])}")
+      $speaker.speak_up('---------------------------------------------------------------')
+      i += 1
     end
     download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
     if download_id.to_i > 0 && search['torrents'][download_id.to_i - 1]
