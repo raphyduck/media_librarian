@@ -28,7 +28,7 @@ class TorrentSearch
     $speaker.tell_error(e, "TorrentSearch.get_cid")
   end
 
-  def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [])
+  def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [], qualities = {})
     tries ||= 3
     get_results = {}
     cid = self.get_cid(type, category)
@@ -47,9 +47,14 @@ class TorrentSearch
         get_results = @search.links
     end
     if get_results['torrents']
+      get_results['torrents'].select! do |t|
+        t['name'].match(Regexp.new(Utils.regexify(keyword, 0), Regexp::IGNORECASE))
+      end
       filter_out.each do |fout|
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
       end
+      get_results['torrents'].select! { |t| t['size'].to_f >= qualities['min_size'].to_f * 1024 * 1024 } unless qualities['min_size'].nil?
+      get_results['torrents'].select! { |t| t['size'].to_f <= qualities['max_size'].to_f * 1024 * 1024 } unless qualities['max_size'].nil?
       get_results['torrents'].select! { |t| t['seeders'].to_i > filter_dead.to_i } if filter_dead.to_i > 0
       get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
@@ -88,7 +93,8 @@ class TorrentSearch
     end
   end
 
-  def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0, only_on_trackers: [])
+  def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0, only_on_trackers: [], qualities: {})
+    qualities = eval(qualities) if qualities.is_a?(String)
     success = nil
     begin
       keywords = eval(keywords)
@@ -101,7 +107,7 @@ class TorrentSearch
         break if success
         next if !only_on_trackers.nil? && !only_on_trackers.empty? && !only_on_trackers.include?(type)
         next if TORRENT_TRACKERS.map{|x| x[:name]}.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
-        success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only)
+        success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only, qualities)
       end
     end
     success
@@ -110,15 +116,21 @@ class TorrentSearch
     nil
   end
 
+  def self.sort_results(results, qualities)
+    MediaInfo.sort_media_files(results.map{|t|t[:file] = t['name']; t}, qualities)
+  end
+
   def self.get_site_keywords(type, category = '')
     category && category != '' && $config[type] && $config[type]['site_specific_kw'] && $config[type]['site_specific_kw'][category] ? " #{$config[type]['site_specific_kw'][category]}" : ''
   end
 
-  def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0)
+  def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0, qualities = {})
     success = nil
     keyword_s = keyword + self.get_site_keywords(type, category)
-    search = self.get_results(type, keyword_s, limit, category, filter_dead)
-    search = self.get_results(type, keyword, limit, category, filter_dead) if search.empty? || search['torrents'].nil? || search['torrents'].empty?
+    search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities)
+    search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,''), limit, category, filter_dead, nil, 'seeders', [],  qualities) if no_prompt.to_i == 0 && keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
     if no_prompt.to_i == 0
       i = 1
       if search['torrents'].nil? || search['torrents'].empty?

@@ -12,7 +12,7 @@ handle_missing:
     - torrentleech
     - thepiratebay
   quality:
-    - 1080p x264
-    - 1080p x265
-    - 720p x264
-    - 720p x265
+    min_quality: 720p hdtv
+    max_quality: 1080p
+    min_size: 100(in MB)
+    max_size: 3000(in MB)

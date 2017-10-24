@@ -11,10 +11,10 @@ module Yggtorrent
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/engine/search?q=#{URI.escape(search)}"
-      if @client.nil?
-        @client = Mechanize.new
-        @client.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        @client_logged = false
+      if $tracker_client[@base_url].nil?
+        $tracker_client[@base_url] = Mechanize.new
+        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        $tracker_client_logged[@base_url] = false
       end
     end
 
@@ -23,12 +23,12 @@ module Yggtorrent
     def authenticate!
       if $config['yggtorrent']
         $speaker.speak_up('Authenticating on yggtorrent.')
-        login = @client.get(@base_url + '/user/login')
+        login = $tracker_client[@base_url].get(@base_url + '/user/login')
         login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
         login_form.pass = $config['yggtorrent']['password']
-        @client.submit login_form
-        @client_logged = true
+        $tracker_client[@base_url].submit login_form
+        $tracker_client_logged[@base_url] = true
       else
         $speaker.speak_up('YggTorrent not configured, cannot authenticate')
       end
@@ -41,7 +41,7 @@ module Yggtorrent
       tlink = links[2]['href'] if !tlink.match('download_torrent')
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s
+      s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s.strip
       case s_unit
         when 'MB'
           size *= 1024 * 1024

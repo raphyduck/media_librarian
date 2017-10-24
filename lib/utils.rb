@@ -118,7 +118,8 @@ class Utils
   def self.move_file(original, destination, hard_link = 0, remove_outdated = 0)
     destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
     if File.exists?(destination)
-      if remove_outdated.to_i > 0 && MediaInfo.identify_proper(original).to_s == 'proper'
+      _, prosper = MediaInfo.identify_proper(original)
+      if remove_outdated.to_i > 0 && prosper.to_i > 0
         $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
         FileUtils.rm(destination)
       else
@@ -154,8 +155,12 @@ class Utils
     end
   end
 
-  def self.regexify(str)
-    str.strip.gsub(/[:,-\/\[\]]/, '.{0,2}').gsub(/ /, '.').gsub("'", "'?")
+  def self.regexify(str, strict = 1)
+    if strict <= 0
+      str.strip.gsub(/[:,-\/\[\]]/, '.*').gsub(/ /, '.*').gsub("'", "'?")
+    else
+      str.strip.gsub(/[:,-\/\[\]]/, '.{0,2}').gsub(/ /, '.').gsub("'", "'?")
+    end
   end
 
   def self.regularise_media_filename(filename, formatting = '')

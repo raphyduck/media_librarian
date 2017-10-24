@@ -10,11 +10,11 @@ module TorrentLeech
       @base_url = 'https://www.torrentleech.org'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search)}/newfilter/2/facets/category%253A#{cid}/orderby/seeders/order/desc" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
-      if @client.nil?
-        @client = Mechanize.new
-        @client.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        @client_logged = false
+      @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search.gsub(/\ \ +/,' '))}/newfilter/2/#{'facets/category%253A' + cid.to_s if cid.to_s != ''}/orderby/seeders/order/desc" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
+      if $tracker_client[@base_url].nil?
+        $tracker_client[@base_url] = Mechanize.new
+        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        $tracker_client_logged[@base_url] = false
       end
     end
 
@@ -23,12 +23,12 @@ module TorrentLeech
     def authenticate!
       if $config['torrentleech']
         $speaker.speak_up('Authenticating on TorrentLeech.')
-        login = @client.get(@base_url + '/')
+        login = $tracker_client[@base_url].get(@base_url + '/')
         login_form = login.form('form')
         login_form.username = $config['torrentleech']['username']
         login_form.password = $config['torrentleech']['password']
-        @client.submit login_form
-        @client_logged = true
+        $tracker_client[@base_url].submit login_form
+        $tracker_client_logged[@base_url] = true
       else
         $speaker.speak_up('TorrentLeech not configured, cannot authenticate')
       end
@@ -40,8 +40,8 @@ module TorrentLeech
       tlink = cols[2].xpath('.//a')[0]['href']
       raw_size = cols[4].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+/, '').gsub('</td>', '').to_s
-      case s_unit.strip
+      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+/, '').gsub('</td>', '').to_s.strip
+      case s_unit
         when 'MB'
           size *= 1024 * 1024
         when 'GB'

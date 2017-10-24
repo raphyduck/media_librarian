@@ -25,14 +25,14 @@ module TorrentSite
     def download(url, destination, name)
       authenticate! unless logged_in?
       return unless logged_in?
-      @client.get(url).save("#{destination}/#{name}.torrent")
+      $tracker_client[@base_url].get(url).save("#{destination}/#{name}.torrent")
     end
 
     private
 
     def page
-      authenticate! if PRIVATE_TRACKERS.map{|x| x[:url]}.include?(@base_url) && !@client_logged
-      @page ||= @client.get(@url)
+      authenticate! if PRIVATE_TRACKERS.map{|x| x[:url]}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      @page ||= $tracker_client[@base_url].get(@url)
     end
 
     def generate_links(limit = NUMBER_OF_LINKS)
@@ -40,7 +40,7 @@ module TorrentSite
       return links unless results_found?
       link_nodes = get_rows
       links['total'] = link_nodes.length
-      link_nodes.each { |link| links['torrents'] << crawl_link(link) }
+      link_nodes.each { |link| l = crawl_link(link); links['torrents'] << l unless l.nil? }
       links['torrents'] = links['torrents'].first(limit)
       links
     end

@@ -12,10 +12,10 @@ module Wop
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
       @url = url || "#{@base_url}/browse.php?search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
-      if @client.nil?
-        @client = Mechanize.new
-        @client.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        @client_logged = false
+      if $tracker_client[@base_url].nil?
+        $tracker_client[@base_url] = Mechanize.new
+        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        $tracker_client_logged[@base_url] = false
       end
     end
 
@@ -24,12 +24,12 @@ module Wop
     def authenticate!
       if $config['worldofp2p']
         $speaker.speak_up('Authenticating on WorldofP2P.')
-        login = @client.get(@base_url + '/login.php?returnto=%2Findex.php')
+        login = $tracker_client[@base_url].get(@base_url + '/login.php?returnto=%2Findex.php')
         login_form = login.forms[0]
         login_form.username = $config['worldofp2p']['username']
         login_form.password = $config['worldofp2p']['password']
-        @client.submit login_form
-        @client_logged = true
+        $tracker_client[@base_url].submit login_form
+        $tracker_client_logged[@base_url] = true
       else
         $speaker.speak_up('WorldofP2P not configured, cannot authenticate')
       end
@@ -38,10 +38,11 @@ module Wop
     def crawl_link(link)
       cols = link.xpath('.//td')
       links = cols[1].xpath('.//a')
+      name = links[0].text
       tlink = cols[2].xpath('.//a')[0]['href']
       raw_size = cols[7].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+<br>/, '').gsub('</td>', '').to_s
+      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+<br>/, '').gsub('</td>', '').to_s.strip
       case s_unit
         when 'MB'
           size *= 1024 * 1024
@@ -51,7 +52,7 @@ module Wop
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          'name' => links[0].text,
+          'name' => name,
           'size' => size,
           'link' => @base_url + '/' + links[0]['href'],
           'torrent_link' => @base_url + '/' + tlink,

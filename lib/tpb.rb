@@ -11,7 +11,7 @@ module Tpb
       @base_url = 'https://thepiratebay.org'
       @query = search
       @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
-      @client = Mechanize.new if @client.nil?
+      $tracker_client[@base_url] = Mechanize.new if $tracker_client[@base_url].nil?
     end
 
     def download(url, destination, name)
@@ -26,7 +26,7 @@ module Tpb
       meta_col = cols[1].xpath('.//font').text.gsub("\u00a0", ' ')
       _, created_at, raw_size, _ = %r{Uploaded (.*), Size (.*), ULed by (.*)}.match(meta_col).to_a
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s
+      s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s.strip
       case s_unit
         when 'MiB'
           size *= 1024 * 1024
