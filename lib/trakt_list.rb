@@ -8,6 +8,7 @@ class TraktList
   end
 
   def self.add_to_list(items, list_type, list_name = '', type = 'movies')
+    return if $pretend > 0
     authenticate!
     items = [items] unless items.is_a?(Array)
     items.map! { |i| i.merge({'collected_at' => TIme.now}) } if list_type == 'collection'
@@ -15,12 +16,14 @@ class TraktList
   end
 
   def self.clean_list(list_name)
+    return if $pretend > 0
     $cleanup_trakt_list.each do |movie|
       TraktList.remove_from_list(movie[:c], list_name, movie[:t])
     end
   end
 
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
+    return if $pretend > 0
     authenticate!
     $trakt.list.create_list({
                                 'name' => name,
@@ -197,6 +200,7 @@ class TraktList
   end
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
+    return if $pretend > 0
     authenticate!
     if list == 'watchlist'
       $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)

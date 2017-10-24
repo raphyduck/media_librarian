@@ -54,7 +54,7 @@ class Library
         if local_md5sum != remote_md5sum || local_md5sum == '' || remote_md5sum == ''
           $speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
           if local_md5sum != '' && remote_md5sum != '' && $speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
-            FileUtils.rm_r(f_path)
+            Utils.file_rm_r(f_path)
           end
         else
           $speaker.speak_up("The 2 files are identical!")
@@ -82,7 +82,7 @@ class Library
         $speaker.speak_up('Nothing to do, skipping')
         skip_compress = 1
     end
-    FileUtils.rm_r(path) if remove_original.to_i > 0
+    Utils.file_rm_r(path) if remove_original.to_i > 0
     $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic")
     return skip_compress
   rescue => e
@@ -108,7 +108,7 @@ class Library
         dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.#{output_format}"
         return if File.exist?(dest_file)
         $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
-        Dir.mkdir(name) unless File.exist?(name)
+        Utils.file_mkdir(name) unless File.exist?(name)
         Dir.chdir(name) do
           case input_format
             when 'pdf'
@@ -132,13 +132,13 @@ class Library
         end
         skipping = compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
         return if skipping > 0
-        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
+        Utils.file_mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         $speaker.speak_up("#{name} converted!")
       end
     end
   rescue => e
     $speaker.tell_error(e, "Library.convert_comics")
-    name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
+    name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && Utils.file_rm_r(File.dirname(path) + '/' + name)
   end
 
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
@@ -169,14 +169,14 @@ class Library
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       $speaker.speak_up 'Deleting extra media...'
       Utils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
-        FileUtils.rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
+        Utils.file_rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
-      Dir.mkdir(dest_type) unless File.exist?(dest_type)
+      Utils.file_mkdir(dest_type) unless File.exist?(dest_type)
       $speaker.speak_up('Syncing new media...')
       sync_error = ''
       paths.each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
-        FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
+        Utils.file_mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
         Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
@@ -333,8 +333,8 @@ class Library
       if f_song[:genre].to_s == '' || f_song[:artist].to_s == '' || f_song[:album].to_s == ''
         if $speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
           destination_folder = $speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
-          FileUtils.mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
-          FileUtils.mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
+          Utils.file_mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
+          Utils.file_mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
         end
         next
       end
@@ -351,10 +351,10 @@ class Library
     collection = ordered_collection.sort_by { |k, _| k }.map { |x| x[1].sort_by { |s| s[:track_nr].to_i } }
     collection.shuffle! if random.to_i > 0
     collection.flatten!
-    Dir.mkdir(folder) unless FileTest.directory?(folder)
+    Utils.file_mkdir(folder) unless FileTest.directory?(folder)
     if remove_existing_playlists.to_i > 0
       Utils.search_folder(folder, {'regex' => '.*\.m3u'}).each do |path|
-        FileUtils.rm(path[0])
+        Utils.file_rm(path[0])
       end
     end
     crs.each do |cr|
@@ -394,10 +394,10 @@ class Library
     end
     if corrected_dups.length > 0 && $speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
       corrected_dups.each do |d|
-        FileUtils.rm_r(File.dirname(d[0]))
+        Utils.file_rm_r(File.dirname(d[0]))
       end
     elsif corrected_dups.length > 0 && !original[1].nil? && $speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
-      FileUtils.rm_r(File.dirname(original[0]))
+      Utils.file_rm_r(File.dirname(original[0]))
       replaced = 0
     else
       $speaker.speak_up('No duplicates found')
@@ -446,6 +446,7 @@ class Library
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
+    return $speaker.speak_up("Would run synchonisation") if $pretend > 0
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
     $speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
@@ -463,9 +464,9 @@ class Library
       move_if_finished.each do |m|
         next unless m.is_a?(Array)
         next unless FileTest.directory?(m[0])
-        Dir.mkdir(m[1]) unless FileTest.directory?(m[1])
+        Utils.file_mkdir(m[1]) unless FileTest.directory?(m[1])
         $speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
-        FileUtils.mv(Dir.glob("#{m[0]}/*"), m[1]) rescue nil
+        Utils.file_mv(Dir.glob("#{m[0]}/*"), m[1]) rescue nil
       end
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
@@ -614,8 +615,8 @@ class Library
         if remove_duplicates.to_i > 0
           $speaker.speak_up('Will now remove duplicates:')
           dups_files.each do |f|
-            next if f.index == 0 && no_prompt.to_i > 1
-            FileUtils.rm(f[:file]) if $speaker.ask_if_needed("Remove file #{f[:file]}? (y/n)", no_prompt.to_i, 'n').to_s == 'y'
+            next if dups_files.index(f) == 0 && no_prompt.to_i > 1
+            Utils.file_rm(f[:file]) if $speaker.ask_if_needed("Remove file #{f[:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
           end
         end
       end
@@ -623,6 +624,7 @@ class Library
   end
 
   def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {})
+    handle_missing = eval(handle_missing) if handle_missing.is_a?(String)
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
@@ -662,7 +664,7 @@ class Library
                                                move_completed: handle_missing['move_to'],
                                                main_only: handle_missing['main_only'],
                                                only_on_trackers: handle_missing['only_on_trackers'],
-                                               qualities: handle_missing['quality']) unless success
+                                               qualities: handle_missing['quality']) unless success || no_prompt.to_i > 0
                 Utils.entry_seen(__method__.to_s, "#{series_name}S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}") if success
               end
             end
@@ -683,7 +685,7 @@ class Library
     end
   end
 
-  def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '')
+  def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '', qualities: {})
     movies = []
     $speaker.speak_up('Parsing movie list, can take a long time...')
     self.parse_watch_list(source).each do |item|
@@ -700,7 +702,16 @@ class Library
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
       self.duplicate_search(dest_folder, movie['title'], [nil, nil], no_prompt, type)
-      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''), limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: dest_folder, rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')', main_only: 1)
+      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''),
+                                   limit: 10,
+                                   category: 'movies',
+                                   no_prompt: no_prompt,
+                                   filter_dead: 1,
+                                   move_completed: dest_folder,
+                                   rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')',
+                                   main_only: 1,
+                                   qualities: qualities
+      )
       $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
   rescue => e
@@ -764,7 +775,7 @@ class Library
     Utils.move_file(original, destination, hard_link, replaced_outdated) if episode_numbering != ''
   end
 
-  def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil)
+  def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil, qualities: {})
     $move_completed_torrent = folder
     Utils.search_folder(folder, filter_criteria).each do |film|
       next if already_processed?(film[1])
@@ -802,7 +813,15 @@ class Library
         replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
         break if replaced
         $speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
-        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords, limit: 10, category: 'movies', no_prompt: no_prompt, filter_dead: 1, move_completed: move_to || folder, rename_main: t[0], main_only: 1)
+        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords,
+                                                                        limit: 10,
+                                                                        category: 'movies',
+                                                                        no_prompt: no_prompt,
+                                                                        filter_dead: 1,
+                                                                        move_completed: move_to || folder,
+                                                                        rename_main: t[0],
+                                                                        main_only: 1,
+                                                                        qualities: qualities)
         break if replaced
         cpt += 1
       end

@@ -67,6 +67,7 @@ class TorrentSearch
 
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)
     $speaker.speak_up("Will download torrent '#{name}' from #{url}")
+    return did if $pretend > 0
     case type
       when 'yggtorrent', 'wop', 'torrentleech'
         @search.download(url, destination_folder, did)
@@ -94,7 +95,6 @@ class TorrentSearch
   end
 
   def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0, only_on_trackers: [], qualities: {})
-    qualities = eval(qualities) if qualities.is_a?(String)
     success = nil
     begin
       keywords = eval(keywords)
@@ -125,11 +125,12 @@ class TorrentSearch
   end
 
   def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0, qualities = {})
+    qualities = eval(qualities) if qualities.is_a?(String)
     success = nil
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities)
     search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
-    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,''), limit, category, filter_dead, nil, 'seeders', [],  qualities) if no_prompt.to_i == 0 && keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,''), limit, category, filter_dead, nil, 'seeders', [],  qualities) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
     search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
     if no_prompt.to_i == 0
       i = 1
@@ -152,7 +153,7 @@ class TorrentSearch
       end
     end
     download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
-    if download_id.to_i > 0
+    if download_id.to_i > 0 && search['torrents'][download_id.to_i - 1]
       did = (Time.now.to_f * 1000).to_i
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''

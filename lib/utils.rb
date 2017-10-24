@@ -14,7 +14,7 @@ class Utils
     return if $move_completed_torrent.nil?
     $dir_to_delete.each do |f|
       next if f[:d].to_s == '' || f[:d].to_s == '/'
-      FileUtils.rm_r($move_completed_torrent + '/' + f[:d])
+      Utils.file_rm_r($move_completed_torrent + '/' + f[:d])
     end
   end
 
@@ -32,11 +32,11 @@ class Utils
   end
 
   def self.entry_seen(category, entry)
-    $db.insert_row('seen', { 'categorie' => category, 'entry' => entry, 'created_at' => Time.now})
+    $db.insert_row('seen', { 'category' => category, 'entry' => entry, 'created_at' => Time.now})
   end
 
   def self.extract_archive(type, archive, destination)
-    Dir.mkdir(destination) unless Dir.exist?(destination)
+    Utils.file_mkdir(destination) unless Dir.exist?(destination)
     case type
       when 'cbr', 'rar'
         $unrar = Unrar::Archive.new(archive, destination)
@@ -45,6 +45,36 @@ class Utils
       when 'cbz', 'zip'
         Archive::Zip.extract(archive, destination)
     end
+  end
+
+  def self.file_mkdir(dirs)
+    return $speaker.speak_up("Would mkdir #{dirs}") if $pretend > 0
+    FileUtils.mkdir(dirs)
+  end
+
+  def self.file_mkdir_p(dirs)
+    return $speaker.speak_up("Would mkdir_p #{dirs}") if $pretend > 0
+    FileUtils.mkdir_p(dirs)
+  end
+
+  def self.file_mv(original, destination)
+    return $speaker.speak_up("Would mv #{original} #{destination}") if $pretend > 0
+    FileUtils.mv(original, destination)
+  end
+
+  def self.file_rm(files)
+    return $speaker.speak_up("Would rm #{files}") if $pretend > 0
+    FileUtils.rm(files)
+  end
+
+  def self.file_rm_r(files)
+    return $speaker.speak_up("Would rm_r #{files}") if $pretend > 0
+    FileUtils.rm_r
+  end
+
+  def self.file_ln(original, destination)
+    return $speaker.speak_up("Would ln #{original} to #{destination}") if $pretend > 0
+    FileUtils.ln(original, destination)
   end
 
   def self.get_disk_size(path)
@@ -121,18 +151,18 @@ class Utils
       _, prosper = MediaInfo.identify_proper(original)
       if remove_outdated.to_i > 0 && prosper.to_i > 0
         $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
-        FileUtils.rm(destination)
+        file_rm(destination)
       else
         $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
         return false
       end
     end
     $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'")
-    FileUtils.mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
+    Utils.file_mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
     if hard_link.to_i > 0
-      FileUtils.ln(original, destination)
+      file_ln(original, destination)
     else
-      FileUtils.mv(original, destination)
+      file_mv(original, destination)
     end
     true
   rescue => e

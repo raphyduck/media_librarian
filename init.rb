@@ -1,4 +1,5 @@
 #Set global variables
+$pretend = 0
 config_dir = Dir.home + '/.medialibrarian'
 $config_file = config_dir + '/conf.yml'
 $config_example = File.dirname(__FILE__) + '/config/conf.yml.example'
@@ -42,9 +43,9 @@ PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
 TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
 
 #Create default folders if doesn't exist
-Dir.mkdir(config_dir) unless File.exist?(config_dir)
-Dir.mkdir(log_dir) unless File.exist?(log_dir)
-Dir.mkdir($temp_dir) unless File.exist?($temp_dir)
+Utils.file_mkdir(config_dir) unless File.exist?(config_dir)
+Utils.file_mkdir(log_dir) unless File.exist?(log_dir)
+Utils.file_mkdir($temp_dir) unless File.exist?($temp_dir)
 unless File.exist?($template_dir)
   FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
 end
@@ -82,7 +83,7 @@ end
 
 #Configure email alerts
 $email_templates = File.dirname(__FILE__) + '/app/mailer_templates'
-Dir.mkdir($mail_templates) unless File.exist?($email_templates)
+Utils.file_mkdir($mail_templates) unless File.exist?($email_templates)
 $email = $config['email']
 if $email
   Hanami::Mailer.configure do
