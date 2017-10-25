@@ -127,7 +127,7 @@ class MediaInfo
     sorted.sort_by! { |x| CODECS.index(x[3]).to_i }
     sorted.sort_by! { |x| SOURCES.index(x[2]).to_i }
     sorted.sort_by! { |x| RESOLUTIONS.index(x[1]).to_i }
-    sorted.sort_by! { |x| x[5].to_i }
+    sorted.sort_by! { |x| -x[5].to_i }
     r.sort_by!{ |x| sorted.map{|x| x[0]}.index(x[:file])}
   end
 
