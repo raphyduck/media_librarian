@@ -197,7 +197,7 @@ class Utils
     r = filename.to_s.gsub(/[\'\"\;\:\/\,]/, '')
     r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/,'').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
-    r = r.gsub(/\ /, '.') if formatting.to_s.match(/.*nospace.*/)
+    r = r.gsub(/[\ \(\)]/, '.') if formatting.to_s.match(/.*nospace.*/)
     r
   end
 
