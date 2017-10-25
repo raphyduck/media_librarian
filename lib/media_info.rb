@@ -154,11 +154,16 @@ class MediaInfo
   def self.tv_episodes_search(title, no_prompt = 0)
     go_on = 0
     show, episodes = nil, []
+    year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
     tvdb_shows = $tvdb.search(title)
     tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
     while go_on.to_i == 0
       tvdb_show = tvdb_shows.shift
       break if tvdb_show.nil?
+      next if year > 0 && tvdb_show['FirstAired'] &&
+          tvdb_show['FirstAired'].match(/\d{4}/) &&
+          tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > 0  &&
+          (tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > year + 1 || tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i < year - 1)
       if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == title.downcase.gsub(/[ \(\)\.\:]/, '')
         go_on = 1
       else

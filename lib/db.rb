@@ -9,8 +9,9 @@ module Storage
       @s_db.execute(raw_sql)
     end
 
-    def get_rows(table, conditions = '')
-      r = @s_db.execute( "select * from #{table}#{' where ' + conditions.map{|k,v| "#{k} = '#{v}'"}.join(' and ') if conditions && conditions != ''}" )
+    def get_rows(table, conditions = {})
+      ins = @s_db.prepare( "select * from #{table}#{' where ' + conditions.map{|k,v| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?}" )
+      r = ins.execute( conditions.map{|_,v| v})
       i = -1
       res = []
       r.each do |l|

@@ -615,7 +615,7 @@ class Library
         if remove_duplicates.to_i > 0
           $speaker.speak_up('Will now remove duplicates:')
           dups_files.each do |f|
-            next if dups_files.index(f) == 0 && no_prompt.to_i > 1
+            next if dups_files.index(f) == 0 && no_prompt.to_i > 0
             Utils.file_rm(f[:file]) if $speaker.ask_if_needed("Remove file #{f[:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
           end
         end
