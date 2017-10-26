@@ -2,6 +2,7 @@
 
 TODO:
 * General
+    * Explode init.rb
     * Expire trakt authentication token and send email when needed
     * Function as a daemon launching any function possible with a scheduler
     * Load other templates from inside templates with keyword "load_template:"

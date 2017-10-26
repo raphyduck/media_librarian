@@ -10,6 +10,12 @@ class TorrentSearch
             :music => 5,
             :book => 2
         }.fetch(category.to_sym, nil)
+      when 'rarbg'
+        {
+            :movies => '14;48;17;44;45;47;50;51;52;42;46',
+            :tv => '18;41;49',
+            :music => '23;25'
+        }.fetch(category.to_sym, nil)
       when 'thepiratebay'
         {
             :movies => 200,
@@ -33,6 +39,9 @@ class TorrentSearch
     get_results = {}
     cid = self.get_cid(type, category)
     case type
+      when 'rarbg'
+        @search = RarbgTracker::Search.new(keyword.gsub(/\'\w/,''), cid)
+        get_results = @search.links
       when 'thepiratebay'
         @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
         get_results = @search.links
@@ -158,7 +167,7 @@ class TorrentSearch
       name = search['torrents'][download_id.to_i - 1]['name']
       url = search['torrents'][download_id.to_i - 1]['torrent_link'] ? search['torrents'][download_id.to_i - 1]['torrent_link'] : ''
       magnet = search['torrents'][download_id.to_i - 1]['magnet_link']
-      if (url && url != '')
+      if url.to_s != ''
         success = self.get_torrent_file(type, did, name, url)
       elsif magnet && magnet != ''
         $pending_magnet_links[did] = magnet
