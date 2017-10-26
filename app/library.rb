@@ -730,12 +730,13 @@ class Library
     Utils.move_file(original, destination, hard_link, replaced_outdated)
   end
 
-  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0)
+  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0, skip_if_not_found: 1)
     Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
       next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
         _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt) if search_tvdb.to_i > 0 && @tv_episodes[series_name].nil?
+        next if @tv_episodes[series_name].empty? && skip_if_not_found.to_i > 0
         Utils.search_folder(series[0], {'regex' => VALID_VIDEO_EXT}).each do |ep|
           ep_filename = File.basename(ep[0])
           season, ep_nb = MediaInfo.identify_tv_episodes_numbering(ep_filename)
