@@ -554,7 +554,7 @@ class Library
     return 0, []
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {})
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0)
     handling = eval(handling) if handling.is_a?(String)
     full_p = torrent_path + '/' + torrent_name
     if FileTest.directory?(full_p)
@@ -577,7 +577,8 @@ class Library
             type.downcase!
             if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
               season, ep_nb = MediaInfo.identify_tv_episodes_numbering(full_p)
-              rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+              destination_file = rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+              look_for_duplicates(File.dirname(destination_file), item_name, 1, remove_duplicates)
             elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
               rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
             else
@@ -623,21 +624,28 @@ class Library
     end
   end
 
-  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {})
+  def self.look_for_duplicates(folder, series_name, no_prompt, remove_duplicates = 0)
+    episodes_in_files= {}
+    _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt)
+    Utils.search_folder(folder, {'regex' => VALID_VIDEO_EXT}).each do |ep|
+      s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
+      e.each do |n|
+        episodes_in_files = MediaInfo.series_add(series_name, s, n[:ep], n[:part], ep[0], episodes_in_files)
+      end
+    end
+    handle_duplicates_tv(episodes_in_files, series_name, remove_duplicates, no_prompt)
+    episodes_in_files
+  end
+
+  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {}, only_series_name: '')
     handle_missing = eval(handle_missing) if handle_missing.is_a?(String)
-    Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
+    query = {'maxdepth' => 1, 'includedir' => 1}
+    query.merge!({'regex' => '^' + Utils.regexify(only_series_name, 1).gsub(/[\(\)]/, '.+') + '$'}) if only_series_name.to_s != ''
+    Utils.search_folder(folder, query).each do |series|
       next unless File.directory?(series[0])
       begin
         series_name = File.basename(series[0])
-        episodes_in_files= {}
-        _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt)
-        Utils.search_folder(series[0], {'regex' => VALID_VIDEO_EXT}).each do |ep|
-          s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
-          e.each do |n|
-            episodes_in_files = MediaInfo.series_add(series_name, s, n[:ep], n[:part], ep[0], episodes_in_files)
-          end
-        end
-        handle_duplicates_tv(episodes_in_files, series_name, remove_duplicates, no_prompt)
+        episodes_in_files = look_for_duplicates(series[0], series_name, no_prompt, remove_duplicates)
         @tv_episodes[series_name].each do |ep|
           next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || MediaInfo.series_exist?(episodes_in_files, series_name, ep.season_number.to_i, ep.number.to_i + 1)
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
@@ -773,7 +781,12 @@ class Library
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(eval(k), $1) }
     end
     destination += ".#{extension.downcase}"
-    Utils.move_file(original, destination, hard_link, replaced_outdated) if episode_numbering != ''
+    if episode_numbering != ''
+      _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
+    else
+      destination = ''
+    end
+    destination
   end
 
   def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil, qualities: {})

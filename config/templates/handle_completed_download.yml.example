@@ -2,6 +2,7 @@ torrent_path: '/path/to/torrent/'
 torrent_name: 'torrentname'
 completed_folder: '/download/folder/'
 destination_folder: '/move/to/folder/'
+remove_duplicates: 0
 handling:
   file_types:
     - avi

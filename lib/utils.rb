@@ -158,7 +158,7 @@ class Utils
         file_rm(destination)
       else
         $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...")
-        return false
+        return false, destination
       end
     end
     $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'")
@@ -168,10 +168,10 @@ class Utils
     else
       file_mv(original, destination)
     end
-    true
+    return true, destination
   rescue => e
     $speaker.tell_error(e, 'utils.move_file')
-    false
+    return false, ''
   end
 
   def self.recursive_symbolize_keys(h)
