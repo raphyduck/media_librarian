@@ -10,6 +10,10 @@ class Utils
     active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.hour < active_hours[0].to_i || Time.now.hour > active_hours[1].to_i)
   end
 
+  def self.clean_search(str)
+    str.gsub(/[,\']/,'')
+  end
+
   def self.cleanup_folder
     return if $move_completed_torrent.nil?
     $dir_to_delete.each do |f|

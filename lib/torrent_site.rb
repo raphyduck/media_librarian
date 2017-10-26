@@ -23,8 +23,8 @@ module TorrentSite
     end
 
     def download(url, destination, name)
-      authenticate! unless logged_in?
-      return unless logged_in?
+      authenticate! unless $tracker_client_logged[@base_url]
+      return unless $tracker_client_logged[@base_url]
       $tracker_client[@base_url].get(url).save("#{destination}/#{name}.torrent")
     end
 

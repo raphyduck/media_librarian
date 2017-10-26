@@ -15,7 +15,6 @@ TODO:
     * Subscribe to series and/or authors, and search for new books/ebooks
     
 * Torrent search:
-    * Discriminate torrents results for spinoffs (for example NCIS and NCIS New Orleans)
     * Distinguish season pack and download if season episode not found and replace existing season with it
     
 * Library:

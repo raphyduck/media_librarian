@@ -34,30 +34,25 @@ class TorrentSearch
     $speaker.tell_error(e, "TorrentSearch.get_cid")
   end
 
-  def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [], qualities = {})
+  def self.get_results(type, keyword, limit, category = '', filter_dead = 1, url = nil, sort_by = 'seeders', filter_out = [], qualities = {}, strict = 0)
     tries ||= 3
-    get_results = {}
     cid = self.get_cid(type, category)
     case type
       when 'rarbg'
-        @search = RarbgTracker::Search.new(keyword.gsub(/\'\w/,''), cid)
-        get_results = @search.links
+        @search = RarbgTracker::Search.new(Utils.clean_search(keyword), cid)
       when 'thepiratebay'
-        @search = Tpb::Search.new(keyword.gsub(/\'\w/,''), cid)
-        get_results = @search.links
+        @search = Tpb::Search.new(Utils.clean_search(keyword).gsub(/\'\w/,''), cid)
       when 'torrentleech'
-        @search = TorrentLeech::Search.new(keyword, url, cid)
-        get_results = @search.links
+        @search = TorrentLeech::Search.new(Utils.clean_search(keyword), url, cid)
       when 'yggtorrent'
-        @search = Yggtorrent::Search.new(keyword, url)
-        get_results = @search.links
+        @search = Yggtorrent::Search.new(Utils.clean_search(keyword), url)
       when 'wop'
-        @search = Wop::Search.new(keyword, url)
-        get_results = @search.links
+        @search = Wop::Search.new(Utils.clean_search(keyword), url)
     end
+    get_results = @search.links
     if get_results['torrents']
       get_results['torrents'].select! do |t|
-        t['name'].match(Regexp.new(Utils.regexify(keyword, 0), Regexp::IGNORECASE))
+        t['name'].match(Regexp.new(Utils.regexify(keyword, strict), Regexp::IGNORECASE))
       end
       filter_out.each do |fout|
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
@@ -137,9 +132,9 @@ class TorrentSearch
     qualities = eval(qualities) if qualities.is_a?(String)
     success = nil
     keyword_s = keyword + self.get_site_keywords(type, category)
-    search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities)
-    search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
-    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,''), limit, category, filter_dead, nil, 'seeders', [],  qualities) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt)
+    search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,','), limit, category, filter_dead, nil, 'seeders', [],  qualities, no_prompt) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
     search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
     if no_prompt.to_i == 0
       i = 1
