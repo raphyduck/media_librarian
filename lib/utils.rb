@@ -52,32 +52,32 @@ class Utils
   end
 
   def self.file_mkdir(dirs)
-    return $speaker.speak_up("Would mkdir #{dirs}") if $pretend > 0
+    return $speaker.speak_up("Would mkdir #{dirs}") if $env_flags['pretend'] > 0
     FileUtils.mkdir(dirs)
   end
 
   def self.file_mkdir_p(dirs)
-    return $speaker.speak_up("Would mkdir_p #{dirs}") if $pretend > 0
+    return $speaker.speak_up("Would mkdir_p #{dirs}") if $env_flags['pretend'] > 0
     FileUtils.mkdir_p(dirs)
   end
 
   def self.file_mv(original, destination)
-    return $speaker.speak_up("Would mv #{original} #{destination}") if $pretend > 0
+    return $speaker.speak_up("Would mv #{original} #{destination}") if $env_flags['pretend'] > 0
     FileUtils.mv(original, destination)
   end
 
   def self.file_rm(files)
-    return $speaker.speak_up("Would rm #{files}") if $pretend > 0
+    return $speaker.speak_up("Would rm #{files}") if $env_flags['pretend'] > 0
     FileUtils.rm(files)
   end
 
   def self.file_rm_r(files)
-    return $speaker.speak_up("Would rm_r #{files}") if $pretend > 0
+    return $speaker.speak_up("Would rm_r #{files}") if $env_flags['pretend'] > 0
     FileUtils.rm_r
   end
 
   def self.file_ln(original, destination)
-    return $speaker.speak_up("Would ln #{original} to #{destination}") if $pretend > 0
+    return $speaker.speak_up("Would ln #{original} to #{destination}") if $env_flags['pretend'] > 0
     FileUtils.ln(original, destination)
   end
 

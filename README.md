@@ -8,7 +8,6 @@ TODO:
     * Expire trakt authentication token and send email when needed
     * Function as a daemon launching any function possible with a scheduler
     * Load other templates from inside templates with keyword "load_template:"
-    * Refactor environment flags to a single global variable "$env_flags = {}" and update simple_args_dispatch gem to read them without hardcoding every flag
     
 * Ebooks/Comics:
     * Read calibre library/metadata

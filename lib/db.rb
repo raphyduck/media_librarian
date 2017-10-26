@@ -24,7 +24,7 @@ module Storage
     end
 
     def insert_row(table, values)
-      return $speaker.speak_up("Would insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (?)") if $pretend > 0
+      return $speaker.speak_up("Would insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (?)") if $env_flags['pretend'] > 0
       ins = @s_db.prepare("insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (?)")
       ins.execute(values.map{|_,v| v}.join(','))
     end

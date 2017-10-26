@@ -76,7 +76,7 @@ class TorrentClient
   end
 
   def process_added_torrents
-    return if $pretend > 0
+    return if $env_flags['pretend'] > 0
     while $deluge_torrents_added.length != 0
       self.authenticate unless @deluge_connected rescue nil
       tid = $deluge_torrents_added.shift
@@ -120,7 +120,7 @@ class TorrentClient
   end
 
   def process_download_torrents
-    return if $pretend > 0
+    return if $env_flags['pretend'] > 0
     $speaker.speak_up("#{LINE_SEPARATOR}
 Downloading torrent(s) added during the session (if any)")
     Find.find($temp_dir).each do |path|

@@ -98,7 +98,7 @@ class Librarian
       end
       $t_client.disconnect
     end
-    Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg
+    Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg && $env_flags['no_email_notif'].to_i == 0
     $speaker.speak_up("End of session, good bye...")
   end
 

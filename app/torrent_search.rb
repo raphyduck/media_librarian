@@ -71,7 +71,7 @@ class TorrentSearch
 
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)
     $speaker.speak_up("Will download torrent '#{name}' from #{url}")
-    return did if $pretend > 0
+    return did if $env_flags['pretend'] > 0
     case type
       when 'yggtorrent', 'wop', 'torrentleech'
         @search.download(url, destination_folder, did)

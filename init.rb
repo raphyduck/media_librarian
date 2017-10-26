@@ -1,4 +1,7 @@
-$pretend = 0
+$env_flags = {
+    'no_email_notif' => 0,
+    'pretend' => 0
+}
 config_dir = Dir.home + '/.medialibrarian'
 $config_file = config_dir + '/conf.yml'
 $config_example = File.dirname(__FILE__) + '/config/conf.yml.example'
