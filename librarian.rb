@@ -68,6 +68,7 @@ class Librarian
     Dir[File.dirname(__FILE__) + '/lib/*.rb'].each {|file| require file }
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
+    Dir[File.dirname(__FILE__) + '/init/*.rb'].each {|file| require file }
   end
 
   def self.run
