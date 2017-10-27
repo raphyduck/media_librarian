@@ -73,7 +73,7 @@ class Librarian
 
   def self.run
     $speaker.speak_up("Welcome to your library assistant!\n\n")
-    $speaker.speak_up("Running command: #{ARGV.join(' ')}\n\n")
+    $speaker.speak_up("Running command: #{ARGV.map{|a| a.gsub(/--?([^=\s]+)(?:=(.+))?/,'--\1=\'\2\'')}.join(' ')}\n\n")
     $action = ARGV[0].to_s + ' ' + ARGV[1].to_s
     SimpleArgsDispatch.dispatch('librarian', ARGV, @available_actions)
   end
