@@ -142,7 +142,7 @@ GEM
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
     ruby-rc4 (0.1.5)
-    simple_args_dispatch (0.1.9)
+    simple_args_dispatch (0.2.0)
       simple_speaker (~> 0.1.4)
     simple_config_man (0.3.7)
       simple_speaker (~> 0.1.4)
@@ -157,7 +157,7 @@ GEM
     ttfunk (1.5.1)
     tvdb_party (0.9.1)
       httparty (>= 0.6.1)
-    tzinfo (1.2.3)
+    tzinfo (1.2.4)
       thread_safe (~> 0.1)
     unf (0.1.4)
       unf_ext
