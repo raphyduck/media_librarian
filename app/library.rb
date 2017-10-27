@@ -626,7 +626,6 @@ class Library
 
   def self.look_for_duplicates(folder, series_name, no_prompt, remove_duplicates = 0)
     episodes_in_files= {}
-    _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt)
     Utils.search_folder(folder, {'regex' => VALID_VIDEO_EXT}).each do |ep|
       s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
       e.each do |n|
@@ -646,6 +645,7 @@ class Library
       begin
         series_name = File.basename(series[0])
         episodes_in_files = look_for_duplicates(series[0], series_name, no_prompt, remove_duplicates)
+        _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt)
         @tv_episodes[series_name].each do |ep|
           next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || MediaInfo.series_exist?(episodes_in_files, series_name, ep.season_number.to_i, ep.number.to_i + 1)
           next if include_specials.to_i == 0 && ep.season_number.to_i == 0
