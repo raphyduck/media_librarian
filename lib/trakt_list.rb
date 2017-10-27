@@ -1,9 +1,9 @@
 class TraktList
   def self.access_token(vals)
-    {"access_token" => vals[1],
+    {"access_token" => vals['access_token'],
      "token_type" => "bearer",
-     "expires_in" => (Time.parse(vals[4])-Time.now).to_i,
-     "refresh_token" => vals[2],
+     "expires_in" => (Time.parse(vals['expires_in'])-Time.now).to_i,
+     "refresh_token" => vals['refresh_token'],
      "scope" => "public"}
   end
 
@@ -38,7 +38,7 @@ class TraktList
     raise 'No trakt account configured' unless $trakt
     token_rows = $db.get_rows('trakt_auth', {'account' => $trakt_account})
     token_row = token_rows.first
-    if token_row.nil? || Time.parse(token_row[4]) < Time.now
+    if token_row.nil? || Time.parse(token_row['expires_in']) < Time.now
       token = $trakt.access_token
       $db.execute("delete from trakt_auth") if token_row
       $db.insert_row('trakt_auth', {
