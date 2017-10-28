@@ -25,7 +25,7 @@ class MediaInfo
   end
 
   def self.identify_tv_episodes_numbering(filename)
-    identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4}(\.\d[\. ])?)\&?([ex]\d{1,2}(\.\d[\. ])?)?/)
+    identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4}(\.\d[\. ])?)[\&-]?([ex]\d{1,2}(\.\d[\. ])?)?/)
     identifiers = File.basename(filename).scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
     season, ep_nb = '', []
     unless identifiers.first.nil?
@@ -123,10 +123,10 @@ class MediaInfo
         r << f
       end
     end
-    sorted.sort_by! { |x| AUDIO.index(x[4]).to_i }
-    sorted.sort_by! { |x| CODECS.index(x[3]).to_i }
-    sorted.sort_by! { |x| SOURCES.index(x[2]).to_i }
-    sorted.sort_by! { |x| RESOLUTIONS.index(x[1]).to_i }
+    sorted.sort_by! { |x| (AUDIO.index(x[4]) || 999).to_i }
+    sorted.sort_by! { |x| (CODECS.index(x[3]) || 999).to_i }
+    sorted.sort_by! { |x| (SOURCES.index(x[2]) || 999).to_i }
+    sorted.sort_by! { |x| (RESOLUTIONS.index(x[1]) || 999).to_i }
     sorted.sort_by! { |x| -x[5].to_i }
     r.sort_by!{ |x| sorted.map{|x| x[0]}.index(x[:file])}
   end
@@ -171,7 +171,7 @@ class MediaInfo
       end
     end
     unless go_on == 0 || tvdb_show.nil?
-      $speaker.speak_up("Using #{tvdb_show['SeriesName']} as series name")
+      $speaker.speak_up("Using #{tvdb_show['SeriesName']} as series name", 0)
       show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
       episodes = $tvdb.get_all_episodes(show)
     end

@@ -52,7 +52,7 @@ class TorrentSearch
     get_results = @search.links
     if get_results['torrents']
       get_results['torrents'].select! do |t|
-        t['name'].match(Regexp.new(Utils.regexify(keyword, strict), Regexp::IGNORECASE))
+        t['name'].match(Regexp.new('^.{0,2}' + Utils.regexify(keyword, strict), Regexp::IGNORECASE))
       end
       filter_out.each do |fout|
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
