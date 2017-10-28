@@ -40,25 +40,33 @@ class Librarian
   @available_actions = {
       :help => ['Librarian', 'help'],
       :reconfigure => ['Librarian', 'reconfigure'],
+      :ebooks => {
+          :compress_comics => ['Ebooks', 'compress_comics'],
+          :convert_comics => ['Ebooks', 'convert_comics'],
+      },
       :library => {
           :compare_remote_files => ['Library', 'compare_remote_files'],
-          :compress_comics => ['Library', 'compress_comics'],
-          :convert_comics => ['Library', 'convert_comics'],
           :copy_media_from_list => ['Library', 'copy_media_from_list'],
           :copy_trakt_list => ['Library', 'copy_trakt_list'],
-          :create_playlists => ['Library', 'create_playlists'],
           :create_custom_list => ['Library', 'create_custom_list'],
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
           :handle_completed_download => ['Library', 'handle_completed_download'],
-          :monitor_tv_episodes => ['Library', 'monitor_tv_episodes'],
           :process_search_list => ['Library', 'process_search_list'],
-          :rename_tv_series => ['Library', 'rename_tv_series'],
-          :replace_movies => ['Library', 'replace_movies']
+      },
+      :movies => {
+          :replace_movies => ['Movies', 'replace_movies'],
+      },
+      :music => {
+          :create_playlists => ['Muic', 'create_playlists'],
       },
       :torrent => {
           :search => ['TorrentSearch', 'search'],
           :random_pick => ['TorrentSearch', 'random_pick']
+      },
+      :tv => {
+          :monitor_tv_episodes => ['TvSeries', 'monitor_tv_episodes'],
+          :rename_tv_series => ['TvSeries', 'rename_tv_series'],
       },
       :usage => ['Librarian', 'help']
   }

@@ -73,74 +73,6 @@ class Library
     $speaker.tell_error(e, "Library.compare_remote_files")
   end
 
-  def self.compress_comics(path:, destination: '', output_format: 'cbz', remove_original: 1, skip_compress: 0)
-    destination = path.gsub(/\/$/, '') + '.' + output_format if destination.to_s == ''
-    case output_format
-      when 'cbz'
-        Utils.compress_archive(path, destination) if skip_compress.to_i == 0
-      else
-        $speaker.speak_up('Nothing to do, skipping')
-        skip_compress = 1
-    end
-    Utils.file_rm_r(path) if remove_original.to_i > 0
-    $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic")
-    return skip_compress
-  rescue => e
-    $speaker.tell_error(e, "Library.compress_comics")
-  end
-
-  def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '')
-    name = ''
-    valid_inputs = ['cbz', 'pdf', 'cbr']
-    valid_outputs = ['cbz']
-    return $speaker.speak_up("Invalid input format, needs to be one of #{valid_inputs}") unless valid_inputs.include?(input_format)
-    return $speaker.speak_up("Invalid output format, needs to be one of #{valid_outputs}") unless valid_outputs.include?(output_format)
-    return if no_warning.to_i == 0 && input_format == 'pdf' && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
-    return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
-    if FileTest.directory?(path)
-      Utils.search_folder(path, {'regex' => ".*\.#{input_format}"}).each do |f|
-        convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
-      end
-    else
-      skipping = 0
-      Dir.chdir(File.dirname(path)) do
-        name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
-        dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.#{output_format}"
-        return if File.exist?(dest_file)
-        $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
-        Utils.file_mkdir(name) unless File.exist?(name)
-        Dir.chdir(name) do
-          case input_format
-            when 'pdf'
-              extractor = ExtractImages::Extractor.new
-              extracted = 0
-              PDF::Reader.open('../' +File.basename(path)) do |reader|
-                reader.pages.each do |page|
-                  extracted = extractor.page(page)
-                end
-              end
-              unless extracted > 0
-                $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
-                skipping = 1
-              end
-            when 'cbr', 'cbz'
-              Utils.extract_archive(input_format, '../' +File.basename(path), '.')
-            else
-              $speaker.speak_up('Nothing to do, skipping')
-              skipping = 1
-          end
-        end
-        skipping = compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
-        return if skipping > 0
-        Utils.file_mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
-        $speaker.speak_up("#{name} converted!")
-      end
-    end
-  rescue => e
-    $speaker.tell_error(e, "Library.convert_comics")
-    name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && Utils.file_rm_r(File.dirname(path) + '/' + name)
-  end
-
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
     source_folders = eval(source_folders) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?
@@ -305,73 +237,6 @@ class Library
     $speaker.tell_error(e, "Library.create_custom_list")
   end
 
-  def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
-    criteria = eval(criteria) if criteria.is_a?(String)
-    folder = "#{folder}/" unless folder[-1] == '/'
-    ordered_collection = {}
-    cpt = 0
-    crs = ['artist', 'albumartist', 'album', 'year', 'decade', 'genre']
-    library = {}
-    $speaker.speak_up("Listing all songs in #{folder}")
-    files = Utils.search_folder(folder, {'regex' => '.*\.[mM][pP]3'})
-    files.each do |p_song|
-      cpt += 1
-      song = Mp3Info.open(p_song[0])
-      f_song = {
-          :path => p_song[0].gsub(folder, ''),
-          :length => song.length,
-          :artist => (song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/, ''),
-          :albumartist => (song.tag2.TPE2 || song.tag.artist || song.tag2.TPE1).to_s.strip.gsub(/\u0000/, ''),
-          :title => (song.tag.title || song.tag2.TIT2).to_s.strip.gsub(/\u0000/, ''),
-          :album => (song.tag.album || song.tag2.TALB).to_s.strip.gsub(/\u0000/, ''),
-          :year => (song.tag.year || song.tag2.TYER || 0).to_s.strip.gsub(/\u0000/, ''),
-          :track_nr => (song.tag.track_nr || song.tag2.TRCK).to_s.strip.gsub(/\u0000/, ''),
-          :genre => (song.tag.genre_s || song.tag2.TCON).to_s.strip.gsub(/\(\d*\)/, '').gsub(/\u0000/, '')
-      }
-      f_song[:decade] = "#{f_song[:year][0...-1]}0"
-      f_song[:decade] = nil if f_song[:decade].to_i == 0
-      if f_song[:genre].to_s == '' || f_song[:artist].to_s == '' || f_song[:album].to_s == ''
-        if $speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
-          destination_folder = $speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
-          Utils.file_mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
-          Utils.file_mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
-        end
-        next
-      end
-      sorter_name = f_song[:genre].to_s+f_song[:albumartist].to_s+f_song[:year].to_s+f_song[:album].to_s
-      ordered_collection[sorter_name] = [] if ordered_collection[sorter_name].nil?
-      ordered_collection[sorter_name] << f_song
-      crs.each do |cr|
-        library[cr] = [] unless library[cr]
-        library[cr] << f_song[cr.to_sym] unless f_song[cr.to_sym].nil? || library[cr].include?(f_song[cr.to_sym])
-      end
-      print "Processed song #{cpt} / #{files.count}\r"
-    end
-    $speaker.speak_up("Finished processing songs, now generating playlists...")
-    collection = ordered_collection.sort_by { |k, _| k }.map { |x| x[1].sort_by { |s| s[:track_nr].to_i } }
-    collection.shuffle! if random.to_i > 0
-    collection.flatten!
-    Utils.file_mkdir(folder) unless FileTest.directory?(folder)
-    if remove_existing_playlists.to_i > 0
-      Utils.search_folder(folder, {'regex' => '.*\.m3u'}).each do |path|
-        Utils.file_rm(path[0])
-      end
-    end
-    crs.each do |cr|
-      if $speaker.ask_if_needed("Do you want to generate playlists based on #{cr}? (y/n)", criteria[cr].to_s != '' ? 1 : 0, criteria[cr].to_i > 0 ? 'y' : 'n') == 'y'
-        if library[cr].nil? || library[cr].empty?
-          $speaker.speak_up "No collection of #{cr} found!"
-          next
-        end
-        $speaker.speak_up("Will generate playlists based on #{cr}")
-        library[cr].each do |p|
-          generate_playlist("#{folder}/#{cr}s-#{p.gsub('/', '').gsub(/[^\u0000-\u007F]+/, '_').gsub(' ', '_')}".gsub(/\/*$/, ''), collection.select { |s| s[cr.to_sym] == p })
-        end
-        $speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
-      end
-    end
-  end
-
   def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
     $speaker.speak_up("Looking for duplicates of #{title}...")
     replaced = nil
@@ -498,17 +363,6 @@ class Library
     raise "Rsync failure" unless rsynced_clean
   end
 
-  def self.generate_playlist(name, list)
-    $speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
-    File.open("#{name}.m3u", "w:UTF-8") do |playlist|
-      playlist.puts "#EXTM3U"
-      list.each do |s|
-        playlist.puts "\#EXTINF:#{s[:length].round},#{s[:artist]} - #{s[:title]}"
-        playlist.puts "#{s[:path]}"
-      end
-    end
-  end
-
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
     folder = eval(folder) if folder.is_a?(String)
     if list.nil? || list.empty?
@@ -577,10 +431,10 @@ class Library
             type.downcase!
             if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
               season, ep_nb = MediaInfo.identify_tv_episodes_numbering(full_p)
-              destination_file = rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
-              look_for_duplicates(File.dirname(destination_file), item_name, 1, remove_duplicates)
+              destination_file = TvSeries.rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+              TvSeries.look_for_duplicates(File.dirname(destination_file), item_name, 1, remove_duplicates)
             elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
-              rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+              Movies.rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
             else
               #TODO: Handle flac,...
               destination = full_p.gsub(completed_folder, destination_folder)
@@ -590,96 +444,6 @@ class Library
             $speaker.tell_error(e, "Library.handle_completed_download block")
           end
         end
-      end
-    end
-  end
-
-  def self.handle_duplicates_tv(files, series_name, remove_duplicates = 0, no_prompt = 0)
-    dups = []
-    files.each do |s, eps|
-      next if s == :name
-      eps.each do |_, parts|
-        parts.each do |_, f|
-          grouped = f.group_by { |ep| ep[:episode] }
-          dups += grouped.values.select { |a| a.size > 1 }.flatten
-        end
-      end
-    end
-    consolidated = dups.map { |e| [e[:season], e[:episode], e[:part]] }.uniq
-    unless consolidated.empty?
-      consolidated.each do |d|
-        $speaker.speak_up("Duplicate episodes found for #{series_name} S#{format('%02d', d[0].to_i)}E#{format('%02d', d[1].to_i)}:")
-        dups_files = MediaInfo.sort_media_files(MediaInfo.series_get_ep(files, series_name, d[0], d[1], d[2]))
-        dups_files.each do |f|
-          $speaker.speak_up("'#{f[:file]}'")
-        end
-        if remove_duplicates.to_i > 0
-          $speaker.speak_up('Will now remove duplicates:')
-          dups_files.each do |f|
-            next if dups_files.index(f) == 0 && no_prompt.to_i > 0
-            Utils.file_rm(f[:file]) if $speaker.ask_if_needed("Remove file #{f[:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-          end
-        end
-      end
-    end
-  end
-
-  def self.look_for_duplicates(folder, series_name, no_prompt, remove_duplicates = 0)
-    episodes_in_files= {}
-    Utils.search_folder(folder, {'regex' => VALID_VIDEO_EXT}).each do |ep|
-      s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(ep[0]))
-      e.each do |n|
-        episodes_in_files = MediaInfo.series_add(series_name, s, n[:ep], n[:part], ep[0], episodes_in_files)
-      end
-    end
-    handle_duplicates_tv(episodes_in_files, series_name, remove_duplicates, no_prompt)
-    episodes_in_files
-  end
-
-  def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {}, only_series_name: '')
-    handle_missing = eval(handle_missing) if handle_missing.is_a?(String)
-    query = {'maxdepth' => 1, 'includedir' => 1}
-    query.merge!({'regex' => '^' + Utils.regexify(only_series_name, 1).gsub(/[\(\)]/, '.+') + '$'}) if only_series_name.to_s != ''
-    Utils.search_folder(folder, query).each do |series|
-      next unless File.directory?(series[0])
-      begin
-        series_name = File.basename(series[0])
-        episodes_in_files = look_for_duplicates(series[0], series_name, no_prompt, remove_duplicates)
-        _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt)
-        @tv_episodes[series_name].each do |ep|
-          next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || MediaInfo.series_exist?(episodes_in_files, series_name, ep.season_number.to_i, ep.number.to_i + 1)
-          next if include_specials.to_i == 0 && ep.season_number.to_i == 0
-          unless MediaInfo.series_exist?(episodes_in_files, series_name, ep.season_number.to_i, ep.number.to_i)
-            $speaker.speak_up("Missing #{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)} - #{ep.name} (aired on #{ep.air_date}). Look for it:")
-            if handle_missing['download'].to_i > 0
-              if Utils.entry_deja_vu?(__method__.to_s, "#{series_name}S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}")
-                $speaker.speak_up('Entry already downloaded')
-              else
-                success = TorrentSearch.search(keywords: series_name.gsub(/[\(\)\:]/, '') + " S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}",
-                                               limit: 50,
-                                               category: 'tv',
-                                               no_prompt: no_prompt,
-                                               filter_dead: 1,
-                                               move_completed: handle_missing['move_to'],
-                                               main_only: handle_missing['main_only'],
-                                               only_on_trackers: handle_missing['only_on_trackers'],
-                                               qualities: handle_missing['quality'])
-                success = TorrentSearch.search(keywords: series_name.gsub(/[\(\)\:]/, '') + " S#{format('%02d', ep.season_number.to_i)}",
-                                               limit: 50,
-                                               category: 'tv',
-                                               no_prompt: no_prompt,
-                                               filter_dead: 1,
-                                               move_completed: handle_missing['move_to'],
-                                               main_only: handle_missing['main_only'],
-                                               only_on_trackers: handle_missing['only_on_trackers'],
-                                               qualities: handle_missing['quality']) unless success || no_prompt.to_i > 0
-                Utils.entry_seen(__method__.to_s, "#{series_name}S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}") if success
-              end
-            end
-          end
-        end
-      rescue => e
-        $speaker.tell_error(e, "Monitor tv series block #{series_name}")
       end
     end
   end
@@ -696,7 +460,7 @@ class Library
   def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '', qualities: {})
     movies = []
     $speaker.speak_up('Parsing movie list, can take a long time...')
-    self.parse_watch_list(source).each do |item|
+    parse_watch_list(source).each do |item|
       movie = item['movie']
       next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
       imdb_movie = MediaInfo.moviedb_search(movie['title'], true).first
@@ -709,7 +473,7 @@ class Library
     movies.each do |movie|
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
-      self.duplicate_search(dest_folder, movie['title'], [nil, nil], no_prompt, type)
+      duplicate_search(dest_folder, movie['title'], [nil, nil], no_prompt, type)
       found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''),
                                    limit: 10,
                                    category: 'movies',
@@ -724,125 +488,6 @@ class Library
     end
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")
-  end
-
-  def self.rename_movies_file(original, movies_name, destination, quality = nil, hard_link = 0, replaced_outdated = 0)
-    title, _ = MediaInfo.movie_title_lookup(movies_name, true)
-    movies_name = title[0]
-    quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
-    extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
-    FILENAME_NAMING_TEMPLATE.each do |k|
-      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(eval(k), $1) } rescue nil
-    end
-    destination += ".#{extension.downcase}"
-    Utils.move_file(original, destination, hard_link, replaced_outdated)
-  end
-
-  def self.rename_tv_series(folder:, search_tvdb: 1, no_prompt: 0, skip_if_not_found: 1)
-    Utils.search_folder(folder, {'maxdepth' => 1, 'includedir' => 1}).each do |series|
-      next unless File.directory?(series[0])
-      begin
-        series_name = File.basename(series[0])
-        _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt) if search_tvdb.to_i > 0 && @tv_episodes[series_name].nil?
-        next if @tv_episodes[series_name].empty? && skip_if_not_found.to_i > 0
-        Utils.search_folder(series[0], {'regex' => VALID_VIDEO_EXT}).each do |ep|
-          ep_filename = File.basename(ep[0])
-          season, ep_nb = MediaInfo.identify_tv_episodes_numbering(ep_filename)
-          if season == '' || ep_nb.empty?
-            season = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
-            ep_nb = [{:ep => $speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i, :part => 0}]
-          end
-          destination = "#{folder}/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}"
-          rename_tv_series_file(ep[0], series_name, season, ep_nb, destination)
-        end
-      rescue => e
-        $speaker.tell_error(e, "Rename tv series block #{series_name}")
-      end
-    end
-  end
-
-  def self.rename_tv_series_file(original, series_name, episode_season, episodes_nbs, destination, quality = nil, hard_link = 0, replaced_outdated = 0)
-    _, @tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, 1) if @tv_episodes[series_name].nil?
-    quality = quality || File.basename(original).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
-    proper, _ = MediaInfo.identify_proper(original)
-    episode_name = []
-    episode_numbering = []
-    episodes_nbs.each do |n|
-      tvdb_ep = !@tv_episodes[series_name].empty? && episode_season != '' && n[:ep].to_i > 0 ? @tv_episodes[series_name].select { |e| e.season_number == episode_season.to_i.to_s && e.number == n[:ep].to_s }.first : nil
-      episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
-      if n[:ep].to_i > 0 && episode_season != ''
-        episode_numbering << "S#{format('%02d', episode_season.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
-      end
-    end
-    episode_name = episode_name.join(' ')[0..50]
-    extension = original.gsub(/.*\.(\w{2,4}$)/, '\1')
-    episode_numbering = episode_numbering.join(' ')
-    FILENAME_NAMING_TEMPLATE.each do |k|
-      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(eval(k), $1) }
-    end
-    destination += ".#{extension.downcase}"
-    if episode_numbering != ''
-      _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
-    else
-      destination = ''
-    end
-    destination
-  end
-
-  def self.replace_movies(folder:, imdb_name_check: 1, filter_criteria: {}, extra_keywords: '', no_prompt: 0, move_to: nil, qualities: {})
-    $move_completed_torrent = folder
-    Utils.search_folder(folder, filter_criteria).each do |film|
-      next if already_processed?(film[1])
-      next if File.basename(folder) == film[1]
-      break if break_processing(no_prompt)
-      path = film[0]
-      titles = [[film[1], '']]
-      next if skip_loop_item("Replace #{film[1]} (file is #{File.basename(path)})? (y/n)", no_prompt) > 0
-      found, replaced, cpt = true, false, 0
-      if imdb_name_check.to_i > 0
-        titles, found = MediaInfo.movie_title_lookup(titles[0][0])
-      end
-      titles += [['Edit title manually', '']]
-      loop do
-        choice = cpt
-        break if cpt >= titles.count
-        if cpt > 0 && $speaker.ask_if_needed("Look for alternative titles for this file? (y/n)'", no_prompt, 'n') == 'y'
-          $speaker.speak_up("Alternatives titles found:")
-          idxs = 1
-          titles.each do |m|
-            $speaker.speak_up("#{idxs}: #{m[0]}#{' (info IMDB: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
-            idxs += 1
-          end
-          choice = $speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
-          break if choice < 0 || choice > titles.count
-        elsif cpt > 0
-          break
-        end
-        t = titles[choice]
-        if t[0] == 'Edit title manually'
-          $speaker.speak_up('Enter the title to look for:')
-          t[0] = STDIN.gets.strip
-        end
-        #Look for duplicate
-        replaced = self.duplicate_search(folder, t[0], film, no_prompt, 'movies') if found
-        break if replaced
-        $speaker.speak_up("Looking for torrent of film #{t[0]}#{' (info IMDB: ' + URI.escape(t[1]) + ')' if t[1].to_s != ''}") unless no_prompt > 0 && !found
-        replaced = no_prompt > 0 && !found ? nil : TorrentSearch.search(keywords: t[0] + ' ' + extra_keywords,
-                                                                        limit: 10,
-                                                                        category: 'movies',
-                                                                        no_prompt: no_prompt,
-                                                                        filter_dead: 1,
-                                                                        move_completed: move_to || folder,
-                                                                        rename_main: t[0],
-                                                                        main_only: 1,
-                                                                        qualities: qualities)
-        break if replaced
-        cpt += 1
-      end
-      $dir_to_delete << {:id => found, :d => File.dirname(path).gsub(folder, '')} if replaced.to_i > 0
-    end
-  rescue => e
-    $speaker.tell_error(e, "Library.replace_movies")
   end
 
 end

@@ -5,7 +5,6 @@ This program is made to answer my various needs for automation of the management
 
 TODO:
 * General
-    * Refactor library.rb and add classes Movies, Music, TvSeries, Ebooks
     * Expire trakt authentication token and send email when needed
     * Function as a daemon launching any function possible with a scheduler
     
