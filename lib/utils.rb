@@ -242,7 +242,6 @@ class Utils
       next if breakflag > 0
       break if filter_criteria['return_first']
     end
-    search_folder << [File.absolute_path(folder), File.basename(File.dirname(folder))] if filter_criteria['dironly'] && search_folder.empty?
     search_folder
   rescue => e
     $speaker.tell_error(e, "Library.search_folder")

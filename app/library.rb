@@ -490,9 +490,11 @@ class Library
     files, parsed, raw_filtered, item_folders = {}, [], [], {}
     folder_criteria = {'dironly' => 1}
     folder_criteria.merge!({'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}) if item_name.to_s != ''
-    Utils.search_folder(folder, folder_criteria).each do |d|
-      raw_filtered += Utils.search_folder(d[0], filter_criteria.merge({'regex' => VALID_VIDEO_EXT})) if replace.to_i > 0
-      Utils.search_folder(d[0], {'regex' => VALID_VIDEO_EXT}).each do |f|
+    file_criteria = {'regex' => VALID_VIDEO_EXT}
+    (Utils.search_folder(folder, folder_criteria) + [[folder, '']]).each do |d|
+      list_paths = (d[0] == folder ? Utils.search_folder(d[0], file_criteria.merge({'maxdepth' => 1})) : Utils.search_folder(d[0], file_criteria))
+      raw_filtered += (file_criteria.nil? || filter_criteria.empty? ? list_paths : Utils.search_folder(d[0], filter_criteria.merge(file_criteria))) if replace.to_i > 0
+      list_paths.each do |f|
         next if parsed.include?(f[0])
         item = nil
         unless item
@@ -533,7 +535,7 @@ class Library
       end
     end
     removed = handle_duplicates(files, remove_duplicates, no_prompt)
-    if replace.to_i > 0
+    if replace.to_i > 0 && !files.empty? && files[:files]
       filtered = files[:files].keep_if do |k, _|
         !removed.include?(k) && raw_filtered.flatten.include?(k)
       end
