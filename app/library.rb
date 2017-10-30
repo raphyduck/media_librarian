@@ -2,7 +2,6 @@ class Library
 
   @refusal = 0
   @processed = []
-  @tv_episodes = {}
 
   def self.already_processed?(item)
     already_processed = @processed.include?(item)
@@ -237,39 +236,6 @@ class Library
     $speaker.tell_error(e, "Library.create_custom_list")
   end
 
-  def self.duplicate_search(folder, title, original, no_prompt = 0, type = 'movies')
-    $speaker.speak_up("Looking for duplicates of #{title}...")
-    replaced = nil
-    dups = Utils.search_folder(folder, {'regex' => '.*' + Utils.regexify(title.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*', 'exclude_strict' => original[1]})
-    corrected_dups = []
-    processed = []
-    if dups.count > 0
-      dups.each do |d|
-        case type
-          when 'movies'
-            next if processed.include?(d[1])
-            titles, _ = MediaInfo.movie_title_lookup(d[1])
-            d_title, _ = titles[0]
-            processed << d[1]
-          else
-            next
-        end
-        corrected_dups << d if d_title == title
-      end
-    end
-    if corrected_dups.length > 0 && $speaker.ask_if_needed("Duplicate(s) found for film #{title}. Original is #{original}. Duplicates are:#{NEW_LINE}" + corrected_dups.map { |d| "#{d[0]}#{NEW_LINE}" }.to_s + ' Do you want to remove them? (y/n)', no_prompt) == 'y'
-      corrected_dups.each do |d|
-        Utils.file_rm_r(File.dirname(d[0]))
-      end
-    elsif corrected_dups.length > 0 && !original[1].nil? && $speaker.ask_if_needed("Would you prefer to delete the original #{original[1]}? (y/n)", no_prompt) == 'y'
-      Utils.file_rm_r(File.dirname(original[0]))
-      replaced = 0
-    else
-      $speaker.speak_up('No duplicates found')
-    end
-    return replaced
-  end
-
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: [], ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {}, rsync_shell: '')
     $email_msg = ''
     loop do
@@ -432,7 +398,7 @@ class Library
             if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
               season, ep_nb = MediaInfo.identify_tv_episodes_numbering(full_p)
               destination_file = TvSeries.rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
-              TvSeries.look_for_duplicates(File.dirname(destination_file), item_name, 1, remove_duplicates)
+              process_folder(type: 'tv', folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1)
             elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
               Movies.rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
             else
@@ -448,6 +414,36 @@ class Library
     end
   end
 
+  def self.handle_duplicates(files, remove_duplicates = 0, no_prompt = 0)
+    dups, removed = [], []
+    files.each do |_, f|
+      next unless f.is_a?(Array)
+      grouped = f.group_by { |ep| ep[:identifier] }
+      dups += grouped.values.select { |a| a.size > 1 }.flatten
+    end
+    consolidated = dups.map { |e| [e[:identifier], e[:full_name]] }.uniq
+    unless consolidated.empty?
+      consolidated.each do |d|
+        $speaker.speak_up("Duplicate files found for #{d[1]}")
+        dups_files = MediaInfo.sort_media_files(MediaInfo.media_get(files, d[0]))
+        dups_files.each do |f|
+          $speaker.speak_up("'#{f[:file]}'")
+        end
+        if remove_duplicates.to_i > 0
+          $speaker.speak_up('Will now remove duplicates:')
+          dups_files.each do |f|
+            next if dups_files.index(f) == 0 && no_prompt.to_i > 0
+            if $speaker.ask_if_needed("Remove file #{f[:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+              Utils.file_rm(f[:file])
+              removed << f[:file]
+            end
+          end
+        end
+      end
+    end
+    removed
+  end
+
   def self.parse_watch_list(type = 'trakt')
     case type
       when 'imdb'
@@ -457,7 +453,7 @@ class Library
     end
   end
 
-  def self.process_search_list(dest_folder:, source: 'trakt', no_prompt: 0, type: 'trakt', extra_keywords: '', qualities: {})
+  def self.process_download_list(dest_folder:, source: 'trakt', no_prompt: 0, extra_keywords: '', qualities: {})
     movies = []
     $speaker.speak_up('Parsing movie list, can take a long time...')
     parse_watch_list(source).each do |item|
@@ -469,11 +465,16 @@ class Library
       movies << movie
       print '...'
     end
+    files, _ = process_folder(type: 'movies', folder: dest_folder, no_prompt: no_prompt)
     movies.sort_by! { |m| m['release_date'] }
     movies.each do |movie|
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
-      duplicate_search(dest_folder, movie['title'], [nil, nil], no_prompt, type)
+      if MediaInfo.media_exist?(files, Movies.identifier(movie['title']))
+        MediaInfo.media_get(files, Movies.identifier(movie['title'])).each do |f|
+          Utils.file_rm(f[:file]) if f[:file].to_s != 0
+        end
+      end
       found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''),
                                    limit: 10,
                                    category: 'movies',
@@ -488,6 +489,99 @@ class Library
     end
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")
+  end
+
+  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, no_prompt: 0, replace: 0, filter_criteria: {}, torrent_search: {}, folder_hierarchy: {})
+    filter_criteria = eval(filter_criteria) if filter_criteria.is_a?(String)
+    folder_hierarchy = eval(folder_hierarchy) if folder_hierarchy.is_a?(String)
+    $speaker.speak_up("Processing folder #{folder}...", 0)
+    files, parsed, raw_filtered, item_folders = {}, [], [], {}
+    folder_criteria = {'dironly' => 1}
+    folder_criteria.merge!({'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}) if item_name.to_s != ''
+    Utils.search_folder(folder, folder_criteria).each do |d|
+      raw_filtered += Utils.search_folder(d[0], filter_criteria.merge({'regex' => VALID_VIDEO_EXT})) if replace.to_i > 0
+      Utils.search_folder(d[0], {'regex' => VALID_VIDEO_EXT}).each do |f|
+        next if parsed.include?(f[0])
+        item = nil
+        unless item
+          in_path = Utils.is_in_path(item_folders.map { |k, _| k }, f[0])
+          item_name, item = item_folders[in_path] if in_path && !item_folders[in_path].nil?
+          item_name, path, item = MediaInfo.identify_title(f[0].gsub(Dir.home, ''), type, no_prompt, (folder_hierarchy['tv'] || 2)) unless item
+          item_folders[path] = [item_name, item] if item && defined?(path) && path && !item_folders[path]
+        end
+        info = []
+        parsed << f[0]
+        next unless no_prompt.to_i == 0 || item
+        case type
+          when 'movies'
+            info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
+          when 'tv'
+            s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f[0]))
+            e.each do |n|
+              info << {
+                  'full_name' => "#{item_name} S#{s}E#{n[:ep]}",
+                  'identifier' => TvSeries.identifier(item_name, s, n[:ep], n[:part]),
+                  'attrs' => {:season => s.to_i, :episode => n[:ep].to_i, :part => n[:part].to_i, :show => item}
+              }
+            end
+          else
+            next
+        end
+        info.each do |i|
+          files = MediaInfo.media_add(item_name,
+                                      type,
+                                      i['full_name'],
+                                      i['identifier'],
+                                      i['attrs'],
+                                      f[0],
+                                      files
+          ) if i['full_name'] != ''
+        end
+      end
+    end
+    removed = handle_duplicates(files, remove_duplicates, no_prompt)
+    if replace.to_i > 0
+      filtered = files[:files].keep_if { |k, _| !removed.include?(k) && raw_filtered.include?(k) }
+      search_from_list(list: filtered, no_prompt: no_prompt, torrent_search: torrent_search)
+    end
+    return files, item_folders
+  rescue => e
+    $speaker.tell_error(e, "Library.process_folder")
+    return {}, {}
+  end
+
+  def self.search_from_list(list:, no_prompt: 0, torrent_search: {})
+    list = list.map{|_,a| a}.flatten unless list.is_a?(Array)
+    list.each do |e|
+      break if break_processing(no_prompt)
+      next if skip_loop_item("Do you want to look for releases of #{e[:type]} #{e[:full_name]} #{'(released on ' + e['air_date'] + ')' if e['air_date']}? (y/n)", no_prompt) > 0
+      download = 0
+      until download.to_i > 0
+        download = TorrentSearch.search(keywords: e[:full_name].gsub(/[\(\)\:]/, ''),
+                                        limit: 30,
+                                        category: e[:type],
+                                        no_prompt: no_prompt,
+                                        filter_dead: 1,
+                                        move_completed: torrent_search['move_to'],
+                                        rename_main: e[:full_name],
+                                        main_only: torrent_search['main_only'],
+                                        only_on_trackers: torrent_search['only_on_trackers'],
+                                        qualities: torrent_search['qualities'])
+        break if download.to_i > 0
+        case e[:type]
+          when 'movies'
+            title, movie = MediaInfo.movie_lookup(File.basename(e[:file]), no_prompt, 1)
+            break unless movie
+            e[:full_name] = title
+          else
+            break
+        end
+      end
+      Utils.entry_seen('download', e[:identifier]) if download.to_i > 0
+      $dir_to_delete << {:id => download, :d => File.dirname(e[:file])} if download.to_i > 0 && e[:file].to_s != ''
+    end
+  rescue => e
+    $speaker.tell_error(e, "Library.search_from_list")
   end
 
 end

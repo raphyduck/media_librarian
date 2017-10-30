@@ -57,8 +57,8 @@ class TorrentSearch
       filter_out.each do |fout|
         get_results['torrents'].select! { |t| t[fout].to_i != 0 }
       end
-      get_results['torrents'].select! { |t| t['size'].to_f >= qualities['min_size'].to_f * 1024 * 1024 } unless qualities['min_size'].nil?
-      get_results['torrents'].select! { |t| t['size'].to_f <= qualities['max_size'].to_f * 1024 * 1024 } unless qualities['max_size'].nil?
+      get_results['torrents'].select! { |t| t['size'].to_f >= qualities['min_size'].to_f * 1024 * 1024 } unless qualities.nil? || qualities['min_size'].nil?
+      get_results['torrents'].select! { |t| t['size'].to_f <= qualities['max_size'].to_f * 1024 * 1024 } unless qualities.nil? || qualities['max_size'].nil?
       get_results['torrents'].select! { |t| t['seeders'].to_i > filter_dead.to_i } if filter_dead.to_i > 0
       get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
@@ -67,6 +67,7 @@ class TorrentSearch
   rescue => e
     $speaker.tell_error(e, "TorrentSearch.get_results")
     retry unless (tries -= 1) <= 0
+    {}
   end
 
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)

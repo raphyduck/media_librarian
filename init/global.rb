@@ -19,7 +19,7 @@ FILENAME_NAMING_TEMPLATE=%w(
     proper
 )
 REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
-VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)'
+VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)$'
 PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
                     {:name => 'torrentleech', :url => 'https://www.torrentleech.org'},
                     {:name => 'wop', :url => 'https://worldofp2p.net'}]

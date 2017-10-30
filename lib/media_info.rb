@@ -24,6 +24,25 @@ class MediaInfo
     return p, (p != '' ? 1 : 0)
   end
 
+  def self.identify_title(filename, type, no_prompt = 0, folder_level = 2)
+    title, item = nil, nil
+    filename = Utils.get_only_folder_levels(filename, folder_level)
+    r_folder = filename
+    case type
+      when 'movies'
+        title, item = movie_lookup(File.basename(File.dirname(filename)), no_prompt)
+      when 'tv'
+        while item.nil?
+          t_folder, r_folder = Utils.get_top_folder(r_folder)
+          title, item = tv_show_search(t_folder, no_prompt)
+          break if t_folder == r_folder
+        end
+      else
+        title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+    end
+    return title, filename.gsub(r_folder, ''), item
+  end
+
   def self.identify_tv_episodes_numbering(filename)
     identifiers = File.basename(filename).downcase.scan(/(^|[s\. _\^\[])(\d{1,3}[ex]\d{1,4}(\.\d[\. ])?)[\&-]?([ex]\d{1,2}(\.\d[\. ])?)?/)
     identifiers = File.basename(filename).scan(/(^|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
@@ -68,6 +87,39 @@ class MediaInfo
     }
   end
 
+  def self.movie_lookup(title, no_prompt = 0, search_alt = 0)
+    movies = moviedb_search(title)
+    movie = nil
+    unless movies.empty?
+      results = movies.map { |m| [clean_title(m.title), m.url] }
+      results += [['Edit title manually', ''], ['Skip file', '']]
+      loop do
+        choice = search_alt
+        if search_alt > 0 && $speaker.ask_if_needed("Look for alternative titles for this file? (y/n)'", no_prompt, 'n') == 'y'
+          $speaker.speak_up("Alternatives titles found:")
+          results.each_with_index do |m, idx|
+            $speaker.speak_up("#{idx + 1}: #{m[0]}#{' (info IMDB: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
+          end
+          choice = $speaker.ask_if_needed("Enter the number of the chosen title: ", no_prompt, 1).to_i - 1
+          next if choice < 0 || choice > results.count
+        end
+        t = results[choice]
+        break if t[0] == 'Skip file'
+        if t[0] == 'Edit title manually'
+          $speaker.speak_up('Enter the title to look for:')
+          title = STDIN.gets.strip
+          break
+        end
+        movie = movies[choice]
+        break
+      end
+    end
+    return title, movie
+  rescue => e
+    $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
+    return title, nil
+  end
+
   def self.movie_title_lookup(title, first_only = false)
     movies = moviedb_search(title)
     found = false
@@ -95,23 +147,28 @@ class MediaInfo
     return []
   end
 
-  def self.series_add(series_name, season, episode, part, file = '', series = {})
-    series[:name] = series_name
-    series[season.to_i] = {} if series[season.to_i].nil?
-    series[season.to_i][episode.to_i] = {} if series[season.to_i][episode.to_i].nil?
-    series[season.to_i][episode.to_i][part.to_i] = [] if series[season.to_i][episode.to_i][part.to_i].nil?
-    series[season.to_i][episode.to_i][part.to_i] << {:name => series_name, :season => season.to_i, :episode => episode.to_i, :part => part.to_i, :file => file}
-    series
+  def self.media_add(item_name, type, full_name, identifier, attrs = {}, file = '', files = {})
+    return files if file != '' && files[:files] && files[:files][file].to_s == file
+    files[identifier] = [] if files[identifier].nil?
+    files[identifier] << {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
+    if file.to_s != ''
+      files[:files] = {} if files[:files].nil?
+      files[:files][file] = {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
+    end
+    files
   end
 
-  def self.series_exist?(series, series_name, season, episode)
-    return series[:name] == series_name && !series[season.to_i].nil? && !series[season.to_i][episode.to_i].nil? && !series[season.to_i][episode.to_i].empty?
+  def self.media_exist?(files, identifier)
+    files.each do |id, _|
+      return true if id.to_s.include?(identifier)
+    end
+    false
   end
 
-  def self.series_get_ep(series, series_name, season, episode, part)
-    ep = nil
-    ep = series[season.to_i][episode.to_i][part.to_i] if series_exist?(series, series_name, season, episode)
-    ep
+  def self.media_get(files, identifier)
+    eps = nil
+    eps = files.select { |k, _| k.to_s.include?(identifier) }.map { |_, v| v }.flatten if media_exist?(files, identifier)
+    eps
   end
 
   def self.sort_media_files(files, qualities = {})
@@ -128,7 +185,7 @@ class MediaInfo
     sorted.sort_by! { |x| (SOURCES.index(x[2]) || 999).to_i }
     sorted.sort_by! { |x| (RESOLUTIONS.index(x[1]) || 999).to_i }
     sorted.sort_by! { |x| -x[5].to_i }
-    r.sort_by!{ |x| sorted.map{|x| x[0]}.index(x[:file])}
+    r.sort_by! { |x| sorted.map { |x| x[0] }.index(x[:file]) }
   end
 
   def self.tv_series_search(title, tvdb_id = '')
@@ -151,33 +208,45 @@ class MediaInfo
     return nil, false
   end
 
-  def self.tv_episodes_search(title, no_prompt = 0)
-    go_on = 0
-    show, episodes = nil, []
-    year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
-    tvdb_shows = $tvdb.search(title)
-    tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
-    while go_on.to_i == 0
-      tvdb_show = tvdb_shows.shift
-      break if tvdb_show.nil?
-      next if year > 0 && tvdb_show['FirstAired'] &&
-          tvdb_show['FirstAired'].match(/\d{4}/) &&
-          tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > 0  &&
-          (tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > year + 1 || tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i < year - 1)
-      if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == title.downcase.gsub(/[ \(\)\.\:]/, '')
-        go_on = 1
-      else
-        go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{title}, proceed with that? (y/n)", no_prompt, 'y') == 'y' ? 1 : 0
-      end
-    end
-    unless go_on == 0 || tvdb_show.nil?
-      $speaker.speak_up("Using #{tvdb_show['SeriesName']} as series name", 0)
-      show = $tvdb.get_series_by_id(tvdb_show['seriesid'])
+  def self.tv_episodes_search(title, no_prompt = 0, show = nil)
+    title, show = tv_show_search(title, no_prompt) unless show
+    episodes = []
+    unless show.nil?
+      $speaker.speak_up("Using #{title} as series name", 0)
       episodes = $tvdb.get_all_episodes(show)
     end
     return show, episodes
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
     return nil, []
+  end
+
+  def self.tv_show_search(title, no_prompt = 0)
+    go_on = 0
+    title, show = title, nil
+    year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
+    tvdb_shows = $tvdb.search(title)
+    tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
+    while go_on.to_i == 0
+      tvdb_show = tvdb_shows.shift
+      break if tvdb_show.nil?
+      next if year.to_i > 0 && tvdb_show['FirstAired'] &&
+          tvdb_show['FirstAired'].match(/\d{4}/) &&
+          tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > 0 &&
+          (tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > year + 1 || tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i < year - 1)
+      if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == title.downcase.gsub(/[ \(\)\.\:]/, '')
+        go_on = 1
+      else
+        go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{title}, proceed with that? (y/n)", no_prompt, 'n') == 'y' ? 1 : 0
+      end
+      if tvdb_show && go_on.to_i > 0
+        show = TvdbParty::Series.new($tvdb, tvdb_show)
+        title = show.name
+      end
+    end
+    return title, show
+  rescue => e
+    $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
+    return title, nil
   end
 end

@@ -1,4 +1,3 @@
-$move_completed_torrent = nil
 $deluge_connected = nil
 $deluge_options = {}
 $deluge_torrents_added = []

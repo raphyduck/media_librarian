@@ -52,10 +52,10 @@ class Librarian
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
           :handle_completed_download => ['Library', 'handle_completed_download'],
-          :process_search_list => ['Library', 'process_search_list'],
+          :process_download_list => ['Library', 'process_download_list'],
+          :process_folder => ['Library', 'process_folder']
       },
       :movies => {
-          :replace_movies => ['Movies', 'replace_movies'],
       },
       :music => {
           :create_playlists => ['Muic', 'create_playlists'],
