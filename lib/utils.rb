@@ -17,7 +17,7 @@ class Utils
   def self.cleanup_folder
     $dir_to_delete.each do |f|
       next if f[:d].to_s == '' || f[:d].to_s == '/'
-      Utils.file_rm_r(f[:d])
+      Utils.file_rm(f[:d])
     end
   end
 
@@ -72,7 +72,7 @@ class Utils
 
   def self.file_rm_r(files)
     return $speaker.speak_up("Would rm_r #{files}") if $env_flags['pretend'] > 0
-    FileUtils.rm_r
+    FileUtils.rm_r(files)
   end
 
   def self.file_ln(original, destination)

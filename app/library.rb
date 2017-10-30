@@ -581,7 +581,7 @@ class Library
         end
       end
       Utils.entry_seen('download', e[:identifier]) if download.to_i > 0
-      $dir_to_delete << {:id => download, :d => File.dirname(e[:file])} if download.to_i > 0 && e[:file].to_s != ''
+      $dir_to_delete << {:id => download, :d => e[:file]} if download.to_i > 0 && e[:file].to_s != ''
     end
   rescue => e
     $speaker.tell_error(e, "Library.search_from_list")

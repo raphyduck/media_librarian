@@ -59,7 +59,7 @@ class TorrentSearch
       end
       get_results['torrents'].select! { |t| t['size'].to_f >= qualities['min_size'].to_f * 1024 * 1024 } unless qualities.nil? || qualities['min_size'].nil?
       get_results['torrents'].select! { |t| t['size'].to_f <= qualities['max_size'].to_f * 1024 * 1024 } unless qualities.nil? || qualities['max_size'].nil?
-      get_results['torrents'].select! { |t| t['seeders'].to_i > filter_dead.to_i } if filter_dead.to_i > 0
+      get_results['torrents'].select! { |t| t['seeders'].to_i >= filter_dead.to_i } if filter_dead.to_i > 0
       get_results['torrents'].sort_by! { |t| -t[sort_by].to_i }
       get_results['torrents'] = get_results['torrents'].first(limit.to_i)
     end
