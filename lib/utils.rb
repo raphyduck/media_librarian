@@ -163,7 +163,7 @@ class Utils
         $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
         file_rm(destination)
       else
-        $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...", $env_flags['debug'].to_i)
+        $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...", 0)
         return false, destination
       end
     end
