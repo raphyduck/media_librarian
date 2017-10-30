@@ -93,6 +93,7 @@ class Utils
 
   def self.get_only_folder_levels(path, level = 1)
     cpt = 0
+    initial_f = path
     f = File.basename(path)
     while cpt <= level
       break if path == File.dirname(path)
@@ -100,7 +101,7 @@ class Utils
       f = File.basename(path) + '/' + f
       cpt += 1
     end
-    f
+    return f, initial_f.gsub(f, '')
   end
 
   def self.get_path_depth(path, folder)

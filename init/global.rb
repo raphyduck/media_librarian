@@ -23,5 +23,9 @@ VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)$'
 PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
                     {:name => 'torrentleech', :url => 'https://www.torrentleech.org'},
                     {:name => 'wop', :url => 'https://worldofp2p.net'}]
-TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'thepiratebay', :url => 'https://thepiratebay.org'},
-                                       {:name => 'rarbg', :url => 'https://rarbg.to'}]
+TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'rarbg', :url => 'https://rarbg.to'},
+                                       {:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
+FOLDER_HIERARCHY={
+    'tv' => 2,
+    'movies' => 0
+}

@@ -506,7 +506,7 @@ class Library
         unless item
           in_path = Utils.is_in_path(item_folders.map { |k, _| k }, f[0])
           item_name, item = item_folders[in_path] if in_path && !item_folders[in_path].nil?
-          item_name, path, item = MediaInfo.identify_title(f[0].gsub(Dir.home, ''), type, no_prompt, (folder_hierarchy['tv'] || 2)) unless item
+          item_name, path, item = MediaInfo.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) unless item
           item_folders[path] = [item_name, item] if item && defined?(path) && path && !item_folders[path]
         end
         info = []
@@ -528,6 +528,7 @@ class Library
             next
         end
         info.each do |i|
+          i['attrs'].merge!({:move_to => folder})
           files = MediaInfo.media_add(item_name,
                                       type,
                                       i['full_name'],
@@ -541,7 +542,9 @@ class Library
     end
     removed = handle_duplicates(files, remove_duplicates, no_prompt)
     if replace.to_i > 0
-      filtered = files[:files].keep_if { |k, _| !removed.include?(k) && raw_filtered.include?(k) }
+      filtered = files[:files].keep_if do |k, _|
+        !removed.include?(k) && raw_filtered.flatten.include?(k)
+      end
       search_from_list(list: filtered, no_prompt: no_prompt, torrent_search: torrent_search)
     end
     return files, item_folders
@@ -562,7 +565,7 @@ class Library
                                         category: e[:type],
                                         no_prompt: no_prompt,
                                         filter_dead: 1,
-                                        move_completed: torrent_search['move_to'],
+                                        move_completed: e[:move_to] || torrent_search['move_to'],
                                         rename_main: e[:full_name],
                                         main_only: torrent_search['main_only'],
                                         only_on_trackers: torrent_search['only_on_trackers'],

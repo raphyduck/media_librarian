@@ -26,21 +26,21 @@ class MediaInfo
 
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2)
     title, item = nil, nil
-    filename = Utils.get_only_folder_levels(filename, folder_level)
+    filename, i_folder = Utils.get_only_folder_levels(filename, folder_level)
     r_folder = filename
-    case type
-      when 'movies'
-        title, item = movie_lookup(File.basename(File.dirname(filename)), no_prompt)
-      when 'tv'
-        while item.nil?
-          t_folder, r_folder = Utils.get_top_folder(r_folder)
+    while item.nil?
+      t_folder, r_folder = Utils.get_top_folder(r_folder)
+      case type
+        when 'movies'
+          title, item = movie_lookup(t_folder, no_prompt)
+        when 'tv'
           title, item = tv_show_search(t_folder, no_prompt)
-          break if t_folder == r_folder
-        end
-      else
-        title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+        else
+          title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+      end
+      break if t_folder == r_folder
     end
-    return title, filename.gsub(r_folder, ''), item
+    return title, i_folder + filename.gsub(r_folder, ''), item
   end
 
   def self.identify_tv_episodes_numbering(filename)
@@ -111,6 +111,7 @@ class MediaInfo
           break
         end
         movie = movies[choice]
+        title = movie.title
         break
       end
     end
