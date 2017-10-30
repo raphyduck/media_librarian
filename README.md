@@ -8,7 +8,6 @@ TODO:
     * Expire trakt authentication token and send email when needed
     * Function as a daemon launching any function possible with a scheduler
     * Remove parents folders when deleting files if empty
-    * Convert string argument to hash/array if necessary in the dispatch function rather than in each function
     
 * Ebooks/Comics:
     * Read calibre library/metadata

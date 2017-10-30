@@ -1,7 +1,6 @@
 class Music
 
   def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
-    criteria = eval(criteria) if criteria.is_a?(String)
     folder = "#{folder}/" unless folder[-1] == '/'
     ordered_collection = {}
     cpt = 0

@@ -212,7 +212,6 @@ class Utils
   end
 
   def self.search_folder(folder, filter_criteria = {})
-    filter_criteria = eval(filter_criteria) if filter_criteria.is_a?(String)
     filter_criteria = {} if filter_criteria.nil?
     search_folder = []
     Find.find(folder).each do |path|

@@ -101,11 +101,7 @@ class TorrentSearch
 
   def self.search(keywords:, limit: 50, category: '', no_prompt: 0, filter_dead: 1, move_completed: '', rename_main: '', main_only: 0, only_on_trackers: [], qualities: {})
     success = nil
-    begin
-      keywords = eval(keywords)
-    rescue Exception
-      keywords = [keywords]
-    end
+    keywords = [keywords] if keywords.is_a?(String)
     keywords.each do |keyword|
       success = nil
       TORRENT_TRACKERS.map{|x| x[:name]}.each do |type|
@@ -130,7 +126,6 @@ class TorrentSearch
   end
 
   def self.t_search(type, keyword, limit = 50, category = '', no_prompt = 0, filter_dead = 1, move_completed = '', rename_main = '', main_only = 0, qualities = {})
-    qualities = eval(qualities) if qualities.is_a?(String)
     success = nil
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt)

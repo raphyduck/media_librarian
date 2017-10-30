@@ -29,7 +29,6 @@ class Library
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
     $speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
-    ssh_opts = eval(ssh_opts) if ssh_opts.is_a?(String)
     ssh_opts = Utils.recursive_symbolize_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
     tries = 10
@@ -73,7 +72,6 @@ class Library
   end
 
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
-    source_folders = eval(source_folders) if source_folders.is_a?(String)
     source_folders = {} if source_folders.nil?
     return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
     complete_list = TraktList.list(source_list, '')
@@ -126,7 +124,6 @@ class Library
 
   def self.copy_trakt_list(name:, description:, origin: 'collection', criteria: {})
     $speaker.speak_up("Fetching items from #{origin}...")
-    criteria = eval(criteria) if criteria.is_a?(String)
     new_list = {}
     (criteria['types'] || []).each do |t|
       new_list[t] = TraktList.list(origin, t)
@@ -150,7 +147,6 @@ class Library
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
     $speaker.speak_up("Fetching items from #{origin}...")
-    criteria = eval(criteria) if criteria.is_a?(String)
     new_list = {
         'movies' => TraktList.list(origin, 'movies'),
         'shows' => TraktList.list(origin, 'shows')
@@ -330,7 +326,6 @@ class Library
   end
 
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
-    folder = eval(folder) if folder.is_a?(String)
     if list.nil? || list.empty?
       list_name = $speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
       list = TraktList.list(list_name, '')
@@ -375,7 +370,6 @@ class Library
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0)
-    handling = eval(handling) if handling.is_a?(String)
     full_p = torrent_path + '/' + torrent_name
     if FileTest.directory?(full_p)
       handled_files = (!handling['file_types'].nil? && handling['file_types'].is_a?(Array)) ? handling['file_types'] + ['rar', 'zip'] : ['rar', 'zip']
@@ -492,8 +486,6 @@ class Library
   end
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, no_prompt: 0, replace: 0, filter_criteria: {}, torrent_search: {}, folder_hierarchy: {})
-    filter_criteria = eval(filter_criteria) if filter_criteria.is_a?(String)
-    folder_hierarchy = eval(folder_hierarchy) if folder_hierarchy.is_a?(String)
     $speaker.speak_up("Processing folder #{folder}...", 0)
     files, parsed, raw_filtered, item_folders = {}, [], [], {}
     folder_criteria = {'dironly' => 1}

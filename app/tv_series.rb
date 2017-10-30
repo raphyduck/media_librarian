@@ -7,7 +7,6 @@ class TvSeries
   end
 
   def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {}, only_series_name: '')
-    handle_missing = eval(handle_missing) if handle_missing.is_a?(String)
     query = {'maxdepth' => 1, 'includedir' => 1}
     query.merge!({'regex' => '^' + Utils.regexify(only_series_name, 1).gsub(/[\(\)]/, '.+') + '$'}) if only_series_name.to_s != ''
     episodes_in_files, item_folders = Library.process_folder(type: 'tv', folder: folder, item_name: only_series_name, remove_duplicates: remove_duplicates, no_prompt: no_prompt)
