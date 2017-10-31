@@ -369,7 +369,7 @@ class Library
     return 0, []
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0)
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {})
     full_p = torrent_path + '/' + torrent_name
     if FileTest.directory?(full_p)
       handled_files = (!handling['file_types'].nil? && handling['file_types'].is_a?(Array)) ? handling['file_types'] + ['rar', 'zip'] : ['rar', 'zip']
@@ -387,14 +387,12 @@ class Library
             type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
             return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
             return if File.stat(full_p).nlink > 1 #File already hard linked eslwhere, moving on
-            item_name = full_p.gsub(Regexp.new("^#{completed_folder}\/?#{type}\/([^\/]*)\/.*"), '\1')
             type.downcase!
-            if handling[type] && handling[type]['media_type'] == 'shows' && handling[type] && handling[type]['move_to']
-              season, ep_nb = MediaInfo.identify_tv_episodes_numbering(full_p)
-              destination_file = TvSeries.rename_tv_series_file(full_p, item_name, season, ep_nb, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
-              process_folder(type: 'tv', folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1)
-            elsif handling[type] && handling[type]['media_type'] == 'movies' && handling[type] && handling[type]['move_to']
-              Movies.rename_movies_file(full_p, item_name, destination_folder + '/' + handling[type]['move_to'].gsub(destination_folder, ''), nil, 1, 1)
+            ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
+            item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
+            if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
+              destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
+              process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1)
             else
               #TODO: Handle flac,...
               destination = full_p.gsub(completed_folder, destination_folder)
@@ -459,7 +457,7 @@ class Library
       movies << movie
       print '...'
     end
-    files, _ = process_folder(type: 'movies', folder: dest_folder, no_prompt: no_prompt)
+    files = process_folder(type: 'movies', folder: dest_folder, no_prompt: no_prompt)
     movies.sort_by! { |m| m['release_date'] }
     movies.each do |movie|
       break if break_processing(no_prompt)
@@ -485,32 +483,41 @@ class Library
     $speaker.tell_error(e, "Library.process_search_list")
   end
 
-  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, no_prompt: 0, replace: 0, filter_criteria: {}, torrent_search: {}, folder_hierarchy: {})
+  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, no_prompt: 0, replace: {}, rename: {}, filter_criteria: {}, folder_hierarchy: {})
     $speaker.speak_up("Processing folder #{folder}...", 0)
-    files, parsed, raw_filtered, item_folders = {}, [], [], {}
+    files, parsed, raw_filtered = {}, [], []
     folder_criteria = {'dironly' => 1}
     folder_criteria.merge!({'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}) if item_name.to_s != ''
     file_criteria = {'regex' => VALID_VIDEO_EXT}
+    want_replace = replace && !replace.empty? && replace['replace_media'].to_i > 0
     (Utils.search_folder(folder, folder_criteria) + [[folder, '']]).each do |d|
       list_paths = (d[0] == folder ? Utils.search_folder(d[0], file_criteria.merge({'maxdepth' => 1})) : Utils.search_folder(d[0], file_criteria))
-      raw_filtered += (file_criteria.nil? || filter_criteria.empty? ? list_paths : Utils.search_folder(d[0], filter_criteria.merge(file_criteria))) if replace.to_i > 0
+      raw_filtered += (file_criteria.nil? || filter_criteria.empty? ? list_paths : Utils.search_folder(d[0], filter_criteria.merge(file_criteria))) if want_replace
       list_paths.each do |f|
         next if parsed.include?(f[0])
-        item = nil
-        unless item
-          in_path = Utils.is_in_path(item_folders.map { |k, _| k }, f[0])
-          item_name, item = item_folders[in_path] if in_path && !item_folders[in_path].nil?
-          item_name, path, item = MediaInfo.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) unless item
-          item_folders[path] = [item_name, item] if item && defined?(path) && path && !item_folders[path]
-        end
+        item_name, item = MediaInfo.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]))
         info = []
         parsed << f[0]
         next unless no_prompt.to_i == 0 || item
+        f_path = f[0]
+        unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0
+          f_path = rename_media_file(f[0],
+                            (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
+                            type,
+                            item_name,
+                            item,
+                            no_prompt,
+                            0,
+                            0,
+                            folder_hierarchy
+          )
+          f_path = f[0] if f_path == ''
+        end
         case type
           when 'movies'
             info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
           when 'tv'
-            s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f[0]))
+            s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
             e.each do |n|
               info << {
                   'full_name' => "#{item_name} S#{s}E#{n[:ep]}",
@@ -528,27 +535,41 @@ class Library
                                       i['full_name'],
                                       i['identifier'],
                                       i['attrs'],
-                                      f[0],
+                                      f_path,
                                       files
           ) if i['full_name'] != ''
         end
       end
     end
     removed = handle_duplicates(files, remove_duplicates, no_prompt)
-    if replace.to_i > 0 && !files.empty? && files[:files]
+    if want_replace && !files.empty? && files[:files]
       filtered = files[:files].keep_if do |k, _|
         !removed.include?(k) && raw_filtered.flatten.include?(k)
       end
-      search_from_list(list: filtered, no_prompt: no_prompt, torrent_search: torrent_search)
+      search_from_list(list: filtered, no_prompt: no_prompt, torrent_search: replace['torrent_search'])
     end
-    return files, item_folders
+    return files
   rescue => e
     $speaker.tell_error(e, "Library.process_folder")
-    return {}, {}
+    return {}
+  end
+
+  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
+    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
+    FILENAME_NAMING_TEMPLATE.each do |k|
+      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
+    end
+    destination += ".#{metadata['extension'].downcase}"
+    if metadata['is_found']
+      _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
+    else
+      destination = ''
+    end
+    destination
   end
 
   def self.search_from_list(list:, no_prompt: 0, torrent_search: {})
-    list = list.map{|_,a| a}.flatten unless list.is_a?(Array)
+    list = list.map { |_, a| a }.flatten unless list.is_a?(Array)
     list.each do |e|
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of #{e[:type]} #{e[:full_name]} #{'(released on ' + e['air_date'] + ')' if e['air_date']}? (y/n)", no_prompt) > 0

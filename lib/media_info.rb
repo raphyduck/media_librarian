@@ -1,6 +1,8 @@
 class MediaInfo
 
   @last_tvmaze_req = Time.now - 1.day
+  @tv_episodes = {}
+  @media_folders = {}
 
   def self.clean_title(title)
     title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '') rescue title
@@ -19,14 +21,52 @@ class MediaInfo
     true
   end
 
+  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {})
+    metadata = {}
+    ep_filename = File.basename(filename)
+    item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) if item_name.to_s == '' || item.nil?
+    return metadata if item.nil? && no_prompt.to_i > 0
+    metadata['quality'] = metadata['quality'] || File.basename(ep_filename).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
+    metadata['proper'], _ = identify_proper(ep_filename)
+    metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
+    case type
+      when 'tv'
+        metadata['episode_season'], ep_nb = identify_tv_episodes_numbering(ep_filename)
+        if metadata['episode_season'] == '' || ep_nb.empty?
+          metadata['episode_season'] = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
+          ep_nb = [{:ep => $speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i, :part => 0}]
+        end
+        _, @tv_episodes[item_name] = tv_episodes_search(item_name, no_prompt, item) if @tv_episodes[item_name].nil?
+        episode_name = []
+        episode_numbering = []
+        ep_nb.each do |n|
+          tvdb_ep = !@tv_episodes[item_name].empty? && metadata['episode_season'] != '' && n[:ep].to_i > 0 ? @tv_episodes[item_name].select { |e| e.season_number == metadata['episode_season'].to_i.to_s && e.number == n[:ep].to_s }.first : nil
+          episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
+          if n[:ep].to_i > 0 && metadata['episode_season'] != ''
+            episode_numbering << "S#{format('%02d', metadata['episode_season'].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
+          end
+        end
+        metadata['episode_name'] = episode_name.join(' ')[0..50]
+        metadata['episode_numbering'] = episode_numbering.join(' ')
+        metadata['series_name'] = item_name
+        metadata['is_found'] = (metadata['episode_numbering'] != '')
+      when 'movies'
+        metadata['movies_name'] = item_name
+        metadata['is_found'] = true
+    end
+    metadata
+  end
+
   def self.identify_proper(filename)
     p = File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
     return p, (p != '' ? 1 : 0)
   end
 
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2)
+    in_path = Utils.is_in_path(@media_folders.map { |k, _| k }, filename)
+    return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
     title, item = nil, nil
-    filename, i_folder = Utils.get_only_folder_levels(filename, folder_level)
+    filename, i_folder = Utils.get_only_folder_levels(filename, folder_level.to_i)
     r_folder = filename
     while item.nil?
       t_folder, r_folder = Utils.get_top_folder(r_folder)
@@ -40,7 +80,8 @@ class MediaInfo
       end
       break if t_folder == r_folder
     end
-    return title, i_folder + filename.gsub(r_folder, ''), item
+    @media_folders[i_folder + filename.gsub(r_folder, '')] = [title, item] if item && !@media_folders[i_folder + filename.gsub(r_folder, '')]
+    return title, item
   end
 
   def self.identify_tv_episodes_numbering(filename)
@@ -155,6 +196,10 @@ class MediaInfo
     if file.to_s != ''
       files[:files] = {} if files[:files].nil?
       files[:files][file] = {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
+    end
+    if attrs[:show]
+      files[:shows] = {}
+      files[:shows][item_name] = attrs[:show]
     end
     files
   end

@@ -66,7 +66,6 @@ class Librarian
       },
       :tv => {
           :monitor_tv_episodes => ['TvSeries', 'monitor_tv_episodes'],
-          :rename_tv_series => ['TvSeries', 'rename_tv_series'],
       },
       :usage => ['Librarian', 'help']
   }

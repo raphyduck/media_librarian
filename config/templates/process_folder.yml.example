@@ -1,0 +1,19 @@
+type: tv
+folder: /home/folder/to/process
+item_name: 'optional - only treat this title (series or movies'
+remove_duplicates: 0
+no_prompt: 0
+replace:
+  replace_media: 0
+  torrent_search:
+    move_to: '/move/to/alternative location/default is move to same location as replaced'
+    main_only: 1
+rename:
+  rename_media: 0
+  destination:
+    tv: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    movies: '/home/user/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+filter_criteria:
+folder_hierarchy:
+  tv: 2
+  movies: 1

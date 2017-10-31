@@ -8,6 +8,8 @@ TODO:
     * Expire trakt authentication token and send email when needed
     * Function as a daemon launching any function possible with a scheduler
     * Remove parents folders when deleting files if empty
+    * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
+    * Web UI/GUI with assisted configuration
     
 * Ebooks/Comics:
     * Read calibre library/metadata

@@ -29,3 +29,8 @@ FOLDER_HIERARCHY={
     'tv' => 2,
     'movies' => 0
 }
+VALID_VIDEO_MEDIA_TYPE=['movies', 'tv']
+DEFAULT_MEDIA_DESTINATION = {
+    'movies' => Dir.home + 'Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
+    'tv' => Dir.home + 'TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+}
