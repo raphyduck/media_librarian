@@ -26,7 +26,7 @@ PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
 TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'rarbg', :url => 'https://rarbg.to'},
                                        {:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
 FOLDER_HIERARCHY = {
-    'shows' => 2,
+    'shows' => 3,
     'movies' => 0
 }
 VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']

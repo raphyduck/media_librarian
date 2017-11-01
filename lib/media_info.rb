@@ -3,6 +3,7 @@ class MediaInfo
   @last_tvmaze_req = Time.now - 1.day
   @tv_episodes = {}
   @media_folders = {}
+  @cached_tvdb_search = {}
 
   def self.clean_title(title)
     title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '') rescue title
@@ -29,8 +30,6 @@ class MediaInfo
     metadata['quality'] = metadata['quality'] || File.basename(ep_filename).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
-    puts "ep filename #{ep_filename}"
-    puts "ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1') #{ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')}"
     metadata['destination_folder'] = destination_folder || Dir.home + type.to_s
     case type
       when 'shows'
@@ -272,6 +271,7 @@ class MediaInfo
 
   def self.tv_show_search(title, no_prompt = 0)
     go_on = 0
+    return @cached_tvdb_search[title] if @cached_tvdb_search[title]
     title, show = title, nil
     year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
     tvdb_shows = $tvdb.search(title)
@@ -290,6 +290,7 @@ class MediaInfo
       end
       if tvdb_show && go_on.to_i > 0
         show = TvdbParty::Series.new($tvdb, tvdb_show)
+        @cached_tvdb_search[title] = [show.name, show]
         title = show.name
       end
     end
