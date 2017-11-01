@@ -11,8 +11,25 @@ replace:
 rename:
   rename_media: 0
   destination:
-    shows: '{{ destination_folder }}/tv/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
-    movies: '{{ destination_folder }}/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    shows: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    movies: '/home/user/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+search_missing:
+  search_missing: 1
+  delta: 10
+  include_specials: 0
+  download:
+    move_to: '/folder/to/move/completed/to'
+    main_only: 1
+    only_on_trackers:
+      - wop
+      - torrentleech
+      - rarbg
+      - thepiratebay
+    quality:
+      min_quality: 720p hdtv
+      max_quality: 1080p
+      min_size: 100
+      max_size: 3000
 filter_criteria:
 folder_hierarchy:
   shows: 3

@@ -22,7 +22,7 @@ class MediaInfo
     true
   end
 
-  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, destination_folder = nil)
+  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {})
     metadata = {}
     ep_filename = File.basename(filename)
     item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) if item_name.to_s == '' || item.nil?
@@ -30,7 +30,6 @@ class MediaInfo
     metadata['quality'] = metadata['quality'] || File.basename(ep_filename).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
-    metadata['destination_folder'] = destination_folder || Dir.home + type.to_s
     case type
       when 'shows'
         metadata['episode_season'], ep_nb = identify_tv_episodes_numbering(ep_filename)
@@ -60,7 +59,7 @@ class MediaInfo
   end
 
   def self.identify_proper(filename)
-    p = File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
+    p = File.basename(filename).downcase.match(/[\. ](proper|repack|real)[\. ]/).to_s.gsub(/[\. ]/, '').gsub('repack', 'proper')
     return p, (p != '' ? 1 : 0)
   end
 

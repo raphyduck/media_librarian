@@ -73,20 +73,29 @@ class Utils
   end
 
   def self.file_rm(files)
-    return $speaker.speak_up("Would rm #{files}") if $env_flags['pretend'] > 0
-    FileUtils.rm(files) if files.is_a?(Array) || files.to_s != ''
+    if $env_flags['pretend'] > 0
+      $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != ''
+    else
+      FileUtils.rm(files) if files.is_a?(Array) || files.to_s != ''
+    end
     file_remove_parents(files)
   end
 
   def self.file_rm_r(files)
-    return $speaker.speak_up("Would rm_r #{files}") if $env_flags['pretend'] > 0
-    FileUtils.rm_r(files)
+    if $env_flags['pretend'] > 0
+      $speaker.speak_up("Would rm_r #{files}")
+    else
+        FileUtils.rm_r(files)
+    end
     file_remove_parents(files)
   end
 
   def self.file_rmdir(dirs)
-    return $speaker.speak_up("Would rmdir #{dirs}") if $env_flags['pretend'] > 0
-    FileUtils.rmdir(dirs)
+    if $env_flags['pretend'] > 0
+      $speaker.speak_up("Would rmdir #{dirs}")
+    else
+      FileUtils.rmdir(dirs)
+    end
     file_remove_parents(dirs)
   end
 

@@ -10,6 +10,7 @@ CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac mp3)
 VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + %w(multi)
 FILENAME_NAMING_TEMPLATE=%w(
+    destination_folder
     movies_name
     series_name
     episode_season
@@ -31,7 +32,7 @@ FOLDER_HIERARCHY = {
 }
 VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
 DEFAULT_MEDIA_DESTINATION = {
-    'movies' => Dir.home + '{{ destination_folder }}/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
-    'shows' => Dir.home + '{{ destination_folder }}/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    'movies' => Dir.home + '/home/user/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
+    'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']

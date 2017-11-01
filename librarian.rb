@@ -55,17 +55,12 @@ class Librarian
           :process_download_list => ['Library', 'process_download_list'],
           :process_folder => ['Library', 'process_folder']
       },
-      :movies => {
-      },
       :music => {
           :create_playlists => ['Muic', 'create_playlists'],
       },
       :torrent => {
           :search => ['TorrentSearch', 'search'],
           :random_pick => ['TorrentSearch', 'random_pick']
-      },
-      :shows => {
-          :monitor_tv_episodes => ['TvSeries', 'monitor_tv_episodes'],
       },
       :usage => ['Librarian', 'help']
   }

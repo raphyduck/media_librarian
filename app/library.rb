@@ -391,7 +391,7 @@ class Library
           ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
           item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
           if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
-            destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, destination_folder)
+            destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
             process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1) if destination_file.to_s != ''
           else
             #TODO: Handle flac,...
@@ -435,28 +435,81 @@ class Library
     removed
   end
 
-  def self.parse_watch_list(type = 'trakt')
-    case type
-      when 'imdb'
-        Imdb::Watchlist.new($config['imdb']['user'], $config['imdb']['list'])
-      when 'trakt'
-        TraktList.list('watchlist', 'movies')
+  def self.parse_media(filename, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, destination_folder = '')
+    item_name, item = MediaInfo.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]))
+    info = []
+    unless no_prompt.to_i == 0 || item
+      $speaker.speak_up("File #{File.basename(filename)} not identified, skipping")
+      return files
     end
+    f_path = filename
+    unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0
+      f_path = rename_media_file(filename,
+                                 (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
+                                 type,
+                                 item_name,
+                                 item,
+                                 no_prompt,
+                                 0,
+                                 0,
+                                 folder_hierarchy,
+      )
+      f_path = filename if f_path == ''
+    end
+    case type
+      when 'movies'
+        info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
+      when 'shows'
+        s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
+        e.each do |n|
+          info << {
+              'full_name' => "#{item_name} S#{s}E#{n[:ep]}",
+              'identifier' => TvSeries.identifier(item_name, s, n[:ep], n[:part]),
+              'attrs' => {:season => s.to_i, :episode => n[:ep].to_i, :part => n[:part].to_i, :show => item}
+          }
+        end
+      else
+        return files
+    end
+    info.each do |i|
+      i['attrs'].merge!({:move_to => destination_folder}) if destination_folder.to_s != ''
+      files = MediaInfo.media_add(item_name,
+                                  type,
+                                  i['full_name'],
+                                  i['identifier'],
+                                  i['attrs'],
+                                  f_path,
+                                  files
+      ) if i['full_name'] != ''
+    end
+    files
   end
 
-  def self.process_download_list(dest_folder:, source: 'trakt', no_prompt: 0, extra_keywords: '', qualities: {})
-    movies = []
+  def self.process_download_list(dest_folder:, source: {}, no_prompt: 0, extra_keywords: '', qualities: {})
+    return $speaker.speak_up("Invalid source") if source.nil? || source.empty?
+    search_list, types, files = {}, [], files
     $speaker.speak_up('Parsing movie list, can take a long time...')
-    parse_watch_list(source).each do |item|
-      movie = item['movie']
-      next if movie.nil? || movie['year'].nil? || Time.now.year < movie['year']
+    TraktList.list(source['list_name']).each do |item|
+      type = item['type']
+      types << type unless types.include?(type)
+      f = item[type]
+      next if Time.now.year < f['year']
+      search_list = parse_media(f['title'], type, no_prompt, search_list, {}, {}, dest_folder)
+      item_name, media = MediaInfo.identify_title(f['title'], type, no_prompt, 0)
+      info = []
       imdb_movie = MediaInfo.moviedb_search(movie['title'], true).first
       movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/, '').to_date rescue movie['release_date'] = Date.new(movie['year'])
       next if movie['release_date'] >= Date.today
       movies << movie
       print '...'
     end
-    files = process_folder(type: 'movies', folder: dest_folder, no_prompt: no_prompt)
+    search_list.each do |f|
+      files[f['type']] = process_folder(type: f['type'], folder: dest_folder, no_prompt: no_prompt) unless files[f['type']]
+      already_exists = Media.media_get(files[f['type']], f['identifier'])
+      unless already_exists.empty?
+
+      end
+    end
     movies.sort_by! { |m| m['release_date'] }
     movies.each do |movie|
       break if break_processing(no_prompt)
@@ -482,65 +535,21 @@ class Library
     $speaker.tell_error(e, "Library.process_search_list")
   end
 
-  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, no_prompt: 0, replace: {}, rename: {}, filter_criteria: {}, folder_hierarchy: {})
+  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, replace: {}, rename: {}, search_missing: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {})
     $speaker.speak_up("Processing folder #{folder}...", 0)
     files, parsed, raw_filtered = {}, [], []
     folder_criteria = {'dironly' => 1}
     folder_criteria.merge!({'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}) if item_name.to_s != ''
     file_criteria = {'regex' => VALID_VIDEO_EXT}
     want_replace = replace && !replace.empty? && replace['replace_media'].to_i > 0
+    want_missing = search_missing && !search_missing.empty? && search_missing['search_missing'].to_i > 0
     (Utils.search_folder(folder, folder_criteria) + [[folder, '']]).each do |d|
       list_paths = (d[0] == folder ? Utils.search_folder(d[0], file_criteria.merge({'maxdepth' => 1})) : Utils.search_folder(d[0], file_criteria))
       raw_filtered += (file_criteria.nil? || filter_criteria.empty? ? list_paths : Utils.search_folder(d[0], filter_criteria.merge(file_criteria))) if want_replace
       list_paths.each do |f|
         next if parsed.include?(f[0])
-        item_name, item = MediaInfo.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]))
-        info = []
+        files = parse_media(f[0], type, no_prompt, files, folder_hierarchy, rename, folder)
         parsed << f[0]
-        unless no_prompt.to_i == 0 || item
-          $speaker.speak_up("File #{File.basename(f[0])} not identified, skipping")
-          next
-        end
-        f_path = f[0]
-        unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0
-          f_path = rename_media_file(f[0],
-                                     (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
-                                     type,
-                                     item_name,
-                                     item,
-                                     no_prompt,
-                                     0,
-                                     0,
-                                     folder_hierarchy
-          )
-          f_path = f[0] if f_path == ''
-        end
-        case type
-          when 'movies'
-            info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
-          when 'shows'
-            s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
-            e.each do |n|
-              info << {
-                  'full_name' => "#{item_name} S#{s}E#{n[:ep]}",
-                  'identifier' => TvSeries.identifier(item_name, s, n[:ep], n[:part]),
-                  'attrs' => {:season => s.to_i, :episode => n[:ep].to_i, :part => n[:part].to_i, :show => item}
-              }
-            end
-          else
-            next
-        end
-        info.each do |i|
-          i['attrs'].merge!({:move_to => folder})
-          files = MediaInfo.media_add(item_name,
-                                      type,
-                                      i['full_name'],
-                                      i['identifier'],
-                                      i['attrs'],
-                                      f_path,
-                                      files
-          ) if i['full_name'] != ''
-        end
       end
     end
     removed = handle_duplicates(files, remove_duplicates, no_prompt)
@@ -550,14 +559,17 @@ class Library
       end
       search_from_list(list: filtered, no_prompt: no_prompt, torrent_search: replace['torrent_search'])
     end
+    if want_missing && !files.empty?
+      TvSeries.monitor_tv_episodes(files, no_prompt, search_missing['delta'], search_missing['include_specials'], search_missing['download'])
+    end
     return files
   rescue => e
     $speaker.tell_error(e, "Library.process_folder")
     return {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, destination_folder = nil)
-    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, destination_folder)
+  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
+    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     return '' if metadata.nil? || metadata.empty?
     FILENAME_NAMING_TEMPLATE.each do |k|
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
