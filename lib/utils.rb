@@ -60,6 +60,13 @@ class Utils
     FileUtils.mkdir_p(dirs)
   end
 
+  def self.file_remove_parents(files)
+    files = [files] if files.is_a?(String)
+    files.each do |f|
+      file_rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select{|e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil?} - %w{ . .. }).empty?
+    end
+  end
+
   def self.file_mv(original, destination)
     return $speaker.speak_up("Would mv #{original} #{destination}") if $env_flags['pretend'] > 0
     FileUtils.mv(original, destination)
@@ -68,11 +75,19 @@ class Utils
   def self.file_rm(files)
     return $speaker.speak_up("Would rm #{files}") if $env_flags['pretend'] > 0
     FileUtils.rm(files) if files.is_a?(Array) || files.to_s != ''
+    file_remove_parents(files)
   end
 
   def self.file_rm_r(files)
     return $speaker.speak_up("Would rm_r #{files}") if $env_flags['pretend'] > 0
     FileUtils.rm_r(files)
+    file_remove_parents(files)
+  end
+
+  def self.file_rmdir(dirs)
+    return $speaker.speak_up("Would rmdir #{dirs}") if $env_flags['pretend'] > 0
+    FileUtils.rmdir(dirs)
+    file_remove_parents(dirs)
   end
 
   def self.file_ln(original, destination)

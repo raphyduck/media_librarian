@@ -34,3 +34,4 @@ DEFAULT_MEDIA_DESTINATION = {
     'movies' => Dir.home + '{{ destination_folder }}/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
     'shows' => Dir.home + '{{ destination_folder }}/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
+IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']
