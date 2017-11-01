@@ -21,7 +21,7 @@ class MediaInfo
     true
   end
 
-  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {})
+  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, destination_folder = nil)
     metadata = {}
     ep_filename = File.basename(filename)
     item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) if item_name.to_s == '' || item.nil?
@@ -29,6 +29,9 @@ class MediaInfo
     metadata['quality'] = metadata['quality'] || File.basename(ep_filename).downcase.gsub('-', '').scan(REGEX_QUALITIES).join('.').gsub('-', '')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
+    puts "ep filename #{ep_filename}"
+    puts "ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1') #{ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')}"
+    metadata['destination_folder'] = destination_folder || Dir.home + type.to_s
     case type
       when 'shows'
         metadata['episode_season'], ep_nb = identify_tv_episodes_numbering(ep_filename)
@@ -280,7 +283,7 @@ class MediaInfo
           tvdb_show['FirstAired'].match(/\d{4}/) &&
           tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > 0 &&
           (tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > year + 1 || tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i < year - 1)
-      if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:]/, '') == title.downcase.gsub(/[ \(\)\.\:]/, '')
+      if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:,]/, '') == title.downcase.gsub(/[ \(\)\.\:,]/, '')
         go_on = 1
       else
         go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{title}, proceed with that? (y/n)", no_prompt, 'n') == 'y' ? 1 : 0

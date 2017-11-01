@@ -381,6 +381,7 @@ class Library
       if ['rar', 'zip'].include?(extension)
         Utils.extract_archive(extension, full_p, torrent_path + '/extracted')
         handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
+        Utils.file_rm_r(torrent_path + '/extracted')
       else
         if handling['file_types']
           begin
@@ -391,8 +392,8 @@ class Library
             ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
             item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
             if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
-              destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
-              process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1)
+              destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, destination_folder)
+              process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1) if destination_file.to_s != ''
             else
               #TODO: Handle flac,...
               destination = full_p.gsub(completed_folder, destination_folder)
@@ -498,18 +499,21 @@ class Library
         item_name, item = MediaInfo.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]))
         info = []
         parsed << f[0]
-        next unless no_prompt.to_i == 0 || item
+        unless no_prompt.to_i == 0 || item
+          $speaker.speak_up("File #{File.basename(f[0])} not identified, skipping")
+          next
+        end
         f_path = f[0]
         unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0
           f_path = rename_media_file(f[0],
-                            (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
-                            type,
-                            item_name,
-                            item,
-                            no_prompt,
-                            0,
-                            0,
-                            folder_hierarchy
+                                     (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
+                                     type,
+                                     item_name,
+                                     item,
+                                     no_prompt,
+                                     0,
+                                     0,
+                                     folder_hierarchy
           )
           f_path = f[0] if f_path == ''
         end
@@ -554,8 +558,9 @@ class Library
     return {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
-    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
+  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, destination_folder = nil)
+    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, destination_folder)
+    return '' if metadata.nil? || metadata.empty?
     FILENAME_NAMING_TEMPLATE.each do |k|
       destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
     end

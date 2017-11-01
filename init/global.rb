@@ -25,12 +25,12 @@ PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
                     {:name => 'wop', :url => 'https://worldofp2p.net'}]
 TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'rarbg', :url => 'https://rarbg.to'},
                                        {:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
-FOLDER_HIERARCHY={
+FOLDER_HIERARCHY = {
     'shows' => 2,
     'movies' => 0
 }
 VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
 DEFAULT_MEDIA_DESTINATION = {
-    'movies' => Dir.home + 'Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
-    'shows' => Dir.home + 'TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    'movies' => Dir.home + '{{ destination_folder }}/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
+    'shows' => Dir.home + '{{ destination_folder }}/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
