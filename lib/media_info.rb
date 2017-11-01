@@ -59,7 +59,7 @@ class MediaInfo
   end
 
   def self.identify_proper(filename)
-    p = File.basename(filename).downcase.match(/[\. ](proper|repack|real)[\. ]/).to_s.gsub(/[\. ]/, '').gsub(/(repack|real)/), 'proper')
+    p = File.basename(filename).downcase.match(/[\. ](proper|repack|real)[\. ]/).to_s.gsub(/[\. ]/, '').gsub(/(repack|real)/, 'proper')
     return p, (p != '' ? 1 : 0)
   end
 
