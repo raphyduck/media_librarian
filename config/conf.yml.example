@@ -22,7 +22,7 @@ kodi:
   password: password
 thepiratebay:
   site_specific_kw:
-      tv: ''
+      shows: ''
 extratorrent:
   site_specific_kw:
       movies: ''

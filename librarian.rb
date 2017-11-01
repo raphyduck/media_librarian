@@ -64,7 +64,7 @@ class Librarian
           :search => ['TorrentSearch', 'search'],
           :random_pick => ['TorrentSearch', 'random_pick']
       },
-      :tv => {
+      :shows => {
           :monitor_tv_episodes => ['TvSeries', 'monitor_tv_episodes'],
       },
       :usage => ['Librarian', 'help']

@@ -7,7 +7,7 @@ class TvSeries
   def self.monitor_tv_episodes(folder:, no_prompt: 0, delta: 10, include_specials: 0, remove_duplicates: 0, handle_missing: {}, only_series_name: '')
     query = {'maxdepth' => 1, 'includedir' => 1}
     query.merge!({'regex' => '^' + Utils.regexify(only_series_name, 1).gsub(/[\(\)]/, '.+') + '$'}) if only_series_name.to_s != ''
-    episodes_in_files = Library.process_folder(type: 'tv', folder: folder, item_name: only_series_name, remove_duplicates: remove_duplicates, no_prompt: no_prompt)
+    episodes_in_files = Library.process_folder(type: 'shows', folder: folder, item_name: only_series_name, remove_duplicates: remove_duplicates, no_prompt: no_prompt)
     missing_eps, tv_episodes = {}, {}
     Utils.search_folder(folder, query).each do |series|
       next unless File.directory?(series[0])
@@ -25,7 +25,7 @@ class TvSeries
               $speaker.speak_up('Entry already downloaded', 0)
             else
               missing_eps = MediaInfo.media_add(series_name,
-                                                'tv',
+                                                'shows',
                                                 full_name,
                                                 identifier(series_name, ep.season_number, ep.number, 0),
                                                 {:season => ep.season_number.to_i, :episode => ep.number.to_i, :part => 0},

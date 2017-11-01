@@ -30,7 +30,7 @@ class MediaInfo
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
     case type
-      when 'tv'
+      when 'shows'
         metadata['episode_season'], ep_nb = identify_tv_episodes_numbering(ep_filename)
         if metadata['episode_season'] == '' || ep_nb.empty?
           metadata['episode_season'] = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
@@ -73,14 +73,14 @@ class MediaInfo
       case type
         when 'movies'
           title, item = movie_lookup(t_folder, no_prompt)
-        when 'tv'
+        when 'shows'
           title, item = tv_show_search(t_folder, no_prompt)
         else
           title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
       end
       break if t_folder == r_folder
     end
-    @media_folders[i_folder + filename.gsub(r_folder, '')] = [title, item] if item && !@media_folders[i_folder + filename.gsub(r_folder, '')]
+    @media_folders[i_folder + filename.gsub(r_folder, '')] = [title, item] unless @media_folders[i_folder + filename.gsub(r_folder, '')]
     return title, item
   end
 

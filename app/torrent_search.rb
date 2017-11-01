@@ -6,27 +6,27 @@ class TorrentSearch
       when 'extratorrent'
         {
             :movies => 4,
-            :tv => 8,
+            :shows => 8,
             :music => 5,
             :book => 2
         }.fetch(category.to_sym, nil)
       when 'rarbg'
         {
             :movies => '14;48;17;44;45;47;50;51;52;42;46',
-            :tv => '18;41;49',
+            :shows => '18;41;49',
             :music => '23;25'
         }.fetch(category.to_sym, nil)
       when 'thepiratebay'
         {
             :movies => 200,
-            :tv => 200,
+            :shows => 200,
             :music => 100,
             :book => 601
         }.fetch(category.to_sym, nil)
       when 'torrentleech'
         {
             :movies => 'Movies',
-            :tv => 'TV',
+            :shows => 'TV',
             :book => 'Books'
         }.fetch(category.to_sym, nil)
     end

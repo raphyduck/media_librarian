@@ -516,7 +516,7 @@ class Library
         case type
           when 'movies'
             info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
-          when 'tv'
+          when 'shows'
             s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
             e.each do |n|
               info << {
