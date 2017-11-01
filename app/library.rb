@@ -384,27 +384,25 @@ class Library
         Utils.file_rm_r(torrent_path + '/extracted')
       else
         if handling['file_types']
-          begin
-            type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
-            return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
-            return if File.stat(full_p).nlink > 1 #File already hard linked eslwhere, moving on
-            type.downcase!
-            ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
-            item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
-            if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
-              destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, destination_folder)
-              process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1) if destination_file.to_s != ''
-            else
-              #TODO: Handle flac,...
-              destination = full_p.gsub(completed_folder, destination_folder)
-              Utils.move_file(full_p, destination, 1)
-            end
-          rescue => e
-            $speaker.tell_error(e, "Library.handle_completed_download block")
+          type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+          return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
+          return if File.stat(full_p).nlink > 1 #File already hard linked eslwhere, moving on
+          type.downcase!
+          ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
+          item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
+          if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
+            destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, destination_folder)
+            process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1) if destination_file.to_s != ''
+          else
+            #TODO: Handle flac,...
+            destination = full_p.gsub(completed_folder, destination_folder)
+            Utils.move_file(full_p, destination, 1)
           end
         end
       end
     end
+  rescue => e
+    $speaker.tell_error(e, "Library.handle_completed_download block")
   end
 
   def self.handle_duplicates(files, remove_duplicates = 0, no_prompt = 0)
