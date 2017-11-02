@@ -25,7 +25,6 @@ TODO:
     * Track failed download in act upon failure
     
 * Library:
-    * Cache imdb, tvdb,... search results for speed
     * Use alternative sources to identify series
     * Refactor function process_search_list to make it more generic, taking a standardized list as input to processing it to look on torrent trackers
     * Follow RSS feeds and download based on list input and filter

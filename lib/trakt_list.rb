@@ -40,7 +40,7 @@ class TraktList
     token_row = token_rows.first
     if token_row.nil? || Time.parse(token_row['expires_in']) < Time.now
       token = $trakt.access_token
-      $db.execute("delete from trakt_auth") if token_row
+      $db.delete_rows('trakt_auth', token_row)
       $db.insert_row('trakt_auth', {
           'account' => $trakt_account,
           'access_token' => token['access_token'],

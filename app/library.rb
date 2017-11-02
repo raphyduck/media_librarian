@@ -500,9 +500,10 @@ class Library
       search_list = parse_media(f['title'], type, no_prompt, search_list, {}, {}, dest_folder)
     end
     search_list.each do |id, info|
+      next if id.is_a?(Symbol)
       info.each do |i|
-        files[i['type']] = process_folder(type: i['type'], folder: dest_folder, no_prompt: no_prompt, remove_duplicates: 1) unless files[i['type']]
-        already_exists = MediaInfo.media_get(files[i['type']], id)
+        files[i['type']] = process_folder(type: i[:type], folder: dest_folder, no_prompt: no_prompt, remove_duplicates: 1) unless files[i[:type]]
+        already_exists = MediaInfo.media_get(files[i[:type]], id)
         unless already_exists.empty?
           if $speaker.ask_if_needed("Replace already existing file #{already_exists[0][:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
             search_list[id][search_list[id].index(i)]['file'] = already_exists[0][:file]
@@ -510,6 +511,7 @@ class Library
         end
       end
     end
+    #TODO: Remove success from list
     search_list = search_list.map { |_, a| a }.flatten
     search_list = search_list.select { |f| f[:release_date].nil? || f[:release_date] >= Date.today }.sort_by { |f| f[:release_date] } rescue []
     search_from_list(list: search_list, no_prompt: no_prompt, torrent_search: torrent_search)
@@ -587,7 +589,7 @@ class Library
         case e[:type]
           when 'movies'
             title, movie = MediaInfo.movie_lookup(File.basename(e[:file]), no_prompt, 1)
-            break unless movie
+            break unless movie && title != e[:full_name]
             e[:full_name] = title
           else
             break

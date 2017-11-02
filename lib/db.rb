@@ -5,16 +5,32 @@ module Storage
       @s_db = SQLite3::Database.new db_path unless @s_db
     end
 
+    def delete_rows(table, conditions = {})
+      q = "delete from #{table}"
+      q += ' where 'if (conditions && !conditions.empty?)
+      q += conditions.map{|k,v| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?
+      return $speaker.speak_up("Would #{q}") if $env_flags['pretend'] > 0
+      ins = @s_db.prepare( q)
+      ins.execute( conditions.map{|_,v| v})
+    rescue => e
+      $speaker.tell_error(e, "Storage::Db.new.delete_rows")
+    end
+
     def execute(raw_sql)
       @s_db.execute(raw_sql)
     end
 
-    def get_rows(table, conditions = {})
-      ins = @s_db.prepare( "select * from #{table}#{' where ' + conditions.map{|k,v| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?}" )
+    def get_rows(table, conditions = {}, additionals = [])
+      q = "select * from #{table}"
+      q += ' where 'if (conditions && !conditions.empty?) || (additionals && !additionals.empty?)
+      q += conditions.map{|k,v| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?
+      q += ' and ' if conditions && !conditions.empty? && additionals && !additionals.empty?
+      q += additionals.join(' and ') if additionals && !additionals.empty?
+      ins = @s_db.prepare( q)
       r = ins.execute( conditions.map{|_,v| v})
-      i = -1
       res = []
       r.each do |l|
+        i = -1
         res << Hash[db_schema[table].map{|k,_| i+=1; [k,l[i]]}]
       end
       res
@@ -24,9 +40,9 @@ module Storage
     end
 
     def insert_row(table, values)
-      return $speaker.speak_up("Would insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (#{values.map{|_,_| '?'}.join(',')})") if $env_flags['pretend'] > 0
+      return $speaker.speak_up("Would insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (#{values.map{|_,v| v}.join(',')})") if $env_flags['pretend'] > 0
       ins = @s_db.prepare("insert into #{table} (#{values.map{|k,_| k}.join(',')}) values (#{values.map{|_,_| '?'}.join(',')})")
-      ins.execute(values.map{|_,v| v}.join(','))
+      ins.execute(values.map{|_,v| v.to_s})
     end
 
     def insert_rows(table, rows)
@@ -37,6 +53,12 @@ module Storage
 
     def db_schema
       {
+          'metadata_search' => {
+            'keywords' => 'text',
+            'type' => 'integer',
+            'result' => 'text',
+            'created_at' => 'datetime'
+          },
           'trakt_auth' => {
               'account' => 'varchar(30)',
               'access_token' => 'varchar(200)',
@@ -44,25 +66,9 @@ module Storage
               'created_at' => 'datetime',
               'expires_in' => 'datetime'
           },
-          'movies_files' => {
-              'movies_name' => 'varchar(200)',
-              'movies_year' => 'varchar(200)',
-              'quality' => 'varchar(200)',
-              'path' => 'text',
-              'created_at' => 'datetime'
-          },
           'seen' => {
               'category' => 'varchar(200)',
               'entry' => 'text',
-              'created_at' => 'datetime'
-          },
-          'series_files' => {
-              'series_name' => 'varchar(200)',
-              'episode_name' => 'varchar(200)',
-              'episode_season' => 'integer',
-              'episodes_number' => 'integer',
-              'quality' => 'varchar(200)',
-              'path' => 'text',
               'created_at' => 'datetime'
           }
       }
@@ -72,7 +78,17 @@ module Storage
       @s_db = SQLite3::Database.new db_path unless @s_db
       db_schema.each do |t, s|
         @s_db.execute "create table if not exists #{t} (#{s.map{|c, v| c + ' ' + v}.join(', ')})"
+        s.each do |c, v|
+          @s_db.execute "alter table #{t} add column #{c} #{v}" unless current_schema(t).include?(c)
+        end
       end
     end
+
+    private
+
+    def current_schema(table)
+      @s_db.execute("PRAGMA table_info('#{table}')").map{|c| c[1]} rescue []
+    end
   end
+
 end

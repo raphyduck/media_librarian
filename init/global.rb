@@ -36,3 +36,16 @@ DEFAULT_MEDIA_DESTINATION = {
     'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']
+METADATA_SEARCH = {
+    :tvdb => {
+        :type_enum => 1,
+        :objet => 'TvdbParty::Series'
+    },
+    :imdb => {
+        :type_enum => 2,
+        :objet => 'Imdb::Movie'
+    },
+    :trakt => {
+        :type_enum => 3,
+    }
+}

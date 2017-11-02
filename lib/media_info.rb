@@ -3,16 +3,47 @@ class MediaInfo
   @last_tvmaze_req = Time.now - 1.day
   @tv_episodes = {}
   @media_folders = {}
-  @cached_tvdb_search = {}
+
+  def self.cache_add(type, keyword, result)
+    result[1] = result[1].instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = result[1].instance_variable_get(var) } if result[1]
+    $db.insert_row('metadata_search',{'type' => cache_get_enum(type), 'keywords' => keyword, 'result' => result, 'created_at' => Time.now}) if cache_get_enum(type) && keyword
+  end
+
+  def self.cache_expire(row)
+    $db.delete_rows('metadata_search', row)
+  end
+
+  def self.cache_get(type, keyword, expiration = 365)
+    return nil unless cache_get_enum(type)
+    res = $db.get_rows('metadata_search', {'type' => cache_get_enum(type), 'keywords' => keyword})
+    res.each do |r|
+      if Time.parse(r['created_at']) < Time.now - expiration.days
+        cache_expire(r)
+        next
+      end
+      h = eval(r['result'])
+      title = h[0]
+      if METADATA_SEARCH[type.to_sym][:objet]
+        o = Object.const_get(METADATA_SEARCH[type.to_sym][:objet]).new(h[1])
+      else
+        o = h[1]
+      end
+      return title, o
+    end
+    nil
+  end
+
+  def self.cache_get_enum(type)
+    METADATA_SEARCH[type.to_sym][:type_enum] rescue nil
+  end
 
   def self.clean_title(title)
     title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '') rescue title
   end
 
   def self.clear_year(title, strict = 1)
-    reg = ' \(\d{4}\)'
-    reg += '$' if strict > 0
-    title.gsub(Regexp.new(reg), '')
+    reg = strict > 0 ? ' \(\d{4}\)$' : '[\( ]\d{4}([ \)](.*))?$'
+    title.gsub(Regexp.new(reg), ' \2')
   end
 
   def self.filter_quality(filename, min_quality = '', max_quality = '')
@@ -65,7 +96,7 @@ class MediaInfo
   end
 
   def self.identify_proper(filename)
-    p = File.basename(filename).downcase.match(/[\. ](proper|repack|real)[\. ]/).to_s.gsub(/[\. ]/, '').gsub(/(repack|real)/, 'proper')
+    p = File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub(/(repack|real)/, 'proper')
     return p, (p != '' ? 1 : 0)
   end
 
@@ -136,7 +167,7 @@ class MediaInfo
   end
 
   def self.media_add(item_name, type, full_name, identifier, attrs = {}, file = '', files = {})
-    return files if file != '' && files[:files] && files[:files][file].to_s == file
+    return files if file != '' && files[:files] && !files[:files][file].nil?
     files[identifier] = [] if files[identifier].nil?
     files[identifier] << {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
     if file.to_s != ''
@@ -146,6 +177,10 @@ class MediaInfo
     if attrs[:show]
       files[:shows] = {}
       files[:shows][item_name] = attrs[:show]
+    end
+    if attrs[:movie]
+      files[:movies] = {}
+      files[:movies][item_name] = attrs[:movie]
     end
     files
   end
@@ -164,6 +199,8 @@ class MediaInfo
   end
 
   def self.movie_lookup(title, no_prompt = 0, search_alt = 0)
+    cached = cache_get('imdb', title)
+    return cached if cached
     movies = moviedb_search(title)
     movie = nil
     unless movies.empty?
@@ -187,6 +224,7 @@ class MediaInfo
           break
         end
         movie = movies[choice]
+        cache_add('imdb', title, [movie.title, movie])
         title = movie.title
         break
       end
@@ -195,21 +233,6 @@ class MediaInfo
   rescue => e
     $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
     return title, nil
-  end
-
-  def self.movie_title_lookup(title, first_only = false)
-    movies = moviedb_search(title)
-    found = false
-    if movies.empty?
-      results = [[title, '']]
-    else
-      results = movies.map { |m| [clean_title(m.title), m.url] }
-      found = true
-    end
-    return (first_only ? results.first : results), found
-  rescue => e
-    $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    return (first_only ? [title, ''] : [[title, '']]), false
   end
 
   def self.moviedb_search(title, no_output = false)
@@ -276,7 +299,8 @@ class MediaInfo
 
   def self.tv_show_search(title, no_prompt = 0)
     go_on = 0
-    return @cached_tvdb_search[title] if @cached_tvdb_search[title]
+    cached = cache_get('tvdb', title)
+    return cached if cached
     title, show = title, nil
     year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
     tvdb_shows = $tvdb.search(title)
@@ -294,7 +318,7 @@ class MediaInfo
       end
       if tvdb_show && go_on.to_i > 0
         show = TvdbParty::Series.new($tvdb, tvdb_show)
-        @cached_tvdb_search[title] = [show.name, show]
+        cache_add('tvdb', title, [show.name, show])
         title = show.name
       end
     end
