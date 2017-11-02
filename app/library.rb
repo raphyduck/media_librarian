@@ -458,7 +458,10 @@ class Library
     end
     case type
       when 'movies'
-        info << {'full_name' => item_name, 'identifier' => Movies.identifier(item_name), 'attrs' => {:movie => item}}
+        release = item.release_date.gsub(/\(\w+\)/, '').to_date rescue nil
+        info << {'full_name' => item_name,
+                 'identifier' => Movies.identifier(item_name),
+                 'attrs' => {:movie => item, :release_date => release}}
       when 'shows'
         s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
         e.each do |n|
@@ -485,52 +488,31 @@ class Library
     files
   end
 
-  def self.process_download_list(dest_folder:, source: {}, no_prompt: 0, extra_keywords: '', qualities: {})
+  def self.process_download_list(dest_folder:, source: {}, no_prompt: 0, torrent_search: {})
     return $speaker.speak_up("Invalid source") if source.nil? || source.empty?
-    search_list, types, files = {}, [], files
+    search_list, files = {}, {}
     $speaker.speak_up('Parsing movie list, can take a long time...')
     TraktList.list(source['list_name']).each do |item|
       type = item['type']
-      types << type unless types.include?(type)
       f = item[type]
-      next if Time.now.year < f['year']
+      type = Utils.regularise_media_type(type)
+      next if Time.now.year < (f['year'] || Time.now.year + 3)
       search_list = parse_media(f['title'], type, no_prompt, search_list, {}, {}, dest_folder)
-      item_name, media = MediaInfo.identify_title(f['title'], type, no_prompt, 0)
-      info = []
-      imdb_movie = MediaInfo.moviedb_search(movie['title'], true).first
-      movie['release_date'] = imdb_movie.release_date.gsub(/\(\w+\)/, '').to_date rescue movie['release_date'] = Date.new(movie['year'])
-      next if movie['release_date'] >= Date.today
-      movies << movie
-      print '...'
     end
-    search_list.each do |f|
-      files[f['type']] = process_folder(type: f['type'], folder: dest_folder, no_prompt: no_prompt) unless files[f['type']]
-      already_exists = Media.media_get(files[f['type']], f['identifier'])
-      unless already_exists.empty?
-
-      end
-    end
-    movies.sort_by! { |m| m['release_date'] }
-    movies.each do |movie|
-      break if break_processing(no_prompt)
-      next if skip_loop_item("Do you want to look for releases of movie #{movie['title'].to_s + ' (' + movie['year'].to_s + ')'} (released on #{movie['release_date']})? (y/n)", no_prompt) > 0
-      if MediaInfo.media_exist?(files, Movies.identifier(movie['title']))
-        MediaInfo.media_get(files, Movies.identifier(movie['title'])).each do |f|
-          Utils.file_rm(f[:file]) if f[:file].to_s != 0
+    search_list.each do |id, info|
+      info.each do |i|
+        files[i['type']] = process_folder(type: i['type'], folder: dest_folder, no_prompt: no_prompt, remove_duplicates: 1) unless files[i['type']]
+        already_exists = MediaInfo.media_get(files[i['type']], id)
+        unless already_exists.empty?
+          if $speaker.ask_if_needed("Replace already existing file #{already_exists[0][:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+            search_list[id][search_list[id].index(i)]['file'] = already_exists[0][:file]
+          end
         end
       end
-      found = TorrentSearch.search(keywords: (movie['title'].to_s + ' ' + movie['year'].to_s + ' ' + extra_keywords).gsub(/[:,-\/\[\]]/, ''),
-                                   limit: 10,
-                                   category: 'movies',
-                                   no_prompt: no_prompt,
-                                   filter_dead: 1,
-                                   move_completed: dest_folder,
-                                   rename_main: movie['title'].to_s + ' (' + movie['year'].to_s + ')',
-                                   main_only: 1,
-                                   qualities: qualities
-      )
-      $cleanup_trakt_list << {:id => found, :c => [movie], :t => 'movies'} if found
     end
+    search_list = search_list.map { |_, a| a }.flatten
+    search_list = search_list.select { |f| f[:release_date].nil? || f[:release_date] >= Date.today }.sort_by { |f| f[:release_date] } rescue []
+    search_from_list(list: search_list, no_prompt: no_prompt, torrent_search: torrent_search)
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")
   end
@@ -586,6 +568,7 @@ class Library
   def self.search_from_list(list:, no_prompt: 0, torrent_search: {})
     list = list.map { |_, a| a }.flatten unless list.is_a?(Array)
     list.each do |e|
+      next unless e[:full_name]
       break if break_processing(no_prompt)
       next if skip_loop_item("Do you want to look for releases of #{e[:type]} #{e[:full_name]} #{'(released on ' + e['air_date'] + ')' if e['air_date']}? (y/n)", no_prompt) > 0
       download = 0

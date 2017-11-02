@@ -1,11 +1,10 @@
 dest_folder: /folder/to/download/to
 source:
-  site: 'trakt'
   list_name: 'watchlist'
 no_prompt: 0
-extra_keywords: ''
-qualities:
-  min_quality: 720p hdtv
-  max_quality: 1080p
-  min_size: 100(in MB)
-  max_size: 3000(in MB)
+torrent_search:
+  qualities:
+    min_quality: 720p hdtv
+    max_quality: 1080p
+    min_size: 100(in MB)
+    max_size: 3000(in MB)

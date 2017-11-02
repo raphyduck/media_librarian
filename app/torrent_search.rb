@@ -130,7 +130,7 @@ class TorrentSearch
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt)
     search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
-    search = self.get_results(type, keyword.gsub(/\(?\d{4}\)?/,','), limit, category, filter_dead, nil, 'seeders', [],  qualities, no_prompt) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, MediaInfo.clear_year(keyword, 1), limit, category, filter_dead, nil, 'seeders', [],  qualities, no_prompt) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
     search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
     if no_prompt.to_i == 0
       i = 1

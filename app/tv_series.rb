@@ -7,6 +7,7 @@ class TvSeries
   def self.monitor_tv_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, handle_missing = {})
     missing_eps, tv_episodes = {}, {}
     return if episodes_in_files[:shows].nil?
+    $speaker.speak_up("Will look for missing episodes from tv shows")
     episodes_in_files[:shows].each do |series_name, show|
       _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
       tv_episodes[series_name].each do |ep|

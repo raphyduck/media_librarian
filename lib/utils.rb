@@ -125,7 +125,7 @@ class Utils
       f = File.basename(path) + '/' + f
       cpt += 1
     end
-    return f, initial_f.gsub(f, '')
+    return f.gsub(/^\.\//,''), initial_f.gsub(f, '')
   end
 
   def self.get_path_depth(path, folder)
@@ -233,6 +233,13 @@ class Utils
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
     r = r.gsub(/[\ \(\)]/, '.') if formatting.to_s.match(/.*nospace.*/)
     r
+  end
+
+  def self.regularise_media_type(type)
+    return type + 's' if VALID_VIDEO_MEDIA_TYPE.include?(type + 's')
+    type
+  rescue
+    type
   end
 
   def self.search_folder(folder, filter_criteria = {})

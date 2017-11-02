@@ -143,7 +143,7 @@ GEM
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
     ruby-rc4 (0.1.5)
-    simple_args_dispatch (0.2.5)
+    simple_args_dispatch (0.2.6)
       simple_speaker (~> 0.1.4)
     simple_config_man (0.3.7)
       simple_speaker (~> 0.1.4)

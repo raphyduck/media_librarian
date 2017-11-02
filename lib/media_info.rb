@@ -9,6 +9,12 @@ class MediaInfo
     title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '') rescue title
   end
 
+  def self.clear_year(title, strict = 1)
+    reg = ' \(\d{4}\)'
+    reg += '$' if strict > 0
+    title.gsub(Regexp.new(reg), '')
+  end
+
   def self.filter_quality(filename, min_quality = '', max_quality = '')
     ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO'].each do |t|
       file_q = (filename.downcase.gsub('-', '').scan(REGEX_QUALITIES).flatten & eval(t))[0].to_s
@@ -129,6 +135,34 @@ class MediaInfo
     }
   end
 
+  def self.media_add(item_name, type, full_name, identifier, attrs = {}, file = '', files = {})
+    return files if file != '' && files[:files] && files[:files][file].to_s == file
+    files[identifier] = [] if files[identifier].nil?
+    files[identifier] << {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
+    if file.to_s != ''
+      files[:files] = {} if files[:files].nil?
+      files[:files][file] = {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
+    end
+    if attrs[:show]
+      files[:shows] = {}
+      files[:shows][item_name] = attrs[:show]
+    end
+    files
+  end
+
+  def self.media_exist?(files, identifier)
+    files.each do |id, _|
+      return true if id.to_s.include?(identifier)
+    end
+    false
+  end
+
+  def self.media_get(files, identifier)
+    eps = []
+    eps = files.select { |k, _| k.to_s.include?(identifier) }.map { |_, v| v }.flatten if media_exist?(files, identifier)
+    eps
+  end
+
   def self.movie_lookup(title, no_prompt = 0, search_alt = 0)
     movies = moviedb_search(title)
     movie = nil
@@ -188,34 +222,6 @@ class MediaInfo
   rescue => e
     $speaker.tell_error(e, "MediaInfo.moviedb_search")
     return []
-  end
-
-  def self.media_add(item_name, type, full_name, identifier, attrs = {}, file = '', files = {})
-    return files if file != '' && files[:files] && files[:files][file].to_s == file
-    files[identifier] = [] if files[identifier].nil?
-    files[identifier] << {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
-    if file.to_s != ''
-      files[:files] = {} if files[:files].nil?
-      files[:files][file] = {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
-    end
-    if attrs[:show]
-      files[:shows] = {}
-      files[:shows][item_name] = attrs[:show]
-    end
-    files
-  end
-
-  def self.media_exist?(files, identifier)
-    files.each do |id, _|
-      return true if id.to_s.include?(identifier)
-    end
-    false
-  end
-
-  def self.media_get(files, identifier)
-    eps = nil
-    eps = files.select { |k, _| k.to_s.include?(identifier) }.map { |_, v| v }.flatten if media_exist?(files, identifier)
-    eps
   end
 
   def self.sort_media_files(files, qualities = {})
@@ -278,11 +284,10 @@ class MediaInfo
     while go_on.to_i == 0
       tvdb_show = tvdb_shows.shift
       break if tvdb_show.nil?
-      next if year.to_i > 0 && tvdb_show['FirstAired'] &&
-          tvdb_show['FirstAired'].match(/\d{4}/) &&
-          tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > 0 &&
-          (tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i > year + 1 || tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i < year - 1)
-      if tvdb_show['SeriesName'].downcase.gsub(/[ \(\)\.\:,]/, '') == title.downcase.gsub(/[ \(\)\.\:,]/, '')
+      show_year = tvdb_show['FirstAired'].match(/\d{4}/).to_s.to_i
+      next unless no_prompt == 0 || year == 0 || tvdb_show['FirstAired'].nil? || show_year == 0 ||
+          (show_year < year + 1 && show_year > year - 1)
+      if MediaInfo.clear_year(tvdb_show['SeriesName']).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '') == MediaInfo.clear_year(title).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '')
         go_on = 1
       else
         go_on = $speaker.ask_if_needed("Found TVDB name #{tvdb_show['SeriesName']} for folder #{title}, proceed with that? (y/n)", no_prompt, 'n') == 'y' ? 1 : 0
