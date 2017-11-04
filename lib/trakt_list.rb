@@ -128,7 +128,7 @@ class TraktList
           end
         when 'ended', 'not_ended'
           tvdb_id = item[type[0...-1]]['ids']['tvdb'].to_i
-          search, found = MediaInfo.tv_series_search(title, tvdb_id)
+          search, found = MediaInfo.tv_show_search(title, 1, tvdb_id)
           if !found || (search.status.downcase == filter_type || (filter_type == 'not_ended' && search.status.downcase != 'ended'))
             list.delete(item)
           end

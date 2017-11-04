@@ -204,6 +204,33 @@ class Utils
     return false, ''
   end
 
+  def self.object_pack(object)
+    if object.is_a?(Array)
+      object.each_with_index { |o, idx| object[idx] = object_pack(o) }
+    else
+      packed = object_to_hash(object)
+      packed = object.to_s if packed.empty?
+      object = [object.class.to_s, packed]
+    end
+    object
+  end
+
+  def self.object_to_hash(object)
+    object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object.instance_variable_get(var).to_s }
+  end
+
+  def self.object_unpack(object)
+    object = eval(object) rescue object
+    return object unless object.is_a?(Array)
+    if object.count == 2 && object[0].is_a?(String) && !object[1].is_a?(Array)
+      o = Object.const_get(object[0]).new(object[1]) rescue object[1]
+      object = object[0] == 'Hash' ? object[1] : o
+    else
+      object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
+    end
+    object
+  end
+
   def self.recursive_symbolize_keys(h)
     case h
       when Hash

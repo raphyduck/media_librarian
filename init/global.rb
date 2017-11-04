@@ -32,20 +32,16 @@ FOLDER_HIERARCHY = {
 }
 VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
 DEFAULT_MEDIA_DESTINATION = {
-    'movies' => Dir.home + '/home/user/Movies/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
+    'movies' => Dir.home + '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
     'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']
 METADATA_SEARCH = {
-    :tvdb => {
-        :type_enum => 1,
-        :objet => 'TvdbParty::Series'
-    },
-    :imdb => {
-        :type_enum => 2,
-        :objet => 'Imdb::Movie'
-    },
-    :trakt => {
-        :type_enum => 3,
+    :type_enum => {
+        :tv_show_get => 1,
+        :movie_lookup => 2,
+        :trakt => 3,
+        :tv_episodes_search => 4,
+        :tv_show_search => 5
     }
 }

@@ -415,8 +415,10 @@ class Library
     consolidated = dups.map { |e| [e[:identifier], e[:full_name]] }.uniq
     unless consolidated.empty?
       consolidated.each do |d|
-        $speaker.speak_up("Duplicate files found for #{d[1]}")
         dups_files = MediaInfo.sort_media_files(MediaInfo.media_get(files, d[0]))
+        dups_files = dups_files.select{|x| File.exists?(x)} #You never know...
+        next unless dups_files.count > 1
+        $speaker.speak_up("Duplicate files found for #{d[1]}")
         dups_files.each do |f|
           $speaker.speak_up("'#{f[:file]}'")
         end
@@ -460,7 +462,7 @@ class Library
       when 'movies'
         release = item.release_date.gsub(/\(\w+\)/, '').to_date rescue nil
         info << {'full_name' => item_name,
-                 'identifier' => Movies.identifier(item_name),
+                 'identifier' => Movie.identifier(item_name),
                  'attrs' => {:movie => item, :release_date => release}}
       when 'shows'
         s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
@@ -513,7 +515,7 @@ class Library
     end
     #TODO: Remove success from list
     search_list = search_list.map { |_, a| a }.flatten
-    search_list = search_list.select { |f| f[:release_date].nil? || f[:release_date] >= Date.today }.sort_by { |f| f[:release_date] } rescue []
+    search_list = search_list.select { |f| f[:release_date].nil? || f[:release_date] >= Date.today }.sort_by { |f| f[:release_date] } #rescue []
     search_from_list(list: search_list, no_prompt: no_prompt, torrent_search: torrent_search)
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")

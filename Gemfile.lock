@@ -7,12 +7,11 @@ GIT
       rencoder (~> 0.1)
 
 GIT
-  remote: https://github.com/raphyduck/imdb.git
-  revision: d01725b85b479c76a07c5ecf92bff06b5775c743
+  remote: https://github.com/raphyduck/imdb-party.git
+  revision: fb1636b2e440fc10a9b5a8fe5b24d74104cbaae6
   specs:
-    imdb (0.9)
-      httparty_with_cookies
-      nokogiri (= 1.6.5)
+    imdb_party (0.8.0)
+      httparty
 
 GIT
   remote: https://github.com/raphyduck/ruby-mp3info.git
@@ -97,8 +96,6 @@ GEM
       domain_name (~> 0.5)
     httparty (0.15.6)
       multi_xml (>= 0.5.2)
-    httparty_with_cookies (0.2.2)
-      httparty
     i18n (0.8.6)
     io-like (0.3.0)
     json (2.1.0)
@@ -117,7 +114,7 @@ GEM
       mime-types-data (~> 3.2015)
     mime-types-data (3.2016.0521)
     mini_mime (0.1.4)
-    mini_portile (0.6.2)
+    mini_portile2 (2.3.0)
     minitest (5.10.3)
     multi_xml (0.6.0)
     multipart-post (2.0.0)
@@ -125,8 +122,8 @@ GEM
     net-http-persistent (2.9.4)
     net-ssh (4.2.0)
     netrc (0.11.0)
-    nokogiri (1.6.5)
-      mini_portile (~> 0.6.0)
+    nokogiri (1.8.1)
+      mini_portile2 (~> 2.3.0)
     ntlm-http (0.1.1)
     pdf-reader (2.0.0)
       Ascii85 (~> 1.0.0)
@@ -176,7 +173,7 @@ DEPENDENCIES
   fuzzy-string-match
   hanami-mailer
   httparty
-  imdb!
+  imdb_party!
   mechanize
   net-ssh
   nokogiri

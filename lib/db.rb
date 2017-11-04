@@ -23,7 +23,7 @@ module Storage
     def get_rows(table, conditions = {}, additionals = [])
       q = "select * from #{table}"
       q += ' where 'if (conditions && !conditions.empty?) || (additionals && !additionals.empty?)
-      q += conditions.map{|k,v| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?
+      q += conditions.map{|k,_| "#{k} = (?)"}.join(' and ') if conditions && !conditions.empty?
       q += ' and ' if conditions && !conditions.empty? && additionals && !additionals.empty?
       q += additionals.join(' and ') if additionals && !additionals.empty?
       ins = @s_db.prepare( q)

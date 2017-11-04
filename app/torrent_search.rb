@@ -25,7 +25,7 @@ class TorrentSearch
         }.fetch(category.to_sym, nil)
       when 'torrentleech'
         {
-            :movies => 'Movies',
+            :movies => 'Movie',
             :shows => 'TV',
             :book => 'Books'
         }.fetch(category.to_sym, nil)

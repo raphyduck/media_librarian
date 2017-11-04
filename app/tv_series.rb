@@ -1,4 +1,25 @@
 class TvSeries
+  attr_accessor :id, :tvdb_id, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
+                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url
+
+  def initialize(options={})
+    @tvdb_id = options["id"] || options['seriesid']
+    @id = @tvdb_id
+    @language = options['language']
+    @name = options["name"] || options['SeriesName']
+    @overview = options["overview"] || options['Overview']
+    @network = options["network"] || options['Network']
+    @runtime = options["runtime"]
+    @air_time = options['air_time']
+    @imdb_id = options["imdb_id"] || options['IMDB_ID']
+    @content_rating = options["content_rating"]
+    @status = options["status"]
+    @genres = options["genres"]
+    @rating = options["rating"]
+    @rating_count = options["rating_count"]
+    @first_aired = options["first_aired"] || options['FirstAired'] || options['premiered']
+    @url = options['url']
+  end
 
   def self.identifier(series_name, season, episode, part)
     "#{series_name}S#{season.to_i}E#{episode.to_i}P#{part.to_i}"

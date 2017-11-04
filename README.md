@@ -25,6 +25,8 @@ TODO:
     * Track failed download in act upon failure
     
 * Library:
+    * Add model for Movie, TvSeries and Show to combine sources from multiple inputs and allow caching
     * Use alternative sources to identify series
+    * Merge MediaInfo.tv_series_search and MediaInfo.tv_show_search
     * Refactor function process_search_list to make it more generic, taking a standardized list as input to processing it to look on torrent trackers
     * Follow RSS feeds and download based on list input and filter
