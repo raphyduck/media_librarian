@@ -24,6 +24,7 @@ class TorrentClient
   end
 
   def download(url, move_completed = nil, magnet = 0)
+    tries ||= 3
     authenticate unless @deluge_connected
     options = {}
     if move_completed
@@ -36,9 +37,13 @@ class TorrentClient
       @deluge.core.add_torrent_url(url, options) rescue @deluge_connected = nil
     end
     raise 'Lost connection' if @deluge_connected.nil?
+  rescue => e
+    retry unless (tries -= 1).zero?
+    $speaker.tell_error(e, "TorrentClient.download_file")
   end
 
   def download_file(file, filename, move_completed = nil)
+    tries ||= 3
     self.authenticate unless @deluge_connected
     options = {}
     if move_completed && move_completed != ''
@@ -47,6 +52,9 @@ class TorrentClient
     end
     @deluge.core.add_torrent_file(filename, Base64.encode64(file), options) rescue @deluge_connected = nil
     raise 'Lost connection' if @deluge_connected.nil?
+  rescue => e
+    retry unless (tries -= 1).zero?
+    $speaker.tell_error(e, "TorrentClient.download_file")
   end
 
   def find_main_file(status)
