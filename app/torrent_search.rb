@@ -1,5 +1,32 @@
 class TorrentSearch
 
+  def self.check_status(identifier, timeout = 10, download = nil)
+    if download.nil?
+      d = $db.get_rows('seen', {'category' => 'download', 'entry' => identifier.downcase.gsub(' ', '')})
+      return if d.empty?
+      download = d.first
+    end
+    tid = download['torrent_id']
+    status = $t_client.get_torrent_status(tid, ['name', 'progress'])
+    return if status.nil?
+    progress = status['progress'].to_i
+    return if progress < 100 && Date.parse(download['created_at']) >= Date.today - timeout.days
+    if progress >= 100
+      Utils.entry_seen('global', identifier)
+    elsif Date.parse(download['created_at']) < Date.today - timeout.days
+      $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
+      Report.deliver(object_s: "Failed download - #{identifier} - " + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
+      $t_client.remove_torrent(tid, true)
+    end
+    $db.delete_rows('seen', {'category' => 'download', 'entry' => identifier.downcase.gsub(' ', '')})
+  end
+
+  def self.check_all_download(timeout: 10)
+    $db.get_rows('seen', {'category' => 'download'}).each do |d|
+      check_status(d['entry'], timeout, d)
+    end
+  end
+
   def self.get_cid(type, category)
     return nil if category.nil? || category == ''
     case type

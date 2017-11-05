@@ -24,37 +24,25 @@ class TorrentClient
   end
 
   def download(url, move_completed = nil, magnet = 0)
-    tries ||= 3
-    authenticate unless @deluge_connected
     options = {}
     if move_completed
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
     if magnet.to_i > 0
-      @deluge.core.add_torrent_magnet(url, options) rescue @deluge_connected = nil
+      $t_client.add_torrent_magnet(url, options)
     else
-      @deluge.core.add_torrent_url(url, options) rescue @deluge_connected = nil
+      $t_client.add_torrent_url(url, options)
     end
-    raise 'Lost connection' if @deluge_connected.nil?
-  rescue => e
-    retry unless (tries -= 1).zero?
-    $speaker.tell_error(e, "TorrentClient.download_file")
   end
 
   def download_file(file, filename, move_completed = nil)
-    tries ||= 3
-    self.authenticate unless @deluge_connected
     options = {}
     if move_completed && move_completed != ''
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
-    @deluge.core.add_torrent_file(filename, Base64.encode64(file), options) rescue @deluge_connected = nil
-    raise 'Lost connection' if @deluge_connected.nil?
-  rescue => e
-    retry unless (tries -= 1).zero?
-    $speaker.tell_error(e, "TorrentClient.download_file")
+    $t_client.add_torrent_file(filename, Base64.encode64(file), options)
   end
 
   def find_main_file(status)
@@ -63,7 +51,7 @@ class TorrentClient
         return file
       end
     end
-    return nil
+    nil
   rescue => e
     $speaker.tell_error(e, "torrentclient.find_main_file")
   end
@@ -86,13 +74,12 @@ class TorrentClient
   def process_added_torrents
     return if $env_flags['pretend'] > 0
     while $deluge_torrents_added.length != 0
-      self.authenticate unless @deluge_connected rescue nil
       tid = $deluge_torrents_added.shift
       $processed_torrent_id[tid] = 0 if $processed_torrent_id[tid].nil?
       $processed_torrent_id[tid] += 1
       next if $processed_torrent_id[tid] > 60
       begin
-        status = @deluge.core.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
+        status = $t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
         $speaker.speak_up("Processing added torrent #{status['name']}")
         opts = $deluge_options.select { |_, v| v['info_hash'] == tid }
         opts = $deluge_options.select { |_, v| v['t_name'] == status['name'] } if opts.nil?
@@ -112,15 +99,14 @@ class TorrentClient
             end
           end
           unless set_options.empty?
-            @deluge.core.set_torrent_options([tid], set_options)
+            $t_client.set_torrent_options([tid], set_options)
             $speaker.speak_up("Will set options: #{set_options}")
           end
           $deluge_options.delete(did)
-          @deluge.core.queue_bottom([tid]) #Queue to bottom once all processed
+          $t_client.queue_bottom([tid]) #Queue to bottom once all processed
         end
       rescue => e
         $speaker.tell_error(e, "TorrentClient.process_added_torrents")
-        @deluge_connected = nil
         $deluge_torrents_added << tid
         sleep 10
       end
@@ -176,7 +162,25 @@ Downloading torrent(s) added during the session (if any)")
       new_path = new_dir_name + '/' + old_name
       paths << [file['index'], new_path]
     end
-    @deluge.core.rename_files(tid, paths)
+    $t_client.rename_files(tid, paths)
+  end
+
+  def method_missing(name, *args)
+    tries ||= 3
+    authenticate
+    if args.empty?
+      eval("@deluge.core").method(name).call
+    else
+      eval("@deluge.core").method(name).call(*args)
+    end
+  rescue => e
+    @deluge_connected = nil
+    if !(tries -= 1).zero?
+      retry
+    else
+      $speaker.tell_error(e, "TorrentClient.#{name}")
+      raise 'Lost connection'
+    end
   end
 
 end
