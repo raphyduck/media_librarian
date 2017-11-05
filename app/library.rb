@@ -416,7 +416,7 @@ class Library
     unless consolidated.empty?
       consolidated.each do |d|
         dups_files = MediaInfo.sort_media_files(MediaInfo.media_get(files, d[0]))
-        dups_files = dups_files.select{|x| File.exists?(x)} #You never know...
+        dups_files = dups_files.select { |x| File.exists?(x[:file]) } #You never know...
         next unless dups_files.count > 1
         $speaker.speak_up("Duplicate files found for #{d[1]}")
         dups_files.each do |f|
@@ -437,7 +437,7 @@ class Library
     removed
   end
 
-  def self.parse_media(filename, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, destination_folder = '')
+  def self.parse_media(filename, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, destination_folder = '', attrs = {})
     item_name, item = MediaInfo.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]))
     info = []
     unless no_prompt.to_i == 0 || item
@@ -460,9 +460,9 @@ class Library
     end
     case type
       when 'movies'
-        release = item.release_date.gsub(/\(\w+\)/, '').to_date rescue nil
+        release = item && item.release_date ? item.release_date : Date.new(MediaInfo.identify_release_year(item_name))
         info << {'full_name' => item_name,
-                 'identifier' => Movie.identifier(item_name),
+                 'identifier' => Movie.identifier(item_name, release.year),
                  'attrs' => {:movie => item, :release_date => release}}
       when 'shows'
         s, e = MediaInfo.identify_tv_episodes_numbering(File.basename(f_path))
@@ -477,12 +477,12 @@ class Library
         return files
     end
     info.each do |i|
-      i['attrs'].merge!({:move_to => destination_folder}) if destination_folder.to_s != ''
+      i['attrs'].merge!({:move_to => Utils.parse_filename_template(destination_folder, {})}) if destination_folder.to_s != ''
       files = MediaInfo.media_add(item_name,
                                   type,
                                   i['full_name'],
                                   i['identifier'],
-                                  i['attrs'],
+                                  i['attrs'].merge(attrs),
                                   f_path,
                                   files
       ) if i['full_name'] != ''
@@ -492,30 +492,34 @@ class Library
 
   def self.process_download_list(dest_folder:, source: {}, no_prompt: 0, torrent_search: {})
     return $speaker.speak_up("Invalid source") if source.nil? || source.empty?
-    search_list, files = {}, {}
+    search_list = {}
     $speaker.speak_up('Parsing movie list, can take a long time...')
     TraktList.list(source['list_name']).each do |item|
       type = item['type']
       f = item[type]
       type = Utils.regularise_media_type(type)
       next if Time.now.year < (f['year'] || Time.now.year + 3)
-      search_list = parse_media(f['title'], type, no_prompt, search_list, {}, {}, dest_folder)
+      search_list = parse_media("#{f['title']} (#{f['year']})".gsub('/', ' '), type, no_prompt, search_list, {}, {}, dest_folder, {:trakt_movie => f})
     end
     search_list.each do |id, info|
       next if id.is_a?(Symbol)
       info.each do |i|
-        files[i['type']] = process_folder(type: i[:type], folder: dest_folder, no_prompt: no_prompt, remove_duplicates: 1) unless files[i[:type]]
-        already_exists = MediaInfo.media_get(files[i[:type]], id)
-        unless already_exists.empty?
-          if $speaker.ask_if_needed("Replace already existing file #{already_exists[0][:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-            search_list[id][search_list[id].index(i)]['file'] = already_exists[0][:file]
+        files = process_folder(type: i[:type], folder: dest_folder, no_prompt: no_prompt, remove_duplicates: 1, item_name: i[:name])
+        already_exists = MediaInfo.media_get(files, id)
+        already_exists = already_exists.select { |e| e[:identifier] == id }
+        already_exists.each do |ae|
+          if $speaker.ask_if_needed("Replace already existing file #{ae[:file]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+            search_list[id][search_list[id].index(i)][:files] = [] if search_list[id][search_list[id].index(i)][:files].nil?
+            search_list[id][search_list[id].index(i)][:files] << ae[:file]
+          elsif $speaker.ask_if_needed("Remove #{i[:name]} from the search list? (y/n)", no_prompt.to_i, 'n').to_s == 'y'
+            $cleanup_trakt_list << {:id => Time.now.to_i, :c => i[:trakt_movie], :t => i[:type]} if i[:trakt_movie]
+            search_list[id] = nil
           end
         end
       end
     end
-    #TODO: Remove success from list
     search_list = search_list.map { |_, a| a }.flatten
-    search_list = search_list.select { |f| f[:release_date].nil? || f[:release_date] >= Date.today }.sort_by { |f| f[:release_date] } #rescue []
+    search_list = search_list.select { |f| !f[:release_date].nil? && f[:release_date] < Date.today }.sort_by { |f| (f[:release_date] || Date.today + 3.years) } #rescue []
     search_from_list(list: search_list, no_prompt: no_prompt, torrent_search: torrent_search)
   rescue => e
     $speaker.tell_error(e, "Library.process_search_list")
@@ -556,13 +560,13 @@ class Library
 
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
-    return '' if metadata.nil? || metadata.empty?
-    FILENAME_NAMING_TEMPLATE.each do |k|
-      destination = destination.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
-    end
+    destination = Utils.parse_filename_template(destination, metadata)
+    return '' if destination.nil?
     destination += ".#{metadata['extension'].downcase}"
     if metadata['is_found']
-      _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
+      if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'?", no_prompt, 'y').to_s == 'y'
+        _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
+      end
     else
       destination = ''
     end
@@ -574,7 +578,7 @@ class Library
     list.each do |e|
       next unless e[:full_name]
       break if break_processing(no_prompt)
-      next if skip_loop_item("Do you want to look for releases of #{e[:type]} #{e[:full_name]} #{'(released on ' + e['air_date'] + ')' if e['air_date']}? (y/n)", no_prompt) > 0
+      next if skip_loop_item("Do you want to look for releases of #{e[:type]} #{e[:full_name]} #{'(released on ' + e[:release_date].strftime('%A, %B %d, %Y') + ')' if e[:release_date]}? (y/n)", no_prompt) > 0
       download = 0
       until download.to_i > 0
         download = TorrentSearch.search(keywords: e[:full_name].gsub(/[\(\)\:]/, ''),
@@ -587,7 +591,7 @@ class Library
                                         main_only: torrent_search['main_only'],
                                         only_on_trackers: torrent_search['only_on_trackers'],
                                         qualities: torrent_search['qualities'])
-        break if download.to_i > 0
+        break if download.to_i > 0 || no_prompt.to_i > 0
         case e[:type]
           when 'movies'
             title, movie = MediaInfo.movie_lookup(File.basename(e[:file]), no_prompt, 1)
@@ -598,7 +602,15 @@ class Library
         end
       end
       Utils.entry_seen('download', e[:identifier]) if download.to_i > 0
-      $dir_to_delete << {:id => download, :d => e[:file]} if download.to_i > 0 && e[:file].to_s != ''
+      if download.to_i > 0
+        $dir_to_delete << {:id => download, :d => e[:file]} if e[:file].to_s != ''
+        if e[:files].is_a?(Array) && !e[:files].empty?
+          e[:files].each do |f|
+            $dir_to_delete << {:id => download, :d => f}
+          end
+        end
+        $cleanup_trakt_list << {:id => download, :c => e[:trakt_movie], :t => 'movies'} if e[:trakt_movie]
+      end
     end
   rescue => e
     $speaker.tell_error(e, "Library.search_from_list")

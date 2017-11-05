@@ -31,11 +31,13 @@ class Utils
   def self.entry_deja_vu?(category, entry)
     dejavu = $db.get_rows('seen', {'category' => 'global', 'entry' => entry.downcase.gsub(' ', '')})
     dejavu = $db.get_rows('seen', {'category' => category, 'entry' => entry.downcase.gsub(' ', '')}) if dejavu.empty?
-    !dejavu.empty?
+    dejavu = !dejavu.empty?
+    $speaker.speak_up("#{category.to_s.titleize} entry #{entry} already seen") if dejavu
+    dejavu
   end
 
   def self.entry_seen(category, entry)
-    $db.insert_row('seen', {'category' => category, 'entry' => entry, 'created_at' => Time.now})
+    $db.insert_row('seen', {'category' => category, 'entry' => entry.downcase.gsub(' ', ''), 'created_at' => Time.now})
   end
 
   def self.extract_archive(type, archive, destination)
@@ -204,9 +206,17 @@ class Utils
     return false, ''
   end
 
+  def self.parse_filename_template(tpl, metadata)
+    return nil if metadata.nil?
+    FILENAME_NAMING_TEMPLATE.each do |k|
+      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
+    end
+    tpl
+  end
+
   def self.object_pack(object)
     if object.is_a?(Array)
-      object.each_with_index { |o, idx| object[idx] = object_pack(o) }
+      object.each_with_index { |o, idx| object[idx] = object_pack(o.clone) }
     else
       packed = object_to_hash(object)
       packed = object.to_s if packed.empty?
@@ -247,7 +257,7 @@ class Utils
   end
 
   def self.regexify(str, strict = 1)
-    if strict <= 0
+    if strict.to_i <= 0
       str.strip.gsub(/[:,-\/\[\]]/, '.*').gsub(/ /, '.*').gsub("'", "'?")
     else
       str.strip.gsub(/[:,-\/\[\]]/, '.{0,2}').gsub(/ /, '.').gsub("'", "'?")

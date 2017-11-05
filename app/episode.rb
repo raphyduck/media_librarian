@@ -1,19 +1,20 @@
 class Episode
-  attr_accessor :id, :series_id, :season_number, :number, :name, :overview, :air_date, :guest_stars, :director, :writer, :rating, :rating_count
+  MAPPING = { id: :id, series_id: :series_id, season_number: :season_number,
+              number: :number, name: :name, overview: :overview,
+              air_date: :air_date, guest_stars: :guest_stars,
+              director: :director, writer: :writer, rating: :rating,
+              rating_count: :rating_count }
+  MAPPING.values.each do |value|
+    attr_accessor value
+  end
 
   def initialize(options)
-    @id = options["id"]
-    @season_number = options["season_number"]
-    @number = options["number"]
-    @name = options["name"]
-    @overview = options["overview"]
-    @director = options["director"]
-    @writer = options["writer"]
-    @series_id = options["series_id"]
-    @rating_count = options["rating_count"]
-    @guest_stars = options["guest_stars"]
-    @rating = options["rating"]
-    @rating_count = options["rating_count"]
-    @air_date = options["air_date"]
+    MAPPING.each do |source, destination|
+      send("#{destination}=", options[source.to_s] || options[source.to_sym])
+    end
+  end
+
+  def air_date
+    DateTime.parse(@air_date) rescue nil
   end
 end

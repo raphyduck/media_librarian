@@ -9,11 +9,21 @@ class Movie
     @genres = options['genres']
   end
 
-  def self.identifier(movie_name)
-    "#{movie_name}"
+  def self.identifier(movie_name, year)
+    "#{movie_name}#{year}"
   end
 
   def release_date
     DateTime.parse(@release_date) rescue nil
+  end
+
+  def title
+    t = @title
+    t += " (#{year})" if MediaInfo.identify_release_year(@title)
+    t
+  end
+
+  def year
+    (release_date || Date.today + 3.years).year.to_i
   end
 end

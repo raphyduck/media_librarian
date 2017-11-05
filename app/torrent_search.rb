@@ -67,7 +67,7 @@ class TorrentSearch
   rescue => e
     $speaker.tell_error(e, "TorrentSearch.get_results")
     retry unless (tries -= 1) <= 0
-    {}
+    {'torrents' => []}
   end
 
   def self.get_torrent_file(type, did, name = '', url = '', destination_folder = $temp_dir)

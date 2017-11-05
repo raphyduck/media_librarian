@@ -17,8 +17,8 @@ class TraktList
 
   def self.clean_list(list_name)
     return if $env_flags['pretend'] > 0
-    $cleanup_trakt_list.each do |movie|
-      TraktList.remove_from_list(movie[:c], list_name, movie[:t])
+    $cleanup_trakt_list.map{|m| m[:t]}.uniq.each do |type|
+      TraktList.remove_from_list($cleanup_trakt_list.map{|m| m[:c]}, list_name, type)
     end
   end
 

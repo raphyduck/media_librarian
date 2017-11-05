@@ -4,13 +4,13 @@ class MediaInfo
   @media_folders = {}
 
   def self.cache_add(type, keyword, result)
-    result = Utils.object_pack(result)
+    r = Utils.object_pack(result)
     $db.insert_row('metadata_search', {
         'keywords' => keyword,
         'type' => cache_get_enum(type),
         'created_at' => Time.now,
-        'result' => result,
-    }) if cache_get_enum(type) && keyword
+        'result' => r,
+    }) if cache_get_enum(type) && r
   end
 
   def self.cache_expire(row)
@@ -42,7 +42,7 @@ class MediaInfo
   end
 
   def self.clean_title(title)
-    title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '') rescue title
+    title.gsub(/\(I+\) /, '').gsub(' (Video)', '').gsub(/\(TV .+\)/, '').gsub('&#x27;', '') rescue title
   end
 
   def self.clear_year(title, strict = 1)
@@ -67,7 +67,7 @@ class MediaInfo
     metadata = {}
     ep_filename = File.basename(filename)
     item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type])) if item_name.to_s == '' || item.nil?
-    return metadata if item.nil? && no_prompt.to_i > 0
+    return nil if item.nil? && (no_prompt.to_i > 0 || item_name.to_s == '')
     metadata['quality'] = metadata['quality'] || File.basename(ep_filename).downcase.gsub('-', '').scan(REGEX_QUALITIES).uniq.join('.').gsub('-', '')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
@@ -160,6 +160,10 @@ class MediaInfo
     return season, ep_nb
   end
 
+  def self.identify_release_year(filename)
+    filename.match(/\((\d{4})\)$/)[1].to_i rescue 0
+  end
+
   def self.media_qualities(filename)
     {
         'resolutions' => filename.downcase.match(Regexp.new('[ \.\(\)\-](' + RESOLUTIONS.join('|') + ')')).to_s.gsub(/[ \.\(\)\-]/, '').to_s,
@@ -179,18 +183,18 @@ class MediaInfo
       files[:files][file] = {:type => type, :name => item_name, :full_name => full_name, :identifier => identifier, :file => file}.merge(attrs)
     end
     if attrs[:show]
-      files[:shows] = {}
+      files[:shows] = {} if files[:shows].nil?
       files[:shows][item_name] = attrs[:show]
     end
     if attrs[:movie]
-      files[:movies] = {}
+      files[:movies] = {} if files[:movies].nil?
       files[:movies][item_name] = attrs[:movie]
     end
     files
   end
 
   def self.media_exist?(files, identifier)
-    files.each do |id, _|
+    (files || []).each do |id, _|
       return true if id.to_s.include?(identifier)
     end
     false
@@ -202,20 +206,19 @@ class MediaInfo
     eps
   end
 
-  def self.media_chose(title, items, keys, no_prompt = 0)
+  def self.media_chose(title, items, keys, no_prompt = 0, search_alt = 0)
     item = nil
     unless (items || []).empty?
       results = items.map { |m| [clean_title(m[keys['name']]), m[keys['url']]] }
       results += [['Edit title manually', '']]
       (0..results.count-2).each do |i|
-        item = items[i]
-        show_year = item[keys['year']].match(/\d{4}/).to_s.to_i
-        year = title.match(/\((\d{4})\)$/)[1].to_i rescue 0
-        if MediaInfo.clear_year(item[keys['name']]).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '') == MediaInfo.clear_year(title).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '') &&
-            (year == 0 || show_year == 0 || (show_year < year + 1 && show_year > year - 1))
+        show_year = items[i][keys['year']].match(/\d{4}/).to_s.to_i
+        year = identify_release_year(title)
+        if clean_title(clear_year(items[i][keys['name']])).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '') == clean_title(clear_year(title)).downcase.gsub(/[ \(\)\.\:,\'\/-]/, '') &&
+            (year == 0 || show_year == 0 || (show_year < year + 1 && show_year > year - 1)) && (search_alt.to_i == 0 || no_prompt.to_i > 0)
           choice = i
         elsif no_prompt.to_i == 0
-          $speaker.speak_up("Alternatives titles found:")
+          $speaker.speak_up("Alternatives titles found for #{title}:")
           results.each_with_index do |m, idx|
             $speaker.speak_up("#{idx + 1}: #{m[0]}#{' (info: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
           end
@@ -238,14 +241,21 @@ class MediaInfo
     return title, item
   end
 
-  def self.movie_lookup(title, no_prompt = 0)
+  def self.movie_lookup(title, no_prompt = 0, search_alt = 0, strip_year = 0)
     cached = cache_get('movie_lookup', title)
     return cached if cached
-    movies = $imdb.find_by_title(title)
+    s = strip_year.to_i > 0 ? title.gsub(/ \(\d{4}\)$/, '') : title
+    movies = $imdb.find_by_title(s)
     movies.select! do |m|
       !(m[:title].match(/\(TV .+\)/) && !m[:title].match(/\(TV Movie\)/)) && !m[:title].match(/ \(Short\)/)
     end
-    exact_title, movie = media_chose(title, movies, {'name' => :title, 'url' => :url, 'year' => :year}, no_prompt)
+    exact_title, movie = media_chose(
+        title,
+        movies,
+        {'name' => :title, 'url' => :url, 'year' => :year},
+        [no_prompt.to_i, 1-search_alt.to_i].max,
+        search_alt
+    )
     unless movie.nil?
       movie = $imdb.find_movie_by_id(movie[:imdb_id])
       if movie
@@ -253,6 +263,7 @@ class MediaInfo
         cache_add('movie_lookup', title, [movie.title, movie])
       end
     end
+    exact_title, movie = movie_lookup(title, no_prompt, 0, 1) if movie.nil? && strip_year.to_i == 0
     return exact_title, movie
   rescue => e
     $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
@@ -273,11 +284,11 @@ class MediaInfo
     sorted.sort_by! { |x| (SOURCES.index(x[2]) || 999).to_i }
     sorted.sort_by! { |x| (RESOLUTIONS.index(x[1]) || 999).to_i }
     sorted.sort_by! { |x| -x[5].to_i }
-    r.sort_by! { |x| sorted.map { |x| x[0] }.index(x[:file]) }
+    r.sort_by! { |f| sorted.map { |x| x[0] }.index(f[:file]) }
   end
 
   def self.tv_episodes_search(title, no_prompt = 0, show = nil, tvdb_id = '')
-    cached = cache_get('tv_episodes_search', title.to_s + tvdb_id.to_s)
+    cached = cache_get('tv_episodes_search', title.to_s + tvdb_id.to_s, 7)
     return cached if cached
     title, show = tv_show_search(title, no_prompt) unless show
     episodes = []
@@ -304,22 +315,24 @@ class MediaInfo
     return title, show
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_show_get")
-    return title, nil
+    return '', nil
   end
 
   def self.tv_show_search(title, no_prompt = 0, tvdb_id = '')
     cached = cache_get('tv_show_search', title.to_s + tvdb_id.to_s)
     return cached if cached
-    title, show = tv_show_get(tvdb_id) if tvdb_id.to_i > 0
-    return title, show unless show.nil?
+    if tvdb_id.to_i > 0
+      title, show = tv_show_get(tvdb_id)
+      return title, show unless show.nil?
+    end
     tvdb_shows = $tvdb.search(title)
     tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
-    tvdb_shows = TVMaze::Show.search(title).first if tvdb_shows.empty?
-    tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).first if tvdb_shows.empty?
-    tvdb_shows.map!{ |s| Utils.object_to_hash(TvSeries.new(s))}
+    tvdb_shows = TVMaze::Show.search(title).map{|s| Utils.object_to_hash(s)} if tvdb_shows.empty?
+    tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map{|s| Utils.object_to_hash(s)} if tvdb_shows.empty?
+    tvdb_shows.map! { |s| Utils.object_to_hash(TvSeries.new(s)) }
     exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, no_prompt)
     exact_title, show = tv_show_get(show['tvdb_id']) if show
-    cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show])
+    cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show]) if show
     return exact_title, show
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_episodes_search")

@@ -37,18 +37,21 @@ class TvSeries
         unless MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           $speaker.speak_up("Missing #{full_name} - #{ep.name} (aired on #{ep.air_date}).")
-          if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
-            $speaker.speak_up('Entry already downloaded', 0)
-          else
-            missing_eps = MediaInfo.media_add(series_name,
-                                              'shows',
-                                              full_name,
-                                              identifier(series_name, ep.season_number, ep.number, 0),
-                                              {:season => ep.season_number.to_i, :episode => ep.number.to_i, :part => 0},
-                                              '',
-                                              missing_eps
-            )
+          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
+          attrs = {:season => ep.season_number.to_i, :episode => ep.number.to_i, :part => 0}
+          if handle_missing['move_to'].to_s != ''
+            metadata = MediaInfo.identify_metadata(identifier(series_name, ep.season_number, ep.number, 0), 'shows', series_name, ep, no_prompt)
+            attrs.merge!({:move_to => Utils.parse_filename_template(handle_missing['move_to'].to_s, metadata),
+                         :release_date => ep.air_date})
           end
+          missing_eps = MediaInfo.media_add(series_name,
+                                            'shows',
+                                            full_name,
+                                            identifier(series_name, ep.season_number, ep.number, 0),
+                                            attrs,
+                                            '',
+                                            missing_eps
+          )
         end
       end
       Library.search_from_list(list: missing_eps, no_prompt: no_prompt, torrent_search: handle_missing) if !handle_missing.nil? && !handle_missing.empty?
