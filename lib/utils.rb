@@ -6,8 +6,10 @@ class Utils
     system "bash -c #{escaped_command}"
   end
 
-  def self.check_if_inactive(active_hours)
-    active_hours && active_hours.is_a?(Array) && active_hours.count >= 2 && (Time.now.hour < active_hours[0].to_i || Time.now.hour > active_hours[1].to_i)
+  def self.check_if_active(active_hours = {})
+    !active_hours.is_a?(Hash) ||
+        ((active_hours['start'].nil? || active_hours['start'].to_i < Time.now.hour) &&
+            (active_hours['end'].nil? || active_hours['end'].to_i > Time.now.hour))
   end
 
   def self.clean_search(str)
@@ -314,6 +316,23 @@ class Utils
   rescue => e
     $speaker.tell_error(e, "Library.search_folder")
     []
+  end
+
+  def self.timeperiod_to_sec(argument)
+    return argument if argument.class < Integer
+    if argument.class == String
+      case argument
+        when /^(.*?)[+,](.*)$/                     then to_sec($1) + to_sec($2)
+        when /^\s*([0-9_]+)\s*\*(.+)$/             then $1.to_i * to_sec($2)
+        when /^\s*[0-9_]+\s*(s(ec(ond)?s?)?)?\s*$/ then argument.to_i
+        when /^\s*([0-9_]+)\s*m(in(ute)?s?)?\s*$/  then $1.to_i *      60
+        when /^\s*([0-9_]+)\s*h(ours?)?\s*$/       then $1.to_i *    3600
+        when /^\s*([0-9_]+)\s*d(ays?)?\s*$/        then $1.to_i *   86400
+        when /^\s*([0-9_]+)\s*w(eeks?)?\s*$/       then $1.to_i *  604800
+        when /^\s*([0-9_]+)\s*months?\s*$/         then $1.to_i * 2419200
+        else                                            0
+      end
+    end
   end
 
   def self.title_match_string(str)

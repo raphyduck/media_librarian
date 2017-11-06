@@ -1,3 +1,4 @@
+APP_NAME='librarian'
 $env_flags = {
     'debug' => 0,
     'no_email_notif' => 0,
@@ -9,10 +10,13 @@ $config_example = File.dirname(__FILE__) + '/config/conf.yml.example'
 $temp_dir = config_dir + '/tmp'
 log_dir = config_dir + '/log'
 $template_dir = config_dir + '/templates'
+$pid_dir = config_dir + '/pids'
+$pidfile = $pid_dir + '/pid.file'
 #Create default folders if doesn't exist
 Utils.file_mkdir(config_dir) unless File.exist?(config_dir)
 Utils.file_mkdir(log_dir) unless File.exist?(log_dir)
 Utils.file_mkdir($temp_dir) unless File.exist?($temp_dir)
+Utils.file_mkdir($pid_dir) unless File.exist?($pid_dir)
 unless File.exist?($template_dir)
   FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
 end

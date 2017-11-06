@@ -1,0 +1,15 @@
+periodic:
+  task2:
+    command: help
+    every: 1 minutes
+    args:
+continuous:
+  task1:
+    command: library.fetch_media_box
+    args:
+      template_name: fetch_media_box
+    monitor_options:
+      network_card: eth0
+    active_hours:
+      start: 0
+      end: 6

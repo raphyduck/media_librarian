@@ -15,10 +15,12 @@ class TraktList
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
-  def self.clean_list(list_name)
+  def self.clean_list(list_to_clean = $cleanup_trakt_list)
     return if $env_flags['pretend'] > 0
-    $cleanup_trakt_list.map{|m| m[:t]}.uniq.each do |type|
-      TraktList.remove_from_list($cleanup_trakt_list.map{|m| m[:c]}, list_name, type)
+    list_to_clean.each do |list_name, list|
+      list.map{|m| m[:t]}.uniq.each do |type|
+        TraktList.remove_from_list(list.select{|m| m[:t] == type}.map{|m| m[:c]}, list_name, type)
+      end
     end
   end
 
@@ -170,6 +172,17 @@ class TraktList
   rescue => e
     $speaker.tell_error(e, "TraktList.list")
     []
+  end
+
+  def self.list_cache_add(list_name, type, item, id = Time.now.to_i)
+    $cleanup_trakt_list[list_name] = [] if $cleanup_trakt_list[list_name].nil?
+    $cleanup_trakt_list[list_name] << {:id => id, :c => item, :t => type}
+  end
+
+  def self.list_cache_remove(item_id)
+    $cleanup_trakt_list.each do |k, list|
+      $cleanup_trakt_list[k] = list.select { |x| x[:id] != item_id }
+    end
   end
 
   def self.parse_custom_list(items)

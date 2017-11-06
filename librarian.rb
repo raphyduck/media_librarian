@@ -1,45 +1,27 @@
-require 'archive/zip'
-require 'bundler/setup'
-require 'active_support/time'
-require 'base64'
-require 'bencode'
-require 'deluge'
-require 'digest/md5'
-require 'digest/sha1'
-require 'find'
-require 'fuzzystringmatch'
-require 'hanami/mailer'
-require 'io/console'
-require 'imdb_party'
-require 'json'
-require 'logger'
-require 'mechanize'
-require 'mp3info'
-require 'net/ssh'
-require 'pdf/reader'
-require 'rarbg'
-require 'rsync'
-require 'rubygems'
-require 'shellwords'
-require 'simple_args_dispatch'
-require 'simple_config_man'
-require 'simple_speaker'
-require 'sqlite3'
-require 'sys/filesystem'
-require 'titleize'
-require 'trakt'
-require 'tvdb_party'
-require 'tvmaze'
-require 'unrar'
-require 'xbmc-client'
-require 'yaml'
-#Process.daemon
+REQ = %w(archive/zip bundler/setup active_support/time base64 bencode deluge digest/md5 digest/sha1 find
+fuzzystringmatch hanami/mailer io/console imdb_party json logger mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
+shellwords simple_args_dispatch simple_config_man simple_speaker sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
+xbmc-client yaml)
+
+REQ.each do |r|
+  begin
+    require r
+  rescue LoadError
+    puts "You need to install the #{r} gem"
+    raise
+  end
+end
 
 class Librarian
+  attr_accessor :args, :quit
 
-  @available_actions = {
+  $available_actions = {
       :help => ['Librarian', 'help'],
       :reconfigure => ['Librarian', 'reconfigure'],
+      :daemon => {
+          :start => ['Daemon', 'start'],
+          :stop => ['Daemon', 'stop'],
+      },
       :ebooks => {
           :compress_comics => ['Ebooks', 'compress_comics'],
           :convert_comics => ['Ebooks', 'convert_comics'],
@@ -66,25 +48,26 @@ class Librarian
   }
 
   def initialize
+    @args = ARGV
     #Require libraries
-    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each {|file| require file }
+    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
-    Dir[File.dirname(__FILE__) + '/init/*.rb'].each {|file| require file }
+    Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
   end
 
-  def self.run
-    $speaker.speak_up("Welcome to your library assistant!\n\n")
-    $speaker.speak_up("Running command: #{ARGV.map{|a| a.gsub(/--?([^=\s]+)(?:=(.+))?/,'--\1=\'\2\'')}.join(' ')}\n\n")
-    $action = ARGV[0].to_s + ' ' + ARGV[1].to_s
-    SimpleArgsDispatch.dispatch('librarian', ARGV, @available_actions, nil, $template_dir)
+  def daemonize
+    Process.daemon
+    exit if fork
+    Process.setsid
+    exit if fork
+    Dir.chdir "/"
+    suppress_output
   end
 
-  def self.leave
+  def flush_queues
     if $t_client
       $t_client.process_download_torrents
-      #Cleanup list
-      TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
       $t_client.process_added_torrents
       while Find.find($temp_dir).count > 1
         $speaker.speak_up('Waiting for temporary folder to be cleaned')
@@ -100,7 +83,20 @@ class Librarian
       Utils.cleanup_folder unless $dir_to_delete.empty?
       $t_client.disconnect
     end
-    Report.deliver(object_s: $action + ' - ' + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action && $email_msg && $env_flags['no_email_notif'].to_i == 0
+    #Cleanup list
+    TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
+  end
+
+  def run!
+    trap_signals
+    $speaker.speak_up("Welcome to your library assistant!\n\n")
+    $speaker.speak_up("Running command: #{args.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n")
+    $action = args[0].to_s + ' ' + args[1].to_s
+    SimpleArgsDispatch.dispatch(APP_NAME, args, $available_actions, nil, $template_dir)
+  end
+
+  def leave
+    Report.sent_out($action) if $action && $env_flags['no_email_notif'].to_i == 0
     $speaker.speak_up("End of session, good bye...")
   end
 
@@ -109,10 +105,54 @@ class Librarian
   end
 
   def self.help
-    SimpleArgsDispatch.show_available('librarian', @available_actions)
+    $speaker.speak_up('Showing help')
+    SimpleArgsDispatch.show_available(APP_NAME, $available_actions)
+  end
+
+  def write_pid
+      begin
+        File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY){|f| f.write("#{Process.pid}") }
+        at_exit { File.delete($pidfile) if File.exists?($pidfile) }
+      rescue Errno::EEXIST
+        check_pid
+        retry
+      end
+  end
+
+  def check_pid
+      case pid_status($pidfile)
+        when :running, :not_owned
+          $speaker.speak_up "A server is already running. Check #{$pidfile}"
+          exit(1)
+        when :dead
+          File.delete($pidfile)
+      end
+  end
+
+  def pid_status(pidfile)
+    return :exited unless File.exists?(pidfile)
+    pid = ::File.read(pidfile).to_i
+    return :dead if pid == 0
+    Process.kill(0, pid)      # check process status
+    :running
+  rescue Errno::ESRCH
+    :dead
+  rescue Errno::EPERM
+    :not_owned
+  end
+
+  def suppress_output
+    $stderr.reopen('/dev/null', 'a')
+    $stdout.reopen($stderr)
+  end
+
+  def trap_signals
+    trap('QUIT') do   # graceful shutdown
+      @quit = true
+    end
   end
 end
 
-Librarian.new
-Librarian.run
-Librarian.leave
+$librarian = Librarian.new
+$librarian.run!
+$librarian.leave

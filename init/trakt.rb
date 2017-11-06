@@ -1,5 +1,5 @@
 #Start trakt client
-$cleanup_trakt_list = []
+$cleanup_trakt_list = {}
 if $config['trakt']
   $trakt_account = $config['trakt']['account_id']
   $trakt = Trakt.new({

@@ -15,7 +15,7 @@ class TorrentSearch
       Utils.entry_seen('global', identifier)
     elsif Date.parse(download['created_at']) < Date.today - timeout.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
-      Report.deliver(object_s: "Failed download - #{identifier} - " + Time.now.strftime("%a %d %b %Y").to_s) if $email && $action
+      Report.sent_out("Failed download - #{identifier}") if $action
       $t_client.remove_torrent(tid, true)
     end
     $db.delete_rows('seen', {'category' => 'download', 'entry' => identifier.downcase.gsub(' ', '')})

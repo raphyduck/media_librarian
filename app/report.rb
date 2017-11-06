@@ -2,9 +2,9 @@ class Report
   include Hanami::Mailer
 
   from :from
-  to   :to
-  cc   :cc
-  bcc  :bcc
+  to :to
+  cc :cc
+  bcc :bcc
   subject :object
 
   def action
@@ -17,6 +17,11 @@ class Report
     else
       $email_msg
     end
+  end
+
+  def self.sent_out(object, bs = $email_msg)
+    deliver(object_s: object + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: bs) if $email
+    $email_msg = ''
   end
 
   private
