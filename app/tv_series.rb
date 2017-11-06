@@ -22,7 +22,7 @@ class TvSeries
   end
 
   def self.identifier(series_name, season, episode, part)
-    "#{series_name}S#{season.to_i}E#{episode.to_i}P#{part.to_i}"
+    "#{series_name}S#{season.to_i}E#{episode.to_i}P#{part}"
   end
 
   def self.monitor_tv_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, handle_missing = {})
@@ -37,7 +37,7 @@ class TvSeries
         unless MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           $speaker.speak_up("Missing #{full_name} - #{ep.name} (aired on #{ep.air_date}).")
-          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
+          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0)) || handle_missing.nil? || handle_missing.empty?
           attrs = {:season => ep.season_number.to_i, :episode => ep.number.to_i, :part => 0}
           if handle_missing['move_to'].to_s != ''
             metadata = MediaInfo.identify_metadata(identifier(series_name, ep.season_number, ep.number, 0), 'shows', series_name, ep, no_prompt)

@@ -19,7 +19,7 @@ class Movie
 
   def title
     t = @title
-    t += " (#{year})" if MediaInfo.identify_release_year(@title)
+    t += " (#{year})" if MediaInfo.identify_release_year(@title).to_i == 0
     t
   end
 

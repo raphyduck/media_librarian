@@ -386,7 +386,7 @@ class Library
         if handling['file_types']
           type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
           return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
-          return if File.stat(full_p).nlink > 1 #File already hard linked eslwhere, moving on
+          return if File.stat(full_p).nlink > 1 #File already hard linked elsewhere, moving on
           type.downcase!
           ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
           item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]))
