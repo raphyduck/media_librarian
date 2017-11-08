@@ -7,8 +7,8 @@ TODO:
 * General
     * Expire trakt authentication token and send email when needed
     * Save state on shutdown (including torrents to download) and resume on start up
-    * Detect launched daemon and send command execution to it
     * Refactor email notification - add an email sending task that would flush out all pending logs
+    * Properly trap temination signal and flushes all pending operations before quitting
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
@@ -27,5 +27,5 @@ TODO:
     * Distinguish season pack and download if season episode not found and replace existing season with it
     
 * Library:
-    * Use alternative sources to identify series
     * Follow RSS feeds and download based on list input and filter
+    * Use alternative sources to identify series

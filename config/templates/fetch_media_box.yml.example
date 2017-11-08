@@ -17,5 +17,8 @@ bandwith_limit: 0
 exclude_folders_in_check:
   - '/folder/to/exclude'
   - 'another/one'
+active_hours:
+  start: 0
+  end: 5
 monitor_options:
   network_card: eth0

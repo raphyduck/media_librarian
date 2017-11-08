@@ -15,4 +15,3 @@ if $email
                     enable_starttls_auto: true
   end.load!
 end
-$email_msg = ''

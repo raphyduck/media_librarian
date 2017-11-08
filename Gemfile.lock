@@ -78,6 +78,7 @@ GEM
     concurrent-ruby (0.9.2)
     domain_name (0.5.20170404)
       unf (>= 0.0.5, < 1.0.0)
+    eventmachine (1.2.5)
     faraday (0.13.1)
       multipart-post (>= 1.2, < 3)
     faraday_middleware (0.12.2)
@@ -144,7 +145,7 @@ GEM
       simple_speaker (~> 0.1.4)
     simple_config_man (0.3.7)
       simple_speaker (~> 0.1.4)
-    simple_speaker (0.1.5)
+    simple_speaker (0.1.7)
     sqlite3 (1.3.13)
     sys-filesystem (1.1.8)
       ffi
@@ -170,6 +171,7 @@ DEPENDENCIES
   archive-zip
   bencode
   deluge-rpc!
+  eventmachine
   fuzzy-string-match
   hanami-mailer
   httparty
@@ -183,7 +185,6 @@ DEPENDENCIES
   ruby-mp3info!
   simple_args_dispatch
   simple_config_man
-  simple_speaker
   sqlite3
   sys-filesystem
   titleize

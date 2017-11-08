@@ -1,13 +1,13 @@
-REQ = %w(archive/zip bundler/setup active_support/time base64 bencode deluge digest/md5 digest/sha1 find
+REQ = %w(archive/zip bundler/setup active_support/time base64 bencode deluge digest/md5 digest/sha1 eventmachine find
 fuzzystringmatch hanami/mailer io/console imdb_party json logger mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
-shellwords simple_args_dispatch simple_config_man simple_speaker sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
+shellwords simple_args_dispatch simple_config_man sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
 xbmc-client yaml)
 
 REQ.each do |r|
   begin
     require r
   rescue LoadError
-    puts "You need to install the #{r} gem"
+    puts "You need to install the #{r} gem by running `bundle install`"
     raise
   end
 end
@@ -44,7 +44,8 @@ class Librarian
           :search => ['TorrentSearch', 'search'],
           :random_pick => ['TorrentSearch', 'random_pick']
       },
-      :usage => ['Librarian', 'help']
+      :usage => ['Librarian', 'help'],
+      :flush_queues => ['Librarian', 'flush_queues']
   }
 
   def initialize
@@ -65,7 +66,87 @@ class Librarian
     suppress_output
   end
 
-  def flush_queues
+  def run!
+    trap_signals
+    $speaker.speak_up("Welcome to your library assistant!\n\n")
+    if pid_status($pidfile) == :running && !args.nil? && !args.empty?
+      $speaker.speak_up 'A daemon is already running, sending execution there'
+      EventMachine.run do
+        EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
+        EM.open_keyboard(ClientInput)
+      end
+    else
+      run_command(args)
+      Librarian.flush_queues
+    end
+  end
+
+  def run_command(cmd)
+    Thread.current[:email_msg] = ''
+    $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n")
+    $action = cmd[0].to_s + ' ' + cmd[1].to_s
+    SimpleArgsDispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
+    Report.sent_out($action, Thread.current[:email_msg]) if $action && $env_flags['no_email_notif'].to_i == 0
+  end
+
+  def leave
+    $speaker.speak_up("End of session, good bye...")
+  end
+
+  def self.reconfigure
+    return $speaker.speak_up "Can not configure application when launched as a daemon" if Daemon.is_daemon?
+    SimpleConfigMan.reconfigure($config_file, $config_example)
+  end
+
+  def self.help
+    $speaker.speak_up('Showing help')
+    SimpleArgsDispatch.show_available(APP_NAME, $available_actions)
+  end
+
+  def write_pid
+    begin
+      File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) { |f| f.write("#{Process.pid}") }
+      at_exit { File.delete($pidfile) if File.exists?($pidfile) }
+    rescue Errno::EEXIST
+      check_pid
+      retry
+    end
+  end
+
+  def check_pid
+    case pid_status($pidfile)
+      when :running, :not_owned
+        $speaker.speak_up "A server is already running. Check #{$pidfile}"
+        exit(1)
+      when :dead
+        File.delete($pidfile)
+    end
+  end
+
+  def pid_status(pidfile)
+    return :exited unless File.exists?(pidfile)
+    pid = ::File.read(pidfile).to_i
+    return :dead if pid == 0
+    Process.kill(0, pid) # check process status
+    :running
+  rescue Errno::ESRCH
+    :dead
+  rescue Errno::EPERM
+    :not_owned
+  end
+
+  def suppress_output
+    $stderr.reopen('/dev/null', 'a')
+    $stdout.reopen($stderr)
+  end
+
+  def trap_signals
+    trap('QUIT') do # graceful shutdown
+      @quit = true
+    end
+  end
+
+  def self.flush_queues
     if $t_client
       $t_client.process_download_torrents
       $t_client.process_added_torrents
@@ -85,71 +166,6 @@ class Librarian
     end
     #Cleanup list
     TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
-  end
-
-  def run!
-    trap_signals
-    $speaker.speak_up("Welcome to your library assistant!\n\n")
-    $speaker.speak_up("Running command: #{args.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n")
-    $action = args[0].to_s + ' ' + args[1].to_s
-    SimpleArgsDispatch.dispatch(APP_NAME, args, $available_actions, nil, $template_dir)
-  end
-
-  def leave
-    Report.sent_out($action) if $action && $env_flags['no_email_notif'].to_i == 0
-    $speaker.speak_up("End of session, good bye...")
-  end
-
-  def self.reconfigure
-    SimpleConfigMan.reconfigure($config_file, $config_example)
-  end
-
-  def self.help
-    $speaker.speak_up('Showing help')
-    SimpleArgsDispatch.show_available(APP_NAME, $available_actions)
-  end
-
-  def write_pid
-      begin
-        File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY){|f| f.write("#{Process.pid}") }
-        at_exit { File.delete($pidfile) if File.exists?($pidfile) }
-      rescue Errno::EEXIST
-        check_pid
-        retry
-      end
-  end
-
-  def check_pid
-      case pid_status($pidfile)
-        when :running, :not_owned
-          $speaker.speak_up "A server is already running. Check #{$pidfile}"
-          exit(1)
-        when :dead
-          File.delete($pidfile)
-      end
-  end
-
-  def pid_status(pidfile)
-    return :exited unless File.exists?(pidfile)
-    pid = ::File.read(pidfile).to_i
-    return :dead if pid == 0
-    Process.kill(0, pid)      # check process status
-    :running
-  rescue Errno::ESRCH
-    :dead
-  rescue Errno::EPERM
-    :not_owned
-  end
-
-  def suppress_output
-    $stderr.reopen('/dev/null', 'a')
-    $stdout.reopen($stderr)
-  end
-
-  def trap_signals
-    trap('QUIT') do   # graceful shutdown
-      @quit = true
-    end
   end
 end
 

@@ -13,15 +13,15 @@ class Report
 
   def body
     if defined? body_s
-      body_s.nil? ? $email_msg : body_s
+      body_s.nil? ? Thread.current[:email_msg] : body_s
     else
-      $email_msg
+      Thread.current[:email_msg]
     end
   end
 
-  def self.sent_out(object, bs = $email_msg)
-    deliver(object_s: object + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: bs) if $email
-    $email_msg = ''
+  def self.sent_out(object, bs = Thread.current[:email_msg])
+    deliver(object_s: object + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: bs) if $email && bs
+    Thread.current[:email_msg] = ''
   end
 
   private
