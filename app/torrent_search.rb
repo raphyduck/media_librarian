@@ -68,7 +68,7 @@ class TorrentSearch
       when 'rarbg'
         @search = RarbgTracker::Search.new(Utils.clean_search(keyword), cid)
       when 'thepiratebay'
-        @search = Tpb::Search.new(Utils.clean_search(keyword).gsub(/\'\w/,''), cid)
+        @search = Tpb::Search.new(Utils.clean_search(keyword).gsub(/\'\w/, ''), cid)
       when 'torrentleech'
         @search = TorrentLeech::Search.new(Utils.clean_search(keyword), url, cid)
       when 'yggtorrent'
@@ -117,7 +117,7 @@ class TorrentSearch
       else
         search = []
     end
-    (1..[output.to_i,1].max).each do |i|
+    (1..[output.to_i, 1].max).each do |i|
       download_id = search.empty? || search['torrents'].nil? || search['torrents'][i - 1].nil? ? 0 : i
       return if download_id == 0
       name = search['torrents'][download_id.to_i - 1]['name']
@@ -131,10 +131,10 @@ class TorrentSearch
     keywords = [keywords] if keywords.is_a?(String)
     keywords.each do |keyword|
       success = nil
-      TORRENT_TRACKERS.map{|x| x[:name]}.each do |type|
+      TORRENT_TRACKERS.map { |x| x[:name] }.each do |type|
         break if success
         next if !only_on_trackers.nil? && !only_on_trackers.empty? && !only_on_trackers.include?(type)
-        next if TORRENT_TRACKERS.map{|x| x[:name]}.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
+        next if TORRENT_TRACKERS.map { |x| x[:name] }.first != type && $speaker.ask_if_needed("Search for '#{keyword}' torrent on #{type}? (y/n)", no_prompt, 'y') != 'y'
         success = self.t_search(type, keyword, limit, category, no_prompt, filter_dead, move_completed, rename_main, main_only, qualities)
       end
     end
@@ -145,7 +145,7 @@ class TorrentSearch
   end
 
   def self.sort_results(results, qualities)
-    MediaInfo.sort_media_files(results.map{|t|t[:file] = t['name']; t}, qualities)
+    MediaInfo.sort_media_files(results.map { |t| t[:file] = t['name']; t }, qualities)
   end
 
   def self.get_site_keywords(type, category = '')
@@ -157,7 +157,7 @@ class TorrentSearch
     keyword_s = keyword + self.get_site_keywords(type, category)
     search = self.get_results(type, keyword_s, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt)
     search = self.get_results(type, keyword, limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt) if keyword_s != keyword && (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
-    search = self.get_results(type, MediaInfo.clear_year(keyword, 0), limit, category, filter_dead, nil, 'seeders', [],  qualities, no_prompt) if keyword.gsub(/\(?\d{4}\)?/,'') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
+    search = self.get_results(type, MediaInfo.clear_year(keyword, 0), limit, category, filter_dead, nil, 'seeders', [], qualities, no_prompt) if keyword.gsub(/\(?\d{4}\)?/, '') != keyword&& (search.empty? || search['torrents'].nil? || search['torrents'].empty?)
     search['torrents'] = sort_results(search['torrents'], qualities) if !qualities.nil? && !qualities.empty?
     if no_prompt.to_i == 0
       i = 1
@@ -188,15 +188,17 @@ class TorrentSearch
       if url.to_s != ''
         success = self.get_torrent_file(type, did, name, url)
       elsif magnet && magnet != ''
-        $pending_magnet_links[did] = magnet
+        Utils.queue_state_add_or_update('pending_magnet_links', {did => magnet})
         success = did
       end
-      $deluge_options[did] = {
-          't_name' => name,
-          'move_completed' => move_completed,
-          'rename_main' => rename_main,
-          'main_only' => main_only.to_i
-      } if success
+      Utils.queue_state_add_or_update('deluge_options', {
+          did => {
+              't_name' => name,
+              'move_completed' => move_completed,
+              'rename_main' => rename_main,
+              'main_only' => main_only.to_i
+          }
+      }) if success
     end
     success
   end

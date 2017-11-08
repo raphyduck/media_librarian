@@ -34,8 +34,8 @@ class Daemon < EventMachine::Connection
     @threads[qname] && @threads[qname]['current_thd'] && @threads[qname]['current_thd'].alive?
   end
 
-  def self.quit(need_to_quit)
-    if need_to_quit && !@is_quitting
+  def self.quit
+    if $librarian.quit && !@is_quitting
       @is_quitting = true
       thread_cache_add('exclusive', ['flush_queues'], Daemon.job_id, 'flush', 1)
       EventMachine::stop
@@ -78,7 +78,7 @@ class Daemon < EventMachine::Connection
     EventMachine.run do
       start_server($api_option)
       EM.add_periodic_timer(1) { schedule(jobs) }
-      EM.add_periodic_timer(1) { Thread.new { quit($librarian.quit) } }
+      EM.add_periodic_timer(1) { Thread.new { quit } }
     end
     $speaker.speak_up('Shutting down')
   end

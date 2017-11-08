@@ -69,7 +69,8 @@ class Librarian
   def run!
     trap_signals
     $speaker.speak_up("Welcome to your library assistant!\n\n")
-    if pid_status($pidfile) == :running && !args.nil? && !args.empty?
+    if pid_status($pidfile) == :running
+      return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there'
       EventMachine.run do
         EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
@@ -153,19 +154,21 @@ class Librarian
       while Find.find($temp_dir).count > 1
         $speaker.speak_up('Waiting for temporary folder to be cleaned')
         sleep 10
-        $deluge_torrents_added = ($deluge_torrents_added + $deluge_torrents_preadded).uniq
+        Utils.queue_state_get('deluge_torrents_added').select { |_, v| v < 2 }.each do |k, _|
+          Utils.queue_state_add_or_update('deluge_torrents_added', {k => 2})
+        end
         $t_client.process_added_torrents
       end
-      if !$deluge_options.empty?
+      unless Utils.queue_state_get('deluge_options').empty?
         $speaker.speak_up('Waiting for completion of all deluge operation')
         sleep 15
         $t_client.process_added_torrents
       end
-      Utils.cleanup_folder unless $dir_to_delete.empty?
+      Utils.cleanup_folder unless Utils.queue_state_get('dir_to_delete').empty?
       $t_client.disconnect
     end
     #Cleanup list
-    TraktList.clean_list('watchlist') unless $cleanup_trakt_list.empty?
+    TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
   end
 end
 

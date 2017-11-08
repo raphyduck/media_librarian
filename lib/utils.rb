@@ -1,6 +1,8 @@
 class Utils
   include Sys
 
+  @tqueues = {}
+
   def self.bash(command)
     escaped_command = Shellwords.escape(command)
     system "bash -c #{escaped_command}"
@@ -17,9 +19,10 @@ class Utils
   end
 
   def self.cleanup_folder
-    $dir_to_delete.each do |f|
-      next if f[:d].to_s == '' || f[:d].to_s == '/'
-      Utils.file_rm(f[:d])
+    Utils.queue_state_get('dir_to_delete').each do |f, _|
+      next if f.to_s == '/'
+      Utils.file_rm(f) if File.exist?(f)
+      Utils.queue_state_remove('dir_to_delete', f)
     end
   end
 
@@ -67,7 +70,7 @@ class Utils
   def self.file_remove_parents(files)
     files = [files] if files.is_a?(String)
     files.each do |f|
-      file_rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select{|e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil?} - %w{ . .. }).empty?
+      file_rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select { |e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil? } - %w{ . .. }).empty?
     end
   end
 
@@ -89,7 +92,7 @@ class Utils
     if $env_flags['pretend'] > 0
       $speaker.speak_up("Would rm_r #{files}")
     else
-        FileUtils.rm_r(files)
+      FileUtils.rm_r(files)
     end
     file_remove_parents(files)
   end
@@ -129,7 +132,7 @@ class Utils
       f = File.basename(path) + '/' + f
       cpt += 1
     end
-    return f.gsub(/^\.\//,''), initial_f.gsub(f, '')
+    return f.gsub(/^\.\//, ''), initial_f.gsub(f, '')
   end
 
   def self.get_path_depth(path, folder)
@@ -236,11 +239,59 @@ class Utils
     return object unless object.is_a?(Array)
     if object.count == 2 && object[0].is_a?(String) && !object[1].is_a?(Array)
       o = Object.const_get(object[0]).new(object[1]) rescue object[1]
-      object = object[0] == 'Hash' ? object[1] : o
+      if object[0] == 'Hash'
+        object = eval(object[1]) rescue object[1]
+      else
+        object = o
+      end
     else
       object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
     end
     object
+  end
+
+  def self.queue_state_add_or_update(qname, el)
+    h = queue_state_get(qname)
+    queue_state_save(qname, h.merge(el))
+  end
+
+  def self.queue_state_get(qname)
+    return @tqueues[qname] if @tqueues[qname]
+    res = $db.get_rows('queues_state', {'queue_name' => qname}).first
+    @tqueues[qname] = Utils.object_unpack(res['value']) rescue {}
+    @tqueues[qname]
+  end
+
+  def self.queue_state_remove(qname, key)
+    h = queue_state_get(qname)
+    h.delete(key)
+    queue_state_save(qname, h)
+  end
+
+  def self.queue_state_save(qname, value)
+    @tqueues[qname] = value
+    r = Utils.object_pack(value)
+    $db.insert_row('queues_state', {
+        'queue_name' => qname,
+        'created_at' => Time.now,
+        'value' => r,
+    }, 1) if r
+    @tqueues[qname]
+  end
+
+  def self.queue_state_select(qname, save = 0, &block)
+    h = queue_state_get(qname)
+    return h.select { |k, v| block.call(k, v) } if save == 0
+    queue_state_save(qname, h.select { |k, v| block.call(k, v) })
+  end
+
+  def self.queue_state_shift(qname)
+    h = queue_state_get(qname)
+    el = h.shift
+    queue_state_save(qname, h)
+    el
+  rescue
+    nil
   end
 
   def self.recursive_symbolize_keys(h)
@@ -267,7 +318,7 @@ class Utils
   end
 
   def self.regularise_media_filename(filename, formatting = '')
-    r = filename.to_s.gsub(/[\'\"\;\:\,]/, '').gsub(/\//,' ')
+    r = filename.to_s.gsub(/[\'\"\;\:\,]/, '').gsub(/\//, ' ')
     r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/, '').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
     r = r.gsub(/[\ \(\)]/, '.') if formatting.to_s.match(/.*nospace.*/)
@@ -322,15 +373,24 @@ class Utils
     return argument if argument.class < Integer
     if argument.class == String
       case argument
-        when /^(.*?)[+,](.*)$/                     then to_sec($1) + to_sec($2)
-        when /^\s*([0-9_]+)\s*\*(.+)$/             then $1.to_i * to_sec($2)
-        when /^\s*[0-9_]+\s*(s(ec(ond)?s?)?)?\s*$/ then argument.to_i
-        when /^\s*([0-9_]+)\s*m(in(ute)?s?)?\s*$/  then $1.to_i *      60
-        when /^\s*([0-9_]+)\s*h(ours?)?\s*$/       then $1.to_i *    3600
-        when /^\s*([0-9_]+)\s*d(ays?)?\s*$/        then $1.to_i *   86400
-        when /^\s*([0-9_]+)\s*w(eeks?)?\s*$/       then $1.to_i *  604800
-        when /^\s*([0-9_]+)\s*months?\s*$/         then $1.to_i * 2419200
-        else                                            0
+        when /^(.*?)[+,](.*)$/ then
+          to_sec($1) + to_sec($2)
+        when /^\s*([0-9_]+)\s*\*(.+)$/ then
+          $1.to_i * to_sec($2)
+        when /^\s*[0-9_]+\s*(s(ec(ond)?s?)?)?\s*$/ then
+          argument.to_i
+        when /^\s*([0-9_]+)\s*m(in(ute)?s?)?\s*$/ then
+          $1.to_i * 60
+        when /^\s*([0-9_]+)\s*h(ours?)?\s*$/ then
+          $1.to_i * 3600
+        when /^\s*([0-9_]+)\s*d(ays?)?\s*$/ then
+          $1.to_i * 86400
+        when /^\s*([0-9_]+)\s*w(eeks?)?\s*$/ then
+          $1.to_i * 604800
+        when /^\s*([0-9_]+)\s*months?\s*$/ then
+          $1.to_i * 2419200
+        else
+          0
       end
     end
   end

@@ -612,10 +612,10 @@ class Library
       end
       Utils.entry_seen('download', e[:identifier]) if download.to_i > 0
       if download.to_i > 0
-        $dir_to_delete << {:id => download, :d => e[:file]} if e[:file].to_s != ''
+        Utils.queue_state_add_or_update('dir_to_delete', {e[:file] => download}) if e[:file].to_s != ''
         if e[:files].is_a?(Array) && !e[:files].empty?
           e[:files].each do |f|
-            $dir_to_delete << {:id => download, :d => f}
+            Utils.queue_state_add_or_update('dir_to_delete', {f => download})
           end
         end
         TraktList.list_cache_add(e[:trakt_list], e[:type], e[:trakt_movie], download) if e[:trakt_movie]
