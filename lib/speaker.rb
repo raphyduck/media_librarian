@@ -35,7 +35,9 @@ class Speaker
 
   def tell_error(e, src)
     puts "In #{src}"
+    $daemon_server.send_data "In #{src}" unless $daemon_server.nil?
     puts e
+    $daemon_server.send_data e unless $daemon_server.nil?
     @logger_error.error("ERROR #{Time.now.utc.to_s} #{src}") if @logger_error
     @logger_error.error(e) if @logger_error
     Thread.current[:email_msg] += "ERROR #{Time.now.utc.to_s} #{src}" + NEW_LINE if Thread.current[:email_msg]

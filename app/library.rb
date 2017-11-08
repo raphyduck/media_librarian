@@ -234,9 +234,8 @@ class Library
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
-      $speaker.speak_up "fetch media box looping"
       unless Utils.check_if_active(active_hours) || Thread.current[:email_msg].to_s == ''
-        Report.sent_out(__method__, Thread.current[:email_msg])
+        Report.sent_out(__method__.to_s, Thread.current[:email_msg])
         Thread.current[:email_msg] = ''
       end
       unless Utils.check_if_active(active_hours)
@@ -267,6 +266,8 @@ class Library
       end
       sleep 3600 unless exit_status.nil?
     end
+  rescue => e
+    $speaker.tell_error(e, "Library.fetch_media_box")
   end
 
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, reverse_folder = [], exclude_folders = [])
