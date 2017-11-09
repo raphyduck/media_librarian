@@ -22,6 +22,8 @@ class Report
   def self.sent_out(object, bs = Thread.current[:email_msg])
     deliver(object_s: object + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: bs) if $email && bs
     Thread.current[:email_msg] = ''
+  rescue => e
+    $speaker.tell_error(e, 'Report.sent_out')
   end
 
   private

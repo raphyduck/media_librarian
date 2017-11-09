@@ -247,8 +247,8 @@ class Library
       while exit_status.nil? && Utils.check_if_active(active_hours)
         fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
         while fetcher.alive?
-          if !Utils.check_if_active(active_hours) || low_b > 18
-            $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
+          if !Utils.check_if_active(active_hours) || low_b > 24
+            $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
             `pgrep -f 'rsync' | xargs kill -15`
             low_b = 0
           end
@@ -263,6 +263,7 @@ class Library
           sleep 10
         end
         exit_status = fetcher.status
+        Thread.current[:email_msg] += fetcher[:email_msg].to_s if Thread.current[:email_msg]
       end
       sleep 3600 unless exit_status.nil?
     end
@@ -271,6 +272,7 @@ class Library
   end
 
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
+    Thread.current[:email_msg] = ''
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
