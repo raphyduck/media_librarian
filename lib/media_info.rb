@@ -260,7 +260,8 @@ class MediaInfo
       movie = $imdb.find_movie_by_id(movie[:imdb_id])
       if movie
         movie = Movie.new(Utils.object_to_hash(movie))
-        cache_add('movie_lookup', title, [movie.title, movie])
+        exact_title = movie.title
+        cache_add('movie_lookup', title, [exact_title, movie])
       end
     end
     exact_title, movie = movie_lookup(title, no_prompt, 0, 1) if movie.nil? && strip_year.to_i == 0

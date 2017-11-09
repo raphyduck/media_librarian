@@ -5,11 +5,6 @@ remote_folder: 'remote/folder'
 ssh_opts:
   port: 22
   keys: 'path/to/identity/file'
-reverse_folder:
-  - '/folder/to/sync/from/local/to/remote'
-move_if_finished:
-  - - '/move/this/folder'
-    - '/to/this/folder'
 clean_remote_folder:
   - '/folder/to/clean'
   - 'second/folder/to/clean'

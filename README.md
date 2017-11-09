@@ -8,6 +8,7 @@ TODO:
     * Expire trakt authentication token and send email when needed
     * Refactor email notification - add an email sending task that would flush out all pending logs
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
+    * Speed up app, remove unnecessary dependency, avoid loading dependencies if just sending command to daemon
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
     

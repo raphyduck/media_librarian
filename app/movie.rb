@@ -7,6 +7,8 @@ class Movie
     @title = options['title']
     @release_date = options['release_date']
     @genres = options['genres']
+    year = DateTime.parse(@release_date).year.to_i rescue (Date.today + 3.years).year.to_i
+    @title += " (#{year})" if MediaInfo.identify_release_year(@title).to_i == 0
   end
 
   def self.identifier(movie_name, year)
@@ -15,12 +17,6 @@ class Movie
 
   def release_date
     DateTime.parse(@release_date) rescue nil
-  end
-
-  def title
-    t = @title
-    t += " (#{year})" if MediaInfo.identify_release_year(@title).to_i == 0
-    t
   end
 
   def year

@@ -245,7 +245,7 @@ class Library
       exit_status = nil
       low_b = 0
       while exit_status.nil? && Utils.check_if_active(active_hours)
-        fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, reverse_folder, exclude_folders_in_check) }
+        fetcher = Thread.new { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
         while fetcher.alive?
           if !Utils.check_if_active(active_hours) || low_b > 18
             $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 18
@@ -270,7 +270,7 @@ class Library
     $speaker.tell_error(e, "Library.fetch_media_box")
   end
 
-  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, move_if_finished = [], clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, reverse_folder = [], exclude_folders = [])
+  def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
@@ -288,37 +288,12 @@ class Library
         $speaker.speak_up result.error
       end
     end
-    if rsynced_clean && move_if_finished && move_if_finished.is_a?(Array)
-      move_if_finished.each do |m|
-        next unless m.is_a?(Array)
-        next unless FileTest.directory?(m[0])
-        Utils.file_mkdir(m[1]) unless FileTest.directory?(m[1])
-        $speaker.speak_up("Moving #{m[0]} folder to #{m[1]}")
-        Utils.file_mv(Dir.glob("#{m[0]}/*"), m[1]) rescue nil
-      end
-    end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
         $speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
         Net::SSH.start(remote_server, remote_user, Utils.recursive_symbolize_keys(ssh_opts)) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
-      end
-    end
-    if reverse_folder && reverse_folder.is_a?(Array) && Utils.check_if_active(active_hours)
-      reverse_folder.each do |f|
-        reverse_box = "#{remote_user}@#{remote_server}:#{f}"
-        $speaker.speak_up("Starting reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
-        Rsync.run("#{f}/", "#{reverse_box}", opts, ssh_opts['port'], ssh_opts['keys']) do |result|
-          if result.success?
-            result.changes.each do |change|
-              $speaker.speak_up "#{change.filename} (#{change.summary})"
-            end
-          else
-            $speaker.speak_up result.error
-          end
-        end
-        $speaker.speak_up("Finished reverse folder synchronisation with #{reverse_box} - #{Time.now.utc}")
       end
     end
     compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10, 'exclude_path' => exclude_folders}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean || Utils.check_if_active(active_hours)
