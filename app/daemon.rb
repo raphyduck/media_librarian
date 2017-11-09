@@ -57,9 +57,9 @@ class Daemon < EventMachine::Connection
               thread_cache_add(task, args, job_id, task)
             end
         end
-        launch_command
       end
     end
+    launch_command
     if @last_flush + 60.minutes < Time.now
       thread_cache_add('exclusive', ['flush_queues'], Daemon.job_id, 'flush')
       @last_flush = Time.now
