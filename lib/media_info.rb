@@ -151,7 +151,7 @@ class MediaInfo
       end
       break if t_folder == r_folder || jk > 0
     end
-    @media_folders[base_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[base_folder + filename.gsub(r_folder, '')]
+    @media_folders[base_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[base_folder + filename.gsub(r_folder, '')] || (base_folder + filename.gsub(r_folder, '')).to_s == ''
     return title, item
   end
 

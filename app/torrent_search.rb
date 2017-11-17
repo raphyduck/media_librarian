@@ -9,7 +9,7 @@ class TorrentSearch
     status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
     return if status.nil?
     progress = status['progress'].to_i
-    return if progress < 100 && Date.parse(download[:created_at]) >= Date.today - timeout.days
+    return if progress < 100 && Date.parse(download[:created_at]) >= Date.today - timeout.to_i.days
     if progress >= 100
       Utils.entry_seen('global', identifier)
     elsif Date.parse(download[:created_at]) < Date.today - timeout.days

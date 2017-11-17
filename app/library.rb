@@ -402,7 +402,6 @@ class Library
       $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping")
       return files
     end
-    $speaker.speak_up("Adding item #{item_name} to list") if Env.debug?
     unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0 || file[:type].to_s != 'file'
       f_path = rename_media_file(file[:name],
                                  (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
@@ -418,6 +417,7 @@ class Library
     end
     full_name, identifiers, info = MediaInfo.parse_media_filename(file[:name], type, item, item_name, base_folder)
     return files if identifiers.empty? || full_name == ''
+    $speaker.speak_up("Adding item #{full_name} to list") if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
     files = MediaInfo.media_add(item_name,
                                 type,
