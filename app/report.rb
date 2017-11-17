@@ -20,7 +20,7 @@ class Report
   end
 
   def self.push_email(object, ebody)
-    deliver(object_s: object.to_s, body_s: ebody.to_s)
+    deliver(object_s: object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
   rescue => e
     $speaker.tell_error(e, 'Report.push_email', 0)
     Daemon.thread_cache_add('email', ['Report', 'push_email', object, ebody], Daemon.job_id, 'email', 0, 1) if Daemon.is_daemon?

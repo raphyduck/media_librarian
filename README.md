@@ -12,6 +12,7 @@ TODO:
     * Speed up app, remove unnecessary dependency, avoid loading dependencies if just sending command to daemon (http://greyblake.com/blog/2012/09/02/ruby-perfomance-tricks/, https://github.com/byroot/bootscale/blob/master/README.md)
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
+    * Automatically check for new commits on master and auto-update (as a task)
     
 * Ebooks/Comics:
     * Read calibre library/metadata
