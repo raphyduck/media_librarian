@@ -114,8 +114,7 @@ class TorrentClient
 
   def process_download_torrents
     return if Env.pretend?
-    $speaker.speak_up("#{LINE_SEPARATOR}\nDownloading torrent(s) added during the session (if any)",
-                      Utils.queue_state_get('deluge_options').count + Utils.queue_state_get('pending_magnet_links').count > 0 ? 1 : 0)
+    $speaker.speak_up("#{LINE_SEPARATOR}\nDownloading torrent(s) added during the session (if any)", 0)
     Find.find($temp_dir).each do |path|
       unless FileTest.directory?(path)
         if path.end_with?('torrent')

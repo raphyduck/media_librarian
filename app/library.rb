@@ -1,13 +1,6 @@
 class Library
 
   @refusal = 0
-  @processed = []
-
-  def self.already_processed?(item)
-    already_processed = @processed.include?(item)
-    @processed << item
-    return already_processed
-  end
 
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
@@ -228,11 +221,10 @@ class Library
     $speaker.speak_up("List #{name} is up to date!")
   end
 
-  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, reverse_folder: [], move_if_finished: [], clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
+  def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
       unless Utils.check_if_active(active_hours) || Thread.current[:email_msg].to_s == ''
         Report.sent_out(__method__.to_s, Thread.current[:email_msg])
-        Thread.current[:email_msg] = ''
       end
       unless Utils.check_if_active(active_hours)
         sleep 30

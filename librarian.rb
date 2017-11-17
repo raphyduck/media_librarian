@@ -85,7 +85,6 @@ class Librarian
   end
 
   def self.help
-    $speaker.speak_up "yes you are in pretend mode" if Env.pretend?
     $args_dispatch.show_available(APP_NAME, $available_actions)
   end
 

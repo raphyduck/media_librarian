@@ -1,11 +1,12 @@
 class MediaInfo
 
   @tv_episodes = {}
-  @media_folders = {}
-  @cache_metadata = {}
+  @media_folders = Vash.new
+  @cache_metadata = Vash.new
+  CACHING_TTL = 3600
 
   def self.cache_add(type, keyword, result, full_save = nil)
-    @cache_metadata[type.to_s + keyword.to_s] = result.clone
+    @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = Utils.object_pack(result)
     $db.insert_row('metadata_search', {
         :keywords => keyword,
@@ -31,7 +32,7 @@ class MediaInfo
         next
       end
       result = Utils.object_unpack(r[:result])
-      @cache_metadata[type.to_s + keyword.to_s] = result
+      @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result
       return result
     end
     nil
@@ -149,7 +150,7 @@ class MediaInfo
       end
       break if t_folder == r_folder || jk > 0
     end
-    @media_folders[base_folder + i_folder + filename.gsub(r_folder, '')] = [title, item] unless @media_folders[i_folder + filename.gsub(r_folder, '')]
+    @media_folders[base_folder + i_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[i_folder + filename.gsub(r_folder, '')]
     return title, item
   end
 
