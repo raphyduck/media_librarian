@@ -1,3 +1,4 @@
+require File.dirname(__FILE__) + '/vash'
 class MediaInfo
 
   @tv_episodes = {}
