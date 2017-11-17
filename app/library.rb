@@ -383,7 +383,7 @@ class Library
         $speaker.speak_up("'#{d[:name]}'")
       end
       if remove_duplicates.to_i > 0
-        $speaker.speak_up('Will now remove duplicates:')
+        $speaker.speak_up('Will now remove duplicates')
         dup_files.each do |d|
           next if dup_files.index(d) == 0 && no_prompt.to_i > 0
           if $speaker.ask_if_needed("Remove file #{d[:name]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'

@@ -27,7 +27,7 @@ class Report
   end
 
   def self.sent_out(object, bs = Thread.current[:email_msg])
-    Librarian.route_cmd(['Report', 'push_email', object, bs], 1) if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
+    Librarian.route_cmd(['Report', 'push_email', object, bs], 1, 'email') if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
     Thread.current[:email_msg] = ''
   end
 
