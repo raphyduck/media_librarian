@@ -129,7 +129,7 @@ class MediaInfo
     in_path = Utils.is_in_path(@media_folders.map { |k, _| k }, filename)
     return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
     title, item = nil, nil
-    filename, i_folder = Utils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
+    filename, _ = Utils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
     r_folder, jk = filename, 0
     while item.nil?
       t_folder, r_folder = Utils.get_top_folder(r_folder)
@@ -151,7 +151,7 @@ class MediaInfo
       end
       break if t_folder == r_folder || jk > 0
     end
-    @media_folders[base_folder + i_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[i_folder + filename.gsub(r_folder, '')]
+    @media_folders[base_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[base_folder + filename.gsub(r_folder, '')]
     return title, item
   end
 

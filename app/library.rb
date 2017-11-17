@@ -363,8 +363,7 @@ class Library
           ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
           item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
           if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
-            destination_file = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
-            process_folder(type: ttype, folder: File.dirname(destination_file), remove_duplicates: remove_duplicates, no_prompt: 1) if destination_file.to_s != ''
+            rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
           else
             #TODO: Handle flac,...
             destination = full_p.gsub(completed_folder, destination_folder)
