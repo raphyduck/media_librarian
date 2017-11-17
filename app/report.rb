@@ -19,11 +19,16 @@ class Report
     end
   end
 
-  def self.sent_out(object, bs = Thread.current[:email_msg])
-    deliver(object_s: object + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: bs) if $email && bs
-    Thread.current[:email_msg] = ''
+  def self.push_email(object, ebody)
+    deliver(object_s: object.to_s, body_s: ebody.to_s)
   rescue => e
-    $speaker.tell_error(e, 'Report.sent_out')
+    $speaker.tell_error(e, 'Report.push_email', 0)
+    Daemon.thread_cache_add('email', ['Report', 'push_email', object, ebody], Daemon.job_id, 'email', 0, 1) if Daemon.is_daemon?
+  end
+
+  def self.sent_out(object, bs = Thread.current[:email_msg])
+    Librarian.route_cmd(['Report', 'push_email', object, bs], 1) if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
+    Thread.current[:email_msg] = ''
   end
 
   private

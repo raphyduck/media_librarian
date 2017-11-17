@@ -34,15 +34,24 @@ class Utils
   end
 
   def self.entry_deja_vu?(category, entry)
-    dejavu = $db.get_rows('seen', {'category' => 'global', 'entry' => entry.downcase.gsub(' ', '')})
-    dejavu = $db.get_rows('seen', {'category' => category, 'entry' => entry.downcase.gsub(' ', '')}) if dejavu.empty?
-    dejavu = !dejavu.empty?
-    $speaker.speak_up("#{category.to_s.titleize} entry #{entry} already seen") if dejavu
+    entry = [entry] unless entry.is_a?(Array)
+    dejavu = false
+    entry.each do |e|
+      a = $db.get_rows('seen', {:category => 'global'}, {'entry like' => "'%#{e.downcase.gsub(' ', '')}%'"})
+      a = $db.get_rows('seen', {:category => category}, {'entry like' => "'%#{e.downcase.gsub(' ', '')}%'"}) if a.empty?
+      dejavu = true unless a.empty?
+    end
+    $speaker.speak_up("#{category.to_s.titleize} entry #{entry.join} already seen") if dejavu
     dejavu
   end
 
-  def self.entry_seen(category, entry)
-    $db.insert_row('seen', {'category' => category, 'entry' => entry.downcase.gsub(' ', ''), 'created_at' => Time.now})
+  def self.entry_seen(category, entry, tid = '')
+    entry = entry.join if entry.is_a?(Array)
+    $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', ''), :torrent_id => tid, :created_at => Time.now})
+  end
+
+  def self.entry_update(category, entry, torrent_id = '')
+    $db.update_rows('seen', {:torrent_id => torrent_id}, {:category => category, :entry => entry})
   end
 
   def self.extract_archive(type, archive, destination)
@@ -58,12 +67,12 @@ class Utils
   end
 
   def self.file_mkdir(dirs)
-    return $speaker.speak_up("Would mkdir #{dirs}") if $env_flags['pretend'] > 0
+    return $speaker.speak_up("Would mkdir #{dirs}") if Env.pretend?
     FileUtils.mkdir(dirs)
   end
 
   def self.file_mkdir_p(dirs)
-    return $speaker.speak_up("Would mkdir_p #{dirs}") if $env_flags['pretend'] > 0
+    return $speaker.speak_up("Would mkdir_p #{dirs}") if Env.pretend?
     FileUtils.mkdir_p(dirs)
   end
 
@@ -75,12 +84,12 @@ class Utils
   end
 
   def self.file_mv(original, destination)
-    return $speaker.speak_up("Would mv #{original} #{destination}") if $env_flags['pretend'] > 0
+    return $speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
     FileUtils.mv(original, destination)
   end
 
   def self.file_rm(files)
-    if $env_flags['pretend'] > 0
+    if Env.pretend?
       $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != ''
     else
       FileUtils.rm(files) if files.is_a?(Array) || files.to_s != ''
@@ -89,7 +98,7 @@ class Utils
   end
 
   def self.file_rm_r(files)
-    if $env_flags['pretend'] > 0
+    if Env.pretend?
       $speaker.speak_up("Would rm_r #{files}")
     else
       FileUtils.rm_r(files)
@@ -98,7 +107,7 @@ class Utils
   end
 
   def self.file_rmdir(dirs)
-    if $env_flags['pretend'] > 0
+    if Env.pretend?
       $speaker.speak_up("Would rmdir #{dirs}")
     else
       FileUtils.rmdir(dirs)
@@ -107,7 +116,7 @@ class Utils
   end
 
   def self.file_ln(original, destination)
-    return $speaker.speak_up("Would ln #{original} to #{destination}") if $env_flags['pretend'] > 0
+    return $speaker.speak_up("Would ln #{original} to #{destination}") if Env.pretend?
     FileUtils.ln(original, destination)
   end
 
@@ -132,6 +141,7 @@ class Utils
       f = File.basename(path) + '/' + f
       cpt += 1
     end
+    f.gsub!('//','/')
     return f.gsub(/^\.\//, ''), initial_f.gsub(f, '')
   end
 
@@ -214,7 +224,7 @@ class Utils
   def self.parse_filename_template(tpl, metadata)
     return nil if metadata.nil?
     FILENAME_NAMING_TEMPLATE.each do |k|
-      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(metadata[k], $1) }
+      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { Utils.regularise_media_filename(recursive_symbolize_keys(metadata)[k.to_sym], $1) }
     end
     tpl
   end
@@ -257,8 +267,8 @@ class Utils
 
   def self.queue_state_get(qname)
     return @tqueues[qname] if @tqueues[qname]
-    res = $db.get_rows('queues_state', {'queue_name' => qname}).first
-    @tqueues[qname] = Utils.object_unpack(res['value']) rescue {}
+    res = $db.get_rows('queues_state', {:queue_name => qname}).first
+    @tqueues[qname] = Utils.object_unpack(res[:value]) rescue {}
     @tqueues[qname]
   end
 
@@ -272,9 +282,9 @@ class Utils
     @tqueues[qname] = value
     r = Utils.object_pack(value)
     $db.insert_row('queues_state', {
-        'queue_name' => qname,
-        'created_at' => Time.now,
-        'value' => r,
+        :queue_name => qname,
+        :created_at => Time.now,
+        :value => r,
     }, 1) if r
     @tqueues[qname]
   end
@@ -346,7 +356,7 @@ class Utils
       breakflag = 1 if breakflag == 0 && FileTest.directory?(path) && !filter_criteria['includedir'] && !filter_criteria['dironly']
       breakflag = 1 if breakflag == 0 && !FileTest.directory?(path) && filter_criteria['dironly']
       breakflag = 1 if breakflag == 0 && filter_criteria['name'] && !File.basename(path).downcase.include?(filter_criteria['name'].downcase)
-      breakflag = 1 if breakflag == 0 && filter_criteria['regex'] && !File.basename(path).downcase.match(filter_criteria['regex'].downcase) && !parent.match(filter_criteria['regex'])
+      breakflag = 1 if breakflag == 0 && filter_criteria['regex'] && !path.downcase.match(filter_criteria['regex'].downcase)
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude'] && File.basename(path).include?(filter_criteria['exclude'])
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
       breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
@@ -360,7 +370,6 @@ class Utils
       if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
         Find.prune if FileTest.directory?(path)
       end
-      next if breakflag > 0
       break if filter_criteria['return_first']
     end
     search_folder

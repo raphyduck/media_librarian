@@ -1,14 +1,14 @@
 class TraktList
   def self.access_token(vals)
-    {"access_token" => vals['access_token'],
+    {"access_token" => vals[:access_token],
      "token_type" => "bearer",
-     "expires_in" => (Time.parse(vals['expires_in'])-Time.now).to_i,
-     "refresh_token" => vals['refresh_token'],
+     "expires_in" => (Time.parse(vals[:expires_in])-Time.now).to_i,
+     "refresh_token" => vals[:refresh_token],
      "scope" => "public"}
   end
 
   def self.add_to_list(items, list_type, list_name = '', type = 'movies')
-    return if $env_flags['pretend'] > 0
+    return if Env.pretend?
     authenticate!
     items = [items] unless items.is_a?(Array)
     items.map! { |i| i.merge({'collected_at' => TIme.now}) } if list_type == 'collection'
@@ -16,16 +16,16 @@ class TraktList
   end
 
   def self.clean_list(list_to_clean = Utils.queue_state_get('cleanup_trakt_list'))
-    return if $env_flags['pretend'] > 0
+    return if Env.pretend?
     list_to_clean.each do |list_name, list|
-      list.map{|m| m[:t]}.uniq.each do |type|
-        TraktList.remove_from_list(list.select{|m| m[:t] == type}.map{|m| m[:c]}, list_name, type)
+      list.map { |m| m[:t] }.uniq.each do |type|
+        TraktList.remove_from_list(list.select { |m| m[:t] == type }.map { |m| m[:c] }, list_name, type)
       end
     end
   end
 
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
-    return if $env_flags['pretend'] > 0
+    return if Env.pretend?
     authenticate!
     $trakt.list.create_list({
                                 'name' => name,
@@ -38,17 +38,17 @@ class TraktList
 
   def self.authenticate!
     raise 'No trakt account configured' unless $trakt
-    token_rows = $db.get_rows('trakt_auth', {'account' => $trakt_account})
+    token_rows = $db.get_rows('trakt_auth', {:account => $trakt_account})
     token_row = token_rows.first
-    if token_row.nil? || Time.parse(token_row['expires_in']) < Time.now
+    if token_row.nil? || Time.parse(token_row[:expires_in]) < Time.now
       token = $trakt.access_token
       $db.delete_rows('trakt_auth', token_row)
       $db.insert_row('trakt_auth', {
-          'account' => $trakt_account,
-          'access_token' => token['access_token'],
-          'refresh_token' => token['refresh_token'],
-          'created_at' => Time.now,
-          'expires_in' => Time.now + token['expires_in'].to_i.seconds
+          :account => $trakt_account,
+          :access_token => token['access_token'],
+          :refresh_token => token['refresh_token'],
+          :created_at => Time.now,
+          :expires_in => Time.now + token['expires_in'].to_i.seconds
       }) if token
     else
       token = self.access_token(token_row)
@@ -85,7 +85,7 @@ class TraktList
         c = {}
         c[type[0...-1]] = m
         c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
-        c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/,'').to_s
+        c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/, '').to_s
         c['plays'] = m['playcount']
         c['last_watched_at'] = m['lastplayed']
         h << c
@@ -100,7 +100,7 @@ class TraktList
   end
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [], cr_value = 0, folder = '')
-    print "Ok, will filter all #{filter_type.gsub('_',' ')} items, it can take a long time..."
+    print "Ok, will filter all #{filter_type.gsub('_', ' ')} items, it can take a long time..."
     complete = if filter_type.include?('entirely')
                  1
                elsif filter_type.include?('partially')
@@ -117,7 +117,7 @@ class TraktList
           get_watched(type, complete).each do |h|
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
-                if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/,'').to_i == id.gsub(/\D/,'').to_i
+                if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/, '').to_i == id.gsub(/\D/, '').to_i
                   list.delete(item)
                   break
                 end
@@ -134,7 +134,7 @@ class TraktList
           if show.nil? || (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))
             list.delete(item)
           end
-        when 'released_before','released_after'
+        when 'released_before', 'released_after'
           next unless type == 'movies'
           break if cr_value.to_i == 0
           next if item[type[0...-1]]['year'].to_i == 0
@@ -176,7 +176,7 @@ class TraktList
 
   def self.list_cache_add(list_name, type, item, id = Time.now.to_i)
     ex = Utils.queue_state_get('cleanup_trakt_list')[list_name] || []
-    Utils.queue_state_add_or_update('cleanup_trakt_list', ex.push({:id => id, :c => item, :t => type}))
+    Utils.queue_state_add_or_update('cleanup_trakt_list', {list_name => ex.push({:id => id, :c => item, :t => type})})
   end
 
   def self.list_cache_remove(item_id)
@@ -214,8 +214,12 @@ class TraktList
     parsed
   end
 
+  def self.refresh_auth
+    authenticate!
+  end
+
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
-    return if $env_flags['pretend'] > 0
+    return if Env.pretend?
     authenticate!
     if list == 'watchlist'
       $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)
@@ -227,7 +231,7 @@ class TraktList
   def self.search_list(type, item, list)
     title = item[type] && item[type]['title'] ? item[type]['title'] : nil
     return false unless title && list && !list.empty?
-    r = list.select {|x| x['title'] && x['title'] == title}
+    r = list.select { |x| x['title'] && x['title'] == title }
     if r && !r.empty?
       return true
     else

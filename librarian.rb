@@ -1,6 +1,6 @@
 REQ = %w(archive/zip bundler/setup active_support/time base64 bencode deluge digest/md5 digest/sha1 eventmachine find
 fuzzystringmatch hanami/mailer io/console imdb_party json logger mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
-shellwords simple_args_dispatch simple_config_man sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
+shellwords simple_args_dispatch simple_config_man simple-rss sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
 xbmc-client yaml)
 
 REQ.each do |r|
@@ -34,18 +34,21 @@ class Librarian
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
           :handle_completed_download => ['Library', 'handle_completed_download'],
-          :process_download_list => ['Library', 'process_download_list'],
           :process_folder => ['Library', 'process_folder']
       },
       :music => {
           :create_playlists => ['Muic', 'create_playlists'],
       },
       :torrent => {
-          :search => ['TorrentSearch', 'search'],
-          :random_pick => ['TorrentSearch', 'random_pick']
+          :check_all_download => ['TorrentSearch', 'check_all_download'],
+          :search => ['TorrentSearch', 'search_from_torrents']
+      },
+      :trakt => {
+          :refresh_auth => ['TraktList', 'refresh_auth']
       },
       :usage => ['Librarian', 'help'],
-      :flush_queues => ['Librarian', 'flush_queues']
+      :flush_queues => ['Librarian', 'flush_queues'],
+      :send_email => ['Report', 'push_email']
   }
 
   def initialize
@@ -69,25 +72,7 @@ class Librarian
   def run!
     trap_signals
     $speaker.speak_up("Welcome to your library assistant!\n\n")
-    if pid_status($pidfile) == :running
-      return if args.nil? || args.empty?
-      $speaker.speak_up 'A daemon is already running, sending execution there'
-      EventMachine.run do
-        EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
-        EM.open_keyboard(ClientInput)
-      end
-    else
-      run_command(args)
-      Librarian.flush_queues
-    end
-  end
-
-  def run_command(cmd)
-    Thread.current[:email_msg] = ''
-    $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n")
-    $action = cmd[0].to_s + ' ' + cmd[1].to_s
-    SimpleArgsDispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
-    Report.sent_out($action, Thread.current[:email_msg]) if $action && $env_flags['no_email_notif'].to_i == 0
+    Librarian.route_cmd(args)
   end
 
   def leave
@@ -100,8 +85,8 @@ class Librarian
   end
 
   def self.help
-    $speaker.speak_up('Showing help')
-    SimpleArgsDispatch.show_available(APP_NAME, $available_actions)
+    $speaker.speak_up "yes you are in pretend mode" if Env.pretend?
+    $args_dispatch.show_available(APP_NAME, $available_actions)
   end
 
   def write_pid
@@ -169,6 +154,50 @@ class Librarian
     end
     #Cleanup list
     TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
+  end
+
+  def self.route_cmd(args, internal = 0, queue = 'exclusive')
+    if Daemon.is_daemon?
+      Daemon.thread_cache_add(queue, args, Daemon.job_id, 'direct', 0, internal)
+    elsif $librarian.pid_status($pidfile) == :running
+      return if args.nil? || args.empty?
+      $speaker.speak_up 'A daemon is already running, sending execution there'
+      EventMachine.run do
+        EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
+        EM.open_keyboard(ClientInput)
+      end
+    else
+      run_command(args, internal)
+      Librarian.flush_queues
+    end
+  end
+
+  def self.run_command(cmd, direct = 0, queue = 'exclusive')
+    start = Time.now
+    Thread.current[:email_msg] = ''
+    Thread.current[:send_email] = 0
+    $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
+    $action = cmd[0].to_s + ' ' + cmd[1].to_s
+    if direct.to_i > 0
+      m = cmd.shift
+      a = cmd.shift
+      p = Object.const_get(m).method(a.to_sym)
+      cmd.nil? ? p.call : p.call(*cmd)
+    else
+      $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
+    end
+    Report.sent_out($action, Thread.current[:email_msg]) if $action && Env.email_notif?
+    $speaker.speak_up("Command executed in #{(Time.now - start)} seconds", 0)
+  rescue => e
+    $speaker.tell_error(e, "Librarian.run_command(#{cmd}")
+  end
+
+  def self.burst_thread(&block)
+    t = Thread.new { block.call }
+    t[:debug] = Thread.current[:debug].to_i
+    t[:no_email_notif] = Thread.current[:no_email_notif].to_i
+    t[:pretend] = Thread.current[:pretend].to_i
+    t
   end
 end
 

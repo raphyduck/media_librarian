@@ -12,7 +12,7 @@ class Movie
   end
 
   def self.identifier(movie_name, year)
-    "#{movie_name}#{year}"
+    "movie#{movie_name}#{year}"
   end
 
   def release_date

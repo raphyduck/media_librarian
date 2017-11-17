@@ -5,63 +5,35 @@ module Storage
       @s_db = SQLite3::Database.new db_path unless @s_db
     end
 
-    def delete_rows(table, conditions = {})
-      q = "delete from #{table}"
-      q += ' where ' if (conditions && !conditions.empty?)
-      q += conditions.map { |k, v| "#{k} = (?)" }.join(' and ') if conditions && !conditions.empty?
-      return $speaker.speak_up("Would #{q}") if $env_flags['pretend'] > 0
-      ins = @s_db.prepare(q)
-      ins.execute(conditions.map { |_, v| v })
-    rescue => e
-      $speaker.tell_error(e, "Storage::Db.new.delete_rows")
-    end
-
-    def execute(raw_sql)
-      @s_db.execute(raw_sql)
-    end
-
-    def get_rows(table, conditions = {}, additionals = [])
-      q = "select * from #{table}"
-      q += ' where ' if (conditions && !conditions.empty?) || (additionals && !additionals.empty?)
-      q += conditions.map { |k, _| "#{k} = (?)" }.join(' and ') if conditions && !conditions.empty?
-      q += ' and ' if conditions && !conditions.empty? && additionals && !additionals.empty?
-      q += additionals.join(' and ') if additionals && !additionals.empty?
-      ins = @s_db.prepare(q)
-      r = ins.execute(conditions.map { |_, v| v })
-      res = []
-      r.each do |l|
-        i = -1
-        res << Hash[current_schema(table).map { |k| i+=1; [k, l[i]] }]
-      end
-      res
-    rescue => e
-      $speaker.tell_error(e, "Storage::Db.new.get_rows")
-      []
-    end
-
-    def insert_row(table, values, or_replace = 0)
-      return $speaker.speak_up("Would insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k }.join(',')}) values (#{values.map { |_, v| v.to_s[0..50] }.join(',')})") if $env_flags['pretend'] > 0
-      ins = @s_db.prepare("insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k }.join(',')}) values (#{values.map { |_, _| '?' }.join(',')})")
-      ins.execute(values.map { |_, v| v.to_s })
-    end
-
-    def insert_rows(table, rows)
-      rows.each do |values|
-        insert_row(table, values)
-      end
-    end
-
     def db_schema
       {
+          'queues_state' => {
+              'queue_name' => 'varchar(200) primary key',
+              'value' => 'text',
+              'created_at' => 'datetime'
+          },
           'metadata_search' => {
               'keywords' => 'text primary key',
               'type' => 'integer',
               'result' => 'text',
               'created_at' => 'datetime'
           },
-          'queues_state' => {
-              'queue_name' => 'varchar(200) primary key',
-              'value' => 'text',
+          'waiting_download' => {
+              'name' => 'varchar(500) primary key',
+              'identifiers' => 'text',
+              'metadata' => 'text',
+              'torrent_link' => 'text',
+              'magnet_link' => 'text',
+              'move_completed' => 'text',
+              'rename_main' => 'text',
+              'main_only' => 'text',
+              'created_at' => 'datetime',
+              'waiting_until' => 'datetime',
+          },
+          'seen' => {
+              'category' => 'varchar(200)',
+              'entry' => 'text',
+              'torrent_id' => 'text',
               'created_at' => 'datetime'
           },
           'trakt_auth' => {
@@ -70,13 +42,50 @@ module Storage
               'refresh_token' => 'varchar(200)',
               'created_at' => 'datetime',
               'expires_in' => 'datetime'
-          },
-          'seen' => {
-              'category' => 'varchar(200)',
-              'entry' => 'text',
-              'created_at' => 'datetime'
           }
       }
+    end
+
+    def delete_rows(table, conditions = {}, additionals = {})
+      q = "delete from #{table}"
+      q << prepare_conditions(conditions, additionals)
+      return $speaker.speak_up("Would #{q}") if Env.pretend?
+      ins = @s_db.prepare(q)
+      ins.execute(conditions.map { |_, v| v } + additionals.map { |_, v| v })
+    rescue => e
+      $speaker.tell_error(e, "Storage::Db.new.delete_rows")
+    end
+
+    def execute(raw_sql)
+      @s_db.execute(raw_sql)
+    end
+
+    def get_rows(table, conditions = {}, additionals = {})
+      q = "select * from #{table}"
+      q << prepare_conditions(conditions, additionals)
+      ins = @s_db.prepare(q)
+      r = ins.execute(conditions.map { |_, v| v } + additionals.map { |_, v| v })
+      res = []
+      r.each do |l|
+        i = -1
+        res << Hash[current_schema(table).map { |k| i+=1; [k.to_sym, l[i]] }]
+      end
+      res
+    rescue => e
+      $speaker.tell_error(e, "Storage::Db.new.get_rows")
+      []
+    end
+
+    def insert_row(table, values, or_replace = 0)
+      return $speaker.speak_up("Would insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k.to_s }.join(',')}) values (#{values.map { |_, v| v.to_s[0..250] }.join(',')})") if Env.pretend?
+      ins = @s_db.prepare("insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k.to_s }.join(',')}) values (#{values.map { |_, _| '?' }.join(',')})")
+      ins.execute(values.map { |_, v| v.to_s })
+    end
+
+    def insert_rows(table, rows)
+      rows.each do |values|
+        insert_row(table, values)
+      end
     end
 
     def setup(db_path)
@@ -89,10 +98,29 @@ module Storage
       end
     end
 
+    def self.update_rows(table, values, conditions, additionals)
+      q = "update #{table} set #{values.map { |c, _| c.to_s + ' = (?)' }.join(', ')}"
+      q << prepare_conditions(conditions, additionals)
+      return $speaker.speak_up("Would #{q}") if Env.pretend?
+      ins = @s_db.prepare(q)
+      ins.execute(values.map { |_, v| v } + conditions.map { |_, v| v } + additionals.map { |_, v| v })
+    rescue => e
+      $speaker.tell_error(e, "Storage::Db.new.update_rows")
+    end
+
     private
 
     def current_schema(table)
       @s_db.execute("PRAGMA table_info('#{table}')").map { |c| c[1] } rescue []
+    end
+
+    def prepare_conditions(conditions = {}, additionals = {})
+      q = ''
+      q << ' where ' if (conditions && !conditions.empty?) || (additionals && !additionals.empty?)
+      q << conditions.map { |k, _| "#{k} = (?)" }.join(' and ') if conditions && !conditions.empty?
+      q << ' and ' if conditions && !conditions.empty? && additionals && !additionals.empty?
+      q << additionals.map { |k, _| "#{k} (?)" }.join(' and ') if additionals && !additionals.empty?
+      q
     end
   end
 

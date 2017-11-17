@@ -20,14 +20,15 @@ module RarbgTracker
 
     def crawl_link(link)
       {
-          'name' => link['title'],
-          'size' => link['size'],
-          'link' => link['info_page'],
-          'magnet_link' => link['download'],
-          'seeders' => link['seeders'],
-          'leechers' => link['leechers'],
-          'id' => Time.now.to_i,
-          'added' => link['pubdate'],
+          :name => link['title'],
+          :size => link['size'],
+          :link => link['info_page'],
+          :magnet_link => link['download'],
+          :seeders => link['seeders'],
+          :leechers => link['leechers'],
+          :id => Time.now.to_i,
+          :added => link['pubdate'],
+          :tracker => tracker
       }
     end
 

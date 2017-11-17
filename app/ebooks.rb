@@ -12,8 +12,6 @@ class Ebooks
     Utils.file_rm_r(path) if remove_original.to_i > 0
     $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic")
     return skip_compress
-  rescue => e
-    $speaker.tell_error(e, "Library.compress_comics")
   end
 
   def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '')

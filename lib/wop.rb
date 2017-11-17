@@ -6,12 +6,12 @@ module Wop
 
     attr_accessor :url
 
-    def initialize(search, url = nil)
+    def initialize(search, url = nil, cid = '')
       @base_url = 'https://worldofp2p.net'
       # Order by seeds desc
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
-      @url = url || "#{@base_url}/browse.php?search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
+      @url = url || "#{@base_url}/browse.php?#{cid}search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
       if $tracker_client[@base_url].nil?
         $tracker_client[@base_url] = Mechanize.new
         $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
@@ -52,15 +52,16 @@ module Wop
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          'name' => name,
-          'size' => size,
-          'link' => @base_url + '/' + links[0]['href'],
-          'torrent_link' => @base_url + '/' + tlink,
-          'magnet_link' => '',
-          'seeders' => cols[9].text.to_i,
-          'leechers' => cols[10].text.to_i,
-          'id' => links[0]['href'].gsub(/[\w\.]*\?id=(\d+)&.*/, '\1').to_s,
-          'added' => cols[6].text.gsub(/\n/, ''),
+          :name => name,
+          :size => size,
+          :link => @base_url + '/' + links[0]['href'],
+          :torrent_link => @base_url + '/' + tlink,
+          :magnet_link => '',
+          :seeders => cols[9].text.to_i,
+          :leechers => cols[10].text.to_i,
+          :id => links[0]['href'].gsub(/[\w\.]*\?id=(\d+)&.*/, '\1').to_s,
+          :added => cols[6].text.gsub(/\n/, ''),
+          :tracker => tracker
       }
     end
 

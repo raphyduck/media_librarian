@@ -6,11 +6,11 @@ module Yggtorrent
 
     attr_accessor :url
 
-    def initialize(search, url = nil)
+    def initialize(search, url = nil, cid = '')
       @base_url = 'https://yggtorrent.com'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/engine/search?q=#{URI.escape(search)}"
+      @url = url || "#{@base_url}/engine/search?#{cid}q=#{URI.escape(search)}"
       if $tracker_client[@base_url].nil?
         $tracker_client[@base_url] = Mechanize.new
         $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
@@ -51,15 +51,16 @@ module Yggtorrent
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          'name' => links[0].text,
-          'size' => size,
-          'link' => links[0]['href'],
-          'torrent_link' => tlink,
-          'magnet_link' => '',
-          'seeders' => cols[4].text.to_i,
-          'leechers' => cols[5].text.to_i,
-          'id' => links[0].text.gsub(/\/torrent\/(\d+)\/.*/,'\1').to_s,
-          'added' => cols[2].text.gsub(/\n/,''),
+          :name => links[0].text,
+          :size => size,
+          :link => links[0]['href'],
+          :torrent_link => tlink,
+          :magnet_link => '',
+          :seeders => cols[4].text.to_i,
+          :leechers => cols[5].text.to_i,
+          :id => links[0].text.gsub(/\/torrent\/(\d+)\/.*/,'\1').to_s,
+          :added => cols[2].text.gsub(/\n/,''),
+          :tracker => tracker
       }
     end
 

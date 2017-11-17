@@ -25,7 +25,7 @@ class TorrentClient
 
   def download(url, move_completed = nil, magnet = 0)
     options = {}
-    if move_completed
+    if move_completed.to_s != ''
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
@@ -38,7 +38,7 @@ class TorrentClient
 
   def download_file(file, filename, move_completed = nil)
     options = {}
-    if move_completed && move_completed != ''
+    if move_completed.to_s != ''
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
@@ -72,7 +72,7 @@ class TorrentClient
   end
 
   def process_added_torrents
-    return if $env_flags['pretend'] > 0
+    return if Env.pretend?
     while Utils.queue_state_get('deluge_torrents_added').length != 0
       tid = Utils.queue_state_shift('deluge_torrents_added')
       tid = tid[0]
@@ -81,19 +81,20 @@ class TorrentClient
       begin
         status = $t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
         $speaker.speak_up("Processing added torrent #{status['name']}")
-        opts = Utils.queue_state_select('deluge_options') { |_, v| v['info_hash'] == tid }
-        opts = Utils.queue_state_select('deluge_options') { |_, v| v['t_name'] == status['name'] } if opts.nil?
+        opts = Utils.queue_state_select('deluge_options') { |_, v| v[:info_hash] == tid }
+        opts = Utils.queue_state_select('deluge_options') { |_, v| v[:t_name] == status['name'] } if opts.nil?
         if opts.nil? || opts.empty?
-          opts = Utils.queue_state_select('deluge_options') { |_, v| $str_closeness.getDistance(v['t_name'][0..30], status['name'][0..30]) > 0.9 }
+          opts = Utils.queue_state_select('deluge_options') { |_, v| $str_closeness.getDistance(v[:t_name][0..30], status['name'][0..30]) > 0.9 }
         end
         (opts || []).each do |did, o|
+          Utils.entry_update('download', o[:entry_id], tid)
           set_options = {}
           File.delete($temp_dir + "/#{did}.torrent") rescue nil
-          if (o['rename_main'] && o['rename_main'] != '') || (o['main_only'] && o['main_only'].to_i > 0)
+          if (o[:rename_main] && o[:rename_main] != '') || (o[:main_only] && o[:main_only].to_i > 0)
             main_file = find_main_file(status)
             if main_file
-              set_options = main_file_only(status, main_file) if o['main_only']
-              rename_main_file(tid, status['files'], o['rename_main']) if o['rename_main'] && o['rename_main'] != ''
+              set_options = main_file_only(status, main_file) if o[:main_only]
+              rename_main_file(tid, status['files'], o[:rename_main]) if o[:rename_main] && o[:rename_main] != ''
             end
           end
           unless set_options.empty?
@@ -112,9 +113,9 @@ class TorrentClient
   end
 
   def process_download_torrents
-    return if $env_flags['pretend'] > 0
-    $speaker.speak_up("#{LINE_SEPARATOR}
-Downloading torrent(s) added during the session (if any)")
+    return if Env.pretend?
+    $speaker.speak_up("#{LINE_SEPARATOR}\nDownloading torrent(s) added during the session (if any)",
+                      Utils.queue_state_get('deluge_options').count + Utils.queue_state_get('pending_magnet_links').count > 0 ? 1 : 0)
     Find.find($temp_dir).each do |path|
       unless FileTest.directory?(path)
         if path.end_with?('torrent')
@@ -127,8 +128,9 @@ Downloading torrent(s) added during the session (if any)")
             begin
               meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
               meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
-              Utils.queue_state_add_or_update('deluge_options', {did => opts.merge({'info_hash' => meta_id})})
-              download_file(torrent, File.basename(path), opts['move_completed'])
+              Utils.queue_state_add_or_update('deluge_options', {did => opts.merge({:info_hash => meta_id})})
+              Utils.entry_update('download', opts[:entry_id], meta_id)
+              download_file(torrent, File.basename(path), opts[:move_completed])
               Utils.queue_state_add_or_update('deluge_torrents_added', {meta_id => 1})
             rescue => e
               TraktList.list_cache_remove(did)
@@ -143,7 +145,7 @@ Downloading torrent(s) added during the session (if any)")
     Utils.queue_state_get('pending_magnet_links').each do |did, m|
       opts = Utils.queue_state_get('deluge_options')[did]
       begin
-        download(m, opts['move_completed'], 1) unless opts.nil?
+        download(m, opts[:move_completed], 1) unless opts.nil?
       rescue => e
         TraktList.list_cache_remove(did)
         Util.queue_state_select('dir_to_delete', 1) { |_, v| v != did }

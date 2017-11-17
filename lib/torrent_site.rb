@@ -23,26 +23,31 @@ module TorrentSite
     end
 
     def download(url, destination, name)
-      authenticate! unless $tracker_client_logged[@base_url]
-      return unless $tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       $tracker_client[@base_url].get(url).save("#{destination}/#{name}.torrent")
     end
 
     private
 
+    def tracker
+      TORRENT_TRACKERS.key(@base_url) || @url
+    end
+
     def page
-      authenticate! if PRIVATE_TRACKERS.map{|x| x[:url]}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       @page ||= $tracker_client[@base_url].get(@url)
     end
 
     def generate_links(limit = NUMBER_OF_LINKS)
-      links = {'torrents' => [], 'query' => @query}
+      links = []
       return links unless results_found?
-      link_nodes = get_rows
-      links['total'] = link_nodes.length
-      link_nodes.each { |link| l = crawl_link(link); links['torrents'] << l unless l.nil? }
-      links['torrents'] = links['torrents'].first(limit)
+      get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
+      links = links.first(limit)
       links
+    rescue => e
+      $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links")
+      []
     end
   end
 end

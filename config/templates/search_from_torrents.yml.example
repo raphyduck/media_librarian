@@ -1,0 +1,45 @@
+torrent_sources:
+  type: 'sub' #Or 'search'
+  trackers:
+    - torrentleech:
+        timeframe: 1 hour
+    - rss:
+      - http://feed.first
+      - https://feed.second:
+          timeframe: 3 hours
+filter_sources:
+  filesystem:
+    existing_folder:
+      movies: '/folder/of/movies'
+      shows: '/folder/of/tvseries'
+    include_specials: 1 #For tv shows
+    replace: 1
+    filter_criteria:
+      days_newer:
+      days_older:
+    delta: 10
+  search:
+    keywords:
+      - 'keyword'
+      - 'nother'
+  trakt:
+    list_name: 'watchlist'
+    include_specials: 1 #For tv shows
+    delta: 10
+    existing_folder:
+      movies: '/folder/of/movies'
+      shows: '/folder/of/tvseries'
+category: shows
+no_prompt: 0
+qualities:
+  min_quality: 720p hdtv
+  max_quality: 1080p
+  min_size: 100
+  max_size: 3000
+  timeframe: 1 hour
+download_criteria:
+  rename_main: 'rename file'
+  main_only: 0
+  destination:
+    shows: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}'
+    movies: '/home/user/Movie/'

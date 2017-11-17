@@ -24,7 +24,7 @@ class Daemon < EventMachine::Connection
       if @threads[qname]['current_thd'].nil?
         args = q.shift
         next if args.nil?
-        @threads[qname]['current_thd'] = Thread.new { $librarian.run_command(args[1]) }
+        @threads[qname]['current_thd'] = Librarian.burst_thread { Librarian.run_command(args[2], args[1]) }
         @threads[qname]['current_jid'] = args[0]
       end
     end
@@ -70,7 +70,7 @@ class Daemon < EventMachine::Connection
 
   def self.start(scheduler: 'scheduler')
     return $speaker.speak_up 'Daemon already started' if is_daemon?
-    jobs = SimpleArgsDispatch.load_template(scheduler, $template_dir)
+    jobs = $args_dispatch.load_template(scheduler, $template_dir)
     $speaker.speak_up("Will now work in the background")
     $librarian.daemonize
     $librarian.write_pid
@@ -78,7 +78,7 @@ class Daemon < EventMachine::Connection
     EventMachine.run do
       start_server($api_option)
       EM.add_periodic_timer(1) { schedule(jobs) }
-      EM.add_periodic_timer(1) { Thread.new { quit } }
+      EM.add_periodic_timer(1) { Librarian.burst_thread { quit } }
     end
     $speaker.speak_up('Shutting down')
   end
@@ -93,9 +93,9 @@ class Daemon < EventMachine::Connection
     $librarian.quit = true
   end
 
-  def self.thread_cache_add(queue, args, jid, task, wait = 0)
+  def self.thread_cache_add(queue, args, jid, task, wait = 0, internal = 0)
     @queues[queue] = [] if @queues[queue].nil?
-    @queues[queue] << [jid, args]
+    @queues[queue] << [jid, internal, args]
     @threads[queue] = {} if @threads[queue].nil?
     @last_execution[task] = Time.now
     result = @threads[queue][jid]
@@ -109,10 +109,11 @@ class Daemon < EventMachine::Connection
   def post_init
     @client = nil
     $daemon_server = self
+    $speaker.daemon($daemon_server)
   end
 
   def receive_data(data)
-    data = eval(data) rescue data
+    data = YAML.load(data.gsub('=>', ': ')) rescue data
     if data.is_a?(Array) && !@client.nil?
       EM.defer(Proc.new do
         Daemon.thread_cache_add('exclusive', data, Daemon.job_id, 'rcv', 1)
@@ -126,7 +127,7 @@ class Daemon < EventMachine::Connection
           @client = data.gsub('hello from ', '').to_s
           send_data('listening')
         when /^user_input/
-          $user_input = data.to_s.gsub('user_input ', '')
+          $speaker.user_input(data.to_s.gsub('user_input ', ''))
         else
           send_data('identify yourself first')
       end

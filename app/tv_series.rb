@@ -22,28 +22,27 @@ class TvSeries
   end
 
   def self.identifier(series_name, season, episode, part)
-    "#{series_name}S#{season.to_i}E#{episode.to_i}P#{part}"
+    "tv#{series_name}S#{season.to_i}E#{episode.to_i}P#{part}"
   end
 
-  def self.monitor_tv_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, handle_missing = {})
-    missing_eps, tv_episodes = {}, {}
-    return if episodes_in_files[:shows].nil?
-    $speaker.speak_up("Will look for missing episodes from tv shows")
+  def self.list_missing_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, missing_eps = {})
+    tv_episodes = {}
+    return missing_eps if episodes_in_files[:shows].nil?
     episodes_in_files[:shows].each do |series_name, show|
       _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
       tv_episodes[series_name].each do |ep|
-        next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.days) || MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1, nil))
+        next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) || MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1, nil))
         next if include_specials.to_i == 0 && ep.season_number.to_i == 0
         unless MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           $speaker.speak_up("Missing #{full_name} - #{ep.name} (aired on #{ep.air_date}).")
-          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0)) || handle_missing.nil? || handle_missing.empty?
-          attrs = {:season => ep.season_number.to_i, :episode => ep.number.to_i, :part => 0}
-          if handle_missing['move_to'].to_s != ''
-            metadata = MediaInfo.identify_metadata(identifier(series_name, ep.season_number, ep.number, 0), 'shows', series_name, ep, no_prompt)
-            attrs.merge!({:move_to => Utils.parse_filename_template(handle_missing['move_to'].to_s, metadata),
-                         :release_date => ep.air_date})
-          end
+          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
+          attrs = {
+              :series_name => series_name,
+              :episode_season => ep.season_number.to_i,
+              :episode => [ep.number.to_i],
+              :part => [0]
+          }
           missing_eps = MediaInfo.media_add(series_name,
                                             'shows',
                                             full_name,
@@ -54,9 +53,7 @@ class TvSeries
           )
         end
       end
-      Library.search_from_list(list: missing_eps, no_prompt: no_prompt, torrent_search: handle_missing) if !handle_missing.nil? && !handle_missing.empty?
     end
-  rescue => e
-    $speaker.tell_error(e, "TvSeries.monitor_tv_episodes")
+    missing_eps
   end
 end

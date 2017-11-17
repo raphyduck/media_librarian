@@ -36,14 +36,15 @@ module Tpb
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          'name' => links[0].text,
-          'size' => size,
-          'link' => @base_url + links[0]['href'],
-          'magnet_link' => links[1]['href'],
-          'seeders' => cols[2].text.to_i,
-          'leechers' => cols[3].text.to_i,
-          'id' => links[0]['href'].gsub(/\/torrent\/(\d+)\/.*/,'\1').to_i,
-          'added' => created_at,
+          :name => links[0].text,
+          :size => size,
+          :link => @base_url + links[0]['href'],
+          :magnet_link => links[1]['href'],
+          :seeders => cols[2].text.to_i,
+          :leechers => cols[3].text.to_i,
+          :id => links[0]['href'].gsub(/\/torrent\/(\d+)\/.*/,'\1').to_i,
+          :added => created_at,
+          :tracker => tracker
       }
     end
 

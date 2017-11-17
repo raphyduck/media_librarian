@@ -2,6 +2,7 @@
 $tracker_client = {}
 $tracker_client_logged = {}
 #Some constants
+USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
@@ -21,11 +22,11 @@ FILENAME_NAMING_TEMPLATE=%w(
 )
 REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
 VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)$'
-PRIVATE_TRACKERS = [{:name => 'yggtorrent', :url => 'https://yggtorrent.com'},
-                    {:name => 'torrentleech', :url => 'https://www.torrentleech.org'},
-                    {:name => 'wop', :url => 'https://worldofp2p.net'}]
-TORRENT_TRACKERS = PRIVATE_TRACKERS + [{:name => 'rarbg', :url => 'https://rarbg.to'},
-                                       {:name => 'thepiratebay', :url => 'https://thepiratebay.org'}]
+PRIVATE_TRACKERS = {'yggtorrent' => 'https://yggtorrent.com',
+                    'torrentleech' => 'https://www.torrentleech.org',
+                    'wop' => 'https://worldofp2p.net'}
+TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => 'https://rarbg.to',
+                                           'thepiratebay' => 'https://thepiratebay.org'})
 FOLDER_HIERARCHY = {
     'shows' => 3,
     'movies' => 0

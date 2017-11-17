@@ -6,9 +6,10 @@ This program is made to answer my various needs for automation in the management
 TODO:
 * General
     * Expire trakt authentication token and send email when needed
-    * Refactor email notification - add an email sending task that would flush out all pending logs
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
-    * Speed up app, remove unnecessary dependency, avoid loading dependencies if just sending command to daemon
+    * Expire @cache in media_info
+    * Parse YAML template file and alert in case of errors
+    * Speed up app, remove unnecessary dependency, avoid loading dependencies if just sending command to daemon (http://greyblake.com/blog/2012/09/02/ruby-perfomance-tricks/, https://github.com/byroot/bootscale/blob/master/README.md)
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
     
@@ -20,11 +21,11 @@ TODO:
     * Subscribe to artists automatically and download and process new albums
     
 * Movies
+    * List missing movies from movies set
     * Automatically watch future movies releases and add them to watchlist based on criteria (genres,?)
 
 * Torrent search:
     * Distinguish season pack and download if season episode not found and replace existing season with it
     
 * Library:
-    * Follow RSS feeds and download based on list input and filter
     * Use alternative sources to identify series
