@@ -193,12 +193,13 @@ class TorrentSearch
   def self.processing_results(filter:, sources: {}, results: nil, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
     torrents = []
     reload = (results.nil? || results.empty?) ? 1 : 0
+    waiting_downloads = $db.get_rows('waiting_download')
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter.each do |f|
       next unless f[:full_name]
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
-      $speaker.speak_up "Looking for #{f[:full_name]}" if reload > 0
+      $speaker.speak_up("Looking for #{f[:full_name]}", 0) if reload > 0
       i = 1
       if reload > 0
         [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)].uniq.each do |k|
@@ -220,6 +221,16 @@ class TorrentSearch
       subset.map! { |t| t[:files] }
       subset.flatten!
       subset.select! { |t| !Utils.entry_deja_vu?('download', t[:identifiers]) }
+      waiting_downloads.each do |d|
+        d[:identifiers] = (eval(d[:identifiers]) rescue d[:identifiers])
+        d[:tattributes] = Utils.object_unpack(d[:tattributes])
+        next unless f[:identifiers] == d[:identifiers]
+        if DateTime.parse(d[:waiting_until]) > DateTime.now
+          $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
+        else
+          subset << d[:tattributes].merge({:tracker => 'waiting_download'})
+        end
+      end
       filtered = MediaInfo.sort_media_files(subset, qualities)
       subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
       next if subset.empty?
@@ -241,26 +252,6 @@ class TorrentSearch
       end
       download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
       torrents << subset[download_id.to_i - 1] if subset[download_id.to_i - 1]
-    end
-    if no_prompt.to_i > 0
-      $db.get_rows('waiting_download').each do |d|
-        d[:identifiers] = eval(d[:identifiers]) rescue d[:identifiers]
-        next unless filter.map { |f| f[:identifiers] }.include?(d[:identifiers])
-        if DateTime.parse(d[:waiting_until]) > DateTime.now
-          $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
-          next
-        end
-        $speaker.speak_up("Will compare waiting download #{d} with existing result", 0) if Env.debug?
-        et = torrents.select { |t| t[:identifiers] == d[:identifiers] && t[:name] != d[:name] }
-        best = MediaInfo.sort_media_files(et + [d], qualities).first
-        $speaker.speak_up("Best quality is #{best}", 0) if Env.debug?
-        if best[:name] == d[:name]
-          torrents << d.merge({:tracker => 'waiting_download'})
-        else
-          $db.delete_rows('waiting_download', {:name => d[:name]})
-        end
-        torrents.select! { |t| t[:identifiers] != best[:identifiers] || t[:name] == best[:name] }
-      end
     end
     torrents.each do |t|
       torrent_download(t, no_prompt)
@@ -304,11 +295,7 @@ class TorrentSearch
       $db.insert_row('waiting_download', {
           :identifiers => torrent[:identifiers],
           :name => torrent[:name],
-          :torrent_link => torrent[:torrent_link],
-          :magnet_link => torrent[:magnet_link],
-          :move_completed => torrent[:move_completed],
-          :rename_main => torrent[:rename_main],
-          :main_only => torrent[:main_only],
+          :tattributes => Utils.object_pack(torrent),
           :created_at => Time.now,
           :waiting_until => [Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_quality].to_s).seconds,
                              Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_tracker].to_s).seconds].max

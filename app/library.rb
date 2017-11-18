@@ -396,8 +396,8 @@ class Library
     files
   end
 
-  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, attrs = {}, base_folder = '', ids = {})
-    item_name, item = MediaInfo.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids)
+  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
+    item_name, item = MediaInfo.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless no_prompt.to_i == 0 || item
       $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping", 0)
       return files
@@ -415,9 +415,9 @@ class Library
       )
       file[:name] = f_path unless f_path == ''
     end
-    full_name, identifiers, info = MediaInfo.parse_media_filename(file[:name], type, item, item_name, base_folder)
+    full_name, identifiers, info = MediaInfo.parse_media_filename(file[:name], type, item, item_name, no_prompt, folder_hierarchy, base_folder)
     return files if identifiers.empty? || full_name == ''
-    $speaker.speak_up("Adding item #{full_name} to list", 0) if Env.debug?
+    $speaker.speak_up("Adding #{file[:type]} #{full_name} to list", 0) if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
     files = MediaInfo.media_add(item_name,
                                 type,

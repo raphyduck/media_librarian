@@ -21,12 +21,7 @@ module Storage
           'waiting_download' => {
               'name' => 'varchar(500) primary key',
               'identifiers' => 'text',
-              'metadata' => 'text',
-              'torrent_link' => 'text',
-              'magnet_link' => 'text',
-              'move_completed' => 'text',
-              'rename_main' => 'text',
-              'main_only' => 'text',
+              'tattributes' => 'text',
               'created_at' => 'datetime',
               'waiting_until' => 'datetime',
           },

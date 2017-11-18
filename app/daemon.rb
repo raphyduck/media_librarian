@@ -6,6 +6,12 @@ class Daemon < EventMachine::Connection
   @queues = {}
   @is_daemon = false
   @is_quitting = false
+  @daemons = []
+
+  def self.add_daemon(d)
+    @daemons << d
+    $speaker.daemon(d)
+  end
 
   def self.is_daemon?
     @is_daemon
@@ -89,7 +95,7 @@ class Daemon < EventMachine::Connection
 
   def self.stop
     return $speaker.speak_up "No daemon running" unless is_daemon?
-    $daemon_server.send_data('Will shutdown after pending operations')
+    $speaker.speak_up('Will shutdown after pending operations')
     $librarian.quit = true
   end
 
@@ -108,8 +114,7 @@ class Daemon < EventMachine::Connection
 
   def post_init
     @client = nil
-    $daemon_server = self
-    $speaker.daemon($daemon_server)
+    Daemon.add_daemon(self)
   end
 
   def receive_data(data)

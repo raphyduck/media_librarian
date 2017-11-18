@@ -1,8 +1,8 @@
-MIN_REQ = %w(eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3 sys-filesystem)
-FULL_REQ = %w(bundler/setup archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find
-io/console imdb_party mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
-shellwords simple-rss sys/filesystem titleize trakt tvdb_party tvmaze unrar
-xbmc-client yaml)
+MIN_REQ = %w(eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
+sys-filesystem)
+FULL_REQ = %w(bundler/setup archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find io/console imdb_party
+mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems shellwords simple-rss sys/filesystem titleize trakt tvdb_party
+tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin

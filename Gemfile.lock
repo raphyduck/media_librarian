@@ -1,8 +1,8 @@
 GIT
   remote: https://github.com/raphyduck/deluge-rpc.git
-  revision: 6cbe4f11a4df4996485c54e118eb1a2079c7707c
+  revision: 7f7cf7ae956f36831933fe00562176455f6f3676
   specs:
-    deluge-rpc (0.1.5)
+    deluge-rpc (0.1.6)
       concurrent-ruby (~> 0.7)
       rencoder (~> 0.1)
 
@@ -139,11 +139,11 @@ GEM
       netrc (~> 0.8)
     ruby-rc4 (0.1.5)
     simple-rss (1.3.1)
-    simple_args_dispatch (0.3.5)
+    simple_args_dispatch (0.3.6)
       simple_speaker (~> 0.2.0)
     simple_config_man (0.3.8)
       simple_speaker (~> 0.2.0)
-    simple_speaker (0.2.2)
+    simple_speaker (0.2.3)
     sqlite3 (1.3.13)
     sys-filesystem (1.1.8)
       ffi
@@ -183,7 +183,7 @@ DEPENDENCIES
   simple-rss
   simple_args_dispatch
   simple_config_man
-  simple_speaker
+  simple_speaker (~> 0.2.3)
   sqlite3
   sys-filesystem
   titleize

@@ -35,20 +35,15 @@ class TvSeries
         next if include_specials.to_i == 0 && ep.season_number.to_i == 0
         unless MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
+          full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
           $speaker.speak_up("Missing #{full_name} - #{ep.name} (aired on #{ep.air_date})", 0)
           next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
-          attrs = {
-              :series_name => series_name,
-              :episode_season => ep.season_number.to_i,
-              :episode => [ep.number.to_i],
-              :part => [0]
-          }
           missing_eps = MediaInfo.media_add(series_name,
                                             'shows',
                                             full_name,
-                                            identifier(series_name, ep.season_number, ep.number, 0),
-                                            attrs,
-                                            '',
+                                            identifiers,
+                                            info,
+                                            {},
                                             missing_eps
           )
         end

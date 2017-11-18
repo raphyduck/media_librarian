@@ -1,5 +1,7 @@
 # media_librarian
 
+WARNING: Alpha stage. Expect things to break and sky to fall.
+
 What is it?
 This program is made to answer my various needs for automation in the management of various media collections.
 
