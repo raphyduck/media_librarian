@@ -1,9 +1,10 @@
-REQ = %w(archive/zip bundler/setup active_support/time base64 bencode deluge digest/md5 digest/sha1 eventmachine find
-fuzzystringmatch hanami/mailer io/console imdb_party json logger mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
-shellwords simple_args_dispatch simple_config_man simple-rss sqlite3 sys/filesystem titleize trakt tvdb_party tvmaze unrar
+MIN_REQ = %w(eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3 sys-filesystem)
+FULL_REQ = %w(bundler/setup archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find
+io/console imdb_party mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems
+shellwords simple-rss sys/filesystem titleize trakt tvdb_party tvmaze unrar
 xbmc-client yaml)
 
-REQ.each do |r|
+MIN_REQ.each do |r|
   begin
     require r
   rescue LoadError
@@ -55,11 +56,11 @@ class Librarian
 
   def initialize
     @args = ARGV
+    @loaded = false
     #Require libraries
     Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
-    Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
   end
 
   def daemonize
@@ -81,13 +82,11 @@ class Librarian
     $speaker.speak_up("End of session, good bye...")
   end
 
-  def self.reconfigure
-    return $speaker.speak_up "Can not configure application when launched as a daemon" if Daemon.is_daemon?
-    SimpleConfigMan.reconfigure($config_file, $config_example)
+  def loaded
+    @loaded
   end
 
   def self.help
-    #$t_client.
     $args_dispatch.show_available(APP_NAME, $available_actions)
   end
 
@@ -121,6 +120,19 @@ class Librarian
     :dead
   rescue Errno::EPERM
     :not_owned
+  end
+
+  def requirments
+    FULL_REQ.each do |r|
+      begin
+        require r
+      rescue LoadError
+        puts "You need to install the #{r} gem by running `bundle install`"
+        raise
+      end
+    end
+    Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
+    @loaded = true
   end
 
   def suppress_output
@@ -158,6 +170,11 @@ class Librarian
     TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
   end
 
+  def self.reconfigure
+    return $speaker.speak_up "Can not configure application when launched as a daemon" if Daemon.is_daemon?
+    SimpleConfigMan.reconfigure($config_file, $config_example)
+  end
+
   def self.route_cmd(args, internal = 0, queue = 'exclusive')
     if Daemon.is_daemon?
       Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, 0, internal)
@@ -169,6 +186,7 @@ class Librarian
         EM.open_keyboard(ClientInput)
       end
     else
+      $librarian.requirments unless $librarian.loaded
       run_command(args, internal)
       Librarian.flush_queues
     end

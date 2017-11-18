@@ -1,3 +1,5 @@
+#String comparator
+$str_closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
 #Set global variables
 $tracker_client = {}
 $tracker_client_logged = {}

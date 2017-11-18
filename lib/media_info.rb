@@ -7,6 +7,7 @@ class MediaInfo
   CACHING_TTL = 3600
 
   def self.cache_add(type, keyword, result, full_save = nil)
+    $speaker.speak_up "Refreshing cache for #{keyword}" if Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = Utils.object_pack(result)
     $db.insert_row('metadata_search', {

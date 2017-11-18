@@ -300,6 +300,7 @@ class TorrentSearch
 
   def self.torrent_download(torrent, no_prompt = 0)
     if torrent[:tracker] != 'waiting_download' && no_prompt.to_i > 0 && (torrent[:timeframe_quality].to_s != '' || torrent[:timeframe_tracker].to_s != '')
+      $speaker.speak_up("Setting timeframe for #{torrent[:name]}")
       $db.insert_row('waiting_download', {
           :identifiers => torrent[:identifiers],
           :name => torrent[:name],

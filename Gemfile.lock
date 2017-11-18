@@ -1,8 +1,8 @@
 GIT
   remote: https://github.com/raphyduck/deluge-rpc.git
-  revision: 694a1caa9c7c1613c289e33bb217364ba6bbc4b4
+  revision: 6cbe4f11a4df4996485c54e118eb1a2079c7707c
   specs:
-    deluge-rpc (0.1.4)
+    deluge-rpc (0.1.5)
       concurrent-ruby (~> 0.7)
       rencoder (~> 0.1)
 
@@ -56,15 +56,6 @@ GIT
       i18n
       json (>= 1.4.5)
 
-PATH
-  remote: vendor/gems/activesupport-4.2.7.1
-  specs:
-    activesupport (4.2.7.1)
-      i18n (~> 0.7)
-      minitest (~> 5.1)
-      thread_safe (~> 0.3, >= 0.3.4)
-      tzinfo (~> 1.1)
-
 GEM
   remote: http://rubygems.org/
   specs:
@@ -72,6 +63,11 @@ GEM
     RubyInline (3.12.4)
       ZenTest (~> 4.3)
     ZenTest (4.11.1)
+    activesupport (4.2.10)
+      i18n (~> 0.7)
+      minitest (~> 5.1)
+      thread_safe (~> 0.3, >= 0.3.4)
+      tzinfo (~> 1.1)
     afm (0.2.2)
     archive-zip (0.10.0)
       io-like (~> 0.3.0)
@@ -143,10 +139,10 @@ GEM
       netrc (~> 0.8)
     ruby-rc4 (0.1.5)
     simple-rss (1.3.1)
-    simple_args_dispatch (0.3.4)
-      simple_speaker (~> 0.1.4)
-    simple_config_man (0.3.7)
-      simple_speaker (~> 0.1.4)
+    simple_args_dispatch (0.3.5)
+      simple_speaker (~> 0.2.0)
+    simple_config_man (0.3.8)
+      simple_speaker (~> 0.2.0)
     simple_speaker (0.2.2)
     sqlite3 (1.3.13)
     sys-filesystem (1.1.8)
@@ -156,7 +152,7 @@ GEM
     titleize (1.4.1)
     transproc (1.0.2)
     ttfunk (1.5.1)
-    tvdb_party (0.9.1)
+    tvdb_party (0.9.3)
       httparty (>= 0.6.1)
     tzinfo (1.2.4)
       thread_safe (~> 0.1)
@@ -169,7 +165,6 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  activesupport!
   archive-zip
   bencode
   deluge-rpc!
