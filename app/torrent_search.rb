@@ -6,16 +6,21 @@ class TorrentSearch
       return if d.empty?
       download = d.first
     end
-    status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
-    return if status.nil?
-    progress = status['progress'].to_i
-    return if progress < 100 && Date.parse(download[:created_at]) >= Date.today - timeout.to_i.days
+    progress = 0
+    $speaker.speak_up("Checking status of download #{download[:entry]} (tid #{download[:torrent_id]})", 0)
+    progress = -1 if download[:torrent_id].to_s == ''
+    if progress >= 0
+      status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
+      progress = status['progress'].to_i rescue 0
+    end
+    $speaker.speak_up("Progress for #{download[:entry]} is #{progress}", 0)
+    return if (progress >= 0 && progress < 100) && Date.parse(download[:created_at]) >= Date.today - timeout.to_i.days
     if progress >= 100
       Utils.entry_seen('global', identifier)
-    elsif Date.parse(download[:created_at]) < Date.today - timeout.days
+    elsif Date.parse(download[:created_at]) < Date.today - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
-      Report.sent_out("Failed download - #{identifier}") if $action
-      $t_client.remove_torrent(download[:torrent_id], true)
+      Report.sent_out("Failed download - #{identifier}")
+      $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0
     end
     $db.delete_rows('seen', {:category => 'download', :entry => identifier})
   end
@@ -239,15 +244,21 @@ class TorrentSearch
     end
     if no_prompt.to_i > 0
       $db.get_rows('waiting_download').each do |d|
-        d[:identifiers] = eval(d[:identifiers]) rescue nil
-        next unless MediaInfo.media_exist?(filter, d[:identifiers])
+        d[:identifiers] = eval(d[:identifiers]) rescue d[:identifiers]
+        next unless filter.map { |f| f[:identifiers] }.include?(d[:identifiers])
         if DateTime.parse(d[:waiting_until]) > DateTime.now
-          $speaker.speak_up "Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}"
+          $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
           next
         end
+        $speaker.speak_up("Will compare waiting download #{d} with existing result", 0) if Env.debug?
         et = torrents.select { |t| t[:identifiers] == d[:identifiers] && t[:name] != d[:name] }
         best = MediaInfo.sort_media_files(et + [d], qualities).first
-        torrents << d.merge({:tracker => 'waiting_download'}) if best[:name] == d[:name]
+        $speaker.speak_up("Best quality is #{best}", 0) if Env.debug?
+        if best[:name] == d[:name]
+          torrents << d.merge({:tracker => 'waiting_download'})
+        else
+          $db.delete_rows('waiting_download', {:name => d[:name]})
+        end
         torrents.select! { |t| t[:identifiers] != best[:identifiers] || t[:name] == best[:name] }
       end
     end
@@ -333,6 +344,8 @@ class TorrentSearch
         $db.delete_rows('waiting_download', {:identifiers => torrent[:identifiers].to_s})
       end
     end
+  rescue => e
+    $speaker.tell_error(e, "TorrentSearch.download()")
   end
 
 end

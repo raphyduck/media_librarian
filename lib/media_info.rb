@@ -125,7 +125,8 @@ class MediaInfo
     return p, (p != '' ? 1 : 0)
   end
 
-  def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '')
+  def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '', ids = {})
+    ids = {} if ids.nil?
     in_path = Utils.is_in_path(@media_folders.map { |k, _| k }, filename)
     return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
     title, item = nil, nil
@@ -139,13 +140,13 @@ class MediaInfo
             t_folder = t_folder.match(/^(\[[^\]])?(.*[\. ]\(?\d{4}\)?)[\. ]/i)[2].to_s.gsub('.', ' ') rescue t_folder
             jk += 1
           end
-          title, item = movie_lookup(t_folder, no_prompt)
+          title, item = movie_lookup(t_folder, no_prompt, 0, 0, ids['imdb'])
         when 'shows'
           if item.nil? && t_folder == r_folder
             t_folder = t_folder.match(/^(\[[^\]])?(.*)[s\. _\^\[]\d{1,3}[ex]\d{1,4}/i)[2].to_s.gsub('.', ' ') rescue t_folder
             jk += 1
           end
-          title, item = tv_show_search(t_folder, no_prompt)
+          title, item = tv_show_search(t_folder, no_prompt, ids['tvdb'])
         else
           title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
       end
@@ -276,9 +277,14 @@ class MediaInfo
     return title, item
   end
 
-  def self.movie_lookup(title, no_prompt = 0, search_alt = 0, strip_year = 0)
+  def self.movie_lookup(title, no_prompt = 0, search_alt = 0, strip_year = 0, imdb_id = '')
     cached = cache_get('movie_lookup', title)
     return cached if cached
+    if imdb_id.to_s != ''
+      exact_title, movie = $imdb.find_movie_by_id(imdb_id.to_s)
+      cache_add('tv_show_search', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
+      return exact_title, movie unless movie.nil?
+    end
     s = strip_year.to_i > 0 ? clear_year(title, no_prompt) : title
     movies = $imdb.find_by_title(s)
     movies.select! do |m|
@@ -299,11 +305,11 @@ class MediaInfo
       end
     end
     exact_title, movie = movie_lookup(title, no_prompt, 0, 1) if movie.nil? && strip_year.to_i == 0
-    cache_add('movie_lookup', title, [exact_title, movie], movie)
+    cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
     return exact_title, movie
   rescue => e
     $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    cache_add('movie_lookup', title, [title, nil], nil)
+    cache_add('movie_lookup', title.to_s + imdb_id.to_s, [title, nil], nil)
     return title, nil
   end
 
@@ -392,8 +398,9 @@ class MediaInfo
     cached = cache_get('tv_show_search', title.to_s + tvdb_id.to_s)
     return cached if cached
     if tvdb_id.to_i > 0
-      title, show = tv_show_get(tvdb_id)
-      return title, show unless show.nil?
+      exact_title, show = tv_show_get(tvdb_id)
+      cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
+      return exact_title, show unless show.nil?
     end
     tvdb_shows = $tvdb.search(title)
     tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?

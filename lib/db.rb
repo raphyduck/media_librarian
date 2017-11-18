@@ -60,6 +60,19 @@ module Storage
       @s_db.execute(raw_sql)
     end
 
+    def get_main_column(table)
+      case table
+        when 'seen'
+          :entry
+        when 'waiting_download'
+          :name
+        when 'metadata_search'
+          :keywords
+        else
+          nil
+      end
+    end
+
     def get_rows(table, conditions = {}, additionals = {})
       q = "select * from #{table}"
       q << prepare_conditions(conditions, additionals)

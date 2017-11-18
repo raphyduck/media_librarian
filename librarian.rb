@@ -47,7 +47,9 @@ class Librarian
           :refresh_auth => ['TraktList', 'refresh_auth']
       },
       :usage => ['Librarian', 'help'],
+      :list_db => ['Utils', 'list_db'],
       :flush_queues => ['Librarian', 'flush_queues'],
+      :forget => ['Utils', 'forget'],
       :send_email => ['Report', 'push_email']
   }
 
@@ -85,6 +87,7 @@ class Librarian
   end
 
   def self.help
+    #$t_client.
     $args_dispatch.show_available(APP_NAME, $available_actions)
   end
 
@@ -157,7 +160,7 @@ class Librarian
 
   def self.route_cmd(args, internal = 0, queue = 'exclusive')
     if Daemon.is_daemon?
-      Daemon.thread_cache_add(queue, args, Daemon.job_id, 'direct', 0, internal)
+      Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, 0, internal)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there'
@@ -171,12 +174,12 @@ class Librarian
     end
   end
 
-  def self.run_command(cmd, direct = 0, queue = 'exclusive')
+  def self.run_command(cmd, direct = 0)
     start = Time.now
     Thread.current[:email_msg] = ''
     Thread.current[:send_email] = 0
     $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
-    $action = cmd[0].to_s + ' ' + cmd[1].to_s
+    object = cmd[0].to_s + ' ' + cmd[1].to_s
     if direct.to_i > 0
       m = cmd.shift
       a = cmd.shift
@@ -185,10 +188,11 @@ class Librarian
     else
       $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
-    Report.sent_out($action, Thread.current[:email_msg]) if $action && Env.email_notif?
     $speaker.speak_up("Command executed in #{(Time.now - start)} seconds", 0)
+    Report.sent_out(object.clone, Thread.current[:email_msg]) if Env.email_notif?
   rescue => e
     $speaker.tell_error(e, "Librarian.run_command(#{cmd}")
+    Report.sent_out("Error on #{cmd[0..2].join(' ')}", Thread.current[:email_msg])
   end
 
   def self.burst_thread(&block)

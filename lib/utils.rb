@@ -120,6 +120,11 @@ class Utils
     FileUtils.ln(original, destination)
   end
 
+  def self.forget(table:, entry:)
+    column = $db.get_main_column(table)
+    $db.delete_rows(table, {column => entry.to_s}) if column
+  end
+
   def self.get_disk_size(path)
     size=0
     Find.find(path) { |file| size+= File.size(file) }
@@ -141,7 +146,7 @@ class Utils
       f = File.basename(path) + '/' + f
       cpt += 1
     end
-    f.gsub!('//','/')
+    f.gsub!('//', '/')
     return f.gsub(/^\.\//, ''), initial_f.gsub(f, '')
   end
 
@@ -184,6 +189,17 @@ class Utils
       return p if folder.gsub('//', '/').include?(p.gsub('//', '/')) || p.gsub('//', '/').include?(folder.gsub('//', '/'))
     end
     return nil
+  end
+
+  def self.list_db(table:, entry: '')
+    return [] unless $db.db_schema.map{|k,_| k}.include?(table)
+    column = $db.get_main_column(table)
+    r = if entry.to_s == ''
+      $db.get_rows(table)
+    else
+      $db.get_rows(table, {column => entry.to_s})
+        end
+    r.each {|row| $speaker.speak_up row.to_s}
   end
 
   def self.md5sum(file)

@@ -5,6 +5,8 @@ class TorrentClient
         host: $config['deluge']['host'], port: 58846,
         login: $config['deluge']['username'], password: $config['deluge']['password']
     )
+    @deluge_connected = nil
+    @tdid = 0
   rescue => e
     $speaker.tell_error(e, "TorrentClient.new")
     raise
@@ -121,35 +123,31 @@ class TorrentClient
           file = File.open(path, "r")
           torrent = file.read
           file.close
-          did = File.basename(path).gsub('.torrent', '').to_i
-          opts = Utils.queue_state_get('deluge_options')[did]
+          @tdid = File.basename(path).gsub('.torrent', '').to_i
+          opts = Utils.queue_state_get('deluge_options')[@tdid]
           unless opts.nil?
             begin
               meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
               meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
-              Utils.queue_state_add_or_update('deluge_options', {did => opts.merge({:info_hash => meta_id})})
+              Utils.queue_state_add_or_update('deluge_options', {@tdid => opts.merge({:info_hash => meta_id})})
               Utils.entry_update('download', opts[:entry_id], meta_id)
-              download_file(torrent, File.basename(path), opts[:move_completed])
-              Utils.queue_state_add_or_update('deluge_torrents_added', {meta_id => 1})
             rescue => e
-              TraktList.list_cache_remove(did)
-              Util.queue_state_select('dir_to_delete', 1) { |_, v| v != did }
-              File.delete($temp_dir + "/#{did}.torrent") rescue nil
+              TraktList.list_cache_remove(@tdid)
+              Utils.queue_state_select('dir_to_delete', 1) { |_, v| v != @tdid }
+              File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil
               $speaker.tell_error(e, "TorrentClient.process_download_torrents - get info_hash")
             end
+            $speaker.speak_up "Adding torrent #{opts[:t_name]}"
+            download_file(torrent, File.basename(path), opts[:move_completed])
+            Utils.queue_state_add_or_update('deluge_torrents_added', {meta_id => 1})
           end
         end
       end
     end
     Utils.queue_state_get('pending_magnet_links').each do |did, m|
       opts = Utils.queue_state_get('deluge_options')[did]
-      begin
-        download(m, opts[:move_completed], 1) unless opts.nil?
-      rescue => e
-        TraktList.list_cache_remove(did)
-        Util.queue_state_select('dir_to_delete', 1) { |_, v| v != did }
-        $speaker.tell_error(e, "TorrentClient.process_download_torrents - process magnet links")
-      end
+      $speaker.speak_up "Adding torrent #{opts[:t_name]}"
+      download(m, opts[:move_completed], 1) unless opts.nil?
     end
   end
 
@@ -178,6 +176,8 @@ class TorrentClient
       retry
     else
       $speaker.tell_error(e, "TorrentClient.#{name}")
+      TraktList.list_cache_remove(@tdid)
+      Utils.queue_state_select('dir_to_delete', 1) { |_, v| v != @tdid }
       raise 'Lost connection'
     end
   end
