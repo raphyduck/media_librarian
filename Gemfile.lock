@@ -1,8 +1,8 @@
 GIT
   remote: https://github.com/raphyduck/deluge-rpc.git
-  revision: 7f7cf7ae956f36831933fe00562176455f6f3676
+  revision: 7188716d578aa1a780824db662ce5e74cbc84f18
   specs:
-    deluge-rpc (0.1.6)
+    deluge-rpc (0.1.7)
       concurrent-ruby (~> 0.7)
       rencoder (~> 0.1)
 
@@ -143,7 +143,7 @@ GEM
       simple_speaker (~> 0.2.0)
     simple_config_man (0.3.8)
       simple_speaker (~> 0.2.0)
-    simple_speaker (0.2.3)
+    simple_speaker (0.2.5)
     sqlite3 (1.3.13)
     sys-filesystem (1.1.8)
       ffi

@@ -86,10 +86,6 @@ class Librarian
     @loaded
   end
 
-  def self.help
-    $args_dispatch.show_available(APP_NAME, $available_actions)
-  end
-
   def write_pid
     begin
       File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) { |f| f.write("#{Process.pid}") }
@@ -170,14 +166,19 @@ class Librarian
     TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
   end
 
+  def self.help
+    $args_dispatch.show_available(APP_NAME, $available_actions)
+  end
+
   def self.reconfigure
     return $speaker.speak_up "Can not configure application when launched as a daemon" if Daemon.is_daemon?
     SimpleConfigMan.reconfigure($config_file, $config_example)
   end
 
   def self.route_cmd(args, internal = 0, queue = 'exclusive')
+    r = 0
     if Daemon.is_daemon?
-      Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, 0, internal)
+      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there'
@@ -190,6 +191,7 @@ class Librarian
       run_command(args, internal)
       Librarian.flush_queues
     end
+    r
   end
 
   def self.run_command(cmd, direct = 0)
@@ -218,6 +220,7 @@ class Librarian
     t[:debug] = Thread.current[:debug].to_i
     t[:no_email_notif] = Thread.current[:no_email_notif].to_i
     t[:pretend] = Thread.current[:pretend].to_i
+    t[:current_daemon] = Thread.current[:current_daemon]
     t
   end
 end

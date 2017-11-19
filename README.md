@@ -15,7 +15,7 @@ TODO:
     * Automatically check for new commits on master and auto-update (as a task)
     
 * Ebooks/Comics:
-    * Read calibre library/metadata
+    * Read calibre library/metadata DB (by allowing db.rb to interact with library.db as a read only client)
     * Subscribe to series and/or authors, and search for new ebooks/comics
     
 * Music:

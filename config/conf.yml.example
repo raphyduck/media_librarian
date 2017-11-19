@@ -1,3 +1,5 @@
+daemon:
+  workers_pool_size: 4
 deluge:
   host: host
   username: username

@@ -190,71 +190,81 @@ class TorrentSearch
     timeframe_trackers
   end
 
+  def self.processing_result(reload, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
+    $speaker.speak_up("Looking for #{f[:full_name]}", 0) if reload > 0
+    i = 1
+    if reload > 0
+      [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)].uniq.each do |k|
+        results = get_results(
+            sources: sources,
+            keyword: k,
+            limit: limit,
+            category: f[:type],
+            qualities: qualities,
+            filter_dead: 1,
+            strict: no_prompt,
+            download_criteria: download_criteria,
+            post_actions: f.select { |key, _| [:files, :trakt_list, :trakt_obj, :trakt_type].include?(key) }
+        )
+        break unless results.nil? || results.empty?
+      end
+    end
+    subset = MediaInfo.media_get(results, f[:identifiers])
+    subset.map! { |t| t[:files] }
+    subset.flatten!
+    subset.select! { |t| !Utils.entry_deja_vu?('download', t[:identifiers]) }
+    waiting_downloads.each do |d|
+      d[:identifiers] = (eval(d[:identifiers]) rescue d[:identifiers])
+      d[:tattributes] = Utils.object_unpack(d[:tattributes])
+      next unless f[:identifiers] == d[:identifiers]
+      if DateTime.parse(d[:waiting_until]) > DateTime.now
+        $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
+      else
+        subset << d[:tattributes].merge({:tracker => 'waiting_download'})
+      end
+    end
+    filtered = MediaInfo.sort_media_files(subset, qualities)
+    subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
+    return if subset.empty?
+    if no_prompt.to_i == 0
+      $speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
+      subset.each do |torrent|
+        $speaker.speak_up('---------------------------------------------------------------')
+        $speaker.speak_up("Index: #{i}")
+        $speaker.speak_up("Name: #{torrent[:name]}")
+        $speaker.speak_up("Size: #{(torrent[:size].to_f / 1024 / 1024 / 1024).round(2)} GB")
+        $speaker.speak_up("Seeders: #{torrent[:seeders]}")
+        $speaker.speak_up("Leechers: #{torrent[:leechers]}")
+        $speaker.speak_up("Added: #{torrent[:added]}")
+        $speaker.speak_up("Link: #{URI.escape(torrent[:link].to_s)}")
+        $speaker.speak_up("Tracker: #{torrent[:tracker]}")
+        $speaker.speak_up('---------------------------------------------------------------')
+        i += 1
+      end
+    end
+    download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
+    return unless subset[download_id.to_i - 1]
+    $mutex['torrent_download'] = Mutex.new unless $mutex['torrent_download']
+    $mutex['torrent_download'].synchronize {
+      return if Utils.entry_deja_vu?('download', f[:identifiers]) || Utils.entry_deja_vu?('download', subset[download_id.to_i - 1][:identifiers])
+      torrent_download(subset[download_id.to_i - 1], no_prompt)
+    }
+  end
+
   def self.processing_results(filter:, sources: {}, results: nil, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
-    torrents = []
     reload = (results.nil? || results.empty?) ? 1 : 0
     waiting_downloads = $db.get_rows('waiting_download')
+    searches = []
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter.each do |f|
       next unless f[:full_name]
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
-      $speaker.speak_up("Looking for #{f[:full_name]}", 0) if reload > 0
-      i = 1
-      if reload > 0
-        [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)].uniq.each do |k|
-          results = get_results(
-              sources: sources,
-              keyword: k,
-              limit: limit,
-              category: f[:type],
-              qualities: qualities,
-              filter_dead: 1,
-              strict: no_prompt,
-              download_criteria: download_criteria,
-              post_actions: f.select { |key, _| [:files, :trakt_list, :trakt_obj, :trakt_type].include?(key) }
-          )
-          break unless results.nil? || results.empty?
-        end
-      end
-      subset = MediaInfo.media_get(results, f[:identifiers])
-      subset.map! { |t| t[:files] }
-      subset.flatten!
-      subset.select! { |t| !Utils.entry_deja_vu?('download', t[:identifiers]) }
-      waiting_downloads.each do |d|
-        d[:identifiers] = (eval(d[:identifiers]) rescue d[:identifiers])
-        d[:tattributes] = Utils.object_unpack(d[:tattributes])
-        next unless f[:identifiers] == d[:identifiers]
-        if DateTime.parse(d[:waiting_until]) > DateTime.now
-          $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
-        else
-          subset << d[:tattributes].merge({:tracker => 'waiting_download'})
-        end
-      end
-      filtered = MediaInfo.sort_media_files(subset, qualities)
-      subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
-      next if subset.empty?
-      if no_prompt.to_i == 0
-        $speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
-        subset.each do |torrent|
-          $speaker.speak_up('---------------------------------------------------------------')
-          $speaker.speak_up("Index: #{i}")
-          $speaker.speak_up("Name: #{torrent[:name]}")
-          $speaker.speak_up("Size: #{(torrent[:size].to_f / 1024 / 1024 / 1024).round(2)} GB")
-          $speaker.speak_up("Seeders: #{torrent[:seeders]}")
-          $speaker.speak_up("Leechers: #{torrent[:leechers]}")
-          $speaker.speak_up("Added: #{torrent[:added]}")
-          $speaker.speak_up("Link: #{URI.escape(torrent[:link].to_s)}")
-          $speaker.speak_up("Tracker: #{torrent[:tracker]}")
-          $speaker.speak_up('---------------------------------------------------------------')
-          i += 1
-        end
-      end
-      download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
-      torrents << subset[download_id.to_i - 1] if subset[download_id.to_i - 1]
+      searches << Librarian.route_cmd(['TorrentSearch', 'processing_result', reload, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads], 1, 'torrent')
     end
-    torrents.each do |t|
-      torrent_download(t, no_prompt)
+    searches.select! { |x| x > 0 }
+    unless searches.empty?
+      Daemon.thread_wait('torrent', searches).each { |_, r| Thread.current[:email_msg] << r[:email_msg] }
     end
   end
 
@@ -263,7 +273,7 @@ class TorrentSearch
     filter_sources.each do |t, s|
       search_list.merge!(Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination))
     end
-    return if search_list.empty?
+    return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
     results = case torrent_sources['type'].to_s
                 when 'sub'
                   get_results(
@@ -297,8 +307,8 @@ class TorrentSearch
           :name => torrent[:name],
           :tattributes => Utils.object_pack(torrent),
           :created_at => Time.now,
-          :waiting_until => [Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_quality].to_s).seconds,
-                             Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_tracker].to_s).seconds].max
+          :waiting_until => [Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_quality].to_s).to_i,
+                             Time.now + Utils.timeperiod_to_sec(torrent[:timeframe_tracker].to_s).to_i].max
       })
     else
       did = (Time.now.to_f * 1000).to_i

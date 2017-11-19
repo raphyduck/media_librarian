@@ -192,14 +192,14 @@ class Utils
   end
 
   def self.list_db(table:, entry: '')
-    return [] unless $db.db_schema.map{|k,_| k}.include?(table)
+    return [] unless $db.db_schema.map { |k, _| k }.include?(table)
     column = $db.get_main_column(table)
     r = if entry.to_s == ''
-      $db.get_rows(table)
-    else
-      $db.get_rows(table, {column => entry.to_s})
+          $db.get_rows(table)
+        else
+          $db.get_rows(table, {column => entry.to_s})
         end
-    r.each {|row| $speaker.speak_up row.to_s}
+    r.each { |row| $speaker.speak_up row.to_s }
   end
 
   def self.md5sum(file)
@@ -246,13 +246,17 @@ class Utils
   end
 
   def self.object_pack(object)
-    if object.is_a?(Array)
+    oclass = object.class.to_s
+    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(object.class)
+      object = object.to_s
+    elsif object.is_a?(Array)
       object.each_with_index { |o, idx| object[idx] = object_pack(o.clone) }
+    elsif object.is_a?(Hash)
+      object.keys.each { |k| object[k] = object_pack(object[k]) }
     else
-      packed = object_to_hash(object)
-      packed = object.to_s if packed.empty?
-      object = [object.class.to_s, packed]
+      object = object_to_hash(object.clone)
     end
+    object = [oclass, object]
     object
   end
 
@@ -261,16 +265,24 @@ class Utils
   end
 
   def self.object_unpack(object)
-    object = eval(object) rescue object
+    object = begin
+      eval(object.clone)
+    rescue Exception
+      object.clone
+    end
     return object unless object.is_a?(Array)
-    if object.count == 2 && object[0].is_a?(String) && !object[1].is_a?(Array)
-      o = Object.const_get(object[0]).new(object[1]) rescue object[1]
+    if object.count == 2 && object[0].is_a?(String) && Object.const_defined?(object[0])
       if object[0] == 'Hash'
-        object = eval(object[1]) rescue object[1]
+        object = begin
+          eval(object[1])
+        rescue Exception
+          object[1]
+        end
+        object.keys.each { |k| object[k] = object_unpack(object[k]) } rescue nil
       else
-        object = o
+        object = Object.const_get(object[0]).new(object_unpack(object[1])) rescue object[1]
       end
-    else
+    elsif object.is_a?(Array)
       object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
     end
     object
@@ -399,9 +411,9 @@ class Utils
     if argument.class == String
       case argument
         when /^(.*?)[+,](.*)$/ then
-          to_sec($1) + to_sec($2)
+          timeperiod_to_sec($1) + timeperiod_to_sec($2)
         when /^\s*([0-9_]+)\s*\*(.+)$/ then
-          $1.to_i * to_sec($2)
+          $1.to_i * timeperiod_to_sec($2)
         when /^\s*[0-9_]+\s*(s(ec(ond)?s?)?)?\s*$/ then
           argument.to_i
         when /^\s*([0-9_]+)\s*m(in(ute)?s?)?\s*$/ then
