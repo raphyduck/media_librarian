@@ -1,4 +1,6 @@
 class TorrentSearch
+  
+  @mutex = Mutex.new
 
   def self.check_status(identifier, timeout = 10, download = nil)
     if download.nil?
@@ -145,7 +147,6 @@ class TorrentSearch
   end
 
   def self.get_torrent_file(did, name = '', url = '', destination_folder = $temp_dir)
-    $speaker.speak_up("Will download torrent '#{name}' from #{url}")
     return did if Env.pretend?
     @search.download(url, destination_folder, did)
     did
@@ -190,7 +191,7 @@ class TorrentSearch
     timeframe_trackers
   end
 
-  def self.processing_result(reload, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
+  def self.processing_result(reload, results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
     $speaker.speak_up("Looking for #{f[:full_name]}", 0) if reload > 0
     i = 1
     if reload > 0
@@ -216,7 +217,7 @@ class TorrentSearch
     waiting_downloads.each do |d|
       d[:identifiers] = (eval(d[:identifiers]) rescue d[:identifiers])
       d[:tattributes] = Utils.object_unpack(d[:tattributes])
-      next unless f[:identifiers] == d[:identifiers]
+      next if (f[:identifiers] & d[:identifiers]).empty?
       if DateTime.parse(d[:waiting_until]) > DateTime.now
         $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
       else
@@ -244,8 +245,7 @@ class TorrentSearch
     end
     download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
     return unless subset[download_id.to_i - 1]
-    $mutex['torrent_download'] = Mutex.new unless $mutex['torrent_download']
-    $mutex['torrent_download'].synchronize {
+    @mutex.synchronize {
       return if Utils.entry_deja_vu?('download', f[:identifiers]) || Utils.entry_deja_vu?('download', subset[download_id.to_i - 1][:identifiers])
       torrent_download(subset[download_id.to_i - 1], no_prompt)
     }
@@ -260,7 +260,7 @@ class TorrentSearch
       next unless f[:full_name]
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
-      searches << Librarian.route_cmd(['TorrentSearch', 'processing_result', reload, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads], 1, 'torrent')
+      searches << Librarian.route_cmd(['TorrentSearch', 'processing_result', reload, results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads], 1, 'torrent')
     end
     searches.select! { |x| x > 0 }
     unless searches.empty?
@@ -312,12 +312,12 @@ class TorrentSearch
       })
     else
       did = (Time.now.to_f * 1000).to_i
-      name = torrent[:name]
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
       success = nil
+      $speaker.speak_up("Will download torrent '#{torrent[:name]}'")
       if url.to_s != ''
-        success = self.get_torrent_file(did, name, url)
+        success = self.get_torrent_file(did, torrent[:name], url)
       elsif magnet && magnet != ''
         Utils.queue_state_add_or_update('pending_magnet_links', {did => magnet})
         success = did
@@ -325,7 +325,7 @@ class TorrentSearch
       if success.to_i > 0
         Utils.queue_state_add_or_update('deluge_options', {
             did => {
-                :t_name => name,
+                :t_name => torrent[:name],
                 :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
                 :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
                 :main_only => torrent[:main_only].to_i,

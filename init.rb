@@ -26,7 +26,6 @@ $args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags.map{|k,_| k}
 #Load app and settings
 Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
 $config = SimpleConfigMan.load_settings($config_dir, $config_file, $config_example)
-$mutex = {}
 #Daemon options
 $api_option = {
     'bind_address' => '127.0.0.1',

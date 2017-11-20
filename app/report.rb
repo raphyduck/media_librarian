@@ -19,15 +19,16 @@ class Report
     end
   end
 
-  def self.push_email(object, ebody)
+  def self.push_email(object, ebody, trials = 3)
+    return if (trials -= 1) <= 0
     deliver(object_s: object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
   rescue => e
     $speaker.tell_error(e, 'Report.push_email', 0)
-    sent_out(object, ebody)
+    sent_out(object, ebody, trials)
   end
 
-  def self.sent_out(object, bs = Thread.current[:email_msg])
-    Librarian.route_cmd(['Report', 'push_email', object, bs], 1, 'email') if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
+  def self.sent_out(object, bs = Thread.current[:email_msg], trials = 3)
+    Librarian.route_cmd(['Report', 'push_email', object, bs, trials], 1, 'email') if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
   end
 
   private

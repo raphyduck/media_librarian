@@ -4,7 +4,6 @@ class MediaInfo
   @tv_episodes = {}
   @media_folders = Vash.new
   @cache_metadata = Vash.new
-  CACHING_TTL = 3600
 
   def self.cache_add(type, keyword, result, full_save = nil)
     $speaker.speak_up "Refreshing cache for #{keyword}" if Env.debug?
@@ -331,8 +330,8 @@ class MediaInfo
       when 'shows'
         s, e = MediaInfo.identify_tv_episodes_numbering(filename)
         ids = e.map { |n| TvSeries.identifier(item_name, s, n[:ep], n[:part]) }
-        ids = TvSeries.identifier(item_name, '', '', '') if ids.empty?
-        full_name = "#{item_name} #{e.map { |n| 'S' + format('%02d', s.to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s }.join}"
+        ids = TvSeries.identifier(item_name, s, '', '') if ids.empty?
+        full_name = "#{item_name} #{e.empty? ? 'S' + format('%02d', s.to_i) : e.map { |n| 'S' + format('%02d', s.to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s }.join}"
         info = {
             :series_name => item_name,
             :episode_season => s.to_i,

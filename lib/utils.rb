@@ -192,7 +192,7 @@ class Utils
   end
 
   def self.list_db(table:, entry: '')
-    return [] unless $db.db_schema.map { |k, _| k }.include?(table)
+    return [] unless DB_SCHEMA.map { |k, _| k }.include?(table)
     column = $db.get_main_column(table)
     r = if entry.to_s == ''
           $db.get_rows(table)
@@ -246,18 +246,19 @@ class Utils
   end
 
   def self.object_pack(object)
-    oclass = object.class.to_s
-    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(object.class)
-      object = object.to_s
-    elsif object.is_a?(Array)
-      object.each_with_index { |o, idx| object[idx] = object_pack(o.clone) }
-    elsif object.is_a?(Hash)
-      object.keys.each { |k| object[k] = object_pack(object[k]) }
+    obj = object.clone
+    oclass = obj.class.to_s
+    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(obj.class)
+      obj = obj.to_s
+    elsif obj.is_a?(Array)
+      obj.each_with_index { |o, idx| obj[idx] = object_pack(o.clone) }
+    elsif obj.is_a?(Hash)
+      obj.keys.each { |k| obj[k] = object_pack(obj[k]) }
     else
-      object = object_to_hash(object.clone)
+      obj = object_to_hash(obj)
     end
-    object = [oclass, object]
-    object
+    obj = [oclass, obj]
+    obj
   end
 
   def self.object_to_hash(object)

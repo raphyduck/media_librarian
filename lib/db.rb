@@ -38,7 +38,7 @@ module Storage
       setup(db_path)
       @s_db = SQLite3::Database.new db_path unless @s_db
       @readonly = readonly
-      $mutex[self.class] = Mutex.new
+      @mutex = Mutex.new
     end
 
     def delete_rows(table, conditions = {}, additionals = {})
@@ -119,7 +119,7 @@ module Storage
     def execute_query(query, values, write = 1)
       return $speaker.speak_up("Would #{query}") if Env.pretend? && write > 0
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
-      $mutex[self.class].synchronize {
+      @mutex.synchronize {
         ins = @s_db.prepare(query)
         ins.execute(values)
       }

@@ -25,28 +25,42 @@ class TvSeries
     "tv#{series_name}S#{season.to_i}E#{episode.to_i}P#{part}"
   end
 
+  def self.identifier_season(series_name, season)
+    "tv#{series_name}S#{season.to_i}"
+  end
+
   def self.list_missing_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, missing_eps = {})
-    tv_episodes = {}
+    tv_episodes, tv_seasons = {}, {}
     return missing_eps if episodes_in_files[:shows].nil?
     episodes_in_files[:shows].each do |series_name, show|
       _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
+      tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
       tv_episodes[series_name].each do |ep|
         next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) || MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1, nil))
         next if include_specials.to_i == 0 && ep.season_number.to_i == 0
-        unless MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
+        full_name, identifiers, info, ep_nb = '', '', {}, 0
+        if tv_seasons[series_name][ep.season_number.to_i].nil? &&
+            !MediaInfo.media_exist?(episodes_in_files, identifier_season(series_name, ep.season_number))
+          tv_seasons[series_name][ep.season_number.to_i] = 1
+          full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', 0)}"
+          full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
+        elsif tv_seasons[series_name][ep.season_number.to_i].nil? &&
+            !MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i, nil))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
-          $speaker.speak_up("Missing #{full_name} - #{ep.name} (aired on #{ep.air_date})", 0)
-          next if Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep.number, 0))
-          missing_eps = MediaInfo.media_add(series_name,
-                                            'shows',
-                                            full_name,
-                                            identifiers,
-                                            info,
-                                            {},
-                                            missing_eps
-          )
+          ep_nb = ep.number.to_i
         end
+        next if full_name == '' || Utils.entry_deja_vu?('download', identifier_season(series_name, ep.season_number)) ||
+            Utils.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep_nb, 0))
+        $speaker.speak_up("Missing #{full_name}#{' - ' + ep.name.to_s if ep_nb.to_i > 0} (aired on #{ep.air_date})", 0)
+        missing_eps = MediaInfo.media_add(series_name,
+                                          'shows',
+                                          full_name,
+                                          identifiers,
+                                          info,
+                                          {},
+                                          missing_eps
+        )
       end
     end
     missing_eps

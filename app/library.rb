@@ -1,6 +1,8 @@
 class Library
 
   @refusal = 0
+  @media_list = Vash.new
+  @mutex = {}
 
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
@@ -519,21 +521,30 @@ class Library
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {})
     $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}", 0)
-    files, raw_filtered = {}, []
-    file_criteria = {'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
-    raw_filtered += Utils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
-    Utils.search_folder(folder, file_criteria).each do |f|
-      next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
-      files = parse_media({:type => 'file', :name => f[0]}, type, no_prompt, files, folder_hierarchy, rename, {}, folder)
+    files, raw_filtered, cache_name = nil, [], folder.to_s + type.to_s
+    @mutex[cache_name] = Mutex.new if @mutex[cache_name].nil?
+    @mutex[cache_name].synchronize {
+      file_criteria = {'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
+      raw_filtered += Utils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
+      if @media_list[cache_name].nil? || item_name.to_s != '' || remove_duplicates.to_i > 0 ||
+          (filter_criteria && !filter_criteria.empty?) || (rename && !rename.empty?)
+        Utils.search_folder(folder, file_criteria).each do |f|
+          next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
+          @media_list[cache_name, CACHING_TTL] = parse_media({:type => 'file', :name => f[0]}, type, no_prompt, @media_list[cache_name] || {}, folder_hierarchy, rename, {}, folder)
+        end
+        @media_list[cache_name, CACHING_TTL] = handle_duplicates(@media_list[cache_name], remove_duplicates, no_prompt)
+      elsif Env.debug?
+        $speaker.speak_up "Cache of media_list [#{cache_name}] exists, returning it directly"
+      end
+    }
+    if filter_criteria && !filter_criteria.empty? && !@media_list[cache_name].empty?
+      files = @media_list[cache_name]
+      files.keep_if { |_, f| !(f[:files] & raw_filtered.flatten).empty? }
     end
-    files = handle_duplicates(files, remove_duplicates, no_prompt)
-    if filter_criteria && !filter_criteria.empty? && !files.empty?
-      files.keep_if {|_, f| !(f[:files] & raw_filtered.flatten).empty?}
-    end
-    return files
+    return files || @media_list[cache_name]
   rescue => e
     $speaker.tell_error(e, "Library.process_folder")
-    return {}
+    {}
   end
 
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})

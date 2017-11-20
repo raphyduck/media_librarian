@@ -181,7 +181,7 @@ class Librarian
       r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
-      $speaker.speak_up 'A daemon is already running, sending execution there'
+      $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
       EventMachine.run do
         EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
         EM.open_keyboard(ClientInput)
@@ -195,24 +195,24 @@ class Librarian
   end
 
   def self.run_command(cmd, direct = 0)
-    start = Time.now
     Thread.current[:email_msg] = ''
     Thread.current[:send_email] = 0
-    $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
-    object = cmd[0].to_s + ' ' + cmd[1].to_s
     if direct.to_i > 0
       m = cmd.shift
       a = cmd.shift
       p = Object.const_get(m).method(a.to_sym)
       cmd.nil? ? p.call : p.call(*cmd)
     else
+      start = Time.now
+      object = cmd[0].to_s + ' ' + cmd[1].to_s
+      $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
+      $speaker.speak_up("Command executed in #{(Time.now - start)} seconds", 0)
+      Report.sent_out(object.clone, Thread.current[:email_msg]) if Env.email_notif?
     end
-    $speaker.speak_up("Command executed in #{(Time.now - start)} seconds", 0)
-    Report.sent_out(object.clone, Thread.current[:email_msg]) if Env.email_notif?
   rescue => e
     $speaker.tell_error(e, "Librarian.run_command(#{cmd}")
-    Report.sent_out("Error on #{cmd[0..2].join(' ')}", Thread.current[:email_msg])
+    Report.sent_out("Error on #{cmd[0..2].join(' ')}", Thread.current[:email_msg]) if direct.to_i == 0
   end
 
   def self.burst_thread(&block)

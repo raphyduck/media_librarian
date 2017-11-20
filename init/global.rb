@@ -4,6 +4,7 @@ $str_closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
 $tracker_client = {}
 $tracker_client_logged = {}
 #Some constants
+CACHING_TTL = 7200
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'

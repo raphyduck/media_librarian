@@ -28,5 +28,7 @@ TODO:
 * Torrent search:
     * Distinguish season pack and download if season episode not found and replace existing season with it
     
+* TvSeries:
+    
 * Library:
     * Use alternative sources to identify series
