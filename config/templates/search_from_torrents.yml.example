@@ -33,10 +33,14 @@ category: shows
 no_prompt: 0
 qualities:
   min_quality: 720p hdtv
-  max_quality: 1080p
+  max_quality: 2160p
+  target_quality: 1080p
+  assume_quality: vo
+  timeframe: 1 hour
   min_size: 100
   max_size: 3000
-  timeframe: 1 hour
+  target_size: 8000
+  timeframe_size: 96 hours
 download_criteria:
   rename_main: 'rename file'
   main_only: 0

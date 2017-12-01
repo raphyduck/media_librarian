@@ -16,6 +16,7 @@ module Tpb
 
     def download(url, destination, name)
       $speaker.speak_up('ThePirateBay do not provide torrent link')
+      ''
     end
 
     private
@@ -36,7 +37,7 @@ module Tpb
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          :name => links[0].text,
+          :name => links[0].text.to_s.force_encoding('utf-8'),
           :size => size,
           :link => @base_url + links[0]['href'],
           :magnet_link => links[1]['href'],

@@ -50,7 +50,7 @@ module TorrentLeech
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          :name => links[0].text,
+          :name => links[0].text.to_s.force_encoding('utf-8'),
           :size => size,
           :link => @base_url + '/' + links[0]['href'],
           :torrent_link => tlink,

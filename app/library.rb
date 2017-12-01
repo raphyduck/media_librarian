@@ -2,7 +2,6 @@ class Library
 
   @refusal = 0
   @media_list = Vash.new
-  @mutex = {}
 
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
@@ -68,7 +67,7 @@ class Library
     source_folders = {} if source_folders.nil?
     return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
     complete_list = TraktList.list(source_list, '')
-    return $speaker.speak_up("Empty list #{source_list}") if complete_list.empty?
+    return $speaker.speak_up("Empty list #{source_list}", 0) if complete_list.empty?
     abort = 0
     list = TraktList.parse_custom_list(complete_list)
     list.each do |type, _|
@@ -77,9 +76,8 @@ class Library
       list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       _, total_space = Utils.get_disk_space(dest_folder)
       while total_space <= list_size
-        size_error = "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
-        if $speaker.ask_if_needed("#{size_error}. Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
-          Report.sent_out('copy_media_from_list - Not enough space on disk to copy list ' + source_list.to_s + ' - ' + type.to_s, size_error)
+        $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
+        if $speaker.ask_if_needed("Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
           abort = 1
           break
         end
@@ -89,13 +87,12 @@ class Library
       return $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
       return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
-      $speaker.speak_up 'Deleting extra media...'
+      $speaker.speak_up('Deleting extra media...', 0)
       Utils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
         Utils.file_rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       Utils.file_mkdir(dest_type) unless File.exist?(dest_type)
-      $speaker.speak_up('Syncing new media...')
-      sync_error = ''
+      $speaker.speak_up('Syncing new media...', 0)
       paths.each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
         Utils.file_mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
@@ -105,14 +102,12 @@ class Library
               $speaker.speak_up "#{change.filename} (#{change.summary})"
             end
           else
-            sync_error += result.error.to_s
             $speaker.speak_up result.error
           end
         end
       end
-      Report.sent_out('copy_media_from_list - Errors syncing list ' + source_list.to_s + ' to disk ' + type.to_s, sync_error)
     end
-    $speaker.speak_up("Finished copying media from #{source_list}!")
+    $speaker.speak_up("Finished copying media from #{source_list}!", 0)
   end
 
   def self.copy_trakt_list(name:, description:, origin: 'collection', criteria: {})
@@ -217,7 +212,7 @@ class Library
         i[type[0...-1]]
       end
       $speaker.speak_up('Updating items in the list...')
-      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
+      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty? || t_criteria['add_only'].to_i > 0
       TraktList.add_to_list(new_list[type], 'custom', name, type)
     end
     $speaker.speak_up("List #{name} is up to date!")
@@ -225,9 +220,6 @@ class Library
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
-      unless Utils.check_if_active(active_hours) || Thread.current[:email_msg].to_s == ''
-        Report.sent_out(__method__.to_s, Thread.current[:email_msg])
-      end
       unless Utils.check_if_active(active_hours)
         sleep 30
         next
@@ -253,21 +245,20 @@ class Library
           sleep 10
         end
         exit_status = fetcher.status
-        Thread.current[:email_msg] += fetcher[:email_msg].to_s if Thread.current[:email_msg]
+        Daemon.merge_notifications(fetcher)
       end
       sleep 3600 unless exit_status.nil?
     end
   end
 
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
-    Thread.current[:email_msg] = ''
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
     $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
     return $speaker.speak_up("Would run synchonisation") if Env.pretend?
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
-    $speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}")
+    $speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}") if Env.debug?
     Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'], ssh_opts['keys']) do |result|
       result.changes.each do |change|
         $speaker.speak_up "#{change.filename} (#{change.summary})"
@@ -292,8 +283,10 @@ class Library
   end
 
   def self.get_duplicates(medium, threshold = 2)
-    return [] if medium.nil? || medium[:files].nil? || medium[:files].select { |x| x[:type].to_s == 'file' }.count < threshold
-    dups_files = medium[:files].select { |x| x[:type].to_s == 'file' && File.exists?(x[:name]) } #You never know...
+    return [] if medium.nil? || medium[:files].nil?
+    dup_files = medium[:files].select { |x| x[:type].to_s == 'file' }.group_by { |a| a[:parts].join }.select { |_, v| v.count >= threshold }.map { |_, v| v }.flatten
+    return [] if dup_files.count < threshold
+    dups_files = dup_files.select { |x| x[:type].to_s == 'file' && File.exists?(x[:name]) } #You never know...
     return [] unless dups_files.count >= threshold
     dups_files = MediaInfo.sort_media_files(dups_files)
     dups_files
@@ -398,7 +391,7 @@ class Library
     files
   end
 
-  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
+  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
     item_name, item = MediaInfo.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless no_prompt.to_i == 0 || item
       $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping", 0)
@@ -417,7 +410,16 @@ class Library
       )
       file[:name] = f_path unless f_path == ''
     end
-    full_name, identifiers, info = MediaInfo.parse_media_filename(file[:name], type, item, item_name, no_prompt, folder_hierarchy, base_folder)
+    full_name, identifiers, info = MediaInfo.parse_media_filename(
+        file[:name],
+        type,
+        item,
+        item_name,
+        no_prompt,
+        folder_hierarchy,
+        base_folder,
+        file
+    )
     return files if identifiers.empty? || full_name == ''
     $speaker.speak_up("Adding #{file[:type]} #{full_name} to list", 0) if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
@@ -425,7 +427,8 @@ class Library
                                 type,
                                 full_name,
                                 identifiers,
-                                info.merge(attrs),
+                                info,
+                                file_attrs,
                                 file,
                                 files
     )
@@ -442,7 +445,7 @@ class Library
         keywords = source['keywords']
         keywords = [keywords] if keywords.is_a?(String)
         keywords.each do |keyword|
-          search_list = Library.parse_media(
+          search_list = parse_media(
               {:type => 'keyword', :name => keyword},
               category,
               no_prompt,
@@ -496,12 +499,12 @@ class Library
                   no_prompt,
                   (source['delta'] || 10),
                   source['include_specials'],
-                  search_list
+                  {}
               ) unless missing[ct]
           end
         end
         search_list.merge!(missing['shows']) if missing['shows']
-        search_list.keep_if { |f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Date.today) }
+        search_list.keep_if { |f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
       when 'filesystem'
         return search_list unless source['existing_folder'] && source['existing_folder'][category]
         existing_files = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
@@ -522,8 +525,7 @@ class Library
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {})
     $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}", 0)
     files, raw_filtered, cache_name = nil, [], folder.to_s + type.to_s
-    @mutex[cache_name] = Mutex.new if @mutex[cache_name].nil?
-    @mutex[cache_name].synchronize {
+    Utils.lock_block(__method__.to_s + cache_name) {
       file_criteria = {'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
       raw_filtered += Utils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
       if @media_list[cache_name].nil? || item_name.to_s != '' || remove_duplicates.to_i > 0 ||
@@ -532,7 +534,7 @@ class Library
           next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
           @media_list[cache_name, CACHING_TTL] = parse_media({:type => 'file', :name => f[0]}, type, no_prompt, @media_list[cache_name] || {}, folder_hierarchy, rename, {}, folder)
         end
-        @media_list[cache_name, CACHING_TTL] = handle_duplicates(@media_list[cache_name], remove_duplicates, no_prompt)
+        @media_list[cache_name, CACHING_TTL] = handle_duplicates(@media_list[cache_name] || {}, remove_duplicates, no_prompt)
       elsif Env.debug?
         $speaker.speak_up "Cache of media_list [#{cache_name}] exists, returning it directly"
       end

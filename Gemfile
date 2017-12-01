@@ -1,7 +1,8 @@
 source 'http://rubygems.org'
-ruby '2.4.0'
+ruby '2.4.2'
 
 gem 'archive-zip', :require => false
+gem 'activesupport', :require => false
 gem 'bencode', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'eventmachine', :require => false

@@ -1,8 +1,9 @@
-MIN_REQ = %w(eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
+MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
 sys-filesystem)
-FULL_REQ = %w(bundler/setup archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find io/console imdb_party
-mechanize mp3info net/ssh pdf/reader rarbg rsync rubygems shellwords simple-rss sys/filesystem titleize trakt tvdb_party
-tvmaze unrar xbmc-client yaml)
+FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
+archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find io/console imdb_party mechanize mp3info
+net/ssh pdf/reader rarbg rsync shellwords simple-rss sys/filesystem titleize
+trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -21,6 +22,7 @@ class Librarian
       :reconfigure => ['Librarian', 'reconfigure'],
       :daemon => {
           :start => ['Daemon', 'start'],
+          :status => ['Daemon', 'status'],
           :stop => ['Daemon', 'stop'],
       },
       :ebooks => {
@@ -142,27 +144,34 @@ class Librarian
     end
   end
 
+  def self.burst_thread(client = nil, parent = nil, &block)
+    t = Thread.new { block.call }
+    reset_notifications(t)
+    t[:debug] = Thread.current[:debug].to_i
+    t[:no_email_notif] = Thread.current[:no_email_notif].to_i
+    t[:pretend] = Thread.current[:pretend].to_i #TODO: Check this is working all the time, seems that it randomly fails
+    t[:current_daemon] = client || Thread.current[:current_daemon]
+    t[:parent] = parent
+    t
+  end
+
   def self.flush_queues
     if $t_client
-      $t_client.process_download_torrents
+      $t_client.parse_torrents_to_download
+      sleep 15
       $t_client.process_added_torrents
-      while Find.find($temp_dir).count > 1
-        $speaker.speak_up('Waiting for temporary folder to be cleaned')
-        sleep 10
-        Utils.queue_state_get('deluge_torrents_added').select { |_, v| v < 2 }.each do |k, _|
-          Utils.queue_state_add_or_update('deluge_torrents_added', {k => 2})
-        end
-        $t_client.process_added_torrents
+      Utils.queue_state_get('deluge_torrents_added').select { |_, v| v < 2 }.each do |k, _|
+        Utils.queue_state_add_or_update('deluge_torrents_added', {k => 2})
       end
       unless Utils.queue_state_get('deluge_options').empty?
-        $speaker.speak_up('Waiting for completion of all deluge operation')
+        $speaker.speak_up('Waiting for completion of all deluge operation', 0)
         sleep 15
         $t_client.process_added_torrents
       end
-      Utils.cleanup_folder unless Utils.queue_state_get('dir_to_delete').empty?
       $t_client.disconnect
     end
-    #Cleanup list
+    #Cleanup lists and folders
+    Utils.cleanup_folder unless Utils.queue_state_get('dir_to_delete').empty?
     TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
   end
 
@@ -170,15 +179,23 @@ class Librarian
     $args_dispatch.show_available(APP_NAME, $available_actions)
   end
 
+  def self.init_thread(t, object = '', direct = 0, &block)
+    reset_notifications(t)
+    t[:object] = object
+    t[:start_time] = Time.now
+    t[:direct] = direct
+    t[:block] = block
+  end
+
   def self.reconfigure
     return $speaker.speak_up "Can not configure application when launched as a daemon" if Daemon.is_daemon?
     SimpleConfigMan.reconfigure($config_file, $config_example)
   end
 
-  def self.route_cmd(args, internal = 0, queue = 'exclusive')
+  def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
     r = 0
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal)
+      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, Thread.current[:current_daemon], &block)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
@@ -189,39 +206,47 @@ class Librarian
     else
       $librarian.requirments unless $librarian.loaded
       run_command(args, internal)
-      Librarian.flush_queues
+      Librarian.flush_queues if internal.to_i == 0
     end
     r
   end
 
-  def self.run_command(cmd, direct = 0)
-    Thread.current[:email_msg] = ''
-    Thread.current[:send_email] = 0
+  def self.reset_notifications(t)
+    t[:email_msg] = ''
+    t[:send_email] = 0
+  end
+
+  def self.run_command(cmd, direct = 0, object = '', env_flags = nil, &block)
+    $args_dispatch.set_env_variables($env_flags, env_flags) if env_flags
+    init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
       m = cmd.shift
       a = cmd.shift
       p = Object.const_get(m).method(a.to_sym)
       cmd.nil? ? p.call : p.call(*cmd)
     else
-      start = Time.now
-      object = cmd[0].to_s + ' ' + cmd[1].to_s
       $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
-      $speaker.speak_up("Command executed in #{(Time.now - start)} seconds", 0)
-      Report.sent_out(object.clone, Thread.current[:email_msg]) if Env.email_notif?
     end
+    terminate_command(Thread.current)
   rescue => e
-    $speaker.tell_error(e, "Librarian.run_command(#{cmd}")
-    Report.sent_out("Error on #{cmd[0..2].join(' ')}", Thread.current[:email_msg]) if direct.to_i == 0
+    $speaker.tell_error(e, "Librarian.run_command(#{object}")
+    terminate_command(Thread.current, "Error on #{object}")
   end
 
-  def self.burst_thread(&block)
-    t = Thread.new { block.call }
-    t[:debug] = Thread.current[:debug].to_i
-    t[:no_email_notif] = Thread.current[:no_email_notif].to_i
-    t[:pretend] = Thread.current[:pretend].to_i
-    t[:current_daemon] = Thread.current[:current_daemon]
-    t
+  def self.terminate_command(thread, object = nil)
+    return unless thread[:base_thread].nil?
+    return if thread[:childs].to_i > 0 if thread[:childs]
+    if thread[:direct].to_i == 0
+      $speaker.speak_up("Command #{object} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
+      Report.sent_out(object || thread[:object], thread) if Env.email_notif?
+    end
+    thread[:block].call if thread[:block]
+    if thread[:parent]
+      Daemon.merge_notifications(thread, thread[:parent])
+      Daemon.decremente_children(thread[:parent])
+      terminate_command(thread[:parent], object)
+    end
   end
 end
 

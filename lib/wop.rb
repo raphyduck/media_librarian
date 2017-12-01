@@ -52,7 +52,7 @@ module Wop
           size *= 1024 * 1024 * 1024 * 1024
       end
       {
-          :name => name,
+          :name => name.to_s.force_encoding('utf-8'),
           :size => size,
           :link => @base_url + '/' + links[0]['href'],
           :torrent_link => @base_url + '/' + tlink,

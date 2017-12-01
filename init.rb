@@ -1,8 +1,8 @@
 APP_NAME='librarian'
 $env_flags = {
-    'debug' => 0,
-    'no_email_notif' => 0,
-    'pretend' => 0
+    :debug => 0,
+    :no_email_notif => 0,
+    :pretend => 0
 }
 $config_dir = Dir.home + '/.medialibrarian'
 $config_file = $config_dir + '/conf.yml'
@@ -22,7 +22,7 @@ unless File.exist?($template_dir)
 end
 #Logger
 $speaker = SimpleSpeaker::Speaker.new(log_dir + '/medialibrarian.log', log_dir + '/medialibrarian_errors.log')
-$args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags.map{|k,_| k})
+$args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags)
 #Load app and settings
 Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
 $config = SimpleConfigMan.load_settings($config_dir, $config_file, $config_example)

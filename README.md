@@ -7,6 +7,7 @@ This program is made to answer my various needs for automation in the management
 
 TODO:
 * General
+    * Split Utils
     * Expire trakt authentication token and send email when needed
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
     * Parse YAML template file and alert in case of errors
@@ -26,7 +27,6 @@ TODO:
     * Automatically watch future movies releases and add them to watchlist based on criteria (genres,?)
 
 * Torrent search:
-    * Distinguish season pack and download if season episode not found and replace existing season with it
     
 * TvSeries:
     

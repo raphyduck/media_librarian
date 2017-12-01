@@ -11,16 +11,19 @@ DB_SCHEMA = {
         :result => 'text',
         :created_at => 'datetime'
     },
-    :waiting_download => {
+    :torrents => {
         :name => 'varchar(500) primary key',
+        :identifier => 'text',
         :identifiers => 'text',
         :tattributes => 'text',
         :created_at => 'datetime',
-        :waiting_until => 'datetime'
+        :updated_at => 'datetime',
+        :waiting_until => 'datetime',
+        :torrent_id => 'text',
+        :status => 'integer'
     },
     :seen => {:category => 'varchar(200)',
-              :entry => 'text',
-              :torrent_id => 'text',
+              :entry => 'text primary key',
               :created_at => 'datetime'
     },
     :trakt_auth => {
@@ -38,7 +41,6 @@ module Storage
       setup(db_path)
       @s_db = SQLite3::Database.new db_path unless @s_db
       @readonly = readonly
-      @mutex = Mutex.new
     end
 
     def delete_rows(table, conditions = {}, additionals = {})
@@ -57,7 +59,7 @@ module Storage
       case table
         when 'seen'
           :entry
-        when 'waiting_download'
+        when 'torrents'
           :name
         when 'metadata_search'
           :keywords
@@ -82,6 +84,7 @@ module Storage
     end
 
     def insert_row(table, values, or_replace = 0)
+      values = prepare_values(table, values)
       q = "insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k.to_s }.join(',')}) values (#{values.map { |_, _| '?' }.join(',')})"
       execute_query(q, values.map { |_, v| v.to_s })
     end
@@ -102,7 +105,8 @@ module Storage
       end
     end
 
-    def self.update_rows(table, values, conditions, additionals)
+    def update_rows(table, values, conditions, additionals = {})
+      values = prepare_values(table, values, 1)
       q = "update #{table} set #{values.map { |c, _| c.to_s + ' = (?)' }.join(', ')}"
       q << prepare_conditions(conditions, additionals)
       execute_query(q, values.map { |_, v| v } + conditions.map { |_, v| v } + additionals.map { |_, v| v })
@@ -119,7 +123,7 @@ module Storage
     def execute_query(query, values, write = 1)
       return $speaker.speak_up("Would #{query}") if Env.pretend? && write > 0
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
-      @mutex.synchronize {
+      Utils.lock_block('db') {
         ins = @s_db.prepare(query)
         ins.execute(values)
       }
@@ -132,6 +136,12 @@ module Storage
       q << ' and ' if conditions && !conditions.empty? && additionals && !additionals.empty?
       q << additionals.map { |k, _| "#{k} (?)" }.join(' and ') if additionals && !additionals.empty?
       q
+    end
+
+    def prepare_values(table, values, update_only = 0)
+      values.merge!({:created_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym].include?(:created_at) if update_only == 0
+      values.merge!({:updated_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym].include?(:updated_at)
+      values
     end
   end
 

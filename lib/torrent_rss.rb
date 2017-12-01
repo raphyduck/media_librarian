@@ -3,7 +3,7 @@ class TorrentRss < TorrentSite::Search
 
   def initialize(url)
     @url = url
-    @baseurl = url
+    @base_url = url
     if $tracker_client[url].nil?
       $tracker_client[url] = Mechanize.new
       $tracker_client[url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
@@ -26,7 +26,7 @@ class TorrentRss < TorrentSite::Search
         size *= 1024 * 1024 * 1024 * 1024
     end
     {
-        :name => link.title,
+        :name => link.title.to_s.force_encoding('utf-8'),
         :size => size,
         :link => link.guid,
         :torrent_link => link.link,

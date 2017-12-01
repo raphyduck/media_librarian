@@ -11,7 +11,7 @@ class TraktList
     return if Env.pretend?
     authenticate!
     items = [items] unless items.is_a?(Array)
-    items.map! { |i| i.merge({'collected_at' => TIme.now}) } if list_type == 'collection'
+    items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_type == 'collection'
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
@@ -42,12 +42,11 @@ class TraktList
     token_row = token_rows.first
     if token_row.nil? || Time.parse(token_row[:expires_in]) < Time.now
       token = $trakt.access_token
-      $db.delete_rows('trakt_auth', token_row)
+      $db.delete_rows('trakt_auth', token_row) if token_row
       $db.insert_row('trakt_auth', {
           :account => $trakt_account,
           :access_token => token['access_token'],
           :refresh_token => token['refresh_token'],
-          :created_at => Time.now,
           :expires_in => Time.now + token['expires_in'].to_i.seconds
       }) if token
     else

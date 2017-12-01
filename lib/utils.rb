@@ -2,6 +2,8 @@ class Utils
   include Sys
 
   @tqueues = {}
+  @mutex = {}
+  @lock = Mutex.new
 
   def self.bash(command)
     escaped_command = Shellwords.escape(command)
@@ -21,6 +23,7 @@ class Utils
   def self.cleanup_folder
     Utils.queue_state_get('dir_to_delete').each do |f, _|
       next if f.to_s == '/'
+      $speaker.speak_up("Removing file #{f}") if Env.debug?
       Utils.file_rm(f) if File.exist?(f)
       Utils.queue_state_remove('dir_to_delete', f)
     end
@@ -45,13 +48,9 @@ class Utils
     dejavu
   end
 
-  def self.entry_seen(category, entry, tid = '')
+  def self.entry_seen(category, entry)
     entry = entry.join if entry.is_a?(Array)
-    $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', ''), :torrent_id => tid, :created_at => Time.now})
-  end
-
-  def self.entry_update(category, entry, torrent_id = '')
-    $db.update_rows('seen', {:torrent_id => torrent_id}, {:category => category, :entry => entry})
+    $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', '')})
   end
 
   def self.extract_archive(type, archive, destination)
@@ -189,10 +188,13 @@ class Utils
       return p if folder.gsub('//', '/').include?(p.gsub('//', '/')) || p.gsub('//', '/').include?(folder.gsub('//', '/'))
     end
     return nil
+  rescue => e
+    $speaker.tell_error(e, "Utils.is_in_path(#{path_list}, #{folder}")
+    nil
   end
 
   def self.list_db(table:, entry: '')
-    return [] unless DB_SCHEMA.map { |k, _| k }.include?(table)
+    return [] unless DB_SCHEMA.map { |k, _| k.to_s }.include?(table)
     column = $db.get_main_column(table)
     r = if entry.to_s == ''
           $db.get_rows(table)
@@ -200,6 +202,13 @@ class Utils
           $db.get_rows(table, {column => entry.to_s})
         end
     r.each { |row| $speaker.speak_up row.to_s }
+  end
+
+  def self.lock_block(process_name, &block)
+    @lock.synchronize {
+      @mutex[process_name] = Mutex.new if @mutex[process_name].nil?
+    }
+    @mutex[process_name].synchronize &block
   end
 
   def self.md5sum(file)
@@ -251,7 +260,7 @@ class Utils
     if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(obj.class)
       obj = obj.to_s
     elsif obj.is_a?(Array)
-      obj.each_with_index { |o, idx| obj[idx] = object_pack(o.clone) }
+      obj.each_with_index { |o, idx| obj[idx] = object_pack(o) }
     elsif obj.is_a?(Hash)
       obj.keys.each { |k| obj[k] = object_pack(obj[k]) }
     else
@@ -308,13 +317,15 @@ class Utils
   end
 
   def self.queue_state_save(qname, value)
-    @tqueues[qname] = value
-    r = Utils.object_pack(value)
-    $db.insert_row('queues_state', {
-        :queue_name => qname,
-        :created_at => Time.now,
-        :value => r,
-    }, 1) if r
+    lock_block(__method__.to_s + qname) {
+      @tqueues[qname] = value
+      return if Env.pretend?
+      r = Utils.object_pack(value)
+      $db.insert_row('queues_state', {
+          :queue_name => qname,
+          :value => r,
+      }, 1) if r
+    }
     @tqueues[qname]
   end
 

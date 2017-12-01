@@ -1,10 +1,10 @@
 #String comparator
-$str_closeness = FuzzyStringMatch::JaroWinkler.create( :pure )
+$str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
 #Set global variables
 $tracker_client = {}
 $tracker_client_logged = {}
 #Some constants
-CACHING_TTL = 7200
+CACHING_TTL = 14400
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
@@ -12,8 +12,10 @@ RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
 SOURCES = %w(bluray remux dvdrip webdl web hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac mp3)
-VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + %w(multi)
+LANGUAGES = %w(multi vo eng french vfq vff vf german)
+VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
 FILENAME_NAMING_TEMPLATE=%w(
+    full_name
     destination_folder
     movies_name
     series_name
@@ -23,7 +25,8 @@ FILENAME_NAMING_TEMPLATE=%w(
     quality
     proper
 )
-REGEX_QUALITIES=Regexp.new('[ \.\(\)\-](' + VALID_QUALITIES.join('|') + ')')
+SEP_CHARS='[ \.\(\)\-]'
+REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
 VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)$'
 PRIVATE_TRACKERS = {'yggtorrent' => 'https://yggtorrent.com',
                     'torrentleech' => 'https://www.torrentleech.org',

@@ -14,13 +14,14 @@ module RarbgTracker
 
     def download(url, destination, name)
       $speaker.speak_up('Rarbg do not provide torrent link')
+      ''
     end
 
     private
 
     def crawl_link(link)
       {
-          :name => link['title'],
+          :name => link['title'].to_s.force_encoding('utf-8'),
           :size => link['size'],
           :link => link['info_page'],
           :magnet_link => link['download'],

@@ -25,7 +25,16 @@ module TorrentSite
     def download(url, destination, name)
       authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      $tracker_client[@base_url].get(url).save("#{destination}/#{name}.torrent")
+      path = "#{destination}/#{name}.torrent"
+      $tracker_client[@base_url].get(url).save(path)
+      path
+    end
+
+    def pre_auth
+      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+    rescue => e
+      $speaker.tell_error(e, "TorrentSite.pre_auth(#{@base_url})")
+      $tracker_client_logged[@base_url] = false
     end
 
     private
@@ -45,6 +54,8 @@ module TorrentSite
       get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
       links = links.first(limit)
       links
+    rescue RARBG::APIError
+      []
     rescue => e
       $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links")
       []

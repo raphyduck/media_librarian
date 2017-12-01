@@ -24,11 +24,16 @@ class Report
     deliver(object_s: object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
   rescue => e
     $speaker.tell_error(e, 'Report.push_email', 0)
-    sent_out(object, ebody, trials)
+    sent_out(object, nil, ebody, trials)
   end
 
-  def self.sent_out(object, bs = Thread.current[:email_msg], trials = 3)
-    Librarian.route_cmd(['Report', 'push_email', object, bs, trials], 1, 'email') if $email && bs.to_s != '' && Thread.current[:send_email].to_i > 0
+  def self.sent_out(object, t = Thread.current, content = '', trials = 3)
+    content = (t || Thread.current)[:email_msg].to_s if content.to_s == ''
+    if $email && content.to_s != '' && (t.nil? || t[:send_email].to_i > 0)
+      Librarian.route_cmd(['Report', 'push_email', object, content, trials], 1, 'email')
+      Librarian.reset_notifications(t)
+      Thread.current[:parent] = nil
+    end
   end
 
   private
