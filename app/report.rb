@@ -19,7 +19,7 @@ class Report
     end
   end
 
-  def self.push_email(object, ebody, trials = 3)
+  def self.push_email(object, ebody, trials = 10)
     return if (trials -= 1) <= 0
     deliver(object_s: object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
   rescue => e
@@ -31,7 +31,7 @@ class Report
     content = (t || Thread.current)[:email_msg].to_s if content.to_s == ''
     if $email && content.to_s != '' && (t.nil? || t[:send_email].to_i > 0)
       Librarian.route_cmd(['Report', 'push_email', object, content, trials], 1, 'email')
-      Librarian.reset_notifications(t)
+      Librarian.reset_notifications(t) if t
       Thread.current[:parent] = nil
     end
   end

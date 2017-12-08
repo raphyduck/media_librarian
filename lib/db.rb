@@ -38,8 +38,8 @@ DB_SCHEMA = {
 module Storage
   class Db
     def initialize(db_path, readonly = 0)
-      setup(db_path)
       @s_db = SQLite3::Database.new db_path unless @s_db
+      setup(db_path, readonly)
       @readonly = readonly
     end
 
@@ -49,6 +49,14 @@ module Storage
       execute_query(q, conditions.map { |_, v| v } + additionals.map { |_, v| v })
     rescue => e
       $speaker.tell_error(e, "Storage::Db.new.delete_rows")
+    end
+
+    def dump_schema
+      sch = {}
+      get_rows('sqlite_master', {:type => 'table'}).each do |t|
+        sch[t[:name].to_sym] = table_columns(t[:name])
+      end
+      sch
     end
 
     def execute(raw_sql)
@@ -75,7 +83,7 @@ module Storage
       res = []
       r.each do |l|
         i = -1
-        res << Hash[current_schema(table).map { |k| i+=1; [k.to_sym, l[i]] }]
+        res << Hash[table_columns(table).map { |k, _| i+=1; [k.to_sym, l[i]] }]
       end
       res
     rescue => e
@@ -95,12 +103,13 @@ module Storage
       end
     end
 
-    def setup(db_path)
+    def setup(db_path, readonly = 0)
       @s_db = SQLite3::Database.new db_path unless @s_db
+      return if readonly.to_i > 0
       DB_SCHEMA.each do |t, s|
         @s_db.execute "create table if not exists #{t} (#{s.map { |c, v| c.to_s + ' ' + v.to_s }.join(', ')})"
         s.each do |c, v|
-          @s_db.execute "alter table #{t} add column #{c} #{v}" unless current_schema(t.to_s).include?(c.to_s)
+          @s_db.execute "alter table #{t} add column #{c} #{v}" unless table_columns(t.to_s).map { |t, _| t.to_s }.include?(c.to_s)
         end
       end
     end
@@ -116,8 +125,14 @@ module Storage
 
     private
 
-    def current_schema(table)
-      @s_db.execute("PRAGMA table_info('#{table}')").map { |c| c[1] } rescue []
+    def table_columns(table)
+      tbl = {}
+      @s_db.execute("PRAGMA table_info('#{table}')").each do |c|
+        tbl[c[1].to_sym] = "#{c[2]}#{' NOT NULL' if c[3].to_i > 0}#{' PRIMARY KEY' if c[5].to_i > 0}"
+      end
+      tbl
+    rescue
+      {}
     end
 
     def execute_query(query, values, write = 1)
@@ -139,8 +154,8 @@ module Storage
     end
 
     def prepare_values(table, values, update_only = 0)
-      values.merge!({:created_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym].include?(:created_at) if update_only == 0
-      values.merge!({:updated_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym].include?(:updated_at)
+      values.merge!({:created_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym] && DB_SCHEMA[table.to_sym].include?(:created_at) if update_only == 0
+      values.merge!({:updated_at => Time.now.to_s}) if DB_SCHEMA[table.to_sym] && DB_SCHEMA[table.to_sym].include?(:updated_at)
       values
     end
   end

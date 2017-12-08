@@ -10,7 +10,7 @@ module Yggtorrent
       @base_url = 'https://yggtorrent.com'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/engine/search?#{cid}q=#{URI.escape(search)}"
+      @url = url || (search.to_s == '' ? "#{@base_url}/torrents/today?#{cid}" : "#{@base_url}/engine/search?#{cid}q=#{URI.escape(search)}")
       if $tracker_client[@base_url].nil?
         $tracker_client[@base_url] = Mechanize.new
         $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
@@ -65,7 +65,9 @@ module Yggtorrent
     end
 
     def get_rows
-      page.xpath('.//table/tbody/tr')[0..50] || []
+      rows = page.xpath('.//table/tbody/tr')[0..50]
+      rows = page.xpath('.//table/tr')[0..50] || []  if rows.nil? || rows.empty?
+      rows
     end
   end
 end

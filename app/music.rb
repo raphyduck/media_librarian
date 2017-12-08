@@ -7,7 +7,7 @@ class Music
     crs = ['artist', 'albumartist', 'album', 'year', 'decade', 'genre']
     library = {}
     $speaker.speak_up("Listing all songs in #{folder}")
-    files = Utils.search_folder(folder, {'regex' => '.*\.[mM][pP]3'})
+    files = FileUtils.search_folder(folder, {'regex' => '.*\.[mM][pP]3'})
     files.each do |p_song|
       cpt += 1
       song = Mp3Info.open(p_song[0])
@@ -27,8 +27,8 @@ class Music
       if f_song[:genre].to_s == '' || f_song[:artist].to_s == '' || f_song[:album].to_s == ''
         if $speaker.ask_if_needed("File #{f_song[:path]} has no proper tags, missing: #{'genre,' if f_song[:genre].to_s == ''}#{'artist,' if f_song[:artist].to_s == ''}#{'album,' if f_song[:album].to_s == ''} do you want to move it to another folder? (y/n)", move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
           destination_folder = $speaker.ask_if_needed("Enter the full path of the folder to move the files into: ", move_untagged.to_s != '' ? 1 : 0, move_untagged.to_s)
-          Utils.file_mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
-          Utils.file_mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
+          FileUtils.mkdir_p("#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}")
+          FileUtils.mv("#{p_song[0]}", "#{destination_folder}/#{File.basename(File.dirname(f_song[:path]))}/")
         end
         next
       end
@@ -45,10 +45,10 @@ class Music
     collection = ordered_collection.sort_by { |k, _| k }.map { |x| x[1].sort_by { |s| s[:track_nr].to_i } }
     collection.shuffle! if random.to_i > 0
     collection.flatten!
-    Utils.file_mkdir(folder) unless FileTest.directory?(folder)
+    FileUtils.mkdir(folder) unless FileTest.directory?(folder)
     if remove_existing_playlists.to_i > 0
-      Utils.search_folder(folder, {'regex' => '.*\.m3u'}).each do |path|
-        Utils.file_rm(path[0])
+      FileUtils.search_folder(folder, {'regex' => '.*\.m3u'}).each do |path|
+        FileUtils.rm(path[0])
       end
     end
     crs.each do |cr|

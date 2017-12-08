@@ -3,48 +3,6 @@ class MediaInfo
 
   @tv_episodes = {}
   @media_folders = Vash.new
-  @cache_metadata = Vash.new
-
-  def self.cache_add(type, keyword, result, full_save = nil)
-    $speaker.speak_up "Refreshing cache for #{keyword}#{' will not be saved to db' if full_save.nil?}" if Env.debug?
-    @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
-    r = Utils.object_pack(result)
-    $db.insert_row('metadata_search', {
-        :keywords => keyword,
-        :type => cache_get_enum(type),
-        :result => r,
-    }) if cache_get_enum(type) && full_save && r
-  end
-
-  def self.cache_expire(row)
-    $db.delete_rows('metadata_search', row)
-  end
-
-  def self.cache_get(type, keyword, expiration = 365)
-    return nil unless cache_get_enum(type)
-    return @cache_metadata[type.to_s + keyword.to_s] if @cache_metadata[type.to_s + keyword.to_s]
-    res = $db.get_rows('metadata_search', {:type => cache_get_enum(type),
-                                           :keywords => keyword}
-    )
-    res.each do |r|
-      if Time.parse(r[:created_at]) < Time.now - expiration.days && !Env.pretend?
-        cache_expire(r)
-        next
-      end
-      result = Utils.object_unpack(r[:result])
-      @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result
-      return result
-    end
-    nil
-  end
-
-  def self.cache_get_enum(type)
-    METADATA_SEARCH[:type_enum][type.to_sym] rescue nil
-  end
-
-  def self.cache_get_mediatype_enum(type)
-    METADATA_SEARCH[:media_type][type.to_sym][:enum] rescue nil
-  end
 
   def self.clean_title(title, complete = 0)
     t = title.clone
@@ -52,7 +10,7 @@ class MediaInfo
     t.gsub!(' (Video)', '')
     t.gsub!(/\(TV .+\)/, '')
     t.gsub!(/(&#x27;|&#039;)/, '')
-    if complete
+    if complete.to_i > 0
       t.gsub!(/\(?US[ \)]{0,2}$/, '')
       t.downcase!
       t.gsub!(/[ \(\)\.\:,\'\/-]/, '')
@@ -71,8 +29,10 @@ class MediaInfo
       when 'movies'
         name = (name.match(/^(\[[^\]])?(.*[\. ]\(?\d{4}\)?)[\. ]/i)[2].to_s.gsub('.', ' ') rescue name)
       when 'shows'
-        name = (name.match(/^(\[[^\]])?(.*)([s\. _\^\[]\d{1,3}[ex]\d{1,4}|s\d{1,3}[\. ])/i)[2].to_s.gsub('.', ' ') rescue name)
+        name = (name.match(/^(\[[^\]])?(.*)([s\. _\^\[]\d{1,3}[ex]\d{1,4}|s\d{1,3}([\. ]|$))/i)[2].to_s.gsub('.', ' ') rescue name)
         name = name.gsub(/[\. ]\(?US[\). ]{0,2}$/, '')
+      when 'books'
+        name = name.gsub(/^([^-]*)([\. -]{1,2}[TS]\d{1,4}|[ _]-[ _])[\. -_]{1,3}(.*)/, '\3').strip
     end
     name
   end
@@ -156,26 +116,29 @@ class MediaInfo
 
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '', ids = {})
     ids = {} if ids.nil?
-    in_path = Utils.is_in_path(@media_folders.map { |k, _| k }, filename)
+    in_path = FileUtils.is_in_path(@media_folders.map { |k, _| k }, filename)
     return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
     title, item = nil, nil
-    filename, _ = Utils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
+    filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
     r_folder, jk = filename, 0
     while item.nil?
-      t_folder, r_folder = Utils.get_top_folder(r_folder)
+      t_folder, r_folder = FileUtils.get_top_folder(r_folder)
       case type
         when 'movies'
           if item.nil? && t_folder == r_folder
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
-          title, item = movie_lookup(t_folder, no_prompt, 0, ids['imdb'])
+          title, item = movie_lookup(t_folder, no_prompt, ids['imdb'])
         when 'shows'
           if item.nil? && t_folder == r_folder
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
           title, item = tv_show_search(t_folder, no_prompt, ids['tvdb'])
+        when 'books'
+          title = detect_real_title(filename, type)
+          title, item = Book.book_search(title, no_prompt, ids['isbn'])
         else
           title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
       end
@@ -186,7 +149,14 @@ class MediaInfo
   end
 
   def self.identify_release_year(filename)
-    filename.match(/\((\d{4})\)$/)[1].to_i rescue 0
+    filename.strip.match(/[\( \.](\d{4})[\) \.]?$/)[1].to_i rescue 0
+  end
+
+  def self.match_titles(title, target_title, year, target_year, strict = 0)
+    additional_year_cond = year.to_i > 0 ? "|#{year}" : ''
+    title.match(Regexp.new('^\[?.{0,2}[\] ]?' + StringUtils.regexify(target_title.gsub(/[ \.]\(?(\d{4})\)?/,'.\(?(\1' + additional_year_cond + '|US|UK)\)?'), strict),
+                           Regexp::IGNORECASE)) &&
+        (year == 0 || target_year == 0 || (year <= target_year + 1 && year >= target_year - 1))
   end
 
   def self.media_qualities(filename)
@@ -220,6 +190,10 @@ class MediaInfo
       data[:movies] = {} if data[:movies].nil?
       data[:movies][item_name] = attrs[:movie]
     end
+    if attrs[:book_serie]
+      data[:book_series] = {} if data[:book_series].nil?
+      data[:book_series][item_name] = attrs[:book_serie]
+    end
     data
   end
 
@@ -231,21 +205,22 @@ class MediaInfo
     eps = {}
     identifiers = [identifiers.to_s] unless identifiers.is_a?(Array)
     identifiers.each do |i|
-      eps.merge!(files.select { |id, f| id.to_s.include?(i) && (f_type.nil? || f[:f_type].nil? || f_type.to_s == f[:f_type].to_s) })
+      eps.merge!(files.select do |id, f|
+        id.to_s.include?(i) && (f_type.nil? || f[:f_type].nil? || f_type.to_s == f[:f_type].to_s)
+      end)
     end
     eps
   end
 
-  def self.media_chose(title, items, keys, no_prompt = 0, search_alt = 0)
+  def self.media_chose(title, items, keys, no_prompt = 0)
     item = nil
     unless (items || []).empty?
       results = items.map { |m| [clean_title(m[keys['name']]), m[keys['url']]] }
       results += [['Edit title manually', '']]
       (0..results.count-2).each do |i|
-        show_year = items[i][keys['year']].match(/\d{4}/).to_s.to_i
+        show_year = items[i][keys['year']].match(/\d{4}/).to_s.to_i if keys['year']
         year = identify_release_year(title)
-        if clean_title(clear_year(items[i][keys['name']]), 1) == clean_title(clear_year(title), 1) &&
-            (year == 0 || show_year == 0 || (show_year < year + 1 && show_year > year - 1)) && (search_alt.to_i == 0 || no_prompt.to_i > 0)
+        if match_titles(clean_title(clear_year(items[i][keys['name']])), clean_title(clear_year(title)), show_year, year, 1)
           choice = i
         elsif no_prompt.to_i == 0
           $speaker.speak_up("Alternatives titles found for #{title}:")
@@ -271,12 +246,12 @@ class MediaInfo
     return title, item
   end
 
-  def self.movie_lookup(title, no_prompt = 0, search_alt = 0, imdb_id = '')
-    cached = cache_get('movie_lookup', title)
+  def self.movie_lookup(title, no_prompt = 0, imdb_id = '')
+    cached = Cache.cache_get('movie_lookup', title.to_s + imdb_id.to_s)
     return cached if cached
     if imdb_id.to_s != ''
       exact_title, movie = $imdb.find_movie_by_id(imdb_id.to_s)
-      cache_add('tv_show_search', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
+      Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
       return exact_title, movie unless movie.nil?
     end
     exact_title, movie = title, nil
@@ -289,23 +264,22 @@ class MediaInfo
           title,
           movies,
           {'name' => :title, 'url' => :url, 'year' => :year},
-          [no_prompt.to_i, 1-search_alt.to_i].max,
-          search_alt
+          no_prompt.to_i
       )
       unless movie.nil?
         movie = $imdb.find_movie_by_id(movie[:imdb_id])
         if movie
-          movie = Movie.new(Utils.object_to_hash(movie))
+          movie = Movie.new(Cache.object_to_hash(movie))
           exact_title = movie.title
         end
       end
       break if movie
     end
-    cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
+    Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
     return exact_title, movie
   rescue => e
     $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    cache_add('movie_lookup', title.to_s + imdb_id.to_s, [title, nil], nil)
+    Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [title, nil], nil)
     return title, nil
   end
 
@@ -344,6 +318,15 @@ class MediaInfo
             :show => item,
             :f_type => f_type
         }
+      when 'books'
+        ids = [item&.identifier ? item.identifier : "#{item_name}"]
+        nb = Book.identify_episodes_numbering(item_name)
+        full_name = "#{item_name}#{' - T' + nb.to_s if nb.to_i > 0}#{' - ' + item.name if item}"
+        info = {
+            :series_name => item&.series_name ? item.series_name : '',
+            :episode_id => item ? item.series_id : nil,
+            :book_serie => item.series
+        }
     end
     file[:parts] = parts unless file.nil? || file.empty?
     return full_name, ids, info
@@ -366,67 +349,68 @@ class MediaInfo
     end
     sorted.sort_by! { |x| (AUDIO.index(x[4]) || 999).to_i }
     sorted.sort_by! { |x| (LANGUAGES.index(x[6]) || 999).to_i }
+    sorted.sort_by! { |x| -x[5].to_i }
     sorted.sort_by! { |x| (CODECS.index(x[3]) || 999).to_i }
     sorted.sort_by! { |x| (SOURCES.index(x[2]) || 999).to_i }
     sorted.sort_by! { |x| (RESOLUTIONS.index(x[1]) || 999).to_i }
     sorted.sort_by! { |x| x[7].to_i }
-    sorted.sort_by! { |x| -x[5].to_i }
     r.sort_by! { |f| sorted.map { |x| x[0] }.index(f[:name]) }
   end
 
   def self.tv_episodes_search(title, no_prompt = 0, show = nil, tvdb_id = '')
-    cached = cache_get('tv_episodes_search', title.to_s + tvdb_id.to_s, 7)
+    cached = Cache.cache_get('tv_episodes_search', title.to_s + tvdb_id.to_s, 7)
     return cached if cached
     title, show = tv_show_search(title, no_prompt) unless show
     episodes = []
     unless show.nil?
       $speaker.speak_up("Using #{title} as series name", 0)
       episodes = $tvdb.get_all_episodes(show)
-      episodes.map! { |e| Episode.new(Utils.object_to_hash(e)) }
+      episodes.map! { |e| Episode.new(Cache.object_to_hash(e)) }
     end
-    cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [show, episodes], show)
+    Cache.cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [show, episodes], show)
     return show, episodes
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
-    cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [nil, []], nil)
+    Cache.cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [nil, []], nil)
     return nil, []
   end
 
   def self.tv_show_get(tvdb_id)
-    cached = cache_get('tv_show_get', tvdb_id.to_s)
+    cached = Cache.cache_get('tv_show_get', tvdb_id.to_s)
     return cached if cached
     show = $tvdb.get_series_by_id(tvdb_id)
     show = TVMaze::Show.lookup({'thetvdb' => tvdb_id.to_i}) if show.nil?
-    show = TvSeries.new(Utils.object_to_hash(show))
+    show = TvSeries.new(Cache.object_to_hash(show))
     title = show.name
-    cache_add('tv_show_get', tvdb_id.to_s, [title, show], show)
+    Cache.cache_add('tv_show_get', tvdb_id.to_s, [title, show], show)
     return title, show
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_show_get")
-    cache_add('tv_show_get', tvdb_id.to_s, ['', nil], nil)
+    Cache.cache_add('tv_show_get', tvdb_id.to_s, ['', nil], nil)
     return '', nil
   end
 
   def self.tv_show_search(title, no_prompt = 0, tvdb_id = '')
-    cached = cache_get('tv_show_search', title.to_s + tvdb_id.to_s)
+    title = StringUtils.prepare_str_search(title)
+    cached = Cache.cache_get('tv_show_search', title.to_s + tvdb_id.to_s)
     return cached if cached
     if tvdb_id.to_i > 0
       exact_title, show = tv_show_get(tvdb_id)
-      cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
+      Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
       return exact_title, show unless show.nil?
     end
     tvdb_shows = $tvdb.search(title)
     tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
-    tvdb_shows = TVMaze::Show.search(title).map { |s| Utils.object_to_hash(s) } if tvdb_shows.empty?
-    tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map { |s| Utils.object_to_hash(s) } if tvdb_shows.empty?
-    tvdb_shows.map! { |s| Utils.object_to_hash(TvSeries.new(s)) }
+    tvdb_shows = TVMaze::Show.search(title).map { |s| Cache.object_to_hash(s) } if tvdb_shows.empty?
+    tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map { |s| Cache.object_to_hash(s) } if tvdb_shows.empty?
+    tvdb_shows.map! { |s| Cache.object_to_hash(TvSeries.new(s)) }
     exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, no_prompt)
     exact_title, show = tv_show_get(show['tvdb_id']) if show
-    cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
+    Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
     return exact_title, show
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
-    cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [title, nil], nil)
+    Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [title, nil], nil)
     return title, nil
   end
 

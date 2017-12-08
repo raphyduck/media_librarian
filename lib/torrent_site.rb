@@ -45,7 +45,7 @@ module TorrentSite
 
     def page
       authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      @page ||= $tracker_client[@base_url].get(@url)
+      $tracker_client[@base_url].get(@url)
     end
 
     def generate_links(limit = NUMBER_OF_LINKS)

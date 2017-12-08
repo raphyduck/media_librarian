@@ -8,6 +8,8 @@ torrent_sources:
       - https://feed.second:
           timeframe: 3 hours
 filter_sources:
+  calibre:
+    series: 1
   filesystem:
     existing_folder:
       movies: '/folder/of/movies'

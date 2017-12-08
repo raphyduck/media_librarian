@@ -11,7 +11,7 @@ LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
 SOURCES = %w(bluray remux dvdrip webdl web hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
-AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac mp3)
+AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac2.0 aac mp3)
 LANGUAGES = %w(multi vo eng french vfq vff vf german)
 VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
 FILENAME_NAMING_TEMPLATE=%w(
@@ -27,7 +27,7 @@ FILENAME_NAMING_TEMPLATE=%w(
 )
 SEP_CHARS='[ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
-VALID_VIDEO_EXT='.*\.(mkv|avi|mp4|mpg|m4v)$'
+VALID_VIDEO_EXT='(.*)\.(mkv|avi|mp4|mpg|m4v)$'
 PRIVATE_TRACKERS = {'yggtorrent' => 'https://yggtorrent.com',
                     'torrentleech' => 'https://www.torrentleech.org',
                     'wop' => 'https://worldofp2p.net'}
@@ -49,6 +49,7 @@ METADATA_SEARCH = {
         :movie_lookup => 2,
         :trakt => 3,
         :tv_episodes_search => 4,
-        :tv_show_search => 5
+        :tv_show_search => 5,
+        :book_search => 6
     }
 }

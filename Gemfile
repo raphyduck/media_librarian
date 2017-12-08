@@ -7,6 +7,7 @@ gem 'bencode', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'eventmachine', :require => false
 gem 'fuzzy-string-match', :require => false
+gem 'goodreads', :git => 'https://github.com/raphyduck/goodreads.git', :require => false
 gem 'hanami-mailer', :require => false
 gem 'httparty', :require => false
 gem 'imdb_party', :git => 'https://github.com/raphyduck/imdb-party.git', :require => false

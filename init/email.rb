@@ -1,6 +1,6 @@
 #Configure email alerts
 $email_templates = File.dirname(__FILE__) + '/../app/mailer_templates'
-Utils.file_mkdir($email_templates) unless File.exist?($email_templates)
+FileUtils.mkdir($email_templates) unless File.exist?($email_templates)
 $email = $config['email']
 if $email
   Hanami::Mailer.configure do

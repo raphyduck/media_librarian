@@ -7,6 +7,16 @@ GIT
       rencoder (~> 0.1)
 
 GIT
+  remote: https://github.com/raphyduck/goodreads.git
+  revision: 5f560ccc0b5911b12ef852ff8e3f92c304466d33
+  specs:
+    goodreads (0.5.1)
+      activesupport (>= 3.0)
+      i18n (~> 0.5)
+      oauth (~> 0.4)
+      rest-client (~> 2.0)
+
+GIT
   remote: https://github.com/raphyduck/imdb-party.git
   revision: fb1636b2e440fc10a9b5a8fe5b24d74104cbaae6
   specs:
@@ -123,6 +133,7 @@ GEM
     nokogiri (1.8.1)
       mini_portile2 (~> 2.3.0)
     ntlm-http (0.1.1)
+    oauth (0.5.3)
     pdf-reader (2.0.0)
       Ascii85 (~> 1.0.0)
       afm (~> 0.2.1)
@@ -171,6 +182,7 @@ DEPENDENCIES
   deluge-rpc!
   eventmachine
   fuzzy-string-match
+  goodreads!
   hanami-mailer
   httparty
   imdb_party!

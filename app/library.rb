@@ -26,12 +26,12 @@ class Library
     ssh_opts = Utils.recursive_symbolize_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
     tries = 10
-    list = FileTest.directory?(path) ? Utils.search_folder(path, filter_criteria) : [[path, '']]
+    list = FileTest.directory?(path) ? FileUtils.search_folder(path, filter_criteria) : [[path, '']]
     list.each do |f|
       begin
         f_path = f[0]
         $speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
-        local_md5sum = Utils.md5sum(f_path)
+        local_md5sum = FileUtils.md5sum(f_path)
         remote_md5sum = ''
         Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
           remote_md5sum = []
@@ -46,7 +46,7 @@ class Library
         if local_md5sum != remote_md5sum || local_md5sum == '' || remote_md5sum == ''
           $speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
           if local_md5sum != '' && remote_md5sum != '' && $speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
-            Utils.file_rm_r(f_path)
+            FileUtils.rm_r(f_path)
           end
         else
           $speaker.speak_up("The 2 files are identical!")
@@ -74,7 +74,7 @@ class Library
       source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
       dest_type = "#{dest_folder}/#{type.titleize}/"
       list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
-      _, total_space = Utils.get_disk_space(dest_folder)
+      _, total_space = FileUtils.get_disk_space(dest_folder)
       while total_space <= list_size
         $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
         if $speaker.ask_if_needed("Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
@@ -88,14 +88,14 @@ class Library
       return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       $speaker.speak_up('Deleting extra media...', 0)
-      Utils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
-        Utils.file_rm_r(p[0]) unless Utils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
+      FileUtils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
+        FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
-      Utils.file_mkdir(dest_type) unless File.exist?(dest_type)
+      FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
       $speaker.speak_up('Syncing new media...', 0)
       paths.each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
-        Utils.file_mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
+        FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
         Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
@@ -179,9 +179,9 @@ class Library
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
           title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
-          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
+          folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
           file = folders.first
-          sizes["#{title.to_s}#{year.to_s}"] = file ? Utils.get_disk_size(file[0]) : -1
+          sizes["#{title.to_s}#{year.to_s}"] = file ? FileUtils.get_disk_size(file[0]) : -1
           print '.'
         end
         new_list[type].reverse_each do |item|
@@ -229,7 +229,7 @@ class Library
       while exit_status.nil? && Utils.check_if_active(active_hours)
         fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
         while fetcher.alive?
-          if !Utils.check_if_active(active_hours) || low_b > 24
+          if !Utils.check_if_active(active_hours) || low_b > 60
             $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
             `pgrep -f 'rsync' | xargs kill -15`
             low_b = 0
@@ -310,18 +310,18 @@ class Library
       folder[l_type] = $speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
       title = item[type]['title']
       next if parsed_media[l_type][title] && r_type != 'season'
-      folders = Utils.search_folder(folder[l_type], {'regex' => Utils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
+      folders = FileUtils.search_folder(folder[l_type], {'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
       file = folders.first
       if file
         if r_type == 'season'
           season = item[r_type]['number'].to_s
-          s_file = Utils.search_folder(file[0], {'regex' => "season.#{season}", 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1}).first
+          s_file = FileUtils.search_folder(file[0], {'regex' => "season.#{season}", 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1}).first
           if s_file
-            list_size += Utils.get_disk_size(s_file[0])
+            list_size += FileUtils.get_disk_size(s_file[0])
             list_paths << s_file[0]
           end
         else
-          list_size += Utils.get_disk_size(file[0])
+          list_size += FileUtils.get_disk_size(file[0])
           list_paths << file[0]
         end
       else
@@ -340,15 +340,15 @@ class Library
     full_p = torrent_path + '/' + torrent_name
     if FileTest.directory?(full_p)
       handled_files = (!handling['file_types'].nil? && handling['file_types'].is_a?(Array)) ? handling['file_types'] + ['rar', 'zip'] : ['rar', 'zip']
-      Utils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s}).each do |f|
+      FileUtils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s}).each do |f|
         handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
       end
     else
       extension = torrent_name.gsub(/.*\.(\w{2,4}$)/, '\1')
       if ['rar', 'zip'].include?(extension)
-        Utils.extract_archive(extension, full_p, torrent_path + '/extracted')
+        FileUtils.extract_archive(extension, full_p, torrent_path + '/extracted')
         handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
-        Utils.file_rm_r(torrent_path + '/extracted')
+        FileUtils.rm_r(torrent_path + '/extracted')
       else
         if handling['file_types']
           type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
@@ -362,7 +362,7 @@ class Library
           else
             #TODO: Handle flac,...
             destination = full_p.gsub(completed_folder, destination_folder)
-            Utils.move_file(full_p, destination, 1)
+            FileUtils.move_file(full_p, destination, 1)
           end
         end
       end
@@ -382,7 +382,7 @@ class Library
         dup_files.each do |d|
           next if dup_files.index(d) == 0 && no_prompt.to_i > 0
           if $speaker.ask_if_needed("Remove file #{d[:name]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-            Utils.file_rm(d[:name])
+            FileUtils.rm(d[:name])
             files[id][:files].select! { |x| x[:name].to_s != d[:name] }
           end
         end
@@ -421,7 +421,7 @@ class Library
         file
     )
     return files if identifiers.empty? || full_name == ''
-    $speaker.speak_up("Adding #{file[:type]} #{full_name} to list", 0) if Env.debug?
+    $speaker.speak_up("Adding #{file[:type]} '#{full_name}' to list", 0) if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
     files = MediaInfo.media_add(item_name,
                                 type,
@@ -441,6 +441,21 @@ class Library
     existing_files = {}
     missing = {}
     case source_type
+      when 'calibre'
+        search_list.merge!(BookSeries.subscribe_series) if source['series'].to_i > 0
+      when 'filesystem'
+        return search_list unless source['existing_folder'] && source['existing_folder'][category]
+        existing_files = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
+        case category
+          when 'shows'
+            search_list = TvSeries.list_missing_episodes(
+                existing_files,
+                no_prompt,
+                (source['delta'] || 10),
+                source['include_specials'],
+                search_list
+            )
+        end
       when 'search'
         keywords = source['keywords']
         keywords = [keywords] if keywords.is_a?(String)
@@ -503,21 +518,9 @@ class Library
               ) unless missing[ct]
           end
         end
+        search_list[:shows].merge!(missing['shows'][:shows]) if search_list[:shows]
         search_list.merge!(missing['shows']) if missing['shows']
         search_list.keep_if { |f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
-      when 'filesystem'
-        return search_list unless source['existing_folder'] && source['existing_folder'][category]
-        existing_files = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
-        case category
-          when 'shows'
-            search_list = TvSeries.list_missing_episodes(
-                existing_files,
-                no_prompt,
-                (source['delta'] || 10),
-                source['include_specials'],
-                search_list
-            )
-        end
     end
     search_list
   end
@@ -526,11 +529,11 @@ class Library
     $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}", 0)
     files, raw_filtered, cache_name = nil, [], folder.to_s + type.to_s
     Utils.lock_block(__method__.to_s + cache_name) {
-      file_criteria = {'regex' => '.*' + Utils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
-      raw_filtered += Utils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
+      file_criteria = {'regex' => '.*' + StringUtils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
+      raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
       if @media_list[cache_name].nil? || item_name.to_s != '' || remove_duplicates.to_i > 0 ||
           (filter_criteria && !filter_criteria.empty?) || (rename && !rename.empty?)
-        Utils.search_folder(folder, file_criteria).each do |f|
+        FileUtils.search_folder(folder, file_criteria).each do |f|
           next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
           @media_list[cache_name, CACHING_TTL] = parse_media({:type => 'file', :name => f[0]}, type, no_prompt, @media_list[cache_name] || {}, folder_hierarchy, rename, {}, folder)
         end
@@ -556,7 +559,7 @@ class Library
     destination += ".#{metadata['extension'].downcase}"
     if metadata['is_found']
       if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'?", no_prompt, 'y').to_s == 'y'
-        _, destination = Utils.move_file(original, destination, hard_link, replaced_outdated)
+        _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated)
       end
     else
       destination = ''

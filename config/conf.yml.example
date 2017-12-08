@@ -1,3 +1,5 @@
+calibre_library:
+  path: /path/to/calibre/library
 daemon:
   workers_pool_size: 4
 deluge:
@@ -15,6 +17,9 @@ email:
   notification_to: 'noreply@recipient.com'
   notification_cc: ''
   notification_bcc: ''
+goodreads:
+  api_key: api_key
+  api_secret: api_secret
 imdb:
   user: user
   list: list

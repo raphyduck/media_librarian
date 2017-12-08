@@ -1,7 +1,7 @@
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
 sys-filesystem)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find io/console imdb_party mechanize mp3info
+archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find goodreads io/console imdb_party mechanize mp3info
 net/ssh pdf/reader rarbg rsync shellwords simple-rss sys/filesystem titleize
 trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
@@ -25,9 +25,9 @@ class Librarian
           :status => ['Daemon', 'status'],
           :stop => ['Daemon', 'stop'],
       },
-      :ebooks => {
-          :compress_comics => ['Ebooks', 'compress_comics'],
-          :convert_comics => ['Ebooks', 'convert_comics'],
+      :books => {
+          :compress_comics => ['Book', 'compress_comics'],
+          :convert_comics => ['Book', 'convert_comics'],
       },
       :library => {
           :compare_remote_files => ['Library', 'compare_remote_files'],
@@ -160,19 +160,11 @@ class Librarian
       $t_client.parse_torrents_to_download
       sleep 15
       $t_client.process_added_torrents
-      Utils.queue_state_get('deluge_torrents_added').select { |_, v| v < 2 }.each do |k, _|
-        Utils.queue_state_add_or_update('deluge_torrents_added', {k => 2})
-      end
-      unless Utils.queue_state_get('deluge_options').empty?
-        $speaker.speak_up('Waiting for completion of all deluge operation', 0)
-        sleep 15
-        $t_client.process_added_torrents
-      end
       $t_client.disconnect
     end
     #Cleanup lists and folders
-    Utils.cleanup_folder unless Utils.queue_state_get('dir_to_delete').empty?
-    TraktList.clean_list('watchlist') unless Utils.queue_state_get('cleanup_trakt_list').empty?
+    FileUtils.cleanup_folder unless Cache.queue_state_get('dir_to_delete').empty?
+    TraktList.clean_list('watchlist') unless Cache.queue_state_get('cleanup_trakt_list').empty?
   end
 
   def self.help
@@ -218,6 +210,7 @@ class Librarian
 
   def self.run_command(cmd, direct = 0, object = '', env_flags = nil, &block)
     $args_dispatch.set_env_variables($env_flags, env_flags) if env_flags
+    object = cmd[0..1].join(' ') if object == 'rcv'
     init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
       m = cmd.shift
@@ -228,24 +221,24 @@ class Librarian
       $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
-    terminate_command(Thread.current)
+    terminate_command(Thread.current, nil, object)
   rescue => e
     $speaker.tell_error(e, "Librarian.run_command(#{object}")
-    terminate_command(Thread.current, "Error on #{object}")
+    terminate_command(Thread.current, "Error on #{object}", object)
   end
 
-  def self.terminate_command(thread, object = nil)
+  def self.terminate_command(thread, object = nil, cmd = nil)
     return unless thread[:base_thread].nil?
     return if thread[:childs].to_i > 0 if thread[:childs]
     if thread[:direct].to_i == 0
-      $speaker.speak_up("Command #{object} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
+      $speaker.speak_up("Command #{cmd} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
       Report.sent_out(object || thread[:object], thread) if Env.email_notif?
     end
     thread[:block].call if thread[:block]
     if thread[:parent]
       Daemon.merge_notifications(thread, thread[:parent])
       Daemon.decremente_children(thread[:parent])
-      terminate_command(thread[:parent], object)
+      terminate_command(thread[:parent], object, cmd)
     end
   end
 end

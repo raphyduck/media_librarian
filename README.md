@@ -7,7 +7,6 @@ This program is made to answer my various needs for automation in the management
 
 TODO:
 * General
-    * Split Utils
     * Expire trakt authentication token and send email when needed
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
     * Parse YAML template file and alert in case of errors
@@ -16,7 +15,6 @@ TODO:
     * Automatically check for new commits on master and auto-update (as a task)
     
 * Ebooks/Comics:
-    * Read calibre library/metadata DB (by allowing db.rb to interact with library.db as a read only client)
     * Subscribe to series and/or authors, and search for new ebooks/comics
     
 * Music:
@@ -29,6 +27,7 @@ TODO:
 * Torrent search:
     
 * TvSeries:
+    * Try to identify TV series by their "also known as" title. Ie "Law & Order: Special Victims Unit" = "Law & Order SVU"
     
 * Library:
     * Use alternative sources to identify series

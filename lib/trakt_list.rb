@@ -15,12 +15,15 @@ class TraktList
     $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
   end
 
-  def self.clean_list(list_to_clean = Utils.queue_state_get('cleanup_trakt_list'))
+  def self.clean_list(list_to_clean = Cache.queue_state_get('cleanup_trakt_list'))
     return if Env.pretend?
     list_to_clean.each do |list_name, list|
+      $speaker.speak_up "TraktList.clean_list(listname = #{list_name})"
       list.map { |m| m[:t] }.uniq.each do |type|
+        $speaker.speak_up "TraktList.clean_list(#{list.select { |m| m[:t] == type }.map { |m| m[:c] }}, #{list_name}, #{type})" #REMOVEME
         TraktList.remove_from_list(list.select { |m| m[:t] == type }.map { |m| m[:c] }, list_name, type)
       end
+      #Cache.queue_state_remove('cleanup_trakt_list', list_name) #REMOVEME
     end
   end
 
@@ -142,7 +145,7 @@ class TraktList
         when 'days_older', 'days_newer'
           next unless type == 'movies'
           break if cr_value.to_i == 0
-          folders = Utils.search_folder(folder, {'regex' => Utils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
+          folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
           list.delete(item) unless folders.first
       end
       print '.'
@@ -174,16 +177,16 @@ class TraktList
   end
 
   def self.list_cache_add(list_name, type, item, id = Time.now.to_i)
-    ex = Utils.queue_state_get('cleanup_trakt_list')[list_name] || []
-    Utils.queue_state_add_or_update('cleanup_trakt_list', {list_name => ex.push({:id => id, :c => item, :t => type})})
+    ex = Cache.queue_state_get('cleanup_trakt_list')[list_name] || []
+    Cache.queue_state_add_or_update('cleanup_trakt_list', {list_name => ex.push({:id => id, :c => item, :t => type})})
   end
 
   def self.list_cache_remove(item_id)
-    list_cache = Utils.queue_state_get('cleanup_trakt_list')
+    list_cache = Cache.queue_state_get('cleanup_trakt_list')
     list_cache.each do |k, list|
       list_cache[k] = list.select { |x| x[:id] != item_id }
     end
-    Utils.queue_state_add_or_update('cleanup_trakt_list', list_cache)
+    Cache.queue_state_add_or_update('cleanup_trakt_list', list_cache)
   end
 
   def self.parse_custom_list(items)
