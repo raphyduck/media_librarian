@@ -1,11 +1,11 @@
 class TvSeries
   attr_accessor :id, :tvdb_id, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
-                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url
+                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language
 
   @missing_episodes = Vash.new
 
   def initialize(options={})
-    @tvdb_id = options["id"] || options['seriesid']
+    @tvdb_id = (options['ids'] || {})['thetvdb'] || options['seriesid'] || options['id']
     @id = @tvdb_id
     @language = options['language']
     @name = options["name"] || options['SeriesName']
@@ -28,55 +28,51 @@ class TvSeries
   end
 
   def self.identifier(series_name, season, episode)
-    "tv#{series_name}S#{season.to_s}#{'E' + episode.to_s if episode.to_i > 0}"
+    "tv#{series_name}S#{season.to_i}#{'E' + episode.to_i.to_s if episode.to_i > 0}"
   end
 
   def self.identifier_season(series_name, season)
-    "tv#{series_name}S#{season.to_s}"
+    "tv#{series_name}S#{season.to_i}"
   end
 
   def self.identify_tv_episodes_numbering(filename)
-    #TODO: Refactor this
-    identifiers = File.basename(filename).downcase.scan(/(^|\/|[s\. _\^\[])(\d{1,3}[ex]\d{1,4}(\.\d[\. ])?)[\&-]?([ex]\d{1,2}(\.\d[\. ])?)?/)
-    identifiers = File.basename(filename).downcase.scan(/(s\d{1,3}[\. ])/) if identifiers.empty?
-    identifiers = File.basename(filename).scan(/(^|\/|[\. _\[])(\d{3,4})[\. _]/) if identifiers.empty?
-    season, ep_nb = '', []
-    unless identifiers.first.nil?
-      identifiers.each do |m|
-        part, part2 = 0, 0
-        bd = m[1].to_s.scan(/^(\d{1,3})[ex]/)
-        nb2 = 0
-        if bd.first.nil? && m[1].to_s.match(/^\d/)
-          case m[1].to_s.length
-            when 3
-              season = m[1].to_s.gsub(/^(\d)\d+/, '\1') if season == ''
-              nb = m[1].gsub(/^\d(\d+)/, '\1').to_i
-            when 4
-              season = m[1].to_s.gsub(/^(\d{2})\d+/, '\1') if season == ''
-              nb = m[1].gsub(/^\d{2}(\d+)/, '\1').to_i
-            else
-              nb = 0
-          end
-        else
-          if m[0].to_s.match(/s\d{1,3}/)
-            season = m[0].to_s.gsub(/s(\d{1,3})/, '\1').to_i if season == ''
-          else
-            season = bd.first[0].to_s.to_i if season == ''
-            nb = m[1].gsub(/\d{1,3}[ex](\d{1,4})/, '\1')
-            nb2 = m[3].gsub(/[ex](\d{1,4})/, '\1') if m[3].to_s != ''
-          end
+    identifiers = File.basename(filename).scan(Regexp.new("(?=(#{REGEX_TV_EP_NB}))"))
+    season, ep_nb, season_only, season_single, ep_nb_single = '', [], '', '', []
+    identifiers.each do |m|
+      season_only = m[17] if m[17] && season_only == '' && season == ''
+      if m[20]
+        case m[20].to_s.length
+          when 3
+            m_s = /^(\d)(\d+)/
+          when 4
+            m_s = /^(\d{2})(\d+)/
         end
-        part = m[2].to_s.gsub('.', '').to_i
-        part2 = m[4].to_s.gsub('.', '').to_i
-        ep_nb << {:ep => nb.to_i, :part => part.to_i} if nb.to_i > 0 && ep_nb.select { |x| x == nb.to_i }.empty?
-        ep_nb << {:ep => nb2.to_i, :part => part2.to_i} if nb2.to_i > 0 && ep_nb.select { |x| x == nb2.to_i }.empty?
+        season_single = m[20].to_s.gsub(m_s, '\1') if season_single == ''
+        ep_nb_single << m[20].gsub(m_s, '\2').to_i
+      end
+      season = m[4] if m[4] && season == ''
+      (0..2).each do |i|
+        ep_nb << {:ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4].to_i > 0
       end
     end
-    return season, ep_nb
+    season = season_only if season_only.to_s != '' && ep_nb.empty?
+    season = season_single if season.to_s == '' && season_only.to_s == ''
+    ep_nb = ep_nb_single.uniq.map { |e| {:ep => e, :part => 0} } if ep_nb.empty? && season_only.to_s == ''
+    ep_ids = (ep_nb.empty? ? [''] : ep_nb.uniq).map { |e| "S#{season}#{'E' + e[:ep].to_s if e.to_s != ''}" }
+    return season, ep_nb.uniq, ep_ids
+  end
+
+  def self.identify_file_type(filename, nbs = nil, season = nil)
+    f_type = 'episode'
+    season, nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs && season
+    if nbs.empty?
+      f_type = season != '' ? 'season' : 'series'
+    end
+    f_type
   end
 
   def self.list_missing_episodes(episodes_in_files, no_prompt = 0, delta = 10, include_specials = 0, missing_eps = {})
-    tv_episodes, tv_seasons, cache_name, = {}, {}, delta.to_s + include_specials.to_s
+    tv_episodes, tv_seasons, cache_name, = {}, {}, delta.to_s + include_specials.to_s + episodes_in_files[:shows].count.to_s
     Utils.lock_block(__method__.to_s + cache_name) {
       if @missing_episodes[cache_name].nil?
         @missing_episodes[cache_name] = {}

@@ -12,11 +12,7 @@ module Wop
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
       @url = url || "#{@base_url}/browse.php?#{cid}search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
-      if $tracker_client[@base_url].nil?
-        $tracker_client[@base_url] = Mechanize.new
-        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        $tracker_client_logged[@base_url] = false
-      end
+      post_init
     end
 
     private

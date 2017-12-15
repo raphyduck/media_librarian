@@ -392,8 +392,8 @@ class Library
   end
 
   def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
-    item_name, item = MediaInfo.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
-    unless no_prompt.to_i == 0 || item
+    item_name, item = MediaInfo.identify_title(file[:formalized_name] || file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
+    unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
       $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping", 0)
       return files
     end
@@ -494,7 +494,10 @@ class Library
           next if id.is_a?(Symbol)
           ct = search_list[id][:type]
           next if source['existing_folder'][ct].nil?
-          existing_files[ct] = process_folder(type: ct, folder: source['existing_folder'][ct], no_prompt: no_prompt, remove_duplicates: 0) unless existing_files[ct]
+          unless existing_files[ct]
+            existing_files[ct] = process_folder(type: ct, folder: source['existing_folder'][ct], no_prompt: no_prompt, remove_duplicates: 0)
+            existing_files[ct][:shows] = existing_files[ct][:shows].merge(search_list[:shows]) if existing_files[ct][:shows] && search_list[:shows]
+          end
           case ct
             when 'movies'
               already_exists = get_duplicates(existing_files[ct][id], 1)
@@ -518,7 +521,6 @@ class Library
               ) unless missing[ct]
           end
         end
-        search_list[:shows].merge!(missing['shows'][:shows]) if search_list[:shows]
         search_list.merge!(missing['shows']) if missing['shows']
         search_list.keep_if { |f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
     end
@@ -549,6 +551,7 @@ class Library
     return files || @media_list[cache_name]
   rescue => e
     $speaker.tell_error(e, "Library.process_folder")
+    @media_list[cache_name, CACHING_TTL] = nil
     {}
   end
 

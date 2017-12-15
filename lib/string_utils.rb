@@ -12,12 +12,19 @@ class StringUtils
     clear_extension(str).downcase.gsub(/[_]/, ' ')
   end
 
-  def self.regexify(str, strict = 1)
-    if strict.to_i <= 0
-      str.strip.gsub(/[:,-\/\[\]]/, '.*').gsub(/ /, '.*').gsub("'", "'?")
-    else
-      str.strip.gsub(/[:,-\/\[\]]/, '.?').gsub(/ /, '[\. _]').gsub("'", "'?")
+  def self.regexify(str)
+    sep_chars = '[:,-_\. ]{1,2}'
+    d=str.match(/.*:([\. \w]+)/)
+    if d
+      d = d[1]
+      str.gsub!(d, '<placeholder>') if d
+      d=d.scan(/([A-Z])(\w+)/).map { |e| "#{e[0]}(#{e[1]})?" if e[0] && e[1] }.join('[\. ]?')
     end
+    str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
+    str = str.gsub(/[:,-\/\[\]]/, '.?').gsub(/[#{SPACE_SUBSTITUTE}]+/, sep_chars)
+    str.gsub!(/(&|and)/, '(&|and)')
+    str.gsub!('<placeholder>', "#{sep_chars}#{d}#{sep_chars}") if d
+    str
   end
 
   def self.regularise_media_filename(filename, formatting = '')

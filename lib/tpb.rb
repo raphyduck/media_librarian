@@ -11,7 +11,7 @@ module Tpb
       @base_url = 'https://thepiratebay.org'
       @query = search
       @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
-      $tracker_client[@base_url] = Mechanize.new if $tracker_client[@base_url].nil?
+      post_init
     end
 
     def download(url, destination, name)

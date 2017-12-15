@@ -61,24 +61,20 @@ class Cache
     $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', '')})
   end
 
-  def self.object_pack(object)
+  def self.object_pack(object, to_hash_only = 0)
     obj = object.clone
     oclass = obj.class.to_s
     if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(obj.class)
       obj = obj.to_s
     elsif obj.is_a?(Array)
-      obj.each_with_index { |o, idx| obj[idx] = object_pack(o) }
+      obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only) }
     elsif obj.is_a?(Hash)
-      obj.keys.each { |k| obj[k] = object_pack(obj[k]) }
+      obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only) }
     else
-      obj = object_to_hash(obj)
+      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only) }
     end
-    obj = [oclass, obj]
+    obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
-  end
-
-  def self.object_to_hash(object)
-    object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object.instance_variable_get(var).to_s }
   end
 
   def self.object_unpack(object)
@@ -98,6 +94,7 @@ class Cache
         object.keys.each { |k| object[k] = object_unpack(object[k]) } rescue nil
       else
         object = Object.const_get(object[0]).new(object_unpack(object[1])) rescue object[1]
+        object.instance_variables.each { |var| object.send("#{var.to_s.gsub('@','')}=", object_unpack(object.instance_variable_get(var))) rescue nil }
       end
     elsif object.is_a?(Array)
       object.each_with_index { |o, idx| object[idx] = object_unpack(o) }

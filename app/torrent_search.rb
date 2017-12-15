@@ -18,7 +18,7 @@ class TorrentSearch
     end
     progress = 0
     $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})", 0)
-    progress = -1 if download[:torrent_id].to_s == ''
+    progress = -1 if download[:torrent_id].to_s == '' && Time.parse(download[:updated_at]) < Time.now - 1.hour
     if progress >= 0
       status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
       progress = status['progress'].to_i rescue 0
@@ -93,8 +93,8 @@ class TorrentSearch
     tries ||= 3
     get_results = []
     r = {}
+    filter_keyword = keyword.clone if filter_keyword.to_s == ''
     keyword.gsub!(/[\(\)\:]/, '')
-    filter_keyword = keyword if filter_keyword.to_s == ''
     trackers = get_trackers(sources)
     timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
     trackers.each do |t|
@@ -105,10 +105,12 @@ class TorrentSearch
     end
     if keyword.to_s != ''
       target_year = MediaInfo.identify_release_year(MediaInfo.detect_real_title(filter_keyword, category))
-      filter_results(get_results, 'year', target_year) do |t|
+      filter_results(get_results, 'title', "to match '#{filter_keyword} (#{target_year})'") do |t|
         year = MediaInfo.identify_release_year(MediaInfo.detect_real_title(t[:name], category))
-        MediaInfo.match_titles(t[:name], filter_keyword, year, target_year, strict)
+        MediaInfo.match_titles(MediaInfo.detect_real_title(t[:name], category, 1, 0),
+                               filter_keyword, year, category)
       end
+      get_results.map { |t| t[:formalized_name] = filter_keyword; t }
       if target_year.to_i > 0
         get_results.map { |t| t[:name].gsub!(/([\. ]\(?)(US|UK)(\)?[\. ])/, '\1' + target_year.to_s + '\3'); t }
       end
@@ -121,11 +123,11 @@ class TorrentSearch
     end
     get_results.sort_by! { |t| sort_by.map { |s| s == :tracker ? trackers.index(t[sort_by]) : -t[sort_by].to_i } }
     if !qualities.nil? && !qualities.empty?
-      filter_results(get_results, 'min_size', qualities['min_size']) do |t|
-        t[:size].to_f == 0 || qualities['min_size'].to_f == 0 || t[:size].to_f >= qualities['min_size'].to_f * 1024 * 1024
-      end
-      filter_results(get_results, 'max_size', qualities['max_size']) do |t|
-        t[:size].to_f == 0 || qualities['max_size'].to_f == 0 || t[:size].to_f <= qualities['max_size'].to_f * 1024 * 1024
+      filter_results(get_results, 'size', "between #{qualities['min_size']}MN and #{qualities['max_size']}MB") do |t|
+        f_type = TvSeries.identify_file_type(t[:name])
+        f_type == 'season' || f_type == 'series' ||
+            ((t[:size].to_f == 0 || qualities['min_size'].to_f == 0 || t[:size].to_f >= qualities['min_size'].to_f * 1024 * 1024) &&
+                (t[:size].to_f == 0 || qualities['max_size'].to_f == 0 || t[:size].to_f <= qualities['max_size'].to_f * 1024 * 1024))
       end
       if qualities['timeframe_size'].to_s != '' && (qualities['max_size'].to_s != '' || qualities['target_size'].to_s != '')
         get_results.map! do |t|
@@ -242,11 +244,10 @@ class TorrentSearch
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
-    $speaker.speak_up "Processing filter '#{f[:full_name]}'  (id '#{f[:identifier]}')" if Env.debug?
+    $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}')" if Env.debug?
     if results.nil?
       ks = [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)]
       filter_k = f[:full_name]
-      q = qualities
       if f[:type] == 'shows' && f[:f_type] == 'episode'
         ks += [TvSeries.ep_name_to_season(f[:full_name]), MediaInfo.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0)]
       end
@@ -261,7 +262,6 @@ class TorrentSearch
         if ks.index(k).to_i == 2
           f[:files] += f[:existing_season_eps]
           filter_k = TvSeries.ep_name_to_season(f[:full_name])
-          q = qualities.select { |x, _| !['min_size', 'max_size'].include?(x) }
         end
         dc = download_criteria.deep_dup
         if ks.index(k).to_i >= 2
@@ -269,10 +269,10 @@ class TorrentSearch
         end
         results = get_results(
             sources: sources,
-            keyword: k,
+            keyword: k.clone,
             limit: limit,
             category: f[:type],
-            qualities: q,
+            qualities: qualities,
             filter_dead: 1,
             strict: no_prompt,
             download_criteria: dc,

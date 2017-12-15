@@ -45,9 +45,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/tvmaze.git
-  revision: 4c819d66f041cad1e9b077f814278ce96e4f38a1
+  revision: da0809ae775358326ffa346bd5097d865391a50d
   specs:
-    tvmaze (0.1.2)
+    tvmaze (0.1.3)
       rest-client (~> 2.0.0)
 
 GIT
@@ -133,7 +133,7 @@ GEM
     nokogiri (1.8.1)
       mini_portile2 (~> 2.3.0)
     ntlm-http (0.1.1)
-    oauth (0.5.3)
+    oauth (0.5.4)
     pdf-reader (2.0.0)
       Ascii85 (~> 1.0.0)
       afm (~> 0.2.1)

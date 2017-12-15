@@ -27,6 +27,9 @@ FILENAME_NAMING_TEMPLATE=%w(
 )
 SEP_CHARS='[ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
+SPACE_SUBSTITUTE='\. _'
+BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})(\.(\d))?[\&-]?([exEX](\d{1,2})(\.(\d))?)?[\&-]?([exEX](\d{1,2})(\.(\d))?)?|([\. ]|^)[sS](\d{1,3}))'
+REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. ]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]]/
 VALID_VIDEO_EXT='(.*)\.(mkv|avi|mp4|mpg|m4v)$'
 PRIVATE_TRACKERS = {'yggtorrent' => 'https://yggtorrent.com',
                     'torrentleech' => 'https://www.torrentleech.org',

@@ -110,7 +110,6 @@ class TorrentClient
               Cache.queue_state_add_or_update('dir_to_delete', {f[:name] => @tdid}) if f[:type] == 'file'
             end
           end
-          $speaker.speak_up "torrent[:trakt_obj] #{torrent[:trakt_obj]}" #REMOVEME
           TraktList.list_cache_add(torrent[:trakt_list], torrent[:trakt_type], torrent[:trakt_obj], @tdid) if torrent[:trakt_obj]
           Cache.entry_seen('download', torrent[:identifiers])
         end

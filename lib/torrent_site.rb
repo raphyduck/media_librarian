@@ -12,8 +12,16 @@ module TorrentSite
     NUMBER_OF_LINKS = 50
     attr_accessor :url
 
+    def download(url, destination, name)
+      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      path = "#{destination}/#{name}.torrent"
+      $tracker_client[@base_url].get(url).save(path)
+      path
+    end
+
     def links(limit = NUMBER_OF_LINKS)
-      @links ||= generate_links(limit)
+      generate_links(limit)
     end
 
     def results_found?
@@ -22,12 +30,13 @@ module TorrentSite
       @results_found = false
     end
 
-    def download(url, destination, name)
-      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      path = "#{destination}/#{name}.torrent"
-      $tracker_client[@base_url].get(url).save(path)
-      path
+    def post_init
+      if $tracker_client[@base_url].nil?
+        $tracker_client[@base_url] = Mechanize.new
+        $tracker_client[@base_url].history.max_size = 0
+        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+        $tracker_client_logged[@base_url] = false if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      end
     end
 
     def pre_auth

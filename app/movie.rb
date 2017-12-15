@@ -1,22 +1,25 @@
 class Movie
-  attr_accessor :id, :url, :title, :genres, :release_date
+  SHOW_MAPPING = {id: :id, url: :url, release_date: :release_date, name: :name, genres: :genres}
 
-  def initialize(options = {})
-    @id = options['imdb_id']
-    @url = options['url']
-    @title = options['title']
-    @release_date = options['release_date']
-    @genres = options['genres']
-    year = DateTime.parse(@release_date).year.to_i rescue (Time.now + 3.years).year.to_i
-    @title += " (#{year})" if MediaInfo.identify_release_year(@title).to_i == 0
+  SHOW_MAPPING.values.each do |value|
+    attr_accessor value
   end
 
-  def self.identifier(movie_name, year)
-    "movie#{movie_name}#{year}"
+  def initialize(opts)
+    SHOW_MAPPING.each do |source, destination|
+      send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, opts))
+    end
   end
 
-  def self.identify_split_files(filename)
-    filename.to_s.scan(/(^|\/|[\. \(])(cd|disc|part) ?(\d{1,2})[\. \)]/i).map{|a| a[2].to_i if a[2].to_i > 0}
+  def fetch_val(valname, opts)
+    case valname
+      when 'id'
+        v = opts['imdb_id']
+    when 'name'
+      v = opts['title']
+      v << " (#{year})" if MediaInfo.identify_release_year(v).to_i == 0
+    end
+    v
   end
 
   def release_date
@@ -29,5 +32,13 @@ class Movie
 
   def year
     (release_date || Time.now + 3.years).year.to_i
+  end
+
+  def self.identifier(movie_name, year)
+    "movie#{movie_name}#{year}"
+  end
+
+  def self.identify_split_files(filename)
+    filename.to_s.scan(/(^|\/|[\. \(])(cd|disc|part) ?(\d{1,2})[\. \)]/i).map{|a| a[2].to_i if a[2].to_i > 0}
   end
 end

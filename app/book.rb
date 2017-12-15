@@ -1,6 +1,6 @@
 class Book
-  SHOW_MAPPING = {calibre_id: :calibre_id, full_name: :full_name, name: :name, pubdate: :pubdate,
-                  ids: :ids, series_name: :series_name, series_id: :series_id, identifier: :identifier, series: :series}
+  SHOW_MAPPING = {calibre_id: :calibre_id, full_name: :full_name, pubdate: :pubdate, series_name: :series_name,
+                  ids: :ids, series_id: :series_id, series: :series, name: :name, identifier: :identifier}
 
   SHOW_MAPPING.values.each do |value|
     attr_accessor value
@@ -12,8 +12,8 @@ class Book
     end
   end
 
-  def fetch_val(name, opts)
-    case name
+  def fetch_val(valname, opts)
+    case valname
       when 'calibre_id'
         opts[:id]
       when 'goodreads_id'
@@ -29,12 +29,22 @@ class Book
       when 'full_name'
         opts[:name] || opts[:title] || opts['title'] || opts['name']
       when 'name'
-        n = full_name.gsub(/#{series_name}[- \._]{1,3}[TS]\d{1,4}[ -\._]{1,3}/, '')
-        n.strip
+        n = full_name.match(/#{series_name}[- \._]{1,3}[TS]\d{1,4}[ -\._]{1,3}(.+)/)
+        n = full_name.match(/(.*)\(.+, \#\d+\)$/) if n.nil?
+        (n ? n[1] : '').strip
       when 'pubdate'
         (opts['publication_year'] ? Date.new(opts['publication_year'].to_i, (opts['publication_month'] || 1).to_i, (opts['publication_day'] || 1).to_i) : nil)
       when 'identifier'
         "book#{series_name}#{name}"
+      when 'series_name'
+        m = full_name.match(/\((.+), \#\d+\)$/)
+        m ? m[1] : ''
+      when 'series'
+        if series_name.to_s != ''
+          {:series_name => series_name}
+        else
+          nil
+        end
     end
   end
 
@@ -61,7 +71,6 @@ class Book
       bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
       bs.each do |b|
         next unless b['best_book']
-        p "#{{:title => b['best_book']['title'], :url => '', :id => b['best_book']['id']}}" #REMOVEME
         rs << {:title => b['best_book']['title'], :url => '', :id => b['best_book']['id']}
       end
     end
@@ -69,15 +78,14 @@ class Book
         title,
         rs,
         {'name' => :title, 'url' => :url},
+        'books',
         no_prompt.to_i
     )
     unless book.nil?
       book = $goodreads.book(book[:id])
       if book
-        p "book #{Hash[book.map{|k,v| [k,v=v.to_s[0..20]]}]}" #REMOVEME
-        p "book to hash #{Hash[Cache.object_to_hash(book).map{|k,v| [k,v=v.to_s[0..20]]}]}" #REMOVEME
-        book = new(Cache.object_to_hash(book))
-        exact_title = book.title
+        book = new(book)
+        exact_title = book.name
       end
     end
     Cache.cache_add('book_search', title.to_s + isbn.to_s, [exact_title, book], book)
@@ -158,6 +166,7 @@ class Book
     id = filename.match(/\( #(\d{1,4})\)$/)
     id = id[1] if id
     nb = id.to_i
+    nb
   end
 
   def self.existing_books(no_prompt = 0)
@@ -165,7 +174,7 @@ class Book
     $calibre.get_rows('books').each do |b|
       book = new(b)
       existing_books = Library.parse_media(
-          {:type => 'books', :name => "#{book.name}#{' (' + book.series_name.to_s + ', #' + book.series_id.to_s + ')' if book.series_name.to_s != ''}"},
+          {:type => 'books', :name => book.full_name},
           'books',
           no_prompt,
           existing_books,

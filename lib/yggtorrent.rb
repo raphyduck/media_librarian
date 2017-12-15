@@ -11,11 +11,7 @@ module Yggtorrent
       # Order by seeds desc
       @query = search
       @url = url || (search.to_s == '' ? "#{@base_url}/torrents/today?#{cid}" : "#{@base_url}/engine/search?#{cid}q=#{URI.escape(search)}")
-      if $tracker_client[@base_url].nil?
-        $tracker_client[@base_url] = Mechanize.new
-        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        $tracker_client_logged[@base_url] = false
-      end
+      post_init
     end
 
     private

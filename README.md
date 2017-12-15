@@ -27,7 +27,7 @@ TODO:
 * Torrent search:
     
 * TvSeries:
-    * Try to identify TV series by their "also known as" title. Ie "Law & Order: Special Victims Unit" = "Law & Order SVU"
     
 * Library:
+    * Copy from imdb watchlist to trakt
     * Use alternative sources to identify series

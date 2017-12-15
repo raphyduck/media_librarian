@@ -11,11 +11,7 @@ module TorrentLeech
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search.gsub(/\ \ +/,' '))}/newfilter/2/#{'facets/category%253A' + cid.to_s if cid.to_s != ''}#{'/orderby/seeders/order/desc' if search.to_s != ''}" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
-      if $tracker_client[@base_url].nil?
-        $tracker_client[@base_url] = Mechanize.new
-        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        $tracker_client_logged[@base_url] = false
-      end
+      post_init
     end
 
     private
