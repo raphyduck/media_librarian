@@ -18,9 +18,10 @@ class TraktList
   def self.clean_list(list_to_clean = Cache.queue_state_get('cleanup_trakt_list'))
     return if Env.pretend?
     list_to_clean.each do |list_name, list|
-      $speaker.speak_up "Cleaning trakt list '#{list_name}'" if Env.debug?
       list.map { |m| m[:t] }.uniq.each do |type|
-        TraktList.remove_from_list(list.select { |m| m[:t] == type }.map { |m| m[:c] }, list_name, type)
+        l = list.select { |m| m[:t] == type }.map { |m| m[:c] }
+        $speaker.speak_up "Cleaning trakt list '#{list_name}' (type #{type}, #{l.count} elements)" if Env.debug?
+        TraktList.remove_from_list(l, list_name, type)
       end
       Cache.queue_state_remove('cleanup_trakt_list', list_name)
     end

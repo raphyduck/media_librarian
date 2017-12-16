@@ -493,7 +493,7 @@ class Library
         search_list.keys.each do |id|
           next if id.is_a?(Symbol)
           ct = search_list[id][:type]
-          next if source['existing_folder'][ct].nil?
+          next if source['existing_folder'].nil? || source['existing_folder'][ct].nil?
           unless existing_files[ct]
             existing_files[ct] = process_folder(type: ct, folder: source['existing_folder'][ct], no_prompt: no_prompt, remove_duplicates: 0)
             existing_files[ct][:shows] = existing_files[ct][:shows].merge(search_list[:shows]) if existing_files[ct][:shows] && search_list[:shows]

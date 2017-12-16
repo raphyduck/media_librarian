@@ -108,9 +108,9 @@ class TorrentClient
           if torrent[:files].is_a?(Array) && !torrent[:files].empty?
             torrent[:files].each do |f|
               Cache.queue_state_add_or_update('dir_to_delete', {f[:name] => @tdid}) if f[:type] == 'file'
+              TraktList.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tdid) if f[:type] == 'trakt'
             end
           end
-          TraktList.list_cache_add(torrent[:trakt_list], torrent[:trakt_type], torrent[:trakt_obj], @tdid) if torrent[:trakt_obj]
           Cache.entry_seen('download', torrent[:identifiers])
         end
       end
