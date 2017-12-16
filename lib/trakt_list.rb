@@ -44,14 +44,20 @@ class TraktList
     token_rows = $db.get_rows('trakt_auth', {:account => $trakt_account})
     token_row = token_rows.first
     if token_row.nil? || Time.parse(token_row[:expires_in]) < Time.now
-      token = $trakt.access_token
-      $db.delete_rows('trakt_auth', token_row) if token_row
-      $db.insert_row('trakt_auth', {
-          :account => $trakt_account,
-          :access_token => token['access_token'],
-          :refresh_token => token['refresh_token'],
-          :expires_in => Time.now + token['expires_in'].to_i.seconds
-      }) if token
+      if Daemon.is_daemon? && Thread.current[:current_daemon]
+        Report.sent_out('Expired Trakt token', nil, 'Your trakt authentication is not set or has expired.
+Please run \'librarian trakt refresh_auth\' to set it up!')
+        return
+      else
+        token = $trakt.access_token
+        $db.delete_rows('trakt_auth', token_row) if token_row
+        $db.insert_row('trakt_auth', {
+            :account => $trakt_account,
+            :access_token => token['access_token'],
+            :refresh_token => token['refresh_token'],
+            :expires_in => Time.now + token['expires_in'].to_i.seconds
+        }) if token
+      end
     else
       token = self.access_token(token_row)
     end

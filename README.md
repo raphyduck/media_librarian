@@ -7,7 +7,6 @@ This program is made to answer my various needs for automation in the management
 
 TODO:
 * General
-    * Expire trakt authentication token and send email when needed
     * Bypass cloudflare js check for tracker search (https://github.com/HatBashBR/HatCloud/blob/master/hatcloud.rb ? )
     * Parse YAML template file and alert in case of errors
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
