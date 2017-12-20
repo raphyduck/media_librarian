@@ -35,10 +35,8 @@ class MediaInfo
         name.gsub!(/[#{SPACE_SUBSTITUTE}]\(?US[\)#{SPACE_SUBSTITUTE}]{0,2}$/, '') if complete.to_i > 0
         name << "#{ids}" if id_info.to_i > 0
       when 'books'
-        m = name.match(/^(.*)[#{SPACE_SUBSTITUTE}-]{1,2}(HS|T)(\d{1,4})?[#{SPACE_SUBSTITUTE}-]{1,3}(.*)/)
-        if m
-          name = "#{m[4]}#{' (' + m[1].to_s.gsub(/- ?$/, '').strip if m[1]}#{', #' + m[3].to_s.strip if m[1] && m[3]}#{')' if m[1]}"
-        end
+        name, _, ids = Book.detect_book_title(name)
+        name << ids if ids.to_s != '' && id_info.to_i > 0
     end
     name.to_s.gsub(/[#{SPACE_SUBSTITUTE}]+/, ' ')
   end
@@ -101,6 +99,7 @@ class MediaInfo
           tvdb_ep = !@tv_episodes[item_name].empty? && metadata['episode_season'] != '' && n[:ep].to_i > 0 ? @tv_episodes[item_name].select { |e| e.season_number == metadata['episode_season'].to_i.to_s && e.number == n[:ep].to_s }.first : nil
           episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
           if n[:ep].to_i > 0 && metadata['episode_season'] != ''
+            metadata['episode_season'] = metadata['episode_season'].to_i
             episode_numbering << "S#{format('%02d', metadata['episode_season'].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
           end
         end
@@ -352,11 +351,11 @@ class MediaInfo
       when 'books'
         ids = [item&.identifier ? item.identifier : "#{item_name}"]
         nb = Book.identify_episodes_numbering(filename)
-        full_name = "#{item_name}#{' - T' + nb.to_s + ' - ' if nb.to_i > 0}#{item.name if nb.to_i > 0 && item}"
+        full_name = "#{item_name}#{' - T' + nb.to_s + ' - ' if nb.to_i > 0}"
         info = {
             :series_name => nb.to_i > 0 ? item_name : '',
             :episode_id => nb.to_i > 0 ? nb.to_i : nil,
-            :book_serie => item ? item.series : nil
+            :book_serie => item
         }
     end
     file[:parts] = parts unless file.nil? || file.empty?

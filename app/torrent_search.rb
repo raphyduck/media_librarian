@@ -317,6 +317,7 @@ class TorrentSearch
         $speaker.speak_up(LINE_SEPARATOR)
         $speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
         $speaker.speak_up("Name: #{torrent[:name]}")
+        $speaker.speak_up "torrent[:files] #{torrent[:files]}" if f[:type] == 'movies' #REMOVEME
         if no_prompt.to_i == 0
           $speaker.speak_up("Size: #{(torrent[:size].to_f / 1024 / 1024 / 1024).round(2)} GB")
           $speaker.speak_up("Seeders: #{torrent[:seeders]}")

@@ -27,7 +27,7 @@ class Book
           {}
         end
       when 'full_name'
-        opts[:name] || opts[:title] || opts['title'] || opts['name']
+        (opts[:name] || opts[:title] || opts['title'] || opts['name']).strip
       when 'name'
         n = full_name.match(/#{series_name}[- \._]{1,3}[TS]\d{1,4}[ -\._]{1,3}(.+)/)
         n = full_name.match(/(.*)\(.+, \#\d+\)$/) if n.nil?
@@ -55,28 +55,37 @@ class Book
     @series_name = series.empty? ? '' : series.first[:name]
   end
 
-  def self.book_search(title, no_prompt = 0, isbn = '')
-    cached = Cache.cache_get('book_search', title.to_s + isbn.to_s)
+  def self.book_search(title, no_prompt = 0, isbn = '', gd_series_id = '')
+    cache_name = title.to_s + isbn.to_s + gd_series_id.to_s
+    cached = Cache.cache_get('book_search', cache_name)
     return cached if cached
     if isbn.to_s != ''
       book = ($goodreads.book_by_isbn(isbn) rescue nil)
       book = new(book) if book
       exact_title = book ? book.name : title
-      Cache.cache_add('book_search', title.to_s + isbn.to_s, [exact_title, book], book)
+      Cache.cache_add('book_search', cache_name, [exact_title, book], book)
       return exact_title, book unless book.nil?
     end
+    rs, series = [], nil
+    if gd_series_id.to_s != ''
+      exact_title, series = BooKSeries.get_series(gd_series_id)
+      return exact_title, series unless series.nil?
+    end
     books = $goodreads.search_books(title)
-    rs = []
     if books['results'] && books['results']['work']
       bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
-      bs.each do |b|
-        next unless b['best_book']
-        rs << {:title => b['best_book']['title'], :url => '', :id => b['best_book']['id']}
-      end
+      rs = bs.map do |b|
+        if b['best_book']
+          sname, tname, _ = detect_book_title(b['best_book']['title'])
+          sname = tname if sname == ''
+          b['best_book']['title'] = sname
+          Utils.recursive_symbolize_keys(b['best_book'])
+        end
+      end.select { |b| !b.nil? }
     end
     exact_title, book = MediaInfo.media_chose(
         title,
-        rs,
+        rs.uniq,
         {'name' => :title, 'url' => :url},
         'books',
         no_prompt.to_i
@@ -84,15 +93,26 @@ class Book
     unless book.nil?
       book = $goodreads.book(book[:id])
       if book
+        series_id = if book['series_works']['series_work'].is_a?(Array)
+                      book['series_works']['series_work'][0]
+                    else
+                      book['series_works']['series_work']
+                    end['series']['id'] rescue nil
+        exact_title, series = BookSeries.get_series(series_id) if series_id
+        if series
+          Cache.cache_add('book_search', cache_name, [exact_title, series], series)
+          return exact_title, series
+        end
         book = new(book)
+        series = BookSeries.new({'id' => 0, 'title' => book.name})
         exact_title = book.name
       end
     end
-    Cache.cache_add('book_search', title.to_s + isbn.to_s, [exact_title, book], book)
-    return exact_title, book
+    Cache.cache_add('book_search', cache_name, [exact_title, series], series)
+    return exact_title, series
   rescue => e
     $speaker.tell_error(e, "Book.book_search")
-    Cache.cache_add('book_search', title.to_s + isbn.to_s, [title, nil], nil)
+    Cache.cache_add('book_search', cache_name, [title, nil], nil)
     return title, nil
   end
 
@@ -160,6 +180,21 @@ class Book
   rescue => e
     $speaker.tell_error(e, "Library.convert_comics")
     name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
+  end
+
+  def self.detect_book_title(name)
+    series_name, id_info = '', ''
+    m = name.match(/^(.*)[#{SPACE_SUBSTITUTE}-]{1,2}(HS|T)(\d{1,4})?[#{SPACE_SUBSTITUTE}-]{1,3}(.*)/)
+    if m
+      series_name = m[1].to_s.gsub(/- ?$/, '').strip if m[1]
+      name = m[2].to_s.strip if m[2]
+    else
+      m = name.match(/^(.*)\(([^#]{5,}), #(\d+)\)$/)
+      series_name = m[2].to_s.gsub(/- ?$/, '').strip if m && m[2]
+      name = m[1].to_s.strip if m && m[2]
+    end
+    id_info = " - T#{m[3].to_s.strip}" if m && m[1] && m[3]
+    return series_name, name, id_info
   end
 
   def self.identify_episodes_numbering(filename)
