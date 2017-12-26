@@ -173,7 +173,7 @@ class MediaInfo
     target_year = identify_release_year(target_title)
     additional_year_cond = year.to_i > 0 ? "|#{year}" : ''
     target_title.strip!
-    target_title.gsub!('?','\?')
+    target_title.gsub!('?', '\?')
     target_title.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
     target_title.gsub!(/[ \.]\(?(\d{4})\)?([#{SPACE_SUBSTITUTE}]|$)/, '.\(?(\1' + additional_year_cond + '|US|UK)\)?')
     title.match(
@@ -292,7 +292,10 @@ class MediaInfo
       if movies.empty?
         movies = TraktAgent.search__movies(s) rescue []
         movies = [movies] unless movies.is_a?(Array)
-        movies.map! { |m| m['movie'][:imdb_id] = m['movie']['ids']['imdb'] rescue nil; Utils.recursive_symbolize_keys(m['movie']) if m }
+        movies.map! do |m|
+          m['movie'][:imdb_id] = m['movie']['ids']['imdb'] if m['movie'] && m['movie']['ids']
+          Utils.recursive_symbolize_keys(m['movie']) if m['movie']
+        end
       end
       movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if identify_release_year(m[:title]).to_i == 0; m }
       exact_title, movie = media_chose(
