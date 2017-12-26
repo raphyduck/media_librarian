@@ -66,10 +66,10 @@ class Library
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
     source_folders = {} if source_folders.nil?
     return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
-    complete_list = TraktList.list(source_list, '')
+    complete_list = TraktAgent.list(source_list, '')
     return $speaker.speak_up("Empty list #{source_list}", 0) if complete_list.empty?
     abort = 0
-    list = TraktList.parse_custom_list(complete_list)
+    list = TraktAgent.parse_custom_list(complete_list)
     list.each do |type, _|
       source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
       dest_type = "#{dest_folder}/#{type.titleize}/"
@@ -114,41 +114,41 @@ class Library
     $speaker.speak_up("Fetching items from #{origin}...")
     new_list = {}
     (criteria['types'] || []).each do |t|
-      new_list[t] = TraktList.list(origin, t)
+      new_list[t] = TraktAgent.list(origin, t)
     end
-    existing_lists = TraktList.list('lists')
+    existing_lists = TraktAgent.list('lists')
     dest_list = existing_lists.select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
       $speaker.speak_up("List #{name} exists")
-      existing = TraktList.list(name)
-      to_delete = TraktList.parse_custom_list(existing)
+      existing = TraktAgent.list(name)
+      to_delete = TraktAgent.parse_custom_list(existing)
     else
       $speaker.speak_up("List #{name} doesn't exist, creating it...")
-      TraktList.create_list(name, description)
+      TraktAgent.create_list(name, description)
     end
     ['movies', 'shows', 'episodes'].each do |type|
-      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
-      TraktList.add_to_list(new_list[type], 'custom', name, type) if new_list[type]
+      TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
+      TraktAgent.add_to_list(new_list[type], 'custom', name, type) if new_list[type]
     end
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
     $speaker.speak_up("Fetching items from #{origin}...")
     new_list = {
-        'movies' => TraktList.list(origin, 'movies'),
-        'shows' => TraktList.list(origin, 'shows')
+        'movies' => TraktAgent.list(origin, 'movies'),
+        'shows' => TraktAgent.list(origin, 'shows')
     }
-    existing_lists = TraktList.list('lists')
+    existing_lists = TraktAgent.list('lists')
     dest_list = existing_lists.select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
       $speaker.speak_up("List #{name} exists")
-      existing = TraktList.list(name)
-      to_delete = TraktList.parse_custom_list(existing)
+      existing = TraktAgent.list(name)
+      to_delete = TraktAgent.parse_custom_list(existing)
     else
       $speaker.speak_up("List #{name} doesn't exist, creating it...")
-      TraktList.create_list(name, description)
+      TraktAgent.create_list(name, description)
     end
     $speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
     ['movies', 'shows'].each do |type|
@@ -161,13 +161,13 @@ class Library
       folder = $speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       (type == 'shows' ? ['entirely_watched', 'partially_watched', 'ended', 'not_ended'] : ['watched']).each do |cr|
         if (t_criteria[cr] && t_criteria[cr].to_i == 0) || $speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_', ' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
-          new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
+          new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
         end
       end
       if type =='movies'
         ['released_before', 'released_after', 'days_older', 'days_newer'].each do |cr|
           if t_criteria[cr].to_i != 0 || $speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
-            new_list[type] = TraktList.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
+            new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
           end
         end
       end
@@ -192,7 +192,7 @@ class Library
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktList.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && $speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktAgent.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && $speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
             new_list[type].delete(item)
             next
           end
@@ -212,8 +212,8 @@ class Library
         i[type[0...-1]]
       end
       $speaker.speak_up('Updating items in the list...')
-      TraktList.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty? || t_criteria['add_only'].to_i > 0
-      TraktList.add_to_list(new_list[type], 'custom', name, type)
+      TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty? || t_criteria['add_only'].to_i > 0
+      TraktAgent.add_to_list(new_list[type], 'custom', name, type)
     end
     $speaker.speak_up("List #{name} is up to date!")
   end
@@ -295,7 +295,7 @@ class Library
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
     if list.nil? || list.empty?
       list_name = $speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
-      list = TraktList.list(list_name, '')
+      list = TraktAgent.list(list_name, '')
     end
     parsed_media = {}
     list_size = 0
@@ -421,7 +421,7 @@ class Library
         file
     )
     return files if identifiers.empty? || full_name == ''
-    $speaker.speak_up("Adding #{file[:type]} '#{full_name}' to list", 0) if Env.debug?
+    $speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}') to list", 0) if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
     files = MediaInfo.media_add(item_name,
                                 type,
@@ -474,7 +474,7 @@ class Library
         end
       when 'trakt'
         $speaker.speak_up('Parsing trakt list, can take a long time...')
-        TraktList.list(source['list_name']).each do |item|
+        TraktAgent.list(source['list_name']).each do |item|
           type = item['type']
           f = item[type]
           type = Utils.regularise_media_type(type)
@@ -506,7 +506,7 @@ class Library
                   search_list[id][:files] = [] if search_list[id][:files].nil?
                   search_list[id][:files] << ae
                 elsif $speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'n').to_s == 'y'
-                  TraktList.list_cache_add(source['list_name'], ct, search_list[id][:trakt_obj]) if search_list[id][:trakt_obj]
+                  TraktAgent.list_cache_add(source['list_name'], ct, search_list[id][:trakt_obj]) if search_list[id][:trakt_obj]
                   search_list.delete(id)
                 end
               end
@@ -561,7 +561,7 @@ class Library
     return '' if destination.nil?
     destination += ".#{metadata['extension'].downcase}"
     if metadata['is_found']
-      if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'?", no_prompt, 'y').to_s == 'y'
+      if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s == 'y'
         _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated)
       end
     else

@@ -33,7 +33,9 @@ module TorrentSite
     def post_init
       if $tracker_client[@base_url].nil?
         $tracker_client[@base_url] = Mechanize.new
-        $tracker_client[@base_url].history.max_size = 0
+        $tracker_client[@base_url].user_agent_alias = 'Mac Firefox'
+        $tracker_client[@base_url].history.max_size = 1
+        $tracker_client[@base_url].history_added = Proc.new {sleep 1}
         $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
         $tracker_client_logged[@base_url] = false if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       end

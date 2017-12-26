@@ -12,12 +12,17 @@ class Movie
   end
 
   def fetch_val(valname, opts)
+    v = nil
     case valname
       when 'id'
         v = opts['imdb_id']
-    when 'name'
-      v = opts['title']
-      v << " (#{year})" if MediaInfo.identify_release_year(v).to_i == 0
+      when 'name'
+        v = opts['title']
+        @year = (opts['year'] || year).to_i
+        v << " (#{@year})" if MediaInfo.identify_release_year(v).to_i == 0
+      when 'url'
+        imdb_id = opts['ids']['imdb'] rescue nil
+        v = "https://www.imdb.com/title/#{imdb_id}/" if imdb_id
     end
     v
   end
@@ -25,13 +30,15 @@ class Movie
   def release_date
     if @release_date.to_s.match(/^\d{4}$/)
       Time.new(@release_date) rescue nil
-    else
+    elsif @release_date
       Time.parse(@release_date) rescue nil
+    else
+      Time.new(@year.to_i)
     end
   end
 
   def year
-    (release_date || Time.now + 3.years).year.to_i
+    (@year || release_date || Time.now + 3.years).year.to_i
   end
 
   def self.identifier(movie_name, year)
@@ -39,6 +46,21 @@ class Movie
   end
 
   def self.identify_split_files(filename)
-    filename.to_s.scan(/(^|\/|[\. \(])(cd|disc|part) ?(\d{1,2})[\. \)]/i).map{|a| a[2].to_i if a[2].to_i > 0}
+    filename.to_s.scan(/(^|\/|[\. \(])(cd|disc|part) ?(\d{1,2})[\. \)]/i).map { |a| a[2].to_i if a[2].to_i > 0 }
+  end
+
+  def self.movie_get(imdb_id)
+    cached = Cache.cache_get('movie_get', imdb_id.to_s)
+    return cached if cached
+    movie = $imdb.find_movie_by_id(imdb_id.to_s) rescue nil
+    movie = TraktAgent.search__search_by_id('imdb', imdb_id.to_s)[0]['movie'] rescue nil if movie.nil?
+    movie = Movie.new(Cache.object_pack(movie, 1))
+    title = movie.name
+    Cache.cache_add('movie_get', imdb_id.to_s, [title, movie], movie)
+    return title, movie
+  rescue => e
+    $speaker.tell_error(e, "Movie.movie_get")
+    Cache.cache_add('movie_get', imdb_id.to_s, ['', nil], nil)
+    return '', nil
   end
 end

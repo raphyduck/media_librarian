@@ -47,7 +47,7 @@ class Librarian
           :search => ['TorrentSearch', 'search_from_torrents']
       },
       :trakt => {
-          :refresh_auth => ['TraktList', 'refresh_auth']
+          :refresh_auth => ['TraktAgent', 'refresh_auth']
       },
       :usage => ['Librarian', 'help'],
       :list_db => ['Utils', 'list_db'],
@@ -164,7 +164,7 @@ class Librarian
     end
     #Cleanup lists and folders
     FileUtils.cleanup_folder unless Cache.queue_state_get('dir_to_delete').empty?
-    TraktList.clean_list('watchlist') unless Cache.queue_state_get('cleanup_trakt_list').empty?
+    TraktAgent.clean_list(Cache.queue_state_get('cleanup_trakt_list')) unless Cache.queue_state_get('cleanup_trakt_list').empty?
   end
 
   def self.help

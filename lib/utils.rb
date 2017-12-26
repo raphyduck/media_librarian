@@ -11,7 +11,10 @@ class Utils
   def self.check_if_active(active_hours = {})
     !active_hours.is_a?(Hash) ||
         ((active_hours['start'].nil? || active_hours['start'].to_i <= Time.now.hour) &&
-            (active_hours['end'].nil? || active_hours['end'].to_i >= Time.now.hour))
+            (active_hours['end'].nil? || active_hours['end'].to_i >= Time.now.hour) &&
+        (active_hours['start'].nil? || active_hours['end'].nil? || active_hours['start'].to_i <= active_hours['end'])) ||
+        (active_hours['start'].to_i > active_hours['end'].to_i && (active_hours['start'].to_i <= Time.now.hour ||
+        active_hours['end'].to_i >= Time.now.hour))
   end
 
   def self.forget(table:, entry:)

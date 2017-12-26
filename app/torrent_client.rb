@@ -108,10 +108,12 @@ class TorrentClient
           if torrent[:files].is_a?(Array) && !torrent[:files].empty?
             torrent[:files].each do |f|
               Cache.queue_state_add_or_update('dir_to_delete', {f[:name] => @tdid}) if f[:type] == 'file'
-              TraktList.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tdid) if f[:type] == 'trakt'
+              TraktAgent.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tdid) if f[:type] == 'trakt'
             end
           end
           Cache.entry_seen('download', torrent[:identifiers])
+        elsif Time.parse(t[:waiting_until]) < Time.now - 1.day
+          $db.update_rows('torrents', {:status => -1}, {:name => t[:name]})
         end
       end
     end
@@ -158,8 +160,8 @@ class TorrentClient
         end
       rescue => e
         $speaker.tell_error(e, "TorrentClient.process_added_torrents") if processed_torrent_id[tid].to_i > 60
-        Cache.queue_state_add_or_update('deluge_torrents_added', {tid => 2})
-        sleep 10
+        #Cache.queue_state_add_or_update('deluge_torrents_added', {tid => 2})
+        sleep 30
       end
     end
   end
@@ -214,7 +216,7 @@ class TorrentClient
     else
       $speaker.tell_error(e, "TorrentClient.#{name}")
       if @tdid.to_i > 0
-        TraktList.list_cache_remove(@tdid)
+        TraktAgent.list_cache_remove(@tdid)
         File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil
         Cache.queue_state_select('dir_to_delete', 1) { |_, v| v != @tdid }
       end

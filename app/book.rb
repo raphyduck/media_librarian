@@ -1,6 +1,6 @@
 class Book
-  SHOW_MAPPING = {calibre_id: :calibre_id, full_name: :full_name, pubdate: :pubdate, series_name: :series_name,
-                  ids: :ids, series_id: :series_id, series: :series, name: :name, identifier: :identifier}
+  SHOW_MAPPING = {calibre_id: :calibre_id, filename: :filename, series_id: :series_id, series_nb: :series_nb,
+                  full_name: :full_name, ids: :ids, series: :series, name: :name, pubdate: :pubdate}
 
   SHOW_MAPPING.values.each do |value|
     attr_accessor value
@@ -13,103 +13,101 @@ class Book
   end
 
   def fetch_val(valname, opts)
+    #TODO: Fetch episode number from DB
     case valname
       when 'calibre_id'
         opts[:id]
-      when 'goodreads_id'
-        opts['id']
+      when 'filename'
+        (opts[:name] || opts[:title] || opts['title'] || opts['name']).strip
+      when 'full_name'
+        _, name, _ = Book.detect_book_title(filename)
+        "#{series_name}#{' - ' if series_name.to_s != ''}#{series_name if series_name.to_s != ''}#{' - ' if series_name.to_s != ''}#{name}"
       when 'ids'
         if calibre_id
-          Hash[$calibre.get_rows('identifiers', {:book => calibre_id}).map { |i| [i[:type].to_s, i[:val].to_s] }]
+          is = Hash[$calibre.get_rows('identifiers', {:book => calibre_id}).map { |i| [i[:type].to_s, i[:val].to_s] }]
         elsif opts['isbn13'] || opts['gr_ids']
-          {'isbn' => opts['isbn13'] || opts['gr_ids']}
+          is = {'isbn' => opts['isbn13'] || opts['gr_ids']}
         else
-          {}
+          is = {}
         end
-      when 'full_name'
-        (opts[:name] || opts[:title] || opts['title'] || opts['name']).strip
+        is.merge!({'goodreads' => opts['id']}) if opts['id']
+        is
       when 'name'
-        n = full_name.match(/#{series_name}[- \._]{1,3}[TS]\d{1,4}[ -\._]{1,3}(.+)/)
-        n = full_name.match(/(.*)\(.+, \#\d+\)$/) if n.nil?
-        (n ? n[1] : '').strip
+        _, name, _ = Book.detect_book_title(filename)
+        name
       when 'pubdate'
         (opts['publication_year'] ? Date.new(opts['publication_year'].to_i, (opts['publication_month'] || 1).to_i, (opts['publication_day'] || 1).to_i) : nil)
-      when 'identifier'
-        "book#{series_name}#{name}"
       when 'series_name'
         m = full_name.match(/\((.+), \#\d+\)$/)
         m ? m[1] : ''
+      when 'series_nb'
+        nb = Book.identify_episodes_numbering(filename)
+        nb = opts[:series_index].to_f if nb.to_i == 0 && series_id.to_s != ''
+        nb
+      when 'series_id'
+        series_link = $calibre.get_rows('books_series_link', {:book => calibre_id}).first
+        series_link ? series_link[:series] : nil
       when 'series'
-        if series_name.to_s != ''
-          {:series_name => series_name}
-        else
-          nil
+        if series_id.to_s != '' && series_name.to_s != ''
+          BookSeries.new({'name' => series_name})
+        elsif calibre_id
+          t, s = BookSeries.book_series_search(filename, 1, ids['isbn'])
+          @series_name = t if s && !s.empty?
+          s = nil if s&.empty?
+          s
         end
     end
+  end
+
+  def identifier
+    "book#{series_name}T#{series_nb}"
   end
 
   def series_name
-    return @series_name if @series_name
-    series_link = $calibre.get_rows('books_series_link', {:book => calibre_id}).first
-    series = series_link.nil? ? [] : $calibre.get_rows('series', {:id => series_link[:series]})
+    if @series_name
+      return @series_name
+    end
+    series = series_id.nil? ? [] : $calibre.get_rows('series', {:id => series_id})
     @series_name = series.empty? ? '' : series.first[:name]
+    @series_name
   end
 
-  def self.book_search(title, no_prompt = 0, isbn = '', gd_series_id = '')
-    cache_name = title.to_s + isbn.to_s + gd_series_id.to_s
+  def self.book_search(title, no_prompt = 0, isbn = '')
+    cache_name = title.to_s + isbn.to_s
     cached = Cache.cache_get('book_search', cache_name)
     return cached if cached
+    rs, book, exact_title = [], nil, title
     if isbn.to_s != ''
       book = ($goodreads.book_by_isbn(isbn) rescue nil)
-      book = new(book) if book
-      exact_title = book ? book.name : title
-      Cache.cache_add('book_search', cache_name, [exact_title, book], book)
-      return exact_title, book unless book.nil?
-    end
-    rs, series = [], nil
-    if gd_series_id.to_s != ''
-      exact_title, series = BooKSeries.get_series(gd_series_id)
-      return exact_title, series unless series.nil?
-    end
-    books = $goodreads.search_books(title)
-    if books['results'] && books['results']['work']
-      bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
-      rs = bs.map do |b|
-        if b['best_book']
-          sname, tname, _ = detect_book_title(b['best_book']['title'])
-          sname = tname if sname == ''
-          b['best_book']['title'] = sname
-          Utils.recursive_symbolize_keys(b['best_book'])
-        end
-      end.select { |b| !b.nil? }
-    end
-    exact_title, book = MediaInfo.media_chose(
-        title,
-        rs.uniq,
-        {'name' => :title, 'url' => :url},
-        'books',
-        no_prompt.to_i
-    )
-    unless book.nil?
-      book = $goodreads.book(book[:id])
       if book
-        series_id = if book['series_works']['series_work'].is_a?(Array)
-                      book['series_works']['series_work'][0]
-                    else
-                      book['series_works']['series_work']
-                    end['series']['id'] rescue nil
-        exact_title, series = BookSeries.get_series(series_id) if series_id
-        if series
-          Cache.cache_add('book_search', cache_name, [exact_title, series], series)
-          return exact_title, series
-        end
         book = new(book)
-        series = BookSeries.new({'id' => 0, 'title' => book.name})
         exact_title = book.name
       end
     end
-    Cache.cache_add('book_search', cache_name, [exact_title, series], series)
-    return exact_title, series
+    if book.nil?
+      books = $goodreads.search_books(title)
+      if books['results'] && books['results']['work']
+        bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
+        rs = bs.map do |b|
+          if b['best_book']
+            sname, tname, _ = detect_book_title(b['best_book']['title'])
+            sname = tname if sname == ''
+            b['best_book']['title'] = sname
+            Utils.recursive_symbolize_keys(b['best_book'])
+          end
+        end.select { |b| !b.nil? }
+      end
+      exact_title, book = MediaInfo.media_chose(
+          title,
+          rs.uniq,
+          {'name' => :title, 'url' => :url},
+          'books',
+          no_prompt.to_i
+      )
+      book = new(book) if book
+    end
+    Cache.cache_add('book_search', cache_name, [exact_title, book], book)
+    return exact_title, book
   rescue => e
     $speaker.tell_error(e, "Book.book_search")
     Cache.cache_add('book_search', cache_name, [title, nil], nil)
@@ -184,32 +182,47 @@ class Book
 
   def self.detect_book_title(name)
     series_name, id_info = '', ''
-    m = name.match(/^(.*)[#{SPACE_SUBSTITUTE}-]{1,2}(HS|T)(\d{1,4})?[#{SPACE_SUBSTITUTE}-]{1,3}(.*)/)
+    m = name.match(REGEX_BOOK_NB)
+    nb = identify_episodes_numbering(name)
     if m
       series_name = m[1].to_s.gsub(/- ?$/, '').strip if m[1]
-      name = m[2].to_s.strip if m[2]
+      name = m[5].to_s.strip if m[2]
     else
-      m = name.match(/^(.*)\(([^#]{5,}), #(\d+)\)$/)
+      m = name.match(REGEX_BOOK_NB2)
       series_name = m[2].to_s.gsub(/- ?$/, '').strip if m && m[2]
       name = m[1].to_s.strip if m && m[2]
     end
-    id_info = " - T#{m[3].to_s.strip}" if m && m[1] && m[3]
+    if series_name.to_s != ''
+      if nb.to_i > 0
+        id_info = " - T#{nb}"
+      else
+        id_info = " - #{name}"
+      end
+    end
     return series_name, name, id_info
   end
 
   def self.identify_episodes_numbering(filename)
-    id = filename.match(/\( #(\d{1,4})\)$/)
-    id = id[1] if id
-    nb = id.to_i
+    id = filename.match(REGEX_BOOK_NB2)
+    id = filename.match(REGEX_BOOK_NB) if id.nil?
+    nb = 0
+    return nb if id.nil?
+    case id[3].to_s[0].downcase
+      when 't', '#'
+        nb = id[4].to_i
+      when 'h'
+        nb = ('0.' << id[4].to_s)
+    end
     nb
   end
 
   def self.existing_books(no_prompt = 0)
+    #TODO: Finish this, ensure return a hash of individual book + hash [:book_series] = list of all series
     existing_books = {}
     $calibre.get_rows('books').each do |b|
       book = new(b)
       existing_books = Library.parse_media(
-          {:type => 'books', :name => book.full_name},
+          {:type => 'books', :name => book.filename},
           'books',
           no_prompt,
           existing_books,
@@ -217,7 +230,9 @@ class Book
           {},
           {},
           '',
-          book.ids
+          book.ids,
+          book,
+          book.full_name
       )
     end
     existing_books

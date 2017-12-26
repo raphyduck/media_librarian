@@ -52,7 +52,7 @@ class TvSeries
       end
       season = m[4] if m[4] && season == ''
       (0..2).each do |i|
-        ep_nb << {:ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4].to_i > 0
+        ep_nb << {:ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4]
       end
     end
     season = season_only if season_only.to_s != '' && ep_nb.empty?
@@ -91,7 +91,7 @@ class TvSeries
             end
             if tv_seasons[series_name][ep.season_number.to_i].nil? && (ep.air_date.nil? || ep.air_date < Time.now - 6.months) && existing_season_eps[ep.season_number].empty?
               tv_seasons[series_name][ep.season_number.to_i] = 1
-              full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', 0)}"
+              full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}"
               full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
             elsif tv_seasons[series_name][ep.season_number.to_i].nil? &&
                 !MediaInfo.media_exist?(existing_season_eps[ep.season_number], identifier(series_name, ep.season_number, ep.number.to_i))

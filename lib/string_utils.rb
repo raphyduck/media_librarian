@@ -14,16 +14,18 @@ class StringUtils
 
   def self.regexify(str)
     sep_chars = '[:,-_\. ]{1,2}'
-    d=str.match(/.*:([\. \w]+)/)
+    trailing_sep = ''
+    d=str.match(/.*:([\. \w]+)(.+)?/)
     if d
+      trailing_sep = sep_chars if d[2]
       d = d[1]
       str.gsub!(d, '<placeholder>') if d
-      d=d.scan(/([A-Z])(\w+)/).map { |e| "#{e[0]}(#{e[1]})?" if e[0] && e[1] }.join('[\. ]?')
+      d=d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
     end
     str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
     str = str.gsub(/[:,-\/\[\]]/, '.?').gsub(/[#{SPACE_SUBSTITUTE}]+/, sep_chars)
     str.gsub!(/(&|and)/, '(&|and)')
-    str.gsub!('<placeholder>', "#{sep_chars}#{d}#{sep_chars}") if d
+    str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
     str
   end
 

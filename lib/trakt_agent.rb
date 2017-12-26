@@ -1,4 +1,4 @@
-class TraktList
+class TraktAgent
   def self.access_token(vals)
     {"access_token" => vals[:access_token],
      "token_type" => "bearer",
@@ -21,7 +21,7 @@ class TraktList
       list.map { |m| m[:t] }.uniq.each do |type|
         l = list.select { |m| m[:t] == type }.map { |m| m[:c] }
         $speaker.speak_up "Cleaning trakt list '#{list_name}' (type #{type}, #{l.count} elements)" if Env.debug?
-        TraktList.remove_from_list(l, list_name, type)
+        TraktAgent.remove_from_list(l, list_name, type)
       end
       Cache.queue_state_remove('cleanup_trakt_list', list_name)
     end
@@ -45,7 +45,7 @@ class TraktList
     token_row = token_rows.first
     if token_row.nil? || Time.parse(token_row[:expires_in]) < Time.now
       if Daemon.is_daemon? && Thread.current[:current_daemon]
-        Report.sent_out('Expired Trakt token', nil, 'Your trakt authentication is not set or has expired.
+        Report.sent_out('Expired TraktAgent token', nil, 'Your trakt authentication is not set or has expired.
 Please run \'librarian trakt refresh_auth\' to set it up!')
         return
       else
@@ -103,7 +103,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    $speaker.tell_error(e, "TraktList.get_watched")
+    $speaker.tell_error(e, "TraktAgent.get_watched")
     []
   end
 
@@ -159,7 +159,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     $speaker.speak_up('done!')
     list
   rescue => e
-    $speaker.tell_error(e, "TraktList.filter_trakt_list")
+    $speaker.tell_error(e, "TraktAgent.filter_trakt_list")
     list
   end
 
@@ -178,7 +178,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     end
     list
   rescue => e
-    $speaker.tell_error(e, "TraktList.list")
+    $speaker.tell_error(e, "TraktAgent.list")
     []
   end
 
@@ -245,5 +245,18 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     else
       return false
     end
+  end
+
+  def self.method_missing(name, *args)
+    m = name.to_s.split('__')
+    return unless m[0] && m[1]
+    authenticate!
+    if args.empty?
+      eval("$trakt.#{m[0]}").method(m[1]).call
+    else
+      eval("$trakt.#{m[0]}").method(m[1]).call(*args)
+    end
+  rescue => e
+    $speaker.tell_error(e, "TraktAgent.#{name}")
   end
 end

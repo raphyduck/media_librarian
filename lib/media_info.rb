@@ -17,7 +17,7 @@ class MediaInfo
   end
 
   def self.clear_year(title, strict = 1)
-    reg = strict.to_i > 0 ? '[ \.]\(?\d{4}\)?[ \.]?' + BASIC_EP_MATCH + '?$' : '[\( \.]\d{4}([ \)\.](.*))?$'
+    reg = strict.to_i > 0 ? '[ \.]\(?\d{4}\)?[ \.]?' + BASIC_EP_MATCH + '?$' : '[\( \.]\d{4}\)?([ \.](.*))?$'
     title.strip.gsub(Regexp.new(reg, Regexp::IGNORECASE), ' \1')
   end
 
@@ -35,7 +35,8 @@ class MediaInfo
         name.gsub!(/[#{SPACE_SUBSTITUTE}]\(?US[\)#{SPACE_SUBSTITUTE}]{0,2}$/, '') if complete.to_i > 0
         name << "#{ids}" if id_info.to_i > 0
       when 'books'
-        name, _, ids = Book.detect_book_title(name)
+        series_name, name, ids = Book.detect_book_title(name)
+        name = series_name if series_name.to_s != ''
         name << ids if ids.to_s != '' && id_info.to_i > 0
     end
     name.to_s.gsub(/[#{SPACE_SUBSTITUTE}]+/, ' ')
@@ -96,9 +97,9 @@ class MediaInfo
         episode_name = []
         episode_numbering = []
         ep_nb.each do |n|
-          tvdb_ep = !@tv_episodes[item_name].empty? && metadata['episode_season'] != '' && n[:ep].to_i > 0 ? @tv_episodes[item_name].select { |e| e.season_number == metadata['episode_season'].to_i.to_s && e.number == n[:ep].to_s }.first : nil
+          tvdb_ep = !@tv_episodes[item_name].empty? && metadata['episode_season'] != '' && n[:ep] ? @tv_episodes[item_name].select { |e| e.season_number.to_i == metadata['episode_season'].to_i && e.number.to_i == n[:ep].to_i }.first : nil
           episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
-          if n[:ep].to_i > 0 && metadata['episode_season'] != ''
+          if n[:ep] && metadata['episode_season'] != ''
             metadata['episode_season'] = metadata['episode_season'].to_i
             episode_numbering << "S#{format('%02d', metadata['episode_season'].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
           end
@@ -172,6 +173,7 @@ class MediaInfo
     target_year = identify_release_year(target_title)
     additional_year_cond = year.to_i > 0 ? "|#{year}" : ''
     target_title.strip!
+    target_title.gsub!('?','\?')
     target_title.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
     target_title.gsub!(/[ \.]\(?(\d{4})\)?([#{SPACE_SUBSTITUTE}]|$)/, '.\(?(\1' + additional_year_cond + '|US|UK)\)?')
     title.match(
@@ -212,9 +214,9 @@ class MediaInfo
       data[:movies] = {} if data[:movies].nil?
       data[:movies][item_name] = attrs[:movie]
     end
-    if attrs[:book_serie]
+    if attrs[:book_series]
       data[:book_series] = {} if data[:book_series].nil?
-      data[:book_series][item_name] = attrs[:book_serie]
+      data[:book_series][item_name] = attrs[:book_series]
     end
     data
   end
@@ -238,7 +240,7 @@ class MediaInfo
     item = nil
     unless (items || []).empty?
       if keys['year']
-        items.map! { |i| i[:release_year] = i[keys['year']].match(/\d{4}/).to_s.to_i; i }
+        items.map! { |i| i[:release_year] = i[keys['year']].to_s.match(/\d{4}/).to_s.to_i; i }
         items.sort_by! { |i| i[:release_year] > 0 ? i[:release_year].to_i : Time.now.year + 3 } if no_prompt.to_i == 0
       end
       results = items.map { |m| [clean_title(m[keys['name']]), m[keys['url']]] }
@@ -278,20 +280,21 @@ class MediaInfo
     return cached if cached
     exact_title, movie = title, nil
     if imdb_id.to_s != ''
-      movie = $imdb.find_movie_by_id(imdb_id.to_s)
-      if movie
-        movie = Movie.new(Cache.object_pack(movie, 1))
-        exact_title = movie.name
-      end
+      exact_title, movie = Movie.movie_get(imdb_id)
       Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
       return exact_title, movie unless movie.nil?
     end
     [clear_year(title, no_prompt), title].uniq.each do |s|
-      movies = $imdb.find_by_title(s)
+      movies = $imdb.find_by_title(s) rescue []
       movies.select! do |m|
         !(m[:title].match(/\(TV .+\)/) && !m[:title].match(/\(TV Movie\)/)) && !m[:title].match(/ \(Short\)/)
       end
-      movies.map! { |m| m[:title] << " (#{m[:year].match(/\d{4}/).to_s.to_i})" if identify_release_year(m[:title]).to_i == 0; m }
+      if movies.empty?
+        movies = TraktAgent.search__movies(s) rescue []
+        movies = [movies] unless movies.is_a?(Array)
+        movies.map! { |m| m['movie'][:imdb_id] = m['movie']['ids']['imdb'] rescue nil; Utils.recursive_symbolize_keys(m['movie']) if m }
+      end
+      movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if identify_release_year(m[:title]).to_i == 0; m }
       exact_title, movie = media_chose(
           title,
           movies,
@@ -300,11 +303,7 @@ class MediaInfo
           no_prompt.to_i
       )
       unless movie.nil?
-        movie = $imdb.find_movie_by_id(movie[:imdb_id])
-        if movie
-          movie = Movie.new(Cache.object_pack(movie, 1))
-          exact_title = movie.name
-        end
+        exact_title, movie = Movie.movie_get(movie[:imdb_id])
       end
       break if movie
     end
@@ -349,13 +348,14 @@ class MediaInfo
             :f_type => f_type
         }
       when 'books'
-        ids = [item&.identifier ? item.identifier : "#{item_name}"]
         nb = Book.identify_episodes_numbering(filename)
-        full_name = "#{item_name}#{' - T' + nb.to_s + ' - ' if nb.to_i > 0}"
+        ids = [item.identifier]
+        full_name = item.full_name
         info = {
             :series_name => nb.to_i > 0 ? item_name : '',
             :episode_id => nb.to_i > 0 ? nb.to_i : nil,
-            :book_serie => item
+            :book => item,
+            :book_series => item.series
         }
     end
     file[:parts] = parts unless file.nil? || file.empty?

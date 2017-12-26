@@ -31,6 +31,7 @@ class TorrentSearch
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
       $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0
+      $db.update_rows('torrents', {:status => -1}, {:name => download[:name]})
     end
     $db.delete_rows('seen', {:category => 'download', :entry => identifier})
   end
@@ -260,7 +261,7 @@ class TorrentSearch
         next if skip
         $speaker.speak_up("Looking for keyword '#{k}'", 0)
         if ks.index(k).to_i == 2
-          f[:files] += f[:existing_season_eps]
+          f[:files] += f[:existing_season_eps] if f[:files]
           filter_k = TvSeries.ep_name_to_season(f[:full_name])
         end
         dc = download_criteria.deep_dup
@@ -284,7 +285,7 @@ class TorrentSearch
     end
     subset = MediaInfo.media_get(results, f[:identifiers], f[:f_type]).map { |_, t| t }
     subset.map! do |t|
-      attrs = t.select { |k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps].include?(k) }.deep_dup
+      attrs = t.select { |k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps, :files].include?(k) }.deep_dup
       t[:files].map { |ff| ff.merge(attrs) }
     end
     subset.flatten!
@@ -298,14 +299,17 @@ class TorrentSearch
         next
       end
       next unless (f[:f_type].nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f[:f_type].to_s)
-      if Time.parse(d[:waiting_until]) > Time.now
+      t = -1
+      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0
         $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
         t = 1
-      else
+      elsif d[:status].to_i >= 0
         t = 2
+      elsif Env.debug?
+        $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
       end
       subset.select! { |tt| tt[:name] != d[:name] }
-      subset << d[:tattributes].merge({:download_now => t, :in_db => 1})
+      subset << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0
     end
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
@@ -317,7 +321,6 @@ class TorrentSearch
         $speaker.speak_up(LINE_SEPARATOR)
         $speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
         $speaker.speak_up("Name: #{torrent[:name]}")
-        $speaker.speak_up "torrent[:files] #{torrent[:files]}" if f[:type] == 'movies' #REMOVEME
         if no_prompt.to_i == 0
           $speaker.speak_up("Size: #{(torrent[:size].to_f / 1024 / 1024 / 1024).round(2)} GB")
           $speaker.speak_up("Seeders: #{torrent[:seeders]}")

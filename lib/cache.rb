@@ -4,7 +4,7 @@ class Cache
   @cache_metadata = Vash.new
 
   def self.cache_add(type, keyword, result, full_save = nil)
-    $speaker.speak_up "Refreshing cache for #{keyword}#{' will not be saved to db' if full_save.nil?}" if Env.debug?
+    $speaker.speak_up "Refreshing #{type} cache for #{keyword}#{' will not be saved to db' if full_save.nil?}" if Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = object_pack(result)
     $db.insert_row('metadata_search', {
@@ -45,6 +45,7 @@ class Cache
   end
 
   def self.entry_deja_vu?(category, entry)
+    #TODO: Expire entry after xx days
     entry = [entry] unless entry.is_a?(Array)
     dejavu = false
     entry.each do |e|
@@ -79,12 +80,12 @@ class Cache
 
   def self.object_unpack(object)
     object = begin
-      eval(object.clone)
+      object.is_a?(String) && object.match(/^[{\[].*[}\]]$/) ? eval(object.clone) : object.clone
     rescue Exception
       object.clone
     end
-    return object unless object.is_a?(Array)
-    if object.count == 2 && object[0].is_a?(String) && Object.const_defined?(object[0])
+    return object unless object.is_a?(Array) || object.is_a?(Hash)
+    if object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
       if object[0] == 'Hash'
         object = begin
           eval(object[1])
@@ -93,11 +94,12 @@ class Cache
         end
         object.keys.each { |k| object[k] = object_unpack(object[k]) } rescue nil
       else
-        object = Object.const_get(object[0]).new(object_unpack(object[1])) rescue object[1]
-        object.instance_variables.each { |var| object.send("#{var.to_s.gsub('@','')}=", object_unpack(object.instance_variable_get(var))) rescue nil }
+        object = Object.const_get(object[0]).new(object_unpack(object[1])) rescue object_unpack(object[1])
       end
     elsif object.is_a?(Array)
       object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
+    else
+      object.keys.each { |k| object[k] = object_unpack(object[k]) }
     end
     object
   end
