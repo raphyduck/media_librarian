@@ -1,1 +1,0 @@
-$imdb = ImdbParty::Imdb.new(:anonymize => true)

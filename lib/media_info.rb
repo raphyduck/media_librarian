@@ -285,17 +285,11 @@ class MediaInfo
       return exact_title, movie unless movie.nil?
     end
     [clear_year(title, no_prompt), title].uniq.each do |s|
-      movies = $imdb.find_by_title(s) rescue []
-      movies.select! do |m|
-        !(m[:title].match(/\(TV .+\)/) && !m[:title].match(/\(TV Movie\)/)) && !m[:title].match(/ \(Short\)/)
-      end
-      if movies.empty?
-        movies = TraktAgent.search__movies(s) rescue []
-        movies = [movies] unless movies.is_a?(Array)
-        movies.map! do |m|
-          m['movie'][:imdb_id] = m['movie']['ids']['imdb'] if m['movie'] && m['movie']['ids']
-          Utils.recursive_symbolize_keys(m['movie']) if m['movie']
-        end
+      movies = TraktAgent.search__movies(s) rescue []
+      movies = [movies] unless movies.is_a?(Array)
+      movies.map! do |m|
+        m['movie'][:imdb_id] = m['movie']['ids']['imdb'] if m['movie'] && m['movie']['ids']
+        Utils.recursive_symbolize_keys(m['movie']) if m['movie']
       end
       movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if identify_release_year(m[:title]).to_i == 0; m }
       exact_title, movie = media_chose(

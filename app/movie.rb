@@ -52,8 +52,7 @@ class Movie
   def self.movie_get(imdb_id)
     cached = Cache.cache_get('movie_get', imdb_id.to_s)
     return cached if cached
-    movie = $imdb.find_movie_by_id(imdb_id.to_s) rescue nil
-    movie = TraktAgent.search__search_by_id('imdb', imdb_id.to_s)[0]['movie'] rescue nil if movie.nil?
+    movie = TraktAgent.search__search_by_id('imdb', imdb_id.to_s)[0]['movie'] rescue nil
     movie = Movie.new(Cache.object_pack(movie, 1))
     title = movie.name
     Cache.cache_add('movie_get', imdb_id.to_s, [title, movie], movie)
