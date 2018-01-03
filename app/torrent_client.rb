@@ -38,13 +38,18 @@ class TorrentClient
     end
   end
 
-  def download_file(file, filename, move_completed = nil)
+  def download_file(file, filename, move_completed = nil, meta_id = '')
     options = {}
     if move_completed.to_s != ''
       options['move_completed_path'] = move_completed
       options['move_completed'] = true
     end
     $t_client.add_torrent_file(filename, Base64.encode64(file), options)
+  rescue
+    if meta_id.to_s != ''
+      status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
+      raise 'Download failed' if status.nil? || status.empty?
+    end
   end
 
   def find_main_file(status)
@@ -187,6 +192,7 @@ class TorrentClient
     true
   rescue => e
     $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]})")
+    $speaker.tell_error('', "Torrent[#{opts[:t_name]}][0..250]='#{torrent.to_s[0..250]}'") if defined?(torrent) && torrent
     false
   end
 
@@ -214,7 +220,7 @@ class TorrentClient
     if !(tries -= 1).zero?
       retry
     else
-      $speaker.tell_error(e, "TorrentClient.#{name}")
+      $speaker.tell_error(e, "TorrentClient.#{name}#{'(' + args.map{|a| a.to_s[0..250]}.join(',') + ')' if args}")
       if @tdid.to_i > 0
         TraktAgent.list_cache_remove(@tdid)
         File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil

@@ -216,7 +216,8 @@ class MediaInfo
     end
     if attrs[:book_series]
       data[:book_series] = {} if data[:book_series].nil?
-      data[:book_series][item_name] = attrs[:book_series]
+      series_name = attrs[:book_series].is_a?(BookSeries) ? attrs[:book_series].name : attrs[:book_series][:name]
+      data[:book_series][series_name] = attrs[:book_series]
     end
     data
   end
@@ -291,7 +292,7 @@ class MediaInfo
         m['movie'][:imdb_id] = m['movie']['ids']['imdb'] if m['movie'] && m['movie']['ids']
         Utils.recursive_symbolize_keys(m['movie']) if m['movie']
       end
-      movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if identify_release_year(m[:title]).to_i == 0; m }
+      movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if m && identify_release_year(m[:title]).to_i == 0; m }
       exact_title, movie = media_chose(
           title,
           movies,
@@ -353,6 +354,13 @@ class MediaInfo
             :episode_id => nb.to_i > 0 ? nb.to_i : nil,
             :book => item,
             :book_series => item.series
+        }
+      when 'book_series'
+        ids = [item.identifier]
+        full_name = item.name
+        info = {
+            :series_name => item_name,
+            :book_series => item
         }
     end
     file[:parts] = parts unless file.nil? || file.empty?

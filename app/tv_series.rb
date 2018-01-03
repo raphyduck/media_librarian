@@ -102,7 +102,6 @@ class TvSeries
             end
             next if full_name == ''
             $speaker.speak_up("Missing #{full_name}#{' - ' + ep.name.to_s if ep_nb.to_i > 0} (aired on #{ep.air_date})", 0)
-            next if Cache.entry_deja_vu?('download', identifier(series_name, ep.season_number, ep_nb))
             @missing_episodes[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
                                                                              'shows',
                                                                              full_name,

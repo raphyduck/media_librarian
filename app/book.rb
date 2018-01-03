@@ -1,6 +1,6 @@
 class Book
-  SHOW_MAPPING = {calibre_id: :calibre_id, filename: :filename, series_id: :series_id, series_nb: :series_nb,
-                  full_name: :full_name, ids: :ids, series: :series, name: :name, pubdate: :pubdate}
+  SHOW_MAPPING = {calibre_id: :calibre_id, filename: :filename, series_id: :series_id, series_nb: :series_nb, full_name: :full_name,
+                  ids: :ids, series: :series, series_name: :series_name, name: :name, pubdate: :pubdate}
 
   SHOW_MAPPING.values.each do |value|
     attr_accessor value
@@ -8,71 +8,56 @@ class Book
 
   def initialize(opts)
     SHOW_MAPPING.each do |source, destination|
-      send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, opts))
+      send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, Utils.recursive_symbolize_keys(opts)))
     end
+    detect_series(opts)
+  end
+
+  def detect_series(opts)
+    if @series_id.nil?
+      series_link = calibre_id.to_i != 0 ? $calibre.get_rows('books_series_link', {:book => calibre_id}).first : nil
+      @series_id = series_link ? series_link[:series] : nil
+    end
+    @series_name, @name, _ = Book.detect_book_title(filename)
+    if @series.nil? && @series_id.to_s != '' && @series_name.to_s != ''
+      @series = BookSeries.new($calibre.get_rows('series',{:id => @series_id}).first)
+    elsif @series.nil? && opts[:no_series_search].to_i == 0
+      t, @series = BookSeries.book_series_search(filename, 1, ids['isbn'])
+      @series_name = t if @series && !@series.empty?
+      @series = nil if @series&.empty?
+    end
+    @series_nb = Book.identify_episodes_numbering(filename) if @series_nb.nil? && !@series.nil?
+    @series_nb = opts[:series_index].to_f if @series_nb.to_i == 0 && @series_id.to_s != '' && !@series.nil?
+    @full_name = "#{@series_name}#{' - ' if @series_name.to_s != ''}#{'T' + @series_nb.to_s if @series_name.to_s != ''}#{' - ' if @series_name.to_s != ''}#{@name}" if @full_name.nil?
+    return @series, @series_id, @series_nb, @series_name, @name, @full_name
   end
 
   def fetch_val(valname, opts)
-    #TODO: Fetch episode number from DB
     case valname
       when 'calibre_id'
-        opts[:id]
+        opts[:id] if opts[:from_calibre].to_i > 0
       when 'filename'
-        (opts[:name] || opts[:title] || opts['title'] || opts['name']).strip
-      when 'full_name'
-        _, name, _ = Book.detect_book_title(filename)
-        "#{series_name}#{' - ' if series_name.to_s != ''}#{series_name if series_name.to_s != ''}#{' - ' if series_name.to_s != ''}#{name}"
+        (opts[:name] || opts[:title]).strip
       when 'ids'
         if calibre_id
           is = Hash[$calibre.get_rows('identifiers', {:book => calibre_id}).map { |i| [i[:type].to_s, i[:val].to_s] }]
-        elsif opts['isbn13'] || opts['gr_ids']
-          is = {'isbn' => opts['isbn13'] || opts['gr_ids']}
+        elsif opts[:isbn13] || opts[:gr_ids]
+          is = {'isbn' => opts[:isbn13] || opts[:gr_ids]}
         else
           is = {}
         end
-        is.merge!({'goodreads' => opts['id']}) if opts['id']
+        is.merge!({'goodreads' => opts[:id]}) if opts[:id] && opts[:from_calibre].to_i == 0
         is
-      when 'name'
-        _, name, _ = Book.detect_book_title(filename)
-        name
       when 'pubdate'
-        (opts['publication_year'] ? Date.new(opts['publication_year'].to_i, (opts['publication_month'] || 1).to_i, (opts['publication_day'] || 1).to_i) : nil)
-      when 'series_name'
-        m = full_name.match(/\((.+), \#\d+\)$/)
-        m ? m[1] : ''
-      when 'series_nb'
-        nb = Book.identify_episodes_numbering(filename)
-        nb = opts[:series_index].to_f if nb.to_i == 0 && series_id.to_s != ''
-        nb
-      when 'series_id'
-        series_link = $calibre.get_rows('books_series_link', {:book => calibre_id}).first
-        series_link ? series_link[:series] : nil
-      when 'series'
-        if series_id.to_s != '' && series_name.to_s != ''
-          BookSeries.new({'name' => series_name})
-        elsif calibre_id
-          t, s = BookSeries.book_series_search(filename, 1, ids['isbn'])
-          @series_name = t if s && !s.empty?
-          s = nil if s&.empty?
-          s
-        end
+        (opts[:publication_year] ? Date.new(opts[:publication_year].to_i, (opts[:publication_month] || 1).to_i, (opts[:publication_day] || 1).to_i) : nil)
     end
   end
 
   def identifier
-    "book#{series_name}T#{series_nb}"
+    "book#{series_name}#{series.goodread_id.to_s if series}T#{series_nb}"
   end
 
-  def series_name
-    if @series_name
-      return @series_name
-    end
-    series = series_id.nil? ? [] : $calibre.get_rows('series', {:id => series_id})
-    @series_name = series.empty? ? '' : series.first[:name]
-    @series_name
-  end
-
-  def self.book_search(title, no_prompt = 0, isbn = '')
+  def self.book_search(title, no_prompt = 0, isbn = '', no_series_search = 0)
     cache_name = title.to_s + isbn.to_s
     cached = Cache.cache_get('book_search', cache_name)
     return cached if cached
@@ -80,7 +65,7 @@ class Book
     if isbn.to_s != ''
       book = ($goodreads.book_by_isbn(isbn) rescue nil)
       if book
-        book = new(book)
+        book = new(book.merge({:no_series_search => no_series_search}))
         exact_title = book.name
       end
     end
@@ -104,7 +89,7 @@ class Book
           'books',
           no_prompt.to_i
       )
-      book = new(book) if book
+      book = new(book.merge({:no_series_search => no_series_search})) if book
     end
     Cache.cache_add('book_search', cache_name, [exact_title, book], book)
     return exact_title, book
@@ -219,8 +204,9 @@ class Book
   def self.existing_books(no_prompt = 0)
     #TODO: Finish this, ensure return a hash of individual book + hash [:book_series] = list of all series
     existing_books = {}
+    return existing_books if $calibre.nil?
     $calibre.get_rows('books').each do |b|
-      book = new(b)
+      book = new(b.merge({:from_calibre => 1}))
       existing_books = Library.parse_media(
           {:type => 'books', :name => book.filename},
           'books',

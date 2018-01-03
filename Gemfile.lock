@@ -17,6 +17,13 @@ GIT
       rest-client (~> 2.0)
 
 GIT
+  remote: https://github.com/raphyduck/imdb-party.git
+  revision: fb1636b2e440fc10a9b5a8fe5b24d74104cbaae6
+  specs:
+    imdb_party (0.8.0)
+      httparty
+
+GIT
   remote: https://github.com/raphyduck/ruby-mp3info.git
   revision: e9d46e1264abc571bd8b2b2397a24b191b36208b
   specs:
@@ -178,6 +185,7 @@ DEPENDENCIES
   goodreads!
   hanami-mailer
   httparty
+  imdb_party!
   mechanize
   net-ssh
   nokogiri

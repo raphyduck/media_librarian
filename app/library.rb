@@ -442,7 +442,7 @@ class Library
     missing = {}
     case source_type
       when 'calibre'
-        search_list.merge!(BookSeries.subscribe_series) if source['series'].to_i > 0
+        search_list.merge!(BookSeries.subscribe_series(no_prompt)) if source['series'].to_i > 0
       when 'filesystem'
         return search_list unless source['existing_folder'] && source['existing_folder'][category]
         existing_files = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])

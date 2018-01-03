@@ -44,13 +44,17 @@ class Cache
     METADATA_SEARCH[:media_type][type.to_sym][:enum] rescue nil
   end
 
-  def self.entry_deja_vu?(category, entry)
-    #TODO: Expire entry after xx days
+  def self.entry_deja_vu?(category, entry, expiration = 180)
     entry = [entry] unless entry.is_a?(Array)
     dejavu = false
     entry.each do |e|
       a = $db.get_rows('seen', {:category => 'global'}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"})
       a = $db.get_rows('seen', {:category => category}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"}) if a.empty?
+      a.delete_if do |r|
+        created = Time.parse(r[:created_at])
+        $db.delete_rows('seen',{:entry => r[:entry]}) if created < Time.now - expiration.days
+        created < Time.now - expiration.days
+      end
       dejavu = true unless a.empty?
     end
     $speaker.speak_up("#{category.to_s.titleize} entry #{entry.join} already seen") if dejavu

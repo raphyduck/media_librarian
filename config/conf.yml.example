@@ -30,9 +30,6 @@ kodi:
 thepiratebay:
   site_specific_kw:
       shows: ''
-extratorrent:
-  site_specific_kw:
-      movies: ''
 torrentleech:
   username: username
   password: password
