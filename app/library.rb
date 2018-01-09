@@ -220,34 +220,39 @@ class Library
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
     loop do
-      unless Utils.check_if_active(active_hours)
-        sleep 30
-        next
-      end
-      exit_status = nil
-      low_b = 0
-      while exit_status.nil? && Utils.check_if_active(active_hours)
-        fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
-        while fetcher.alive?
-          if !Utils.check_if_active(active_hours) || low_b > 60
-            $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
-            `pgrep -f 'rsync' | xargs kill -15`
-            low_b = 0
-          end
-          if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
-            in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
-            if in_speed < bandwith_limit / 4
-              low_b += 1
-            else
+      begin
+        unless Utils.check_if_active(active_hours)
+          sleep 30
+          next
+        end
+        exit_status = nil
+        low_b = 0
+        while Utils.check_if_active(active_hours) &&  `ps ax | grep rsync | grep -v grep` == ''
+          fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
+          while fetcher.alive?
+            if !Utils.check_if_active(active_hours) || low_b > 60
+              $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
+              `pgrep -f 'rsync' | xargs kill -15`
               low_b = 0
             end
+            if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
+              in_speed, _ = Utils.get_traffic(monitor_options['network_card'])
+              if in_speed && in_speed < bandwith_limit / 4
+                low_b += 1
+              else
+                low_b = 0
+              end
+            end
+            sleep 10
           end
-          sleep 10
+          exit_status = fetcher.status
+          Daemon.merge_notifications(fetcher)
         end
-        exit_status = fetcher.status
-        Daemon.merge_notifications(fetcher)
+        sleep 3600 unless exit_status.nil?
+      rescue => e
+        $speaker.tell_error(e, "Library.fetch_media_box")
+        sleep 180
       end
-      sleep 3600 unless exit_status.nil?
     end
   end
 
@@ -522,7 +527,7 @@ class Library
           end
         end
         search_list.merge!(missing['shows']) if missing['shows']
-        search_list.keep_if { |f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
+        search_list.keep_if { |_, f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
     end
     search_list
   end

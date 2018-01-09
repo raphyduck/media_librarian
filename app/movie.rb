@@ -1,5 +1,5 @@
 class Movie
-  SHOW_MAPPING = {id: :id, url: :url, release_date: :release_date, name: :name, genres: :genres}
+  SHOW_MAPPING = {id: :id, url: :url, released: :release_date, name: :name, genres: :genres}
 
   SHOW_MAPPING.values.each do |value|
     attr_accessor value
@@ -16,10 +16,18 @@ class Movie
     case valname
       when 'id'
         v = opts['imdb_id']
+        if v.nil? && opts['ids']
+          v = opts['ids']['imdb']
+          v = opts['ids']['trakt'] if v.nil?
+          v = opts['ids']['tmdb'] if v.nil?
+          v = opts['ids']['slug'] if v.nil?
+        end
       when 'name'
         v = opts['title']
         @year = (opts['year'] || year).to_i
         v << " (#{@year})" if MediaInfo.identify_release_year(v).to_i == 0
+      when 'released'
+        v = opts['release_date']
       when 'url'
         imdb_id = opts['ids']['imdb'] rescue nil
         v = "https://www.imdb.com/title/#{imdb_id}/" if imdb_id
@@ -52,7 +60,7 @@ class Movie
   def self.movie_get(imdb_id)
     cached = Cache.cache_get('movie_get', imdb_id.to_s)
     return cached if cached
-    movie = TraktAgent.search__search_by_id('imdb', imdb_id.to_s)[0]['movie'] rescue nil
+    movie = TraktAgent.movie__summary(imdb_id, "?extended=full") rescue nil
     movie = Movie.new(Cache.object_pack(movie, 1))
     title = movie.name
     Cache.cache_add('movie_get', imdb_id.to_s, [title, movie], movie)

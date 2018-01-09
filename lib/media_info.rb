@@ -135,16 +135,16 @@ class MediaInfo
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
-          title, item = movie_lookup(t_folder, no_prompt, ids['imdb'])
+          title, item = movie_lookup(t_folder, no_prompt, ids)
         when 'shows'
           if item.nil? && t_folder == r_folder
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
-          title, item = tv_show_search(t_folder, no_prompt, ids['tvdb'])
+          title, item = tv_show_search(t_folder, no_prompt, ids)
         when 'books'
           title = detect_real_title(filename, type)
-          title, item = Book.book_search(title, no_prompt, ids['isbn'])
+          title, item = Book.book_search(title, no_prompt, ids)
         else
           title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
       end
@@ -275,41 +275,43 @@ class MediaInfo
     return title, item
   end
 
-  def self.movie_lookup(title, no_prompt = 0, imdb_id = '')
+  def self.movie_lookup(title, no_prompt = 0, ids = {})
     title = StringUtils.prepare_str_search(title)
-    cached = Cache.cache_get('movie_lookup', title.to_s + imdb_id.to_s)
+    id = ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']
+    cache_name = title.to_s + id.to_s
+    cached = Cache.cache_get('movie_lookup', title.to_s + id.to_s)
     return cached if cached
     exact_title, movie = title, nil
-    if imdb_id.to_s != ''
-      exact_title, movie = Movie.movie_get(imdb_id)
-      Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
+    if id.to_s != ''
+      exact_title, movie = Movie.movie_get(id)
+      Cache.cache_add('movie_lookup', cache_name, [exact_title, movie], movie)
       return exact_title, movie unless movie.nil?
     end
     [clear_year(title, no_prompt), title].uniq.each do |s|
       movies = TraktAgent.search__movies(s) rescue []
       movies = [movies] unless movies.is_a?(Array)
       movies.map! do |m|
-        m['movie'][:imdb_id] = m['movie']['ids']['imdb'] if m['movie'] && m['movie']['ids']
-        Utils.recursive_symbolize_keys(m['movie']) if m['movie']
+        Cache.object_pack(Movie.new(Cache.object_pack(m['movie'], 1)), 1) if m['movie']
       end
-      movies.map! { |m| m[:title] << " (#{m[:year].to_s.match(/\d{4}/).to_s.to_i})" if m && identify_release_year(m[:title]).to_i == 0; m }
+      movies.compact!
+      movies.map! { |m| m['name'] << " (#{m['year'].to_s.match(/\d{4}/).to_s.to_i})" if m && identify_release_year(m['name']).to_i == 0; m }
       exact_title, movie = media_chose(
           title,
           movies,
-          {'name' => :title, 'url' => :url, 'year' => :year},
+          {'name' => 'name', 'url' => 'url', 'year' => 'year'},
           'movies',
           no_prompt.to_i
       )
       unless movie.nil?
-        exact_title, movie = Movie.movie_get(movie[:imdb_id])
+        exact_title, movie = Movie.movie_get(movie['id'])
       end
       break if movie
     end
-    Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [exact_title, movie], movie)
+    Cache.cache_add('movie_lookup', cache_name, [exact_title, movie], movie)
     return exact_title, movie
   rescue => e
     $speaker.tell_error(e, "MediaInfo.movie_title_lookup")
-    Cache.cache_add('movie_lookup', title.to_s + imdb_id.to_s, [title, nil], nil)
+    Cache.cache_add('movie_lookup', cache_name, [title, nil], nil)
     return title, nil
   end
 
@@ -425,13 +427,14 @@ class MediaInfo
     return '', nil
   end
 
-  def self.tv_show_search(title, no_prompt = 0, tvdb_id = '')
+  def self.tv_show_search(title, no_prompt = 0, ids = {})
     title = StringUtils.prepare_str_search(title)
-    cached = Cache.cache_get('tv_show_search', title.to_s + tvdb_id.to_s)
+    cache_name = title.to_s + ids['tvdb'].to_s
+    cached = Cache.cache_get('tv_show_search', cache_name)
     return cached if cached
-    if tvdb_id.to_i > 0
-      exact_title, show = tv_show_get(tvdb_id)
-      Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
+    if ids['tvdb'].to_i > 0
+      exact_title, show = tv_show_get(ids['tvdb'])
+      Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
       return exact_title, show unless show.nil?
     end
     tvdb_shows = $tvdb.search(title)
@@ -441,11 +444,11 @@ class MediaInfo
     tvdb_shows.map! { |s| s = Cache.object_pack(TvSeries.new(s), 1); s['first_aired'] = identify_release_year(s['name']).to_s; s }
     exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
     exact_title, show = tv_show_get(show['tvdb_id']) if show
-    Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [exact_title, show], show)
+    Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
     return exact_title, show
   rescue => e
     $speaker.tell_error(e, "MediaInfo.tv_episodes_search")
-    Cache.cache_add('tv_show_search', title.to_s + tvdb_id.to_s, [title, nil], nil)
+    Cache.cache_add('tv_show_search', cache_name, [title, nil], nil)
     return title, nil
   end
 

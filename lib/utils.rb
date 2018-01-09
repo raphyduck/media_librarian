@@ -12,9 +12,9 @@ class Utils
     !active_hours.is_a?(Hash) ||
         ((active_hours['start'].nil? || active_hours['start'].to_i <= Time.now.hour) &&
             (active_hours['end'].nil? || active_hours['end'].to_i >= Time.now.hour) &&
-        (active_hours['start'].nil? || active_hours['end'].nil? || active_hours['start'].to_i <= active_hours['end'])) ||
+            (active_hours['start'].nil? || active_hours['end'].nil? || active_hours['start'].to_i <= active_hours['end'])) ||
         (active_hours['start'].to_i > active_hours['end'].to_i && (active_hours['start'].to_i <= Time.now.hour ||
-        active_hours['end'].to_i >= Time.now.hour))
+            active_hours['end'].to_i >= Time.now.hour))
   end
 
   def self.forget(table:, entry:)
@@ -40,6 +40,9 @@ class Utils
       end
     end
     return in_s/1024, out_s/1024
+  rescue => e
+    $speaker.tell_error(e, "Utils.get_traffic(#{network_card})")
+    return nil, nil
   end
 
   def self.list_db(table:, entry: '')

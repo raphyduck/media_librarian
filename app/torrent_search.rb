@@ -1,7 +1,6 @@
 class TorrentSearch
 
   @processed_search_keyword = []
-  @search = {}
 
   def self.authenticate_all(sources)
     get_trackers(sources).each do |t|
@@ -190,22 +189,20 @@ class TorrentSearch
   end
 
   def self.launch_search(site, keyword, url = nil, cid = '')
-    return @search[site] if @search[site] && keyword.to_s == '' && url.nil?
     case site
       when 'rarbg'
-        @search[site] = RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid)
+        RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid)
       when 'thepiratebay'
-        @search[site] = Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid)
+        Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid)
       when 'torrentleech'
-        @search[site] = TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid)
+        TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid)
       when 'yggtorrent'
-        @search[site] = Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid)
+        Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid)
       when 'wop'
-        @search[site] = Wop::Search.new(StringUtils.clean_search(keyword), url)
+        Wop::Search.new(StringUtils.clean_search(keyword), url)
       else
-        @search[site] = TorrentRss.new(site)
+        TorrentRss.new(site)
     end
-    @search[site]
   end
 
   def self.parse_tracker_sources(sources)
@@ -386,6 +383,7 @@ class TorrentSearch
       search_list.merge!(Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination))
     end
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
+    authenticate_all(torrent_sources['trackers'])
     results = case torrent_sources['type'].to_s
                 when 'sub'
                   get_results(

@@ -57,6 +57,7 @@ METADATA_SEARCH = {
         :tv_show_search => 5,
         :book_search => 6,
         :books_series_get => 7,
-        :book_series_search => 8
+        :book_series_search => 8,
+        :movie_get => 9
     }
 }

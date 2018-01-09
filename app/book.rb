@@ -22,9 +22,9 @@ class Book
     if @series.nil? && @series_id.to_s != '' && @series_name.to_s != ''
       @series = BookSeries.new($calibre.get_rows('series',{:id => @series_id}).first)
     elsif @series.nil? && opts[:no_series_search].to_i == 0
-      t, @series = BookSeries.book_series_search(filename, 1, ids['isbn'])
-      @series_name = t if @series && !@series.empty?
-      @series = nil if @series&.empty?
+      t, @series = BookSeries.book_series_search(filename, 1, ids)
+      @series_name = t if @series
+      @series = nil if @series.is_a?(Hash) && @series.empty?
     end
     @series_nb = Book.identify_episodes_numbering(filename) if @series_nb.nil? && !@series.nil?
     @series_nb = opts[:series_index].to_f if @series_nb.to_i == 0 && @series_id.to_s != '' && !@series.nil?
@@ -57,13 +57,13 @@ class Book
     "book#{series_name}#{series.goodread_id.to_s if series}T#{series_nb}"
   end
 
-  def self.book_search(title, no_prompt = 0, isbn = '', no_series_search = 0)
-    cache_name = title.to_s + isbn.to_s
+  def self.book_search(title, no_prompt = 0, ids = {}, no_series_search = 0)
+    cache_name = title.to_s + ids['isbn'].to_s
     cached = Cache.cache_get('book_search', cache_name)
     return cached if cached
     rs, book, exact_title = [], nil, title
-    if isbn.to_s != ''
-      book = ($goodreads.book_by_isbn(isbn) rescue nil)
+    if ids['isbn'].to_s != ''
+      book = ($goodreads.book_by_isbn(ids['isbn']) rescue nil)
       if book
         book = new(book.merge({:no_series_search => no_series_search}))
         exact_title = book.name

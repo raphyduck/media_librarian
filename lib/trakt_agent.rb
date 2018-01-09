@@ -137,8 +137,8 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
             end
           end
         when 'ended', 'not_ended'
-          tvdb_id = item[type[0...-1]]['ids']['tvdb'].to_i
-          _, show = MediaInfo.tv_show_search(title, 1, tvdb_id)
+          ids = item[type[0...-1]]['ids'] || {}
+          _, show = MediaInfo.tv_show_search(title, 1, ids)
           if show.nil? || (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))
             list.delete(item)
           end

@@ -13,8 +13,8 @@ class BookSeries
     "book#{name}#{goodread_id}"
   end
 
-  def self.book_series_search(title, no_prompt, isbn = '', goodread_id = '')
-    cache_name = title.to_s + isbn.to_s + goodread_id.to_s
+  def self.book_series_search(title, no_prompt, ids = {}, goodread_id = '')
+    cache_name = title.to_s + ids['isbn'].to_s + goodread_id.to_s
     cached = Cache.cache_get('book_series_search', cache_name)
     return cached if cached
     exact_title, series = '', nil
@@ -22,7 +22,7 @@ class BookSeries
       exact_title, series = get_series(goodread_id)
     end
     if series.nil?
-      _, book = Book.book_search(title, no_prompt, isbn, 1)
+      _, book = Book.book_search(title, no_prompt, ids, 1)
       if book
         bid = book.is_a?(Book) ? book.ids['goodreads'] : book[:id]
         book = bid.nil? ? {} : $goodreads.book(bid)

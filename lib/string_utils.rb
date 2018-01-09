@@ -23,7 +23,7 @@ class StringUtils
       d=d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
     end
     str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
-    str = str.gsub(/[:,-\/\[\]]/, '.?').gsub(/[#{SPACE_SUBSTITUTE}]+/, sep_chars)
+    str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')
     str.gsub!(/(&|and)/, '(&|and)')
     str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
     str

@@ -18,10 +18,7 @@ class Daemon < EventMachine::Connection
     @threads[qname] = {} if @threads[qname].nil?
     @threads[qname]['working'] = [] unless @threads[qname]['working']
     @threads[qname]['working'].delete_if do |t|
-      unless t.alive?
-        @threads[qname][t[:jid]] = t
-        t = nil
-      end
+      t = nil unless t.alive?
       t.nil?
     end
     @threads[qname]['working'].count
