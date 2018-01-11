@@ -1,6 +1,6 @@
 class TorrentSearch
 
-  @processed_search_keyword = []
+  @processed_search_keyword = Vash.new
 
   def self.authenticate_all(sources)
     get_trackers(sources).each do |t|
@@ -244,6 +244,7 @@ class TorrentSearch
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
     $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}')" if Env.debug?
     if results.nil?
+      results = {}
       ks = [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)]
       filter_k = f[:full_name]
       if f[:type] == 'shows' && f[:f_type] == 'episode'
@@ -252,8 +253,8 @@ class TorrentSearch
       ks.uniq.each do |k|
         skip = false
         Utils.lock_block("#{__method__}keywording") {
-          skip = @processed_search_keyword.include?(k)
-          @processed_search_keyword << k
+          skip = @processed_search_keyword[k].to_i > 0
+          @processed_search_keyword[k, CACHING_TTL] = 1
         }
         next if skip
         $speaker.speak_up("Looking for keyword '#{k}'", 0)

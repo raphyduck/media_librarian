@@ -26,8 +26,6 @@ TODO:
 * Torrent search:
     
 * TvSeries:
-    * Download proper when they are published even if medium already seen
     
 * Library:
-    * Copy from imdb watchlist to trakt
     * Use alternative sources to identify series
