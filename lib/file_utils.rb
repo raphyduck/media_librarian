@@ -18,21 +18,26 @@ module FileUtils
     end
 
     def compress_archive(folder, name)
-      pwd = Dir.pwd
-      Dir.chdir(File.dirname(folder))
-      Archive::Zip.archive(name, File.basename(folder))
-      Dir.chdir(pwd)
+      Dir.chdir(File.dirname(folder)) do
+        if Env.pretend?
+          $speaker.speak_up "Would compress the following files:"
+          Dir.foreach('.') { |f| $speaker.speak_up f }
+        else
+          Archive::Zip.archive(name, File.basename(folder))
+        end
+      end
     end
 
     def extract_archive(type, archive, destination)
       FileUtils.mkdir(destination) unless Dir.exist?(destination)
+      return $speaker.speak_up "Would extract archive #{type} '#{archive}' to '#{destination}'" if Env.pretend?
       case type
         when 'cbr', 'rar'
           $unrar = Unrar::Archive.new(archive, destination)
           extracted = $unrar.extract
           $speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
         when 'cbz', 'zip'
-          Archive::Zip.extract(archive, destination)
+          Archive::Zip.extract(archive, destination, {:ignore_check_flags => 1})
       end
     end
 
@@ -56,7 +61,10 @@ module FileUtils
     end
 
     def get_path_depth(path, folder)
+      folder = File.absolute_path(folder)
+      path = File.absolute_path(path)
       folder = folder + '/' unless folder[-1] == '/'
+      return 0 unless path.include?(folder)
       parent = File.dirname(path.gsub(folder, ''))
       if parent == '.'
         1
@@ -179,10 +187,9 @@ module FileUtils
       filter_criteria = {} if filter_criteria.nil?
       search_folder = []
       Find.find(folder).each do |path|
-        next if path == folder
+        path = File.absolute_path(path)
+        next if path == File.absolute_path(folder)
         parent = File.basename(File.dirname(path))
-        next if File.basename(path).start_with?('.')
-        next if parent.start_with?('.')
         next unless File.exist?(path)
         depth = get_path_depth(path, folder)
         breakflag = 0
@@ -199,7 +206,7 @@ module FileUtils
         breakflag = 1 if breakflag == 0 && filter_criteria['str_closeness'].to_i > 0 && filter_criteria['str_closeness_comp'] &&
             $str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&
             $str_closeness.getDistance(parent, filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i
-        search_folder << [File.absolute_path(path), parent] if breakflag == 0
+        search_folder << [path, parent] if breakflag == 0
         if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
           Find.prune if FileTest.directory?(path)
         end

@@ -20,7 +20,7 @@ class Book
     end
     @series_name, @name, _ = Book.detect_book_title(filename)
     if @series.nil? && @series_id.to_s != '' && @series_name.to_s != ''
-      @series = BookSeries.new($calibre.get_rows('series',{:id => @series_id}).first)
+      @series = BookSeries.new($calibre.get_rows('series', {:id => @series_id}).first)
     elsif @series.nil? && opts[:no_series_search].to_i == 0
       t, @series = BookSeries.book_series_search(filename, 1, ids)
       @series_name = t if @series
@@ -115,6 +115,7 @@ class Book
 
   def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '')
     name = ''
+    move_destination = '.' if move_destination.to_s == ''
     valid_inputs = ['cbz', 'pdf', 'cbr']
     valid_outputs = ['cbz']
     return $speaker.speak_up("Invalid input format, needs to be one of #{valid_inputs}") unless valid_inputs.include?(input_format)
@@ -128,35 +129,63 @@ class Book
     else
       skipping = 0
       Dir.chdir(File.dirname(path)) do
-        name = File.basename(path).gsub(/(.*)\.[\w]{1,4}/, '\1')
+        name = File.basename(path).gsub(/(.*)\.[\w\d]{1,4}/, '\1')
         dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.#{output_format}"
-        return if File.exist?(dest_file)
+        final_file = dest_file
+        if File.exist?(File.basename(dest_file))
+          if input_format == output_format
+            dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.proper.#{output_format}"
+          else
+            return
+          end
+        end
         $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
         FileUtils.mkdir(name) unless File.exist?(name)
-        Dir.chdir(name) do
+        Dir.chdir(Env.pretend? ? '.' : name) do
           case input_format
             when 'pdf'
-              extractor = ExtractImages::Extractor.new
-              extracted = 0
-              PDF::Reader.open('../' +File.basename(path)) do |reader|
-                reader.pages.each do |page|
-                  extracted = extractor.page(page)
+              if Env.pretend?
+                $speaker.speak_up "Would extract images from pdf"
+              else
+                extractor = ExtractImages::Extractor.new
+                extracted = 0
+                PDF::Reader.open('../' +File.basename(path)) do |reader|
+                  reader.pages.each do |page|
+                    extracted = extractor.page(page)
+                  end
+                end
+                unless extracted > 0
+                  $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
+                  skipping = 1
                 end
               end
-              unless extracted > 0
-                $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
-                skipping = 1
-              end
             when 'cbr', 'cbz'
-              FileUtils.extract_archive(input_format, '../' +File.basename(path), '.')
+              FileUtils.extract_archive(input_format, '../' + File.basename(path), '.')
             else
               $speaker.speak_up('Nothing to do, skipping')
               skipping = 1
+          end
+          FileUtils.search_folder('.').each do |f|
+            if File.dirname(f[0]) != Dir.pwd
+              if FileUtils.get_path_depth(f[0], Dir.pwd).to_i > 2
+                FileUtils.mv(f[0], File.dirname(f[0]) + '/..')
+              end
+            end
+            ff = './' + File.basename(f[0])
+            nf = ff.clone
+            nums = ff.scan(/(?=(([^\d]|^)(\d+)[^\d]))/)
+            nums.each do |n|
+              if n[2].length < 3
+                nf.gsub!(/([^\d]|^)(#{n[2]})([^\d])/, '\1' + format('%03d', n[2]) + '\3')
+              end
+            end
+            FileUtils.mv(ff, nf) if ff != nf
           end
         end
         skipping = compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
         return if skipping > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
+        FileUtils.mv(dest_file, final_file) if final_file != dest_file
         $speaker.speak_up("#{name} converted!")
       end
     end

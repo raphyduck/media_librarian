@@ -231,6 +231,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     authenticate!
     if list == 'watchlist'
       $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)
+      #TODO: Fix that, we dont want to mark it played
     else
       $trakt.sync.add_or_remove_item('remove', list, type, items, list)
     end

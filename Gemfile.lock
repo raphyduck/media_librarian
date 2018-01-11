@@ -1,4 +1,11 @@
 GIT
+  remote: https://github.com/raphyduck/archive-zip.git
+  revision: 9ef2019e13a50e2c6e22507018a69e7cc0fa14e1
+  specs:
+    archive-zip (0.10.0)
+      io-like (~> 0.3.0)
+
+GIT
   remote: https://github.com/raphyduck/deluge-rpc.git
   revision: 7188716d578aa1a780824db662ce5e74cbc84f18
   specs:
@@ -79,8 +86,6 @@ GEM
       thread_safe (~> 0.3, >= 0.3.4)
       tzinfo (~> 1.1)
     afm (0.2.2)
-    archive-zip (0.10.0)
-      io-like (~> 0.3.0)
     bencode (0.8.2)
     concurrent-ruby (0.9.2)
     domain_name (0.5.20170404)
@@ -177,7 +182,7 @@ PLATFORMS
 
 DEPENDENCIES
   activesupport
-  archive-zip
+  archive-zip!
   bencode
   deluge-rpc!
   eventmachine
