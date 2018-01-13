@@ -210,7 +210,7 @@ module FileUtils
         if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
           Find.prune if FileTest.directory?(path)
         end
-        break if filter_criteria['return_first']
+        break if filter_criteria['return_first'] && breakflag == 0
       end
       search_folder
     rescue => e
