@@ -202,7 +202,7 @@ module FileUtils
         breakflag = 1 if breakflag == 0 && FileTest.directory?(path) && !filter_criteria['includedir'] && !filter_criteria['dironly']
         breakflag = 1 if breakflag == 0 && !FileTest.directory?(path) && filter_criteria['dironly']
         breakflag = 1 if breakflag == 0 && filter_criteria['name'] && !File.basename(path).downcase.include?(filter_criteria['name'].downcase)
-        breakflag = 1 if breakflag == 0 && filter_criteria['regex'] && !path.match(filter_criteria['regex'], Regexp::IGNORECASE)
+        breakflag = 1 if breakflag == 0 && filter_criteria['regex'] && !path.match(Regexp.new(filter_criteria['regex'], Regexp::IGNORECASE))
         breakflag = 1 if breakflag == 0 && filter_criteria['exclude'] && File.basename(path).include?(filter_criteria['exclude'])
         breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && File.basename(path) == filter_criteria['exclude_strict']
         breakflag = 1 if breakflag == 0 && filter_criteria['exclude_strict'] && parent == filter_criteria['exclude_strict']
