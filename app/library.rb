@@ -181,7 +181,7 @@ class Library
           title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
           folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
           file = folders.first
-          sizes["#{title.to_s}#{year.to_s}"] = file ? FileUtils.get_disk_size(file[0]) : -1
+          sizes["#{title.to_s}#{year.to_s}"] = file ? FileUtils.get_disk_space(file[0]) : -1
           print '.'
         end
         new_list[type].reverse_each do |item|
@@ -322,11 +322,11 @@ class Library
           season = item[r_type]['number'].to_s
           s_file = FileUtils.search_folder(file[0], {'regex' => "season.#{season}", 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1}).first
           if s_file
-            list_size += FileUtils.get_disk_size(s_file[0])
+            list_size += FileUtils.get_disk_space(s_file[0])
             list_paths << s_file[0]
           end
         else
-          list_size += FileUtils.get_disk_size(file[0])
+          list_size += FileUtils.get_disk_space(file[0])
           list_paths << file[0]
         end
       else
