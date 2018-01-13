@@ -312,7 +312,7 @@ class Library
       l_type = type[-1] == 's' ? type : "#{type}s"
       next if type_filter && type_filter != '' && type_filter != l_type
       parsed_media[l_type] = {} unless parsed_media[l_type]
-      folder[l_type] = $speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].nil? || folder[l_type] == ''
+      folder[l_type] = $speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].to_s == ''
       title = item[type]['title']
       next if parsed_media[l_type][title] && r_type != 'season'
       folders = FileUtils.search_folder(folder[l_type], {'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
