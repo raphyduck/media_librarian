@@ -88,7 +88,7 @@ class Library
       return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       $speaker.speak_up('Deleting extra media...', 0)
-      FileUtils.search_folder(dest_type, {'includedir' => 1}).sort_by { |x| -x[0].length }.each do |p|
+      FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
         FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
