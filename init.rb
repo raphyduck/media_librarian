@@ -31,5 +31,5 @@ $api_option = {
     'bind_address' => '127.0.0.1',
     'listen_port' => '8888'
 }
-$workers_pool_size = $config['workers_pool_size'] || 4
+$workers_pool_size = $config['daemon'] ? $config['daemon']['workers_pool_size'] || 4 : 4
 $daemon_client = nil
