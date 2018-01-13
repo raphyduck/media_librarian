@@ -41,7 +41,7 @@ module FileUtils
       end
     end
 
-    def self.get_disk_size(path)
+    def get_disk_size(path)
       size=0
       Find.find(path) { |file| size+= File.size(file)}
       size
