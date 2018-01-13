@@ -89,6 +89,7 @@ class Library
       _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       $speaker.speak_up('Deleting extra media...', 0)
       FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
+        next unless File.exist?(p[0])
         FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
