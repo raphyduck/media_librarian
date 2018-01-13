@@ -16,11 +16,11 @@ class Movie
     case valname
       when 'id'
         v = opts['imdb_id']
-        if v.nil? && opts['ids']
+        if v.to_s == '' && opts['ids']
           v = opts['ids']['imdb']
-          v = opts['ids']['trakt'] if v.nil?
-          v = opts['ids']['tmdb'] if v.nil?
-          v = opts['ids']['slug'] if v.nil?
+          v = opts['ids']['trakt'] if v.to_s == ''
+          v = opts['ids']['tmdb'] if v.to_s == ''
+          v = opts['ids']['slug'] if v.to_s == ''
         end
       when 'name'
         v = opts['title']

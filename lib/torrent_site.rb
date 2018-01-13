@@ -63,9 +63,8 @@ module TorrentSite
       links = []
       return links unless results_found?
       get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
-      links = links.first(limit)
-      links
-    rescue RARBG::APIError
+      links.first(limit)
+    rescue RARBG::APIError, Net::OpenTimeout
       []
     rescue => e
       $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links")

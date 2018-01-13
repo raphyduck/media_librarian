@@ -180,7 +180,7 @@ class MediaInfo
         Regexp.new(
             '^\[?.{0,2}[\] ]?' + StringUtils.regexify(target_title) + '([' + SPACE_SUBSTITUTE + ']|[\&-]?e\d{1,4})?$',
             Regexp::IGNORECASE)
-    ) && ep_match && (target_year == 0 || (year <= target_year + 1 && year >= target_year - 1))
+    ) && ep_match && (target_year == 0 || year == 0 || (year <= target_year + 1 && year >= target_year - 1))
   end
 
   def self.media_qualities(filename)

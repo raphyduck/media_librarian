@@ -243,6 +243,7 @@ class TorrentSearch
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
     $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}')" if Env.debug?
+    f_type = f[:f_type]
     if results.nil?
       results = {}
       ks = [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)]
@@ -261,6 +262,7 @@ class TorrentSearch
         if ks.index(k).to_i == 2
           f[:files] += f[:existing_season_eps] if f[:files]
           filter_k = TvSeries.ep_name_to_season(f[:full_name])
+          f_type = 'season'
         end
         dc = download_criteria.deep_dup
         if ks.index(k).to_i >= 2
@@ -281,7 +283,7 @@ class TorrentSearch
         break unless results.empty?
       end
     end
-    subset = MediaInfo.media_get(results, f[:identifiers], f[:f_type]).map { |_, t| t }
+    subset = MediaInfo.media_get(results, f[:identifiers], f_type).map { |_, t| t }
     subset.map! do |t|
       attrs = t.select { |k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps, :files].include?(k) }.deep_dup
       t[:files].map { |ff| ff.merge(attrs) } if t[:files]
@@ -296,7 +298,7 @@ class TorrentSearch
         $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
         next
       end
-      next unless (f[:f_type].nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f[:f_type].to_s)
+      next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
       t = -1
       if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0
         $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
@@ -311,7 +313,10 @@ class TorrentSearch
     end
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
-    return if subset.empty?
+    if subset.empty?
+      $speaker.speak_up("No torrent found!", 0)
+      return
+    end
     if no_prompt.to_i == 0 || Env.debug?
       $speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
       i = 1
@@ -327,7 +332,7 @@ class TorrentSearch
           $speaker.speak_up("Link: #{URI.escape(torrent[:link].to_s)}")
         end
         $speaker.speak_up("Tracker: #{torrent[:tracker]}")
-        $speaker.speak_up("Already  in DB") if torrent[:in_db].to_i > 0 && Env.debug?
+        $speaker.speak_up("Already  in DB") if torrent[:in_db].to_i > 0
         i += 1
       end
     end
@@ -412,13 +417,13 @@ class TorrentSearch
   end
 
   def self.torrent_download(torrent, no_prompt = 0)
-    $db.delete_rows('torrents', {}, {'name != ' => torrent[:name], 'identifier = ' => torrent[:identifier]})
     waiting_until = Time.now + torrent[:timeframe_quality].to_i + torrent[:timeframe_tracker].to_i + torrent[:timeframe_size].to_i
     if torrent[:download_now].to_i < 2 && no_prompt.to_i > 0 && (torrent[:timeframe_quality].to_i > 0 || torrent[:timeframe_tracker].to_i > 0 || torrent[:timeframe_size].to_i > 0)
       $speaker.speak_up("Setting timeframe for #{torrent[:name]} on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
       torrent[:download_now] = 1
     else
       $speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
+      $db.delete_rows('torrents', {}, {'name != ' => torrent[:name], 'identifier = ' => torrent[:identifier]})
       torrent[:download_now] = 2
     end
     if torrent[:in_db]
