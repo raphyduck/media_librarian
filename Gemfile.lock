@@ -38,9 +38,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/ruby-rsync.git
-  revision: 2c7a2da5b9033eafda549c0516c848953af316cf
+  revision: 510086504a621cf461c2592963afe8b1f5c427b3
   specs:
-    rsync (1.0.9)
+    rsync (1.1.0)
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
