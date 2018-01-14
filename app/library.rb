@@ -70,10 +70,15 @@ class Library
     return $speaker.speak_up("Empty list #{source_list}", 0) if complete_list.empty?
     abort = 0
     list = TraktAgent.parse_custom_list(complete_list)
+    path_list = {}
+    list_size = 0
+    list.map { |n, _| n }.uniq.each do |type|
+      s, path_list[type] = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
+      list_size += s
+    end
     list.each do |type, _|
       source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
       dest_type = "#{dest_folder}/#{type.titleize}/"
-      list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
       _, total_space = FileUtils.get_disk_space(dest_folder)
       while total_space <= list_size
         $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
@@ -86,18 +91,17 @@ class Library
       end
       return $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
       return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
-      _, paths = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
       $speaker.speak_up('Deleting extra media...', 0)
       FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
         next unless File.exist?(p[0])
-        FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(paths.map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
+        FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
       end
       FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
       $speaker.speak_up('Syncing new media...', 0)
-      paths.each do |p|
+      path_list[type].each do |p|
         final_path = p.gsub("#{source_folders[type]}/", dest_type)
         FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
-        Rsync.run("'#{p}'/", "'#{final_path}'", ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
+        Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
           if result.success?
             result.changes.each do |change|
               $speaker.speak_up "#{change.filename} (#{change.summary})"
@@ -228,7 +232,7 @@ class Library
         end
         exit_status = nil
         low_b = 0
-        while Utils.check_if_active(active_hours) &&  `ps ax | grep rsync | grep -v grep` == ''
+        while Utils.check_if_active(active_hours) && `ps ax | grep rsync | grep -v grep` == ''
           fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
           while fetcher.alive?
             if !Utils.check_if_active(active_hours) || low_b > 60
