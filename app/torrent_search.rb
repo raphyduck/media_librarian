@@ -314,7 +314,7 @@ class TorrentSearch
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
     if subset.empty?
-      $speaker.speak_up("No torrent found!", 0)
+      $speaker.speak_up("No torrent found!", 0) if Env.debug?
       return
     end
     if no_prompt.to_i == 0 || Env.debug?

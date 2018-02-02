@@ -91,7 +91,7 @@ class Daemon < EventMachine::Connection
                 @last_email_report = Time.now
               end
             else
-              thread_cache_add(task, args, job_id, task, 0, 1)
+              thread_cache_add(task, args + ["--continuous=1"], job_id, task, 0, 1)
             end
         end
       end

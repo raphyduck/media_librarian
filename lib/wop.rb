@@ -19,7 +19,7 @@ module Wop
 
     def authenticate!
       if $config['worldofp2p']
-        $speaker.speak_up('Authenticating on WorldofP2P.')
+        $speaker.speak_up('Authenticating on WorldofP2P.', 0)
         login = $tracker_client[@base_url].get(@base_url + '/login.php?returnto=%2Findex.php')
         login_form = login.forms[0]
         login_form.username = $config['worldofp2p']['username']

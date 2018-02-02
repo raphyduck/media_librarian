@@ -18,7 +18,7 @@ module TorrentLeech
 
     def authenticate!
       if $config['torrentleech']
-        $speaker.speak_up('Authenticating on TorrentLeech.')
+        $speaker.speak_up('Authenticating on TorrentLeech.', 0)
         login = $tracker_client[@base_url].get(@base_url + '/')
         login_form = login.form('form')
         login_form.username = $config['torrentleech']['username']

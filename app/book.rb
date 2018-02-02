@@ -2,6 +2,8 @@ class Book
   SHOW_MAPPING = {calibre_id: :calibre_id, filename: :filename, series_id: :series_id, series_nb: :series_nb, full_name: :full_name,
                   ids: :ids, series: :series, series_name: :series_name, name: :name, pubdate: :pubdate}
 
+  @books_library = {}
+
   SHOW_MAPPING.values.each do |value|
     attr_accessor value
   end
@@ -18,18 +20,30 @@ class Book
       series_link = calibre_id.to_i != 0 ? $calibre.get_rows('books_series_link', {:book => calibre_id}).first : nil
       @series_id = series_link ? series_link[:series] : nil
     end
-    @series_name, @name, _ = Book.detect_book_title(filename)
+    @series_name, @name, _ = Book.detect_book_title(filename) unless @series_name.to_s != ''
     if @series.nil? && @series_id.to_s != '' && @series_name.to_s != ''
       @series = BookSeries.new($calibre.get_rows('series', {:id => @series_id}).first)
-    elsif @series.nil? && opts[:no_series_search].to_i == 0
+    elsif @series.nil? && Book.books_library[:book_series]
+      s = if Book.books_library[:book_series]
+            Book.books_library[:book_series].select do |ss, _|
+              filename.match(Regexp.new(StringUtils.regexify(ss.to_s), Regexp::IGNORECASE))
+            end.first
+          else
+            nil
+          end
+      if s
+        @series_name = s[0]
+        @series = s[1]
+      end
+    end
+    if @series.nil? && opts[:no_series_search].to_i == 0
       t, @series = BookSeries.book_series_search(filename, 1, ids)
       @series_name = t if @series
       @series = nil if @series.is_a?(Hash) && @series.empty?
     end
     @series_nb = Book.identify_episodes_numbering(filename) if @series_nb.nil? && !@series.nil?
-    @series_nb = opts[:series_index].to_f if @series_nb.to_i == 0 && @series_id.to_s != '' && !@series.nil?
+    @series_nb = opts[:series_index].to_f if @series_nb.to_i == 0 && @series_id.to_s != '' && !@series.nil? && opts[:series_index]
     @full_name = "#{@series_name}#{' - ' if @series_name.to_s != ''}#{'T' + @series_nb.to_s if @series_name.to_s != ''}#{' - ' if @series_name.to_s != ''}#{@name}" if @full_name.nil?
-    return @series, @series_id, @series_nb, @series_name, @name, @full_name
   end
 
   def fetch_val(valname, opts)
@@ -54,7 +68,7 @@ class Book
   end
 
   def identifier
-    "book#{series_name}#{series.goodread_id.to_s if series}T#{series_nb}"
+    "book#{series_name}#{series.goodread_id.to_s if series.to_s != ''}T#{series_nb}"
   end
 
   def self.book_search(title, no_prompt = 0, ids = {}, no_series_search = 0)
@@ -89,7 +103,11 @@ class Book
           'books',
           no_prompt.to_i
       )
-      book = new(book.merge({:no_series_search => no_series_search})) if book
+      if book
+        book = new(book.merge({:no_series_search => no_series_search}))
+      else
+        book = new({:filename => title}.merge({:no_series_search => no_series_search}))
+      end
     end
     Cache.cache_add('book_search', cache_name, [exact_title, book], book)
     return exact_title, book
@@ -97,6 +115,10 @@ class Book
     $speaker.tell_error(e, "Book.book_search")
     Cache.cache_add('book_search', cache_name, [title, nil], nil)
     return title, nil
+  end
+
+  def self.books_library
+    @books_library
   end
 
   def self.compress_comics(path:, destination: '', output_format: 'cbz', remove_original: 1, skip_compress: 0)
@@ -113,7 +135,7 @@ class Book
     return skip_compress
   end
 
-  def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '')
+  def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '')
     name = ''
     move_destination = '.' if move_destination.to_s == ''
     valid_inputs = ['cbz', 'pdf', 'cbr']
@@ -123,9 +145,11 @@ class Book
     return if no_warning.to_i == 0 && input_format == 'pdf' && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
-      FileUtils.search_folder(path, {'regex' => ".*\.#{input_format}"}).each do |f|
+      FileUtils.search_folder(path, {'regex' => ".*#{search_pattern.to_s + '.*' if search_pattern.to_s != ''}\.#{input_format}"}).each do |f|
         convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
       end
+    elsif search_pattern.to_s != ''
+      return $speaker.speak_up "Can not use search_pattern if path is not a directory"
     else
       skipping = 0
       Dir.chdir(File.dirname(path)) do
@@ -182,7 +206,12 @@ class Book
             FileUtils.mv(ff, nf) if ff != nf
           end
         end
-        skipping = compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
+        skipping = if Env.pretend?
+                     $speaker.speak_up "Would compress '#{name}' to '#{dest_file}' (#{output_format})"
+                     1
+                   else
+                     compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
+                   end
         return if skipping > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         FileUtils.mv(dest_file, final_file) if final_file != dest_file
@@ -231,16 +260,15 @@ class Book
   end
 
   def self.existing_books(no_prompt = 0)
-    #TODO: Finish this, ensure return a hash of individual book + hash [:book_series] = list of all series
-    existing_books = {}
-    return existing_books if $calibre.nil?
+    return @books_library if $calibre.nil?
+    bl = {}
     $calibre.get_rows('books').each do |b|
       book = new(b.merge({:from_calibre => 1}))
-      existing_books = Library.parse_media(
+      bl = Library.parse_media(
           {:type => 'books', :name => book.filename},
           'books',
           no_prompt,
-          existing_books,
+          bl,
           {},
           {},
           {},
@@ -250,6 +278,7 @@ class Book
           book.full_name
       )
     end
-    existing_books
+    @books_library = bl
+    @books_library
   end
 end

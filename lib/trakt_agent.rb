@@ -7,12 +7,17 @@ class TraktAgent
      "scope" => "public"}
   end
 
-  def self.add_to_list(items, list_type, list_name = '', type = 'movies')
+  def self.add_to_list(items, list_name = '', type = 'movies')
     return if Env.pretend?
     authenticate!
     items = [items] unless items.is_a?(Array)
-    items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_type == 'collection'
-    $trakt.sync.add_or_remove_item('add', list_type, type, items, list_name)
+    items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_name == 'collection'
+    begin
+      tries ||= 3
+      $trakt.sync.add_or_remove_item('add', list_name, type, items)
+    rescue
+      retry unless (tries -= 1).to_i <= 0
+    end
   end
 
   def self.clean_list(list_to_clean = Cache.queue_state_get('cleanup_trakt_list'))
@@ -116,47 +121,56 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
                else
                  0
                end
+    watched_videos = nil
     list.reverse_each do |item|
+      delete_it = 0
       next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
       next if exception && exception.include?(title)
       case filter_type
         when 'watched', 'entirely_watched', 'partially_watched'
-          get_watched(type, complete).each do |h|
+          break if cr_value.to_i != 0
+          watched_videos = get_watched(type, complete) if watched_videos.nil?
+          watched_videos.each do |h|
             if h[type[0...-1]] && h[type[0...-1]]['ids']
               h[type[0...-1]]['ids'].each do |k, id|
                 if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/, '').to_i == id.gsub(/\D/, '').to_i
-                  list.delete(item)
+                  delete_it = 1
                   break
                 end
               end
             end
             if item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
-              list.delete(item)
+              delete_it = 1
               break
             end
           end
         when 'ended', 'not_ended'
+          break if cr_value.to_i != 0
           ids = item[type[0...-1]]['ids'] || {}
           _, show = MediaInfo.tv_show_search(title, 1, ids)
           if show.nil? || (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))
-            list.delete(item)
+            delete_it = 1
           end
         when 'released_before', 'released_after'
           next unless type == 'movies'
           break if cr_value.to_i == 0
           next if item[type[0...-1]]['year'].to_i == 0
-          list.delete(item) if item[type[0...-1]]['year'].to_i > cr_value.to_i && filter_type == 'released_before'
-          list.delete(item) if item[type[0...-1]]['year'].to_i < cr_value.to_i && filter_type == 'released_after'
+          delete_it = 1 if item[type[0...-1]]['year'].to_i > cr_value.to_i && filter_type == 'released_before'
+          delete_it = 1 if item[type[0...-1]]['year'].to_i < cr_value.to_i && filter_type == 'released_after'
         when 'days_older', 'days_newer'
           next unless type == 'movies'
           break if cr_value.to_i == 0
-          folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title), 'return_first' => 1, filter_type => cr_value})
-          list.delete(item) unless folders.first
+          folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title, 0), 'return_first' => 1, filter_type => cr_value})
+          delete_it = 1 unless folders.first
+      end
+      if delete_it > 0
+        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'", 0) if Env.debug?
+        list.delete(item)
       end
       print '.'
     end
-    $speaker.speak_up('done!')
+    $speaker.speak_up('done!', 0)
     list
   rescue => e
     $speaker.tell_error(e, "TraktAgent.filter_trakt_list")
@@ -229,23 +243,18 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
     return if Env.pretend?
     authenticate!
-    if list == 'watchlist'
-      $trakt.sync.mark_watched(items.map { |i| i.merge({'watched_at' => Time.now}) }, type)
-      #TODO: Fix that, we dont want to mark it played
-    else
-      $trakt.sync.add_or_remove_item('remove', list, type, items, list)
+    begin
+      tries = 3
+      $trakt.sync.add_or_remove_item('remove', list, type, items)
+    rescue
+      retry unless (tries -= 1).to_i <= 0
     end
   end
 
   def self.search_list(type, item, list)
     title = item[type] && item[type]['title'] ? item[type]['title'] : nil
     return false unless title && list && !list.empty?
-    r = list.select { |x| x['title'] && x['title'] == title }
-    if r && !r.empty?
-      return true
-    else
-      return false
-    end
+    !list.select { |x| x['title'] && x['title'] == title }.empty?
   end
 
   def self.method_missing(name, *args)

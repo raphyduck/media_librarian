@@ -57,7 +57,7 @@ class Cache
       end
       dejavu = true unless a.empty?
     end
-    $speaker.speak_up("#{category.to_s.titleize} entry #{entry.join} already seen") if dejavu
+    $speaker.speak_up("#{category.to_s.titleize} entry #{entry.join} already seen", 0) if dejavu
     dejavu
   end
 
@@ -89,6 +89,7 @@ class Cache
       object.clone
     end
     return object unless object.is_a?(Array) || object.is_a?(Hash)
+    #TODO: Fix retore "Class" metadata
     if object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
       if object[0] == 'Hash'
         object = begin

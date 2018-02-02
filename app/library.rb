@@ -63,56 +63,64 @@ class Library
     end
   end
 
-  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0)
+  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0, continuous: 0)
     source_folders = {} if source_folders.nil?
     return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
     complete_list = TraktAgent.list(source_list, '')
     return $speaker.speak_up("Empty list #{source_list}", 0) if complete_list.empty?
-    abort = 0
-    list = TraktAgent.parse_custom_list(complete_list)
-    path_list = {}
-    list_size = 0
-    list.map { |n, _| n }.uniq.each do |type|
-      s, path_list[type] = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
-      list_size += s
-    end
-    list.each do |type, _|
-      source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
-      dest_type = "#{dest_folder}/#{type.titleize}/"
-      _, total_space = FileUtils.get_disk_space(dest_folder)
-      while total_space <= list_size
-        $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
-        if $speaker.ask_if_needed("Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
-          abort = 1
-          break
+    loop do
+      abort = 0
+      list = TraktAgent.parse_custom_list(complete_list)
+      path_list = {}
+      list_size = 0
+      list.map { |n, _| n }.uniq.each do |type|
+        s, path_list[type] = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
+        list_size += s
+      end
+      list.each do |type, _|
+        source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
+        dest_type = "#{dest_folder}/#{type.titleize}/"
+        _, total_space = FileUtils.get_disk_space(dest_folder)
+        while total_space <= list_size
+          $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size-total_space).to_d/1024/1024/1024).round(2)} GB to copy the list"
+          if $speaker.ask_if_needed("Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
+            abort = 1
+            break
+          end
+          create_custom_list(source_list, '', source_list)
+          list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
         end
-        create_custom_list(source_list, '', source_list)
-        list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
-      end
-      return $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
-      return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
-      $speaker.speak_up('Deleting extra media...', 0)
-      FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
-        next unless File.exist?(p[0])
-        FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
-      end
-      FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
-      $speaker.speak_up('Syncing new media...', 0)
-      path_list[type].each do |p|
-        final_path = p.gsub("#{source_folders[type]}/", dest_type)
-        FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
-        Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
-          if result.success?
-            result.changes.each do |change|
-              $speaker.speak_up "#{change.filename} (#{change.summary})"
+        return $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
+        return if $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
+        $speaker.speak_up("Deleting extra media...", 0)
+        FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
+          if File.exist?(p[0])
+            FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
+          elsif Env.debug?
+            $speaker.speak_up "'#{p[0]}' not found, can not delete, skipping"
+          end
+        end
+        FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
+        $speaker.speak_up("Syncing new media...", 0)
+        path_list[type].each do |p|
+          final_path = p.gsub("#{source_folders[type]}/", dest_type)
+          FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
+          $speaker.speak_up "Syncing '#{p}' to '#{final_path}'" if Env.debug?
+          Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
+            if result.success?
+              result.changes.each do |change|
+                $speaker.speak_up "#{change.filename} (#{change.summary})"
+              end
+            else
+              $speaker.speak_up result.error
             end
-          else
-            $speaker.speak_up result.error
           end
         end
       end
+      $speaker.speak_up("Finished copying media from #{source_list}!", 0)
+      break unless continuous.to_i > 0
+      sleep 3600
     end
-    $speaker.speak_up("Finished copying media from #{source_list}!", 0)
   end
 
   def self.copy_trakt_list(name:, description:, origin: 'collection', criteria: {})
@@ -134,12 +142,12 @@ class Library
     end
     ['movies', 'shows', 'episodes'].each do |type|
       TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
-      TraktAgent.add_to_list(new_list[type], 'custom', name, type) if new_list[type]
+      TraktAgent.add_to_list(new_list[type], name, type) if new_list[type]
     end
   end
 
-  def self.create_custom_list(name:, description:, origin: 'collection', criteria: {})
-    $speaker.speak_up("Fetching items from #{origin}...")
+  def self.create_custom_list(name:, description:, origin: 'collection', criteria: {}, no_prompt: 0)
+    $speaker.speak_up("Fetching items from #{origin}...", 0)
     new_list = {
         'movies' => TraktAgent.list(origin, 'movies'),
         'shows' => TraktAgent.list(origin, 'shows')
@@ -148,79 +156,69 @@ class Library
     dest_list = existing_lists.select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
-      $speaker.speak_up("List #{name} exists")
+      $speaker.speak_up("List #{name} exists", 0)
       existing = TraktAgent.list(name)
       to_delete = TraktAgent.parse_custom_list(existing)
     else
       $speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktAgent.create_list(name, description)
     end
-    $speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.")
+    $speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.", 0)
     ['movies', 'shows'].each do |type|
       t_criteria = criteria[type] || {}
-      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || $speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", t_criteria.empty? ? 0 : 1, 'y') != 'y'
+      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || $speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", no_prompt, 'y') != 'y'
         new_list.delete(type)
         new_list[type] = to_delete[type] if t_criteria['add_only'].to_i > 0 && to_delete && to_delete[type]
         next
       end
       folder = $speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
-      (type == 'shows' ? ['entirely_watched', 'partially_watched', 'ended', 'not_ended'] : ['watched']).each do |cr|
-        if (t_criteria[cr] && t_criteria[cr].to_i == 0) || $speaker.ask_if_needed("Do you want to add #{type} #{cr.gsub('_', ' ')}? (y/n)", t_criteria[cr].nil? ? 0 : 1, 'y') != 'y'
-          new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type])
+      ['released_before', 'released_after', 'days_older', 'days_newer', 'entirely_watched', 'partially_watched',
+       'ended', 'not_ended', 'watched'].each do |cr|
+        if $speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", no_prompt, t_criteria[cr]).to_s != ''
+          new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
         end
       end
-      if type =='movies'
-        ['released_before', 'released_after', 'days_older', 'days_newer'].each do |cr|
-          if t_criteria[cr].to_i != 0 || $speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", t_criteria[cr].nil? ? 0 : 1, t_criteria[cr]) != ''
-            new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
-          end
-        end
-      end
-      if t_criteria['review'] || $speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)") == 'y'
+      if t_criteria['review'] || $speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)", no_prompt, 'n') == 'y'
         review_cr = t_criteria['review'] || {}
-        sizes = {}
-        $speaker.speak_up('Preparing list of files to review...')
+        $speaker.speak_up('Preparing list of files to review...', 0)
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
           title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
           folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1})
           file = folders.first
-          sizes["#{title.to_s}#{year.to_s}"] = file ? FileUtils.get_disk_size(file[0]) : -1
-          print '.'
-        end
-        new_list[type].reverse_each do |item|
-          title = item[type[0...-1]]['title']
-          year = item[type[0...-1]]['year']
-          title = "#{title} (#{year})" if year.to_i > 0 && type == 'movies'
-          if sizes["#{title.to_s}#{year.to_s}"].to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || $speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", review_cr['remove_deleted'].nil? ? 0 : 1, 'n') == 'y')
+          size = file ? FileUtils.get_disk_size(file[0]) : -1
+          if size.to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || $speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", no_prompt, 'n') == 'y')
+            $speaker.speak_up "No folder found for '#{title}', removing from list" if Env.debug?
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktAgent.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && $speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(sizes["#{title.to_s}#{year.to_s}"].to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+          if (t_criteria['add_only'].to_i == 0 || !TraktAgent.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && $speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(size.to_d/1024/1024/1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+            $speaker.speak_up "Removing '#{title}' from list" if Env.debug?
             new_list[type].delete(item)
             next
           end
           if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'].to_i > 0) && ((review_cr['add_all'].to_i == 0 &&
-              review_cr['no_season'].to_i > 0) || $speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", review_cr['no_season'].to_i, 'n') != 'y')
-            choice = $speaker.ask_if_needed("Which seasons do you want to keep? (separated by comma, like this: '1,2,3', empty for none", review_cr['no_season'].to_i, '').split(',')
+              review_cr['no_season'].to_i > 0) || $speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", no_prompt, 'n') != 'y')
+            choice = $speaker.ask_if_needed("Which seasons do you want to keep? (separated by comma, like this: '1,2,3', empty for none", no_prompt, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else
               item['seasons'].select! { |s| choice.map! { |n| n.to_i }.include?(s['number']) }
             end
           end
+          print '.'
         end
       end
       new_list[type].map! do |i|
         i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
         i[type[0...-1]]
       end
-      $speaker.speak_up('Updating items in the list...')
+      $speaker.speak_up('Updating items in the list...', 0)
       TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty? || t_criteria['add_only'].to_i > 0
-      TraktAgent.add_to_list(new_list[type], 'custom', name, type)
+      TraktAgent.add_to_list(new_list[type], name, type)
     end
-    $speaker.speak_up("List #{name} is up to date!")
+    $speaker.speak_up("List #{name} is up to date!", 0)
   end
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
@@ -232,12 +230,12 @@ class Library
         end
         exit_status = nil
         low_b = 0
-        while Utils.check_if_active(active_hours) && `ps ax | grep rsync | grep -v grep` == ''
+        while Utils.check_if_active(active_hours) && `ps ax | grep '#{remote_user}@#{remote_server}:#{remote_folder}' | grep -v grep` == ''
           fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
           while fetcher.alive?
             if !Utils.check_if_active(active_hours) || low_b > 60
               $speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
-              `pgrep -f 'rsync' | xargs kill -15`
+              `pgrep -f '#{remote_user}@#{remote_server}:#{remote_folder}' | xargs kill -15`
               low_b = 0
             end
             if monitor_options.is_a?(Hash) && monitor_options['network_card'].to_s != '' && bandwith_limit > 0
@@ -252,8 +250,8 @@ class Library
           end
           exit_status = fetcher.status
           Daemon.merge_notifications(fetcher)
+          sleep 3600 unless exit_status.nil?
         end
-        sleep 3600 unless exit_status.nil?
       rescue => e
         $speaker.tell_error(e, "Library.fetch_media_box")
         sleep 180
@@ -327,11 +325,11 @@ class Library
           season = item[r_type]['number'].to_s
           s_file = FileUtils.search_folder(file[0], {'regex' => "season.#{season}", 'maxdepth' => 1, 'includedir' => 1, 'return_first' => 1}).first
           if s_file
-            list_size += FileUtils.get_disk_size(s_file[0])
+            list_size += FileUtils.get_disk_size(s_file[0]).to_d
             list_paths << s_file[0]
           end
         else
-          list_size += FileUtils.get_disk_size(file[0])
+          list_size += FileUtils.get_disk_size(file[0]).to_d
           list_paths << file[0]
         end
       else
@@ -339,7 +337,7 @@ class Library
       end
       parsed_media[l_type][title] = item[type]
     end
-    $speaker.speak_up("The total disk size of this list is #{list_size/1024/1024/1024} GB")
+    $speaker.speak_up("The total disk size of this list is #{(list_size/1024/1024/1024).round(2)} GB")
     return list_size, list_paths
   rescue => e
     $speaker.tell_error(e, "Library.get_media_list_size")
@@ -483,7 +481,7 @@ class Library
           )
         end
       when 'trakt'
-        $speaker.speak_up('Parsing trakt list, can take a long time...')
+        $speaker.speak_up('Parsing trakt list, can take a long time...', 0)
         TraktAgent.list(source['list_name']).each do |item|
           type = item['type']
           f = item[type]
@@ -551,7 +549,7 @@ class Library
         end
         @media_list[cache_name, CACHING_TTL] = handle_duplicates(@media_list[cache_name] || {}, remove_duplicates, no_prompt)
       elsif Env.debug?
-        $speaker.speak_up "Cache of media_list [#{cache_name}] exists, returning it directly"
+        $speaker.speak_up("Cache of media_list [#{cache_name}] exists, returning it directly", 0)
       end
     }
     if filter_criteria && !filter_criteria.empty? && !@media_list[cache_name].empty?

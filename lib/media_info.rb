@@ -34,10 +34,6 @@ class MediaInfo
         name.gsub!(/^(\[[^\]]+\])?(.*)/, '\2')
         name.gsub!(/[#{SPACE_SUBSTITUTE}]\(?US[\)#{SPACE_SUBSTITUTE}]{0,2}$/, '') if complete.to_i > 0
         name << "#{ids}" if id_info.to_i > 0
-      when 'books'
-        series_name, name, ids = Book.detect_book_title(name)
-        name = series_name if series_name.to_s != ''
-        name << ids if ids.to_s != '' && id_info.to_i > 0
     end
     name.to_s.gsub(/[#{SPACE_SUBSTITUTE}]+/, ' ')
   end
@@ -143,7 +139,7 @@ class MediaInfo
           end
           title, item = tv_show_search(t_folder, no_prompt, ids)
         when 'books'
-          title = detect_real_title(filename, type)
+          title = detect_real_title(filename, type, 1)
           title, item = Book.book_search(title, no_prompt, ids)
         else
           title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
@@ -214,7 +210,7 @@ class MediaInfo
       data[:movies] = {} if data[:movies].nil?
       data[:movies][item_name] = attrs[:movie]
     end
-    if attrs[:book_series]
+    if attrs[:book_series].is_a?(Hash)
       data[:book_series] = {} if data[:book_series].nil?
       series_name = attrs[:book_series].is_a?(BookSeries) ? attrs[:book_series].name : attrs[:book_series][:name]
       data[:book_series][series_name] = attrs[:book_series]
@@ -350,19 +346,13 @@ class MediaInfo
       when 'books'
         nb = Book.identify_episodes_numbering(filename)
         ids = [item.identifier]
-        full_name = item.full_name
+        f_type = item.instance_variables.map{|a| a.to_s.gsub(/@/,'')}.include?('series') ? 'book' : 'series'
+        full_name = f_type == 'book' ? item.full_name : item_name
         info = {
-            :series_name => nb.to_i > 0 ? item_name : '',
+            :series_name => nb.to_i > 0 || f_type == 'series' ? item_name : '',
             :episode_id => nb.to_i > 0 ? nb.to_i : nil,
-            :book => item,
-            :book_series => item.series
-        }
-      when 'book_series'
-        ids = [item.identifier]
-        full_name = item.name
-        info = {
-            :series_name => item_name,
-            :book_series => item
+            :book => f_type == 'book' ? item : nil,
+            :book_series => f_type == 'book' ? item.series : item
         }
     end
     file[:parts] = parts unless file.nil? || file.empty?

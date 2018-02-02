@@ -18,7 +18,7 @@ module Yggtorrent
 
     def authenticate!
       if $config['yggtorrent']
-        $speaker.speak_up('Authenticating on yggtorrent.')
+        $speaker.speak_up('Authenticating on yggtorrent.', 0)
         login = $tracker_client[@base_url].get(@base_url + '/user/login')
         login_form = login.forms[1]
         login_form.id = $config['yggtorrent']['username']
@@ -34,7 +34,16 @@ module Yggtorrent
       cols = link.xpath('.//td')
       links = cols[0].xpath('.//a')
       tlink = links[1]['href']
-      tlink = links[2]['href'] if !tlink.match('download_torrent')
+      tlink = links[2]['href'] unless tlink.match('download_torrent')
+      unless tlink && tlink.match('download_torrent')
+        t = $tracker_client[@base_url].get(links[0]['href'])
+        t.css('a').each do |anchor|
+          if anchor.attribute('href') && anchor.attribute('href').value.include?('download_torrent')
+            tlink = anchor['href']
+            break
+          end
+        end
+      end
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s.strip

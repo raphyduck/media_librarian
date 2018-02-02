@@ -4,12 +4,12 @@ $str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
 $tracker_client = {}
 $tracker_client_logged = {}
 #Some constants
-CACHING_TTL = 14400
+CACHING_TTL = 108000
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
-SOURCES = %w(bluray remux dvdrip webdl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
+SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac2.0 aac mp3)
 LANGUAGES = %w(multi vo eng french vfq vff vf german)

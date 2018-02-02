@@ -37,7 +37,11 @@ class StringUtils
     r
   end
 
-  def self.title_match_string(str)
-    '(\/|^)([Tt]he )?' + regexify(str.gsub(/(\w*)\(\d+\)/, '\1').gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/ \(US\)$/, '')) + '.{0,7}$'
+  def self.title_match_string(str, strict = 1)
+    year = MediaInfo.identify_release_year(str).to_i
+    str = str.gsub(/\((\d{4})\)$/, '\(?(' + (year - 1).to_s + '|\1|' + (year + 1).to_s + ')\)?')
+    str = '(\/|^)([Tt]he )?' + regexify(str.gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/ \(US\)$/, ''))
+    str << '.{0,7}$' if strict.to_i > 0
+    str
   end
 end

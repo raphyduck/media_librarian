@@ -60,14 +60,14 @@ class BookSeries
 
   def self.subscribe_series(no_prompt = 1)
     cache_name = 'subscribe_series'
-    return @book_series[cache_name] if @book_series[cache_name]
+    return @book_series[cache_name] if @book_series[cache_name] && !@book_series[cache_name].empty?
     @book_series[cache_name, CACHING_TTL] = {}
     Utils.lock_block(__method__.to_s + cache_name) {
       series = Book.existing_books(no_prompt)
       (series[:book_series] || {}).each do |series_name, s|
-        full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'book_series', s, series_name, no_prompt)
+        full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'books', s, series_name, no_prompt)
         @book_series[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
-                                                                    'book_series',
+                                                                    'books',
                                                                     full_name,
                                                                     identifiers,
                                                                     info,
