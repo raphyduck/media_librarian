@@ -40,6 +40,10 @@ class MediaInfo
 
   def self.filter_quality(filename, qualities)
     timeframe = ''
+    unless parse_qualities(filename, ['hc']).empty?
+      $speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
+      return timeframe, false
+    end
     return timeframe, true if qualities.nil? || qualities.empty?
     ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
       file_q = parse_qualities(filename, eval(t))[0].to_s

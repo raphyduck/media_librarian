@@ -4,6 +4,10 @@ module ExtractImages
 
   class Extractor
 
+    def initialize
+      @processed_pages = []
+    end
+
     def page(page)
       process_page(page, 0)
     end
@@ -17,14 +21,22 @@ module ExtractImages
     def process_page(page, count)
       xobjects = page.xobjects
       return count if xobjects.empty?
-
+      xobjects = Hash[xobjects.sort_by do |name, _|
+        cn = name.to_s
+        cn.scan(/(?=(([^\d]|^)(\d+)([^\d]|$)))/).each do |n|
+          if n[2].length < 3
+            cn.gsub!(/([^\d]|^)(#{n[2]})([^\d]|$)/, '\1' + format('%03d', n[2]) + '\3')
+          end
+        end
+        cn
+      end]
       xobjects.each do |name, stream|
+        next if @processed_pages.include?(name)
+        @processed_pages << name
         case stream.hash[:Subtype]
           when :Image then
             count += 1
-
             filter = stream.hash[:Filter].is_a?(Array) ? stream.hash[:Filter].first : stream.hash[:Filter]
-            #$speaker.speak_up "filter is #{filter}"
             case filter
               when :CCITTFaxDecode then
                 ExtractImages::Tiff.new(stream).save("#{page.number}-#{count}-#{name}.tif")

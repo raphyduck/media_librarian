@@ -109,7 +109,7 @@ class TvSeries
                                                                              info,
                                                                              {},
                                                                              {},
-                                                                             @missing_episodes[cache_name]
+                                                                             @missing_episodes[cache_name] || {}
             )
           end
         end

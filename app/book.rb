@@ -131,7 +131,7 @@ class Book
         skip_compress = 1
     end
     FileUtils.rm_r(path) if remove_original.to_i > 0
-    $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic")
+    $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic") if skip_compress.to_i == 0
     return skip_compress
   end
 
@@ -175,7 +175,7 @@ class Book
                 extracted = 0
                 PDF::Reader.open('../' +File.basename(path)) do |reader|
                   reader.pages.each do |page|
-                    extracted = extractor.page(page)
+                    extracted += extractor.page(page)
                   end
                 end
                 unless extracted > 0
