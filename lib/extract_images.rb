@@ -31,7 +31,7 @@ module ExtractImages
         cn
       end]
       xobjects.each do |name, stream|
-        next if @processed_pages.include?(name)
+        next if @processed_pages.include?(name) && xobjects.count > 1
         @processed_pages << name
         case stream.hash[:Subtype]
           when :Image then

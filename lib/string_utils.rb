@@ -1,7 +1,7 @@
 class StringUtils
 
   def self.clean_search(str)
-    str.gsub(/[,\']/, '')
+    str.gsub(/[,\'\:]/, '')
   end
 
   def self.clear_extension(filename)
@@ -24,7 +24,7 @@ class StringUtils
     end
     str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
     str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')
-    str.gsub!(/(&|and)/, '(&|and)')
+    str.gsub!(/(&|and|et)/, '(&|and|et)')
     str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
     str
   end

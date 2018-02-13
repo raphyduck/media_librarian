@@ -1,9 +1,9 @@
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
 sys-filesystem)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find goodreads io/console imdb_party mechanize mp3info
-net/ssh pdf/reader rarbg rsync shellwords simple-rss sys/filesystem titleize
-trakt tvdb_party tvmaze unrar xbmc-client yaml)
+active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find goodreads io/console
+imdb_party mechanize mp3info net/ssh pdf/reader rarbg rsync shellwords simple-rss sys/filesystem titleize trakt tvdb_party
+tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin

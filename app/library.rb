@@ -95,7 +95,7 @@ class Library
         $speaker.speak_up("Deleting extra media...", 0)
         FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
           if File.exist?(p[0])
-            FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| i.gsub(source_folders[type], dest_type) }, p[0])
+            FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| StringUtils.clean_search(i).gsub(source_folders[type], dest_type) }, p[0])
           elsif Env.debug?
             $speaker.speak_up "'#{p[0]}' not found, can not delete, skipping"
           end
@@ -103,7 +103,7 @@ class Library
         FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
         $speaker.speak_up("Syncing new media...", 0)
         path_list[type].each do |p|
-          final_path = p.gsub("#{source_folders[type]}/", dest_type)
+          final_path = StringUtils.clean_search(p).gsub("#{source_folders[type]}/", dest_type)
           FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
           $speaker.speak_up "Syncing '#{p}' to '#{final_path}'" if Env.debug?
           Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
@@ -262,7 +262,7 @@ class Library
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
-    $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}")
+    $speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}", 0)
     return $speaker.speak_up("Would run synchonisation") if Env.pretend?
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
@@ -279,14 +279,14 @@ class Library
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
-        $speaker.speak_up("Cleaning folder #{c} on #{remote_server}")
+        $speaker.speak_up("Cleaning folder #{c} on #{remote_server}", 0)
         Net::SSH.start(remote_server, remote_user, Utils.recursive_symbolize_keys(ssh_opts)) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
       end
     end
     compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: {'days_newer' => 10, 'exclude_path' => exclude_folders}, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean || Utils.check_if_active(active_hours)
-    $speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}")
+    $speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}", 0)
     raise "Rsync failure" unless rsynced_clean
   end
 
@@ -368,6 +368,7 @@ class Library
           if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
             rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
           else
+            #TODO: Convert PDF to cbz
             #TODO: Handle flac,...
             destination = full_p.gsub(completed_folder, destination_folder)
             FileUtils.move_file(full_p, destination, 1)
@@ -402,7 +403,7 @@ class Library
   def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
     item_name, item = MediaInfo.identify_title(file[:formalized_name] || file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
-      $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping", 0)
+      $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping") if Env.debug?
       return files
     end
     unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0 || file[:type].to_s != 'file'
@@ -536,7 +537,7 @@ class Library
   end
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {})
-    $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}", 0)
+    $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
     files, raw_filtered, cache_name = nil, [], folder.to_s + type.to_s
     Utils.lock_block(__method__.to_s + cache_name) {
       file_criteria = {'regex' => '.*' + StringUtils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}

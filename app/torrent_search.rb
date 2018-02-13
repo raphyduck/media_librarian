@@ -388,6 +388,7 @@ class TorrentSearch
     filter_sources.each do |t, s|
       search_list.merge!(Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination))
     end
+    $speaker.speak_up "Empty searchlit" if Env.debug? && search_list.empty?
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
     authenticate_all(torrent_sources['trackers'])
     results = case torrent_sources['type'].to_s

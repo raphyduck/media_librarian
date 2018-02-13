@@ -116,7 +116,7 @@ class TorrentClient
               TraktAgent.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tdid) if f[:type] == 'trakt'
             end
           end
-          Cache.entry_seen('download', torrent[:identifiers])
+          Cache.entry_seen('download', torrent[:identifiers]) unless torrent[:identifiers].join[0..3]=='book'
         elsif Time.parse(t[:waiting_until]) < Time.now - 1.day
           $db.update_rows('torrents', {:status => -1}, {:name => t[:name]})
         end

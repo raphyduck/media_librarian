@@ -22,7 +22,7 @@ class MediaInfo
   end
 
   def self.detect_real_title(name, type, id_info = 0, complete = 1)
-    name = name.clone
+    name = I18n.transliterate(name.clone)
     case type
       when 'movies'
         m = name.match(/^(\[[^\]])?(.*[#{SPACE_SUBSTITUTE}]\(?\d{4}\)?)([#{SPACE_SUBSTITUTE}]|$)/i)
@@ -124,7 +124,7 @@ class MediaInfo
     ids = {} if ids.nil?
     in_path = FileUtils.is_in_path(@media_folders.map { |k, _| k }, filename)
     return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
-    title, item = nil, nil
+    title, item, original_filename = nil, nil, nil
     filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
     r_folder, jk = filename, 0
     while item.nil?
@@ -132,16 +132,18 @@ class MediaInfo
       case type
         when 'movies'
           if item.nil? && t_folder == r_folder
+            original_filename = t_folder
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
-          title, item = movie_lookup(t_folder, no_prompt, ids)
+          title, item = movie_lookup(t_folder, no_prompt, ids, original_filename)
         when 'shows'
           if item.nil? && t_folder == r_folder
+            original_filename = t_folder
             t_folder = detect_real_title(t_folder, type)
             jk += 1
           end
-          title, item = tv_show_search(t_folder, no_prompt, ids)
+          title, item = tv_show_search(t_folder, no_prompt, ids, original_filename)
         when 'books'
           title = detect_real_title(filename, type, 1)
           title, item = Book.book_search(title, no_prompt, ids)
@@ -150,7 +152,8 @@ class MediaInfo
       end
       break if t_folder == r_folder || jk > 0
     end
-    @media_folders[base_folder + filename.gsub(r_folder, ''), CACHING_TTL] = [title, item] unless @media_folders[base_folder + filename.gsub(r_folder, '')] || (base_folder + filename.gsub(r_folder, '')).to_s == ''
+    cache_name = base_folder.to_s + filename.gsub(r_folder, '')
+    @media_folders[cache_name, CACHING_TTL] = [title, item] unless @media_folders[cache_name] || cache_name.to_s == ''
     return title, item
   end
 
@@ -214,7 +217,7 @@ class MediaInfo
       data[:movies] = {} if data[:movies].nil?
       data[:movies][item_name] = attrs[:movie]
     end
-    if attrs[:book_series].is_a?(Hash)
+    if attrs[:book_series].is_a?(Hash) || attrs[:book_series].is_a?(BookSeries)
       data[:book_series] = {} if data[:book_series].nil?
       series_name = attrs[:book_series].is_a?(BookSeries) ? attrs[:book_series].name : attrs[:book_series][:name]
       data[:book_series][series_name] = attrs[:book_series]
@@ -275,7 +278,7 @@ class MediaInfo
     return title, item
   end
 
-  def self.movie_lookup(title, no_prompt = 0, ids = {})
+  def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
     title = StringUtils.prepare_str_search(title)
     id = ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']
     cache_name = title.to_s + id.to_s
@@ -306,6 +309,9 @@ class MediaInfo
         exact_title, movie = Movie.movie_get(movie['id'])
       end
       break if movie
+    end
+    if movie.nil? && original_filename.to_s != ''
+      exact_title, movie = Kodi.kodi_lookup('movies',original_filename, exact_title)
     end
     Cache.cache_add('movie_lookup', cache_name, [exact_title, movie], movie)
     return exact_title, movie
@@ -350,7 +356,7 @@ class MediaInfo
       when 'books'
         nb = Book.identify_episodes_numbering(filename)
         ids = [item.identifier]
-        f_type = item.instance_variables.map{|a| a.to_s.gsub(/@/,'')}.include?('series') ? 'book' : 'series'
+        f_type = item.instance_variables.map { |a| a.to_s.gsub(/@/, '') }.include?('series') ? 'book' : 'series'
         full_name = f_type == 'book' ? item.full_name : item_name
         info = {
             :series_name => nb.to_i > 0 || f_type == 'series' ? item_name : '',
@@ -364,7 +370,10 @@ class MediaInfo
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
-    filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).flatten.map { |q| q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '') }.uniq.flatten
+    filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).
+        flatten.map do |q|
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d','3d.sbs')
+    end.uniq.flatten
   end
 
   def self.sort_media_files(files, qualities = {})
@@ -421,7 +430,7 @@ class MediaInfo
     return '', nil
   end
 
-  def self.tv_show_search(title, no_prompt = 0, ids = {})
+  def self.tv_show_search(title, no_prompt = 0, ids = {}, original_filename = '')
     title = StringUtils.prepare_str_search(title)
     cache_name = title.to_s + ids['tvdb'].to_s
     cached = Cache.cache_get('tv_show_search', cache_name)
@@ -438,6 +447,9 @@ class MediaInfo
     tvdb_shows.map! { |s| s = Cache.object_pack(TvSeries.new(s), 1); s['first_aired'] = identify_release_year(s['name']).to_s; s }
     exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
     exact_title, show = tv_show_get(show['tvdb_id']) if show
+    if show.nil? && original_filename.to_s != ''
+      exact_title, show = Kodi.kodi_lookup('episode',original_filename, exact_title)
+    end
     Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
     return exact_title, show
   rescue => e

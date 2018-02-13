@@ -84,8 +84,12 @@ module FileUtils
     end
 
     def is_in_path(path_list, folder)
+      folder = folder.clone.gsub(/\/\/+/,'/').gsub(/^\//,'').gsub(/\/$/,'')
       path_list.each do |p|
-        return p if folder.gsub('//', '/').include?(p.gsub('//', '/')) || p.gsub('//', '/').include?(folder.gsub('//', '/'))
+        p = p.clone.gsub(/\/\/+/,'/').gsub(/^\//,'').gsub(/\/$/,'')
+        if folder.match(/(\/|^)#{Regexp.escape(p)}(\/|$)/) || p.match(/(\/|^)#{Regexp.escape(folder)}(\/|$)/)
+          return p
+        end
       end
       return nil
     rescue => e

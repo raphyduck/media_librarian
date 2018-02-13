@@ -82,27 +82,23 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   def self.get_watched(type, complete = 0)
     authenticate!
     h, k = [], []
-    if $config['kodi']
-      case type
-        when 'movies'
-          k = Xbmc::VideoLibrary.get_movies({:properties => ["title", "year", "lastplayed", "playcount", "imdbnumber"],
-                                             :sort => {:order => 'ascending', :method => 'label'}})
-        when 'shows', 'episodes'
-          k = Xbmc::VideoLibrary.get_tv_shows({:properties => ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"],
-                                               :sort => {:order => 'ascending', :method => 'label'}})
-      end
-      k.each do |m|
-        next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
-        next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i >= m['episode'].to_i
-        next if type == 'movies' && m['playcount'].to_i == 0
-        c = {}
-        c[type[0...-1]] = m
-        c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
-        c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/, '').to_s
-        c['plays'] = m['playcount']
-        c['last_watched_at'] = m['lastplayed']
-        h << c
-      end
+    case type
+      when 'movies'
+        k = Kodi.get_media(type, ["title", "year", "lastplayed", "playcount", "imdbnumber"])
+      when 'shows', 'episodes'
+        k = Kodi.get_media('shows', ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"])
+    end
+    k.each do |m|
+      next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
+      next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i >= m['episode'].to_i
+      next if type == 'movies' && m['playcount'].to_i == 0
+      c = {}
+      c[type[0...-1]] = m
+      c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
+      c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/, '').to_s
+      c['plays'] = m['playcount']
+      c['last_watched_at'] = m['lastplayed']
+      h << c
     end
     h = $trakt.list.get_watched(type) if h.nil? || h.empty?
     return [] if h.is_a?(Hash) && h['error']

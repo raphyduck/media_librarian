@@ -9,11 +9,12 @@ USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
+DIMENSIONS = %w(3d)
 SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac2.0 aac mp3)
 LANGUAGES = %w(multi vo eng french vfq vff vf german)
-VALID_QUALITIES = RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
+VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
 FILENAME_NAMING_TEMPLATE=%w(
     full_name
     destination_folder
