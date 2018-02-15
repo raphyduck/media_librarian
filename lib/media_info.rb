@@ -88,8 +88,9 @@ class MediaInfo
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
     case type
       when 'shows'
-        metadata['episode_season'], ep_nb, _ = TvSeries.identify_tv_episodes_numbering(ep_filename)
-        if metadata['episode_season'] == '' || ep_nb.empty?
+        seasons, ep_nb, _ = TvSeries.identify_tv_episodes_numbering(ep_filename)
+        metadata['episode_season'] = seasons.join
+        if metadata['episode_season'].to_s == '' || ep_nb.empty?
           metadata['episode_season'] = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
           ep_nb = [{:ep => $speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i, :part => 0}]
         end
@@ -97,10 +98,10 @@ class MediaInfo
         episode_name = []
         episode_numbering = []
         ep_nb.each do |n|
-          tvdb_ep = !@tv_episodes[item_name].empty? && metadata['episode_season'] != '' && n[:ep] ? @tv_episodes[item_name].select { |e| e.season_number.to_i == metadata['episode_season'].to_i && e.number.to_i == n[:ep].to_i }.first : nil
+          tvdb_ep = !@tv_episodes[item_name].empty? && n[:ep] ? @tv_episodes[item_name].select { |e| e.season_number.to_i == n[:s].to_i && e.number.to_i == n[:ep].to_i }.first : nil
           episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
-          if n[:ep] && metadata['episode_season'] != ''
-            metadata['episode_season'] = metadata['episode_season'].to_i
+          if n[:ep]
+            metadata['episode_season'] = n[:s].to_i
             episode_numbering << "S#{format('%02d', metadata['episode_season'].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
           end
         end
@@ -122,9 +123,9 @@ class MediaInfo
 
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '', ids = {})
     ids = {} if ids.nil?
+    title, item, original_filename = nil, nil, nil
     in_path = FileUtils.is_in_path(@media_folders.map { |k, _| k }, filename)
     return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
-    title, item, original_filename = nil, nil, nil
     filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
     r_folder, jk = filename, 0
     while item.nil?
@@ -153,7 +154,7 @@ class MediaInfo
       break if t_folder == r_folder || jk > 0
     end
     cache_name = base_folder.to_s + filename.gsub(r_folder, '')
-    @media_folders[cache_name, CACHING_TTL] = [title, item] unless @media_folders[cache_name] || cache_name.to_s == ''
+    @media_folders[cache_name, CACHING_TTL] = [title, item] unless cache_name.to_s == ''
     return title, item
   end
 
@@ -311,7 +312,7 @@ class MediaInfo
       break if movie
     end
     if movie.nil? && original_filename.to_s != ''
-      exact_title, movie = Kodi.kodi_lookup('movies',original_filename, exact_title)
+      exact_title, movie = Kodi.kodi_lookup('movies', original_filename, exact_title)
     end
     Cache.cache_add('movie_lookup', cache_name, [exact_title, movie], movie)
     return exact_title, movie
@@ -338,17 +339,18 @@ class MediaInfo
         parts = Movie.identify_split_files(filename)
       when 'shows'
         s, e, _ = TvSeries.identify_tv_episodes_numbering(filename)
-        ids = e.map { |n| TvSeries.identifier(item_name, s, n[:ep]) }
-        ids = TvSeries.identifier(item_name, s, '') if ids.empty?
+        ids = e.map { |n| TvSeries.identifier(item_name, n[:s], n[:ep]) }
+        ids = s.map { |i| TvSeries.identifier(item_name, i, '') }.join if ids.empty?
+        ids = TvSeries.identifier(item_name, '', '') if ids.empty?
         f_type = TvSeries.identify_file_type(item_name, e, s)
         full_name = "#{item_name}"
         if f_type != 'series'
-          full_name << " #{e.empty? ? 'S' + format('%02d', s.to_i) : e.map { |n| 'S' + format('%02d', s.to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s }.join}"
+          full_name << " #{e.empty? ? s.map { |i| 'S' + format('%02d', i.to_i) }.join : e.map { |n| 'S' + format('%02d', n[:s].to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s }.join}"
         end
         parts = e.map { |ep| ep[:part].to_i }
         info = {
             :series_name => item_name,
-            :episode_season => s.to_i,
+            :episode_season => s.map { |i| i.to_i },
             :episode => e.map { |ep| ep[:ep].to_i },
             :show => item,
             :f_type => f_type
@@ -372,7 +374,7 @@ class MediaInfo
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
     filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).
         flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d','3d.sbs')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d', '3d.sbs')
     end.uniq.flatten
   end
 
@@ -448,7 +450,7 @@ class MediaInfo
     exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
     exact_title, show = tv_show_get(show['tvdb_id']) if show
     if show.nil? && original_filename.to_s != ''
-      exact_title, show = Kodi.kodi_lookup('episode',original_filename, exact_title)
+      exact_title, show = Kodi.kodi_lookup('episode', original_filename, exact_title)
     end
     Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
     return exact_title, show

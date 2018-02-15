@@ -74,17 +74,21 @@ class Vash < Hash
     end
     sterilize(key)
     ttl(key, ttl)
-    regular_writer(key, value)
+    Utils.lock_block("vash") {
+      regular_writer(key, value)
+    }
   end
 
   def merge(hsh)
-    hsh.map {|key,value| self[sterile(key)] = hsh[key]}
+    hsh.map { |key, _| self[sterile(key)] = hsh[key] }
     self
   end
 
   def cleanup!
     now = Time.now.to_i
-    @register.map {|k,v| clear(k) if v < now}
+    Utils.lock_block("vash") {
+      @register.map { |k, v| clear(k) if v < now }
+    }
     @last_cleanup = Time.now
   end
 

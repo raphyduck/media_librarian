@@ -37,9 +37,10 @@ class TvSeries
 
   def self.identify_tv_episodes_numbering(filename)
     identifiers = File.basename(filename).scan(Regexp.new("(?=(#{REGEX_TV_EP_NB}))"))
-    season, ep_nb, season_only, season_single, ep_nb_single = '', [], '', '', []
+    season, seasonp, ep_nb, ep_nb_single = [], [], [], []
     identifiers.each do |m|
-      season_only = m[17] if m[17] && season_only == '' && season == ''
+      s = ''
+      s = m[17] if m[17]
       if m[20]
         case m[20].to_s.length
           when 3
@@ -47,26 +48,28 @@ class TvSeries
           when 4
             m_s = /^(\d{2})(\d+)/
         end
-        season_single = m[20].to_s.gsub(m_s, '\1') if season_single == ''
-        ep_nb_single << m[20].gsub(m_s, '\2').to_i
+        sp = m[20].to_s.gsub(m_s, '\1')
+        ep_nb_single << {:s => sp, :ep => m[20].gsub(m_s, '\2').to_i, :part => 0}
+        seasonp << sp unless seasonp.include?(sp)
+      else
+        s = m[4] if s == '' && m[4]
+        (0..2).each do |i|
+          ep_nb << {:s => s, :ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4]
+        end
       end
-      season = m[4] if m[4] && season == ''
-      (0..2).each do |i|
-        ep_nb << {:ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4]
-      end
+      season << s unless season.include?(s) || s == ''
     end
-    season = season_only if season_only.to_s != '' && ep_nb.empty?
-    season = season_single if season.to_s == '' && season_only.to_s == ''
-    ep_nb = ep_nb_single.uniq.map { |e| {:ep => e, :part => 0} } if ep_nb.empty? && season_only.to_s == ''
-    ep_ids = (ep_nb.empty? ? [''] : ep_nb.uniq).map { |e| "S#{season}#{'E' + e[:ep].to_s if e.to_s != ''}" }
+    ep_nb = ep_nb_single.uniq if ep_nb.empty?
+    season = seasonp if season.empty?
+    ep_ids = (ep_nb.empty? ? season.map{|s| {:s => s}} : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
     return season, ep_nb.uniq, ep_ids
   end
 
-  def self.identify_file_type(filename, nbs = nil, season = nil)
+  def self.identify_file_type(filename, nbs = nil, seasons = nil)
     f_type = 'episode'
-    season, nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs && season
+    seasons, nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs && seasons
     if nbs.empty?
-      f_type = season != '' ? 'season' : 'series'
+      f_type = seasons.empty? ? 'season' : 'series'
     end
     f_type
   end

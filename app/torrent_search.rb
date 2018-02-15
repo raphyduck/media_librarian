@@ -52,7 +52,7 @@ class TorrentSearch
 
   def self.get_cid(type, category)
     return nil if category.nil? || category == ''
-    category = 'book' if category == 'book_series'
+    category = 'books' if category == 'book_series'
     case type
       when 'rarbg'
         {
@@ -78,7 +78,8 @@ class TorrentSearch
             :movies => 'category=2145&subcategory=2183&',
             :shows => 'category=2145&subcategory=2184&',
             :music => 'category=2139&subcategory=2148&',
-            :books => 'category=2140&subcategory=all&'
+            :books => 'category=2140&subcategory=all&',
+            :comics => 'category=2140&subcategory=2152&'
         }.fetch(category.to_sym, nil)
       when 'wop'
         {
