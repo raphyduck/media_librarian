@@ -16,7 +16,7 @@ class Kodi
           @kodi_media[type][cache_name, CACHING_TTL] = Xbmc::VideoLibrary.get_episodes({:properties => properties, :sort => {:order => 'ascending', :method => 'label'}})
       end
     end
-    @kodi_media[type][cache_name]
+    @kodi_media[type][cache_name] || []
   end
 
   def self.kodi_lookup(type, filename, title)
