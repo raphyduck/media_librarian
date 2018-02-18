@@ -11,7 +11,7 @@ LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
 DIMENSIONS = %w(3d)
 SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
-CODECS = %w(10bit h265 x265 h264 x264 xvid divx)
+CODECS = %w(10bit hevc h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac2.0 aac mp3)
 LANGUAGES = %w(multi vo eng french vfq vff vf german)
 VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
@@ -25,6 +25,7 @@ FILENAME_NAMING_TEMPLATE=%w(
     episode_name
     quality
     proper
+    part
 )
 SEP_CHARS='[ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
@@ -45,7 +46,7 @@ FOLDER_HIERARCHY = {
 }
 VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
 DEFAULT_MEDIA_DESTINATION = {
-    'movies' => Dir.home + '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}',
+    'movies' => Dir.home + '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
     'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']

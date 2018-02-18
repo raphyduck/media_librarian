@@ -6,7 +6,7 @@ class Kodi
     @kodi_media[type] = Vash.new if @kodi_media[type].nil?
     cache_name = properties.map{|x| x[0..2]}.join
     return @kodi_media[type][cache_name] if @kodi_media[type][cache_name]
-    if $config['kodi']
+    if $kodi.to_i > 0
       case type
         when 'movies'
           @kodi_media[type][cache_name, CACHING_TTL] = Xbmc::VideoLibrary.get_movies({:properties => properties, :sort => {:order => 'ascending', :method => 'label'}})

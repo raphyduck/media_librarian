@@ -43,6 +43,8 @@ qualities:
   max_size: 3000
   target_size: 8000
   timeframe_size: 96 hours
+  illegal:
+    - x265 2160p
 download_criteria:
   rename_main: 'rename file'
   main_only: 0

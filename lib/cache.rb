@@ -62,6 +62,7 @@ class Cache
   end
 
   def self.entry_seen(category, entry)
+    entry = YAML.load(entry) if entry.is_a?(String) && entry.match(/^\[.*\]$/)
     entry = entry.join if entry.is_a?(Array)
     $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', '')})
   end

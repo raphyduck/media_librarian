@@ -69,7 +69,7 @@ class TvSeries
     f_type = 'episode'
     seasons, nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs && seasons
     if nbs.empty?
-      f_type = seasons.empty? ? 'season' : 'series'
+      f_type = seasons.empty? ? 'series' : 'season'
     end
     f_type
   end

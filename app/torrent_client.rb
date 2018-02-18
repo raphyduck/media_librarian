@@ -49,6 +49,8 @@ class TorrentClient
     if meta_id.to_s != ''
       status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
       raise 'Download failed' if status.nil? || status.empty?
+    else
+      raise 'Download failed'
     end
   end
 
@@ -181,7 +183,7 @@ class TorrentClient
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
       Cache.queue_state_add_or_update('deluge_options', {@tdid => opts.merge({:info_hash => meta_id})})
       $speaker.speak_up "Adding file torrent #{opts[:t_name]}"
-      download_file(torrent, File.basename(path), opts[:move_completed])
+      download_file(torrent, File.basename(path), opts[:move_completed], meta_id)
       Cache.queue_state_add_or_update('deluge_torrents_added', {meta_id => 2})
     else
       meta_id = @tdid
@@ -220,7 +222,7 @@ class TorrentClient
     if !(tries -= 1).zero?
       retry
     else
-      $speaker.tell_error(e, "TorrentClient.#{name}#{'(' + args.map{|a| a.to_s[0..250]}.join(',') + ')' if args}")
+      $speaker.tell_error(e, "TorrentClient.#{name}#{'(' + args.map{|a| a.to_s[0..100]}.join(',') + ')' if args}")
       if @tdid.to_i > 0
         TraktAgent.list_cache_remove(@tdid)
         File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil

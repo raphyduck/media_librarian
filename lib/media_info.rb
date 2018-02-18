@@ -44,6 +44,13 @@ class MediaInfo
       $speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
       return timeframe, false
     end
+    (qualities['illegal'].is_a?(Array) ? qualities['illegal'] : [qualities['illegal'].to_s]).each do |iq|
+      next if iq.to_s == ''
+      if (iq.split - parse_qualities(filename)).empty?
+        $speaker.speak_up "'#{filename}' has an illegal combination of quality, removing from list" if Env.debug?
+        return timeframe, false
+      end
+    end
     return timeframe, true if qualities.nil? || qualities.empty?
     ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
       file_q = parse_qualities(filename, eval(t))[0].to_s
@@ -111,6 +118,7 @@ class MediaInfo
         metadata['is_found'] = (metadata['episode_numbering'] != '')
       when 'movies'
         metadata['movies_name'] = item_name
+        metadata['part'] = Movie.identify_split_files(filename).map{|p| "part#{p}"}.join('.')
         metadata['is_found'] = true
     end
     metadata
@@ -342,7 +350,7 @@ class MediaInfo
         ids = e.map { |n| TvSeries.identifier(item_name, n[:s], n[:ep]) }
         ids = s.map { |i| TvSeries.identifier(item_name, i, '') }.join if ids.empty?
         ids = TvSeries.identifier(item_name, '', '') if ids.empty?
-        f_type = TvSeries.identify_file_type(item_name, e, s)
+        f_type = TvSeries.identify_file_type(filename, e, s)
         full_name = "#{item_name}"
         if f_type != 'series'
           full_name << " #{e.empty? ? s.map { |i| 'S' + format('%02d', i.to_i) }.join : e.map { |n| 'S' + format('%02d', n[:s].to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s }.join}"
@@ -374,7 +382,7 @@ class MediaInfo
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
     filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).
         flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d', '3d.sbs')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d', '3d.sbs').gsub('hevc', 'x265')
     end.uniq.flatten
   end
 
