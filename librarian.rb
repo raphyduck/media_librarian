@@ -236,9 +236,11 @@ class Librarian
     end
     thread[:block].call if thread[:block]
     if thread[:parent]
-      Daemon.merge_notifications(thread, thread[:parent])
-      Daemon.decremente_children(thread[:parent])
-      terminate_command(thread[:parent], object, cmd)
+      Utils.lock_block("merge_child_thread#{thread[:object]}") {
+        Daemon.merge_notifications(thread, thread[:parent])
+        Daemon.decremente_children(thread[:parent])
+        terminate_command(thread[:parent], object, cmd)
+      }
     end
   end
 end

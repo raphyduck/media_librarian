@@ -403,7 +403,7 @@ class Library
   def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
     item_name, item = MediaInfo.identify_title(file[:formalized_name] || file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
-      $speaker.speak_up("File #{File.basename(file[:name])} not identified, skipping") if Env.debug?
+      $speaker.speak_up("File '#{File.basename(file[:name])}' not identified, skipping") if Env.debug?
       return files
     end
     unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0 || file[:type].to_s != 'file'

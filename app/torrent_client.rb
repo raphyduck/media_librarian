@@ -109,7 +109,7 @@ class TorrentClient
             }
         }
         Cache.queue_state_add_or_update('deluge_options', opts)
-        success = process_download_torrent(ttype, path, opts[@tdid])
+        success = process_download_torrent(ttype, path, opts[@tdid], torrent[:tracker])
         $speaker.speak_up "Download of torrent '#{torrent[:name]}' #{success ? 'succeeded' : 'failed'}" if Env.debug?
         if success
           if torrent[:files].is_a?(Array) && !torrent[:files].empty?
@@ -173,7 +173,7 @@ class TorrentClient
     end
   end
 
-  def process_download_torrent(torrent_type, path, opts)
+  def process_download_torrent(torrent_type, path, opts, tracker = '')
     return true if Env.pretend?
     if torrent_type == 1
       file = File.open(path, "r")
@@ -195,6 +195,10 @@ class TorrentClient
   rescue => e
     $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]})")
     $speaker.tell_error('', "Torrent[#{opts[:t_name]}][0..250]='#{torrent.to_s[0..250]}'") if defined?(torrent) && torrent
+    if tracker.to_s != ''
+      TorrentSearch.launch_search(tracker, '').deauth
+      TorrentSearch.launch_search(tracker, '').pre_auth
+    end
     false
   end
 

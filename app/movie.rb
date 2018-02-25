@@ -1,5 +1,5 @@
 class Movie
-  SHOW_MAPPING = {id: :id, url: :url, released: :release_date, name: :name, genres: :genres}
+  SHOW_MAPPING = {id: :id, url: :url, released: :release_date, name: :name, genres: :genres, country: :country}
 
   SHOW_MAPPING.values.each do |value|
     attr_accessor value

@@ -15,6 +15,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.get_workers_count(qname)
+    #TODO: Cleanup queues by "expiring" jobs
     @threads[qname] = {} if @threads[qname].nil?
     @threads[qname]['working'] = [] unless @threads[qname]['working']
     @threads[qname]['working'].delete_if do |t|

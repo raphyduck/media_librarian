@@ -118,7 +118,7 @@ class MediaInfo
         metadata['is_found'] = (metadata['episode_numbering'] != '')
       when 'movies'
         metadata['movies_name'] = item_name
-        metadata['part'] = Movie.identify_split_files(filename).map{|p| "part#{p}"}.join('.')
+        metadata['part'] = Movie.identify_split_files(filename).map { |p| "part#{p}" }.join('.')
         metadata['is_found'] = true
     end
     metadata
@@ -132,37 +132,39 @@ class MediaInfo
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '', ids = {})
     ids = {} if ids.nil?
     title, item, original_filename = nil, nil, nil
-    in_path = FileUtils.is_in_path(@media_folders.map { |k, _| k }, filename)
-    return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
-    filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
-    r_folder, jk = filename, 0
-    while item.nil?
-      t_folder, r_folder = FileUtils.get_top_folder(r_folder)
-      case type
-        when 'movies'
-          if item.nil? && t_folder == r_folder
-            original_filename = t_folder
-            t_folder = detect_real_title(t_folder, type)
-            jk += 1
-          end
-          title, item = movie_lookup(t_folder, no_prompt, ids, original_filename)
-        when 'shows'
-          if item.nil? && t_folder == r_folder
-            original_filename = t_folder
-            t_folder = detect_real_title(t_folder, type)
-            jk += 1
-          end
-          title, item = tv_show_search(t_folder, no_prompt, ids, original_filename)
-        when 'books'
-          title = detect_real_title(filename, type, 1)
-          title, item = Book.book_search(title, no_prompt, ids)
-        else
-          title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+    Utils.lock_block(__method__.to_s) do
+      in_path = FileUtils.is_in_path(@media_folders.map { |k, _| k }, filename)
+      return @media_folders[in_path] if in_path && !@media_folders[in_path].nil?
+      filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
+      r_folder, jk = filename, 0
+      while item.nil?
+        t_folder, r_folder = FileUtils.get_top_folder(r_folder)
+        case type
+          when 'movies'
+            if item.nil? && t_folder == r_folder
+              original_filename = t_folder
+              t_folder = detect_real_title(t_folder, type)
+              jk += 1
+            end
+            title, item = movie_lookup(t_folder, no_prompt, ids, original_filename)
+          when 'shows'
+            if item.nil? && t_folder == r_folder
+              original_filename = t_folder
+              t_folder = detect_real_title(t_folder, type)
+              jk += 1
+            end
+            title, item = tv_show_search(t_folder, no_prompt, ids, original_filename)
+          when 'books'
+            title = detect_real_title(filename, type, 1)
+            title, item = Book.book_search(title, no_prompt, ids)
+          else
+            title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+        end
+        break if t_folder == r_folder || jk > 0
       end
-      break if t_folder == r_folder || jk > 0
+      cache_name = base_folder.to_s + filename.gsub(r_folder, '')
+      @media_folders[cache_name, CACHING_TTL] = [title, item] unless cache_name.to_s == ''
     end
-    cache_name = base_folder.to_s + filename.gsub(r_folder, '')
-    @media_folders[cache_name, CACHING_TTL] = [title, item] unless cache_name.to_s == ''
     return title, item
   end
 

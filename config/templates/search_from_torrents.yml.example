@@ -32,6 +32,7 @@ filter_sources:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'
 category: shows
+search_category: optional_can_be_one_of_movies_shows_books_comics
 no_prompt: 0
 qualities:
   min_quality: 720p hdtv

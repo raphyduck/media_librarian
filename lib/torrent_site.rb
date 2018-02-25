@@ -12,6 +12,13 @@ module TorrentSite
     NUMBER_OF_LINKS = 50
     attr_accessor :url
 
+    def deauth
+      if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url)
+        $tracker_client_logged[@base_url] = false
+        $speaker.speak_up "Deauthenticate from #{tracker}" if Env.debug?
+      end
+    end
+
     def download(url, destination, name)
       authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]

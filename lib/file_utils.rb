@@ -161,6 +161,7 @@ module FileUtils
       return $speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
       $speaker.speak_up("mv #{original} #{destination}") if Env.debug?
       mv_orig(original, destination)
+      file_remove_parents(original)
     end
 
     def rm(files)

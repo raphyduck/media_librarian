@@ -1,7 +1,7 @@
 class StringUtils
 
   def self.clean_search(str)
-    str.gsub(/[,\'\:]/, '')
+    str.gsub(/[,\'\:\&]/, '')
   end
 
   def self.clear_extension(filename)
@@ -25,11 +25,13 @@ class StringUtils
     str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
     str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')
     str.gsub!(/(&|and|et)/, '(&|and|et)')
+    str.gsub!(/le\'\?s\[:,-_\\\. \]\{1,2\}/i, '(les )?')
     str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
     str
   end
 
   def self.regularise_media_filename(filename, formatting = '')
+    filename = filename.join if filename.is_a?(Array)
     r = filename.to_s.gsub(/[\'\"\;\:\,]/, '').gsub(/\//, ' ')
     r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/, '').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)

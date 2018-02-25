@@ -26,7 +26,7 @@ class Book
     elsif @series.nil? && Book.books_library[:book_series]
       s = if Book.books_library[:book_series]
             Book.books_library[:book_series].select do |ss, _|
-              filename.match(Regexp.new(StringUtils.regexify(ss.to_s), Regexp::IGNORECASE))
+              filename.match(Regexp.new(StringUtils.regexify(ss.to_s) + "[#{SPACE_SUBSTITUTE}]", Regexp::IGNORECASE))
             end.first
           else
             nil
@@ -191,7 +191,7 @@ class Book
           end
           FileUtils.search_folder('.').each do |f|
             if File.dirname(f[0]) != Dir.pwd
-              if FileUtils.get_path_depth(f[0], Dir.pwd).to_i > 2
+              if FileUtils.get_path_depth(f[0], Dir.pwd).to_i > 1
                 FileUtils.mv(f[0], File.dirname(f[0]) + '/..')
               end
             end
@@ -252,7 +252,7 @@ class Book
     return nb if id.nil?
     case id[3].to_s[0].downcase
       when 't', '#'
-        nb = id[4].to_i
+        nb = id[5].to_i
       when 'h'
         nb = ('0.' << id[4].to_s)
     end

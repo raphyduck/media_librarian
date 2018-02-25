@@ -26,7 +26,7 @@ class TorrentSearch
     return if (progress >= 0 && progress < 100) && Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
-      Cache.entry_seen('global', identifier)
+      Cache.entry_seen('global', identifier) unless identifier.to_s[0..6].include?('book')
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
       $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0 rescue nil
@@ -38,6 +38,13 @@ class TorrentSearch
   def self.check_all_download(timeout: 10)
     $db.get_rows('torrents', {:status => 3}).each do |d|
       check_status(d[:identifiers], timeout, d)
+    end
+  end
+
+  def self.deauthenticate_all(sources)
+    get_trackers(sources).each do |t|
+      s = launch_search(t, '')
+      s.deauth
     end
   end
 
@@ -90,17 +97,19 @@ class TorrentSearch
     end
   end
 
-  def self.get_results(sources:, keyword:, limit: 50, category:, qualities: {}, filter_dead: 1, url: nil, sort_by: [:tracker, :seeders], filter_out: [], strict: 0, download_criteria: {}, post_actions: {}, filter_keyword: '')
+  def self.get_results(sources:, keyword:, limit: 50, category:, qualities: {}, filter_dead: 1, url: nil, sort_by: [:tracker, :seeders], filter_out: [], strict: 0, download_criteria: {}, post_actions: {}, filter_keyword: '', search_category: nil)
     tries ||= 3
     get_results = []
     r = {}
     filter_keyword = keyword.clone if filter_keyword.to_s == ''
+    search_category = category if search_category.to_s == ''
     keyword.gsub!(/[\(\)\:]/, '')
     trackers = get_trackers(sources)
     timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
     trackers.each do |t|
-      cid = self.get_cid(t, category)
-      keyword_s = keyword + self.get_site_keywords(t, category)
+      $speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
+      cid = self.get_cid(t, search_category)
+      keyword_s = keyword + self.get_site_keywords(t, search_category)
       s = launch_search(t, keyword_s, url, cid)
       get_results += s.links
     end
@@ -243,7 +252,7 @@ class TorrentSearch
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
-    $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}')" if Env.debug?
+    $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}') (category '#{f[:type]}')" if Env.debug?
     f_type = f[:f_type]
     if results.nil?
       results = {}
@@ -384,7 +393,7 @@ class TorrentSearch
     end
   end
 
-  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, existing_files: {}, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {})
+  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, existing_files: {}, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil)
     search_list = {}
     filter_sources.each do |t, s|
       search_list.merge!(Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination))
@@ -401,7 +410,8 @@ class TorrentSearch
                       category: category,
                       qualities: qualities,
                       strict: no_prompt,
-                      download_criteria: download_criteria
+                      download_criteria: download_criteria,
+                      search_category: search_category
                   )
                 else
                   nil
