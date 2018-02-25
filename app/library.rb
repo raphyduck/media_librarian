@@ -352,28 +352,35 @@ class Library
         handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
       end
     else
+      $speaker.speak_up "Handling downloaded file '#{full_p}'" if Env.debug?
       extension = torrent_name.gsub(/.*\.(\w{2,4}$)/, '\1')
       if ['rar', 'zip'].include?(extension)
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extracted')
         handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
         FileUtils.rm_r(torrent_path + '/extracted')
-      else
-        if handling['file_types']
-          type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
-          return if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
-          return if File.stat(full_p).nlink > 1 #File already hard linked elsewhere, moving on
-          type.downcase!
-          ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
-          item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
-          if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
-            rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
-          else
-            #TODO: Convert PDF to cbz
-            #TODO: Handle flac,...
-            destination = full_p.gsub(completed_folder, destination_folder)
-            FileUtils.move_file(full_p, destination, 1)
-          end
+      elsif handling['file_types']
+        type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
+          $speaker.speak_up 'File is a sample, skipping...' if Env.debug?
+          return
         end
+        if File.stat(full_p).nlink > 1
+          $speaker.speak_up 'File is already hard linked, skipping...' if Env.debug?
+          return
+        end
+        type.downcase!
+        ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
+        item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
+        if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
+          rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
+        else
+          #TODO: Convert PDF to cbz
+          #TODO: Handle flac,...
+          destination = full_p.gsub(completed_folder, destination_folder)
+          FileUtils.move_file(full_p, destination, 1)
+        end
+      elsif Env.debug?
+        $speaker.speak_up "File type not handled, skipping..."
       end
     end
   end
@@ -567,7 +574,10 @@ class Library
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     destination = Utils.parse_filename_template(destination, metadata)
-    return '' if destination.nil?
+    if destination.nil?
+      $speaker.speak_up 'Destination is empty, skipping...' if Env.debug?
+      return ''
+    end
     destination += ".#{metadata['extension'].downcase}"
     if metadata['is_found']
       if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s == 'y'
