@@ -332,6 +332,17 @@ class MediaInfo
     return title, nil
   end
 
+  def self.parse_3d(filename, qs)
+    return qs unless qs.include?('3d')
+    qs.delete('3d')
+    if filename.downcase.match(/#{SEP_CHARS}top.{0,3}bottom#{SEP_CHARS}/)
+      qs << '3d.tab'
+    else
+      qs << '3d.sbs'
+    end
+    qs
+  end
+
   def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = '', file = {})
     item_name, item = MediaInfo.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item.nil? || item_name.to_s == ''
     full_name, ids, info, parts = '', [], {}, []
@@ -382,10 +393,12 @@ class MediaInfo
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
-    filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).
+    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=(' + SEP_CHARS + '(' + qc.join('|') + ')' + SEP_CHARS + '))')).
         flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('3d', '3d.sbs').gsub('hevc', 'x265')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265')
     end.uniq.flatten
+    pq = parse_3d(filename, pq)
+    pq
   end
 
   def self.sort_media_files(files, qualities = {})
