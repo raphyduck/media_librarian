@@ -361,11 +361,11 @@ class Library
       elsif handling['file_types']
         type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
         if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
-          $speaker.speak_up 'File is a sample, skipping...' if Env.debug?
+          $speaker.speak_up 'File is a sample, skipping...'
           return
         end
         if File.stat(full_p).nlink > 1
-          $speaker.speak_up 'File is already hard linked, skipping...' if Env.debug?
+          $speaker.speak_up 'File is already hard linked, skipping...'
           return
         end
         type.downcase!
@@ -575,7 +575,7 @@ class Library
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.nil?
-      $speaker.speak_up 'Destination is empty, skipping...' if Env.debug?
+      $speaker.speak_up 'Destination is empty, skipping...'
       return ''
     end
     destination += ".#{metadata['extension'].downcase}"

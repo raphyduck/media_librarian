@@ -46,7 +46,7 @@ module Yggtorrent
       end
       raw_size = cols[3].to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td>[\d\.]+/,'').gsub('</td>','').to_s.strip
+      s_unit = raw_size.gsub(/<td>[\d\.]+/, '').gsub('</td>', '').to_s.strip
       case s_unit
         when 'MB'
           size *= 1024 * 1024
@@ -63,15 +63,15 @@ module Yggtorrent
           :magnet_link => '',
           :seeders => cols[4].text.to_i,
           :leechers => cols[5].text.to_i,
-          :id => links[0].text.gsub(/\/torrent\/(\d+)\/.*/,'\1').to_s,
-          :added => cols[2].text.gsub(/\n/,''),
+          :id => links[0].text.gsub(/\/torrent\/(\d+)\/.*/, '\1').to_s,
+          :added => cols[2].text.gsub(/\n/, ''),
           :tracker => tracker
       }
     end
 
     def get_rows
       rows = page.xpath('.//table/tbody/tr')[0..50]
-      rows = page.xpath('.//table/tr')[0..50] || []  if rows.nil? || rows.empty?
+      rows = page.xpath('.//table/tr')[0..50] || [] if rows.nil? || rows.empty?
       rows
     end
   end
