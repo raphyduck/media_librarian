@@ -23,7 +23,7 @@ class Library
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
     $speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
-    ssh_opts = Utils.recursive_symbolize_keys(ssh_opts)
+    ssh_opts = Utils.recursive_typify_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
     tries = 10
     list = FileTest.directory?(path) ? FileUtils.search_folder(path, filter_criteria) : [[path, '']]
@@ -279,8 +279,8 @@ class Library
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
-        $speaker.speak_up("Cleaning folder #{c} on #{remote_server}", 0)
-        Net::SSH.start(remote_server, remote_user, Utils.recursive_symbolize_keys(ssh_opts)) do |ssh|
+        $speaker.speak_up("Cleaning folder #{c} on #{remote_server}", 0) if Env.debug?
+        Net::SSH.start(remote_server, remote_user, Utils.recursive_typify_keys(ssh_opts)) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
       end

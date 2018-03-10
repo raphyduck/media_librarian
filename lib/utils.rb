@@ -66,21 +66,22 @@ class Utils
   def self.parse_filename_template(tpl, metadata)
     return nil if metadata.nil?
     FILENAME_NAMING_TEMPLATE.each do |k|
-      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { StringUtils.regularise_media_filename(recursive_symbolize_keys(metadata)[k.to_sym], $1) }
+      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { StringUtils.regularise_media_filename(recursive_typify_keys(metadata)[k.to_sym], $1) }
     end
     tpl
   end
 
-  def self.recursive_symbolize_keys(h)
+  def self.recursive_typify_keys(h, symbolize = 1)
+    typify = symbolize.to_i > 0 ? 'to_sym' : 'to_s'
     case h
       when Hash
         Hash[
             h.map do |k, v|
-              [k.respond_to?(:to_sym) ? k.to_sym : k, recursive_symbolize_keys(v)]
+              [k.respond_to?(typify) ? k.public_send(typify) : k, recursive_typify_keys(v, symbolize)]
             end
         ]
       when Enumerable
-        h.map { |v| recursive_symbolize_keys(v) }
+        h.map { |v| recursive_typify_keys(v, symbolize) }
       else
         h
     end

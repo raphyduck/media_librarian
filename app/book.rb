@@ -10,7 +10,7 @@ class Book
 
   def initialize(opts)
     SHOW_MAPPING.each do |source, destination|
-      send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, Utils.recursive_symbolize_keys(opts)))
+      send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, Utils.recursive_typify_keys(opts)))
     end
     detect_series(opts)
   end
@@ -92,7 +92,7 @@ class Book
             sname, tname, _ = detect_book_title(b['best_book']['title'])
             sname = tname if sname == ''
             b['best_book']['title'] = sname
-            Utils.recursive_symbolize_keys(b['best_book'])
+            Utils.recursive_typify_keys(b['best_book'])
           end
         end.select { |b| !b.nil? }
       end

@@ -25,10 +25,10 @@ class TorrentClient
     @deluge_connected = nil
   end
 
-  def download(url, move_completed = nil, magnet = 0)
-    options = {}
-    if move_completed.to_s != ''
-      options['move_completed_path'] = move_completed
+  def download(url, options = {}, magnet = 0)
+    options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
+    if options['move_completed'].to_s != ''
+      options['move_completed_path'] = options['move_completed']
       options['move_completed'] = true
     end
     if magnet.to_i > 0
@@ -38,10 +38,10 @@ class TorrentClient
     end
   end
 
-  def download_file(file, filename, move_completed = nil, meta_id = '')
-    options = {}
-    if move_completed.to_s != ''
-      options['move_completed_path'] = move_completed
+  def download_file(file, filename, options = {}, meta_id = '')
+    options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
+    if options['move_completed'].to_s != ''
+      options['move_completed_path'] = options['move_completed']
       options['move_completed'] = true
     end
     $t_client.add_torrent_file(filename, Base64.encode64(file), options)
@@ -105,6 +105,7 @@ class TorrentClient
                 :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
                 :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
                 :main_only => torrent[:main_only].to_i,
+                :add_paused => (torrent[:add_paused].to_s == 'true' || torrent[:add_paused].to_i == 1),
                 :entry_id => torrent[:identifiers].join
             }
         }
@@ -188,7 +189,7 @@ class TorrentClient
     else
       meta_id = @tdid
       $speaker.speak_up "Adding magnet torrent #{opts[:t_name]}"
-      download(path, opts[:move_completed], 1)
+      download(path, opts, 1)
     end
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => opts[:t_name]})
     true

@@ -49,6 +49,7 @@ qualities:
 download_criteria:
   rename_main: 'rename file'
   main_only: 0
+  add_paused: 1
   destination:
     shows: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}'
     movies: '/home/user/Movie/'

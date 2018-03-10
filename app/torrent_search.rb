@@ -16,13 +16,13 @@ class TorrentSearch
       download = d.first
     end
     progress = 0
-    $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})", 0)
+    $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
     progress = -1 if download[:torrent_id].to_s == '' && Time.parse(download[:updated_at]) < Time.now - 1.hour
     if progress >= 0
       status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
       progress = status['progress'].to_i rescue -1
     end
-    $speaker.speak_up("Progress for #{download[:name]} is #{progress}", 0)
+    $speaker.speak_up("Progress for #{download[:name]} is #{progress}") if Env.debug?
     return if (progress >= 0 && progress < 100) && Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
@@ -156,7 +156,7 @@ class TorrentSearch
     end
     get_results = get_results.first(limit.to_i) if limit.to_i > 0
     if download_criteria && !download_criteria.empty?
-      download_criteria = Utils.recursive_symbolize_keys(download_criteria)
+      download_criteria = Utils.recursive_typify_keys(download_criteria)
       download_criteria[:move_completed] = download_criteria[:destination][category.to_sym] if download_criteria[:destination]
       download_criteria.delete(:destination)
     end
