@@ -136,7 +136,7 @@ class Book
   end
 
   def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '')
-    name = ''
+    name, results = '', []
     move_destination = '.' if move_destination.to_s == ''
     valid_inputs = ['cbz', 'pdf', 'cbr']
     valid_outputs = ['cbz']
@@ -146,10 +146,11 @@ class Book
     return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       FileUtils.search_folder(path, {'regex' => ".*#{search_pattern.to_s + '.*' if search_pattern.to_s != ''}\.#{input_format}"}).each do |f|
-        convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
+        results += convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
       end
     elsif search_pattern.to_s != ''
-      return $speaker.speak_up "Can not use search_pattern if path is not a directory"
+      $speaker.speak_up "Can not use search_pattern if path is not a directory"
+      return results
     else
       skipping = 0
       Dir.chdir(File.dirname(path)) do
@@ -160,7 +161,7 @@ class Book
           if input_format == output_format
             dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.proper.#{output_format}"
           else
-            return
+            return results
           end
         end
         $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
@@ -212,15 +213,18 @@ class Book
                    else
                      compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
                    end
-        return if skipping > 0
+        return results if skipping > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         FileUtils.mv(dest_file, final_file) if final_file != dest_file
         $speaker.speak_up("#{name} converted!")
+        results << final_file
       end
     end
+    results
   rescue => e
     $speaker.tell_error(e, "Library.convert_comics")
     name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
+    []
   end
 
   def self.detect_book_title(name)

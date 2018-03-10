@@ -7,6 +7,8 @@ handling:
   file_types:
     - avi
     - mkv
+    - pdf:
+        convert_comics: cbz
   shows:
     media_type: shows
     move_to: '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'

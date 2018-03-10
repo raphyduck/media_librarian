@@ -344,10 +344,15 @@ class Library
     return 0, []
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {})
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {}, force_process: 0)
     full_p = torrent_path + '/' + torrent_name
+    handled_files = (
+    if (!handling['file_types'].nil? && handling['file_types'].is_a?(Array))
+      handling['file_types'].map { |o| o.is_a?(Hash) ? o.map { |k, _| k } : o } + ['rar', 'zip']
+    else
+      ['rar', 'zip']
+    end).flatten
     if FileTest.directory?(full_p)
-      handled_files = (!handling['file_types'].nil? && handling['file_types'].is_a?(Array)) ? handling['file_types'] + ['rar', 'zip'] : ['rar', 'zip']
       FileUtils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s}).each do |f|
         handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
       end
@@ -359,7 +364,12 @@ class Library
         handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
         FileUtils.rm_r(torrent_path + '/extracted')
       elsif handling['file_types']
+        if force_process.to_i == 0 && (!handled_files.is_a?(Array) || handled_files.include?(extension))
+          $speaker.speak_up "Unsupported extension '#{extension}'"
+          return
+        end
         type = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
+        args = handling['file_types'].select { |x| x.is_a?(Hash) && x[extension] }.first
         if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
           $speaker.speak_up 'File is a sample, skipping...'
           return
@@ -371,10 +381,13 @@ class Library
         type.downcase!
         ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
         item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
-        if VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
+        if args && args['convert_comics'].to_s != ''
+          Book.convert_comics(full_p, extension, args['convert_comics'], 1).each do |nf|
+            handle_completed_download(torrent_path: File.dirname(nf), torrent_name: File.basename(nf), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, force_process: force_process)
+          end
+        elsif VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
           rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
         else
-          #TODO: Convert PDF to cbz
           #TODO: Handle flac,...
           destination = full_p.gsub(completed_folder, destination_folder)
           FileUtils.move_file(full_p, destination, 1)
