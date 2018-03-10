@@ -364,7 +364,7 @@ class Library
         handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates)
         FileUtils.rm_r(torrent_path + '/extracted')
       elsif handling['file_types']
-        if force_process.to_i == 0 && (!handled_files.is_a?(Array) || handled_files.include?(extension))
+        if force_process.to_i == 0 && !handled_files.include?(extension)
           $speaker.speak_up "Unsupported extension '#{extension}'"
           return
         end
