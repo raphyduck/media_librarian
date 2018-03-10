@@ -184,7 +184,7 @@ class TorrentClient
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
       Cache.queue_state_add_or_update('deluge_options', {@tdid => opts.merge({:info_hash => meta_id})})
       $speaker.speak_up "Adding file torrent #{opts[:t_name]}"
-      download_file(torrent, File.basename(path), opts[:move_completed], meta_id)
+      download_file(torrent, File.basename(path), opts, meta_id)
       Cache.queue_state_add_or_update('deluge_torrents_added', {meta_id => 2})
     else
       meta_id = @tdid
