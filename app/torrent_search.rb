@@ -4,8 +4,7 @@ class TorrentSearch
 
   def self.authenticate_all(sources)
     get_trackers(sources).each do |t|
-      s = launch_search(t, '')
-      s.pre_auth
+      launch_search(t, '')
     end
   end
 
@@ -44,7 +43,7 @@ class TorrentSearch
   def self.deauthenticate_all(sources)
     get_trackers(sources).each do |t|
       s = launch_search(t, '')
-      s.deauth
+      s.reauth
     end
   end
 
@@ -304,13 +303,13 @@ class TorrentSearch
     waiting_downloads.each do |d|
       next unless d[:identifier].to_s.include?(f[:identifier].to_s)
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
-      if Time.parse(d[:waiting_until]) < Time.now - 365.days
+      if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2
         $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
         next
       end
       next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
       t = -1
-      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0
+      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0 && d[:status].to_i < 2
         $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
         t = 1
       elsif d[:status].to_i >= 0
@@ -319,7 +318,7 @@ class TorrentSearch
         $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
       end
       subset.select! { |tt| tt[:name] != d[:name] }
-      subset << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0
+      subset << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0 && d[:status].to_i < 2
     end
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
@@ -355,7 +354,7 @@ class TorrentSearch
   end
 
   def self.processing_results(filter:, sources: {}, existing_files: {}, results: nil, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
-    waiting_downloads = $db.get_rows('torrents', {}, {'status < ' => 3})
+    waiting_downloads = $db.get_rows('torrents')
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter = [] if filter.nil?
     filter.select! do |f|

@@ -12,23 +12,36 @@ module TorrentSite
     NUMBER_OF_LINKS = 50
     attr_accessor :url
 
-    def deauth
-      if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url)
-        $tracker_client_logged[@base_url] = false
-        $speaker.speak_up "Deauthenticate from #{tracker}" if Env.debug?
-      end
-    end
-
     def download(url, destination, name)
-      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      return if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
+      return if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
       path = "#{destination}/#{name}.torrent"
       $tracker_client[@base_url].get(url).save(path)
       path
     end
 
+    def init
+      $tracker_client[@base_url] = nil
+      $tracker_client[@base_url] = Mechanize.new
+      $tracker_client[@base_url].user_agent_alias = 'Mac Firefox'
+      $tracker_client[@base_url].history.max_size = 0
+      $tracker_client[@base_url].history_added = Proc.new { sleep 1 }
+      $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+      if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url)
+        $tracker_client_logged[@base_url] = false
+        authenticate!
+      end
+    end
+
     def links(limit = NUMBER_OF_LINKS)
       generate_links(limit)
+    end
+
+    def reauth
+      if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url)
+        $speaker.speak_up "Reauthenticate from #{tracker}"
+        init
+      end
     end
 
     def results_found?
@@ -38,21 +51,7 @@ module TorrentSite
     end
 
     def post_init
-      if $tracker_client[@base_url].nil?
-        $tracker_client[@base_url] = Mechanize.new
-        $tracker_client[@base_url].user_agent_alias = 'Mac Firefox'
-        $tracker_client[@base_url].history.max_size = 0
-        $tracker_client[@base_url].history_added = Proc.new {sleep 1}
-        $tracker_client[@base_url].pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-        $tracker_client_logged[@base_url] = false if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-      end
-    end
-
-    def pre_auth
-      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-    rescue => e
-      $speaker.tell_error(e, "TorrentSite.pre_auth(#{@base_url})")
-      $tracker_client_logged[@base_url] = false
+      init if $tracker_client[@base_url].nil?
     end
 
     private
@@ -62,7 +61,7 @@ module TorrentSite
     end
 
     def page
-      authenticate! if PRIVATE_TRACKERS.map{|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
       $tracker_client[@base_url].get(@url)
     end
 

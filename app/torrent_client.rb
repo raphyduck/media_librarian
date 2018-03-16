@@ -176,6 +176,7 @@ class TorrentClient
 
   def process_download_torrent(torrent_type, path, opts, tracker = '')
     return true if Env.pretend?
+    tries ||= 3
     if torrent_type == 1
       file = File.open(path, "r")
       torrent = file.read
@@ -194,12 +195,9 @@ class TorrentClient
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => opts[:t_name]})
     true
   rescue => e
-    $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]})")
+    $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]}, path='#{path}, tracker = '#{tracker})")
     $speaker.tell_error('', "Torrent[#{opts[:t_name]}][0..250]='#{torrent.to_s[0..250]}'") if defined?(torrent) && torrent
-    if tracker.to_s != ''
-      TorrentSearch.launch_search(tracker, '').deauth
-      TorrentSearch.launch_search(tracker, '').pre_auth
-    end
+    TorrentSearch.launch_search(tracker, '').reauth if tracker.to_s != ''
     false
   end
 
