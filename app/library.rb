@@ -504,7 +504,7 @@ class Library
       when 'trakt'
         $speaker.speak_up('Parsing trakt list, can take a long time...', 0)
         TraktAgent.list(source['list_name']).each do |item|
-          type = item['type']
+          type = item['type'] rescue next
           f = item[type]
           type = Utils.regularise_media_type(type)
           next if Time.now.year < (f['year'] || Time.now.year + 3)

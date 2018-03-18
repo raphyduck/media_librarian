@@ -161,7 +161,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
           delete_it = 1 unless folders.first
       end
       if delete_it > 0
-        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'", 0) if Env.debug?
+        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'") if Env.debug?
         list.delete(item)
       end
       print '.'
