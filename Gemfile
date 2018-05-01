@@ -23,7 +23,6 @@ gem 'ruby-mp3info', :git => 'https://github.com/raphyduck/ruby-mp3info.git', :re
 gem 'simple_args_dispatch', :require => false
 gem 'simple_config_man', :require => false
 gem 'simple_speaker', '~>0.2.3', :require => false
-gem 'simple-rss', :require => false
 gem 'sqlite3', :require => false
 gem 'sys-filesystem', :require => false
 gem 'titleize', :require => false
