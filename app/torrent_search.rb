@@ -40,13 +40,6 @@ class TorrentSearch
     end
   end
 
-  def self.deauthenticate_all(sources)
-    get_trackers(sources).each do |t|
-      s = launch_search(t, '')
-      s.reauth
-    end
-  end
-
   def self.filter_results(results, condition_name, required_value, &condition)
     results.select! do |t|
       if Env.debug? && !condition.call(t)
@@ -62,9 +55,9 @@ class TorrentSearch
     case type
       when 'rarbg'
         {
-            :movies => '14;48;17;44;45;47;50;51;52;42;46',
-            :shows => '18;41;49',
-            :music => '23;25'
+            :movies => [14,48,17,44,45,47,50,51,52,42,46],
+            :shows => [18,41,49],
+            :music => [23,25]
         }.fetch(category.to_sym, nil)
       when 'thepiratebay'
         {
@@ -75,9 +68,10 @@ class TorrentSearch
         }.fetch(category.to_sym, nil)
       when 'torrentleech'
         {
-            :movies => 'Movies',
-            :shows => 'TV',
-            :books => 'Book'
+            :movies => '8,9,11,37,43,14,12,13,41,47,15,29',
+            :shows => '26,32,27',
+            :books => '45,46',
+            :music => '31,16'
         }.fetch(category.to_sym, nil)
       when 'yggtorrent'
         {
@@ -109,8 +103,9 @@ class TorrentSearch
       $speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
       cid = self.get_cid(t, search_category)
       keyword_s = keyword + self.get_site_keywords(t, search_category)
-      s = launch_search(t, keyword_s, url, cid)
-      get_results += s.links
+      cr = launch_search(t, keyword_s, url, cid).links
+      cr = launch_search(t, keyword, url, cid).links if cr.nil? || cr.empty?
+      get_results += cr
     end
     if keyword.to_s != ''
       target_year = MediaInfo.identify_release_year(MediaInfo.detect_real_title(filter_keyword, category))
@@ -250,7 +245,7 @@ class TorrentSearch
     timeframe_trackers
   end
 
-  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads)
+  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria)
     $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}') (category '#{f[:type]}')" if Env.debug?
     f_type = f[:f_type]
     if results.nil?
@@ -300,8 +295,7 @@ class TorrentSearch
     subset.flatten!
     subset.map { |t| t[:files].select! { |ll| ll[:type].to_s != 'torrent' } if t[:files]; t[:files].uniq! if t[:files]; t }
     subset.select! { |t| !Cache.entry_deja_vu?('download', t[:identifiers]) }
-    waiting_downloads.each do |d|
-      next unless d[:identifier].to_s.include?(f[:identifier].to_s)
+    $db.get_rows('torrents', {}, {'identifier like' => "%#{f[:identifier]}%"}).each do |d|
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
       if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2
         $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
@@ -310,7 +304,7 @@ class TorrentSearch
       next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
       t = -1
       if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0 && d[:status].to_i < 2
-        $speaker.speak_up("Timeframe set for #{d[:name]}, waiting until #{d[:waiting_until]}", 0)
+        $speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
         t = 1
       elsif d[:status].to_i >= 0
         t = 2
@@ -354,11 +348,10 @@ class TorrentSearch
   end
 
   def self.processing_results(filter:, sources: {}, existing_files: {}, results: nil, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
-    waiting_downloads = $db.get_rows('torrents')
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter = [] if filter.nil?
     filter.select! do |f|
-      add = f[:full_name].to_s != ''
+      add = f[:full_name].to_s != '' && f[:identifier].to_s != ''
       add = !Cache.entry_deja_vu?('download', f[:identifiers]) if add
       add
     end
@@ -385,7 +378,7 @@ class TorrentSearch
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
       Librarian.route_cmd(
-          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities, no_prompt, download_criteria, waiting_downloads],
+          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities, no_prompt, download_criteria],
           1,
           'torrent'
       )

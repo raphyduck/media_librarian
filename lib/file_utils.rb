@@ -137,7 +137,7 @@ module FileUtils
           return false, destination
         end
       end
-      $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'")
+      $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'") if Env.debug?
       mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
       if hard_link.to_i > 0
         ln(original, destination)
@@ -164,21 +164,21 @@ module FileUtils
       file_remove_parents(original)
     end
 
-    def rm(files)
+    def rm(files, force: nil, noop: nil, verbose: nil)
       if Env.pretend?
         $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != ''
       else
-        rm_orig(files) if files.is_a?(Array) || files.to_s != ''
+        rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
       end
       $speaker.speak_up("rm #{files}") if Env.debug?
       file_remove_parents(files)
     end
 
-    def rm_r(files)
+    def rm_r(files, force: nil, noop: nil, verbose: nil, secure: nil)
       if Env.pretend?
         $speaker.speak_up("Would rm_r #{files}")
       else
-        rm_r_orig(files)
+        rm_r_orig(files, force: force, noop: noop, verbose: verbose, secure: secure)
       end
       $speaker.speak_up("rm_r #{files}") if Env.debug?
       file_remove_parents(files)

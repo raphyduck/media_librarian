@@ -190,11 +190,13 @@ class MediaInfo
     target_title.gsub!('?', '\?')
     target_title.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
     target_title.gsub!(/[ \.]\(?(\d{4})\)?([#{SPACE_SUBSTITUTE}]|$)/, '.\(?(\1' + additional_year_cond + '|US|UK)\)?')
-    title.match(
+    m = title.match(
         Regexp.new(
             '^\[?.{0,2}[\] ]?' + StringUtils.regexify(target_title) + '([' + SPACE_SUBSTITUTE + ']|[\&-]?e\d{1,4})?$',
             Regexp::IGNORECASE)
-    ) && ep_match && (target_year == 0 || year == 0 || (year <= target_year + 1 && year >= target_year - 1))
+    ) && ep_match && Utils.match_release_year(year, target_year)
+    $speaker.speak_up "title '#{title}' ('#{year}')#{' do NOT' unless m} match#{'es' if m} target_title '#{target_title}'" if Env.debug?
+    m
   end
 
   def self.media_qualities(filename)

@@ -45,6 +45,10 @@ class TorrentClient
       options['move_completed'] = true
     end
     $t_client.add_torrent_file(filename, Base64.encode64(file), options)
+    if meta_id
+      status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
+      raise 'Download failed' if status.nil? || status.empty?
+    end
   rescue
     if meta_id.to_s != ''
       status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
@@ -92,13 +96,15 @@ class TorrentClient
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
       path, ttype = nil, 1
-      $speaker.speak_up("Will download torrent '#{torrent[:name]}' on #{torrent[:tracker]}")
-      if url.to_s != ''
-        path = TorrentSearch.get_torrent_file(torrent[:tracker], @tdid,  url)
-      elsif magnet.to_s != ''
-        path, ttype = magnet, 2
-      end
-      if path.to_s != ''
+      success = false
+      tries = 5
+      while (tries -= 1) >= 0 && !success
+        $speaker.speak_up("Will download torrent '#{torrent[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
+        if url.to_s != ''
+          path = TorrentSearch.get_torrent_file(torrent[:tracker], @tdid, url)
+        elsif magnet.to_s != ''
+          path, ttype = magnet, 2
+        end
         opts = {
             @tdid => {
                 :t_name => torrent[:name],
@@ -110,7 +116,7 @@ class TorrentClient
             }
         }
         Cache.queue_state_add_or_update('deluge_options', opts)
-        success = process_download_torrent(ttype, path, opts[@tdid], torrent[:tracker])
+        success = process_download_torrent(ttype, path, opts[@tdid], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{torrent[:name]}' #{success ? 'succeeded' : 'failed'}" if Env.debug?
         if success
           if torrent[:files].is_a?(Array) && !torrent[:files].empty?
@@ -120,9 +126,11 @@ class TorrentClient
             end
           end
           Cache.entry_seen('download', torrent[:identifiers]) unless torrent[:identifiers].join[0..3]=='book'
-        elsif Time.parse(t[:waiting_until]) < Time.now - 1.day
-          $db.update_rows('torrents', {:status => -1}, {:name => t[:name]})
         end
+        File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil
+      end
+      unless success
+        $db.update_rows('torrents', {:status => -1}, {:name => t[:name]})
       end
     end
   end
@@ -151,7 +159,6 @@ class TorrentClient
           torrent_cache = $db.get_rows('torrents', {:name => o[:t_name]}).first
           $db.update_rows('torrents', {:torrent_id => tid}) if torrent_cache && torrent_cache[:torrent_id].nil?
           set_options = {}
-          File.delete($temp_dir + "/#{did}.torrent") rescue nil
           if (o[:rename_main] && o[:rename_main] != '') || (o[:main_only] && o[:main_only].to_i > 0)
             main_file = find_main_file(status)
             if main_file
@@ -176,7 +183,6 @@ class TorrentClient
 
   def process_download_torrent(torrent_type, path, opts, tracker = '')
     return true if Env.pretend?
-    tries ||= 3
     if torrent_type == 1
       file = File.open(path, "r")
       torrent = file.read
@@ -196,8 +202,10 @@ class TorrentClient
     true
   rescue => e
     $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]}, path='#{path}, tracker = '#{tracker})")
-    $speaker.tell_error('', "Torrent[#{opts[:t_name]}][0..250]='#{torrent.to_s[0..250]}'") if defined?(torrent) && torrent
-    TorrentSearch.launch_search(tracker, '').reauth if tracker.to_s != ''
+    $speaker.tell_error('', "Torrent[#{opts[:t_name]}].length='#{torrent.to_s.length}'") if defined?(torrent) && torrent
+    if tracker.to_s != ''
+      TorrentSearch.launch_search(tracker, '').init rescue nil
+    end
     false
   end
 
@@ -225,10 +233,9 @@ class TorrentClient
     if !(tries -= 1).zero?
       retry
     else
-      $speaker.tell_error(e, "TorrentClient.#{name}#{'(' + args.map{|a| a.to_s[0..100]}.join(',') + ')' if args}")
+      $speaker.tell_error(e, "TorrentClient.#{name}#{'(' + args.map { |a| a.to_s[0..100] }.join(',') + ')' if args}")
       if @tdid.to_i > 0
         TraktAgent.list_cache_remove(@tdid)
-        File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil
         Cache.queue_state_select('dir_to_delete', 1) { |_, v| v != @tdid }
       end
       raise 'Lost connection'

@@ -4,48 +4,38 @@ module RarbgTracker
 
     attr_accessor :url
 
-    def initialize(search, cid = '', search_type = 'str')
-      @base_url = 'https://rarbg.to'
+    def initialize(search, cid = '')
+      @base_url = 'https://rarbgto.org'
       @query = search
       @cat = cid
-      @s_type = search_type
-      $tracker_client[@base_url] = RARBG::API.new
-    end
-
-    def download(url, destination, name)
-      $speaker.speak_up('Rarbg do not provide torrent link')
-      ''
+      @cat = [] if cid.to_s == ''
+      @url = @base_url + "/torrents.php?search=#{search}#{([''] + @cat).join('&category[]=') unless @cat.empty?}" #/torrents.php?search=batman
+      @css_path = 'table.lista2t tr.lista2'
+      post_init
     end
 
     private
 
     def crawl_link(link)
+      cols = link.all('td')
+      links = cols[1].all('a')
+      raw_size = cols[3].text.to_s
+      size = raw_size.match(/[\d\.]+/).to_s.to_d
+      s_unit = raw_size.gsub(/[\d\.]+ /,'').to_s.strip
+      size = size_unit_convert(size, s_unit)
+      id = links[0]['href'].gsub(/(#{@base_url})?\/torrent\//, '')
       {
-          :name => link['title'].to_s.force_encoding('utf-8'),
-          :size => link['size'],
-          :link => link['info_page'],
-          :magnet_link => link['download'],
-          :seeders => link['seeders'],
-          :leechers => link['leechers'],
-          :id => Time.now.to_i,
-          :added => link['pubdate'],
+          :name => links[0].text.to_s,
+          :size => size,
+          :link => @base_url + "/torrent/#{id}",
+          :torrent_link => "#{@base_url}/download.php?id=#{id}&f=#{links[0].text.to_s}-[rarbg.to].torrent",
+          #:magnet_link => link['download'], #Would require to visit the torrent page to get this url, not worth it
+          :seeders => cols[4].text.to_s,
+          :leechers => cols[5].text.to_s,
+          :id => id,
+          :added => cols[2].text.to_s,
           :tracker => tracker
       }
-    end
-
-    def get_rows
-      req = {}
-      req.merge({'category' => @cat}) if @cat != ''
-      case @s_type
-        when 'str'
-          @links ||= $tracker_client[@base_url].search_string(@query, req)
-        when 'imdb'
-          @links ||= $tracker_client[@base_url].search_imdb(@query, req)
-        when 'themoviedb'
-          @links ||= $tracker_client[@base_url].search_themoviedb(@query, req)
-        when 'tvdb'
-          @links ||= $tracker_client[@base_url].search_tvdb(@query, req)
-      end
     end
   end
 end

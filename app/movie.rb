@@ -66,7 +66,7 @@ class Movie
     Cache.cache_add('movie_get', imdb_id.to_s, [title, movie], movie)
     return title, movie
   rescue => e
-    $speaker.tell_error(e, "Movie.movie_get")
+    $speaker.tell_error(e, "Movie.movie_get('#{imdb_id}'")
     Cache.cache_add('movie_get', imdb_id.to_s, ['', nil], nil)
     return '', nil
   end

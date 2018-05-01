@@ -18,7 +18,7 @@ class Cache
     $db.delete_rows('metadata_search', row)
   end
 
-  def self.cache_get(type, keyword, expiration = 365)
+  def self.cache_get(type, keyword, expiration = 120)
     return nil unless cache_get_enum(type)
     return @cache_metadata[type.to_s + keyword.to_s] if @cache_metadata[type.to_s + keyword.to_s]
     res = $db.get_rows('metadata_search', {:type => cache_get_enum(type),

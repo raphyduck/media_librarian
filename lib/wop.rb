@@ -1,7 +1,5 @@
 require File.dirname(__FILE__) + '/torrent_site'
 module Wop
-  ##
-  # Extract a list of results from your search
   class Search < TorrentSite::Search
 
     attr_accessor :url
@@ -12,41 +10,28 @@ module Wop
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
       @url = url || "#{@base_url}/browse.php?#{cid}search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
+      @css_path = 'table.yenitorrenttable tr.browse_color'
       post_init
     end
 
     private
 
-    def authenticate!
-      if $config['worldofp2p']
-        $speaker.speak_up('Authenticating on WorldofP2P.', 0)
-        login = $tracker_client[@base_url].get(@base_url + '/login.php?returnto=%2Findex.php')
-        login_form = login.forms[0]
-        login_form.username = $config['worldofp2p']['username']
-        login_form.password = $config['worldofp2p']['password']
-        $tracker_client[@base_url].submit login_form
-        $tracker_client_logged[@base_url] = true
-      else
-        $speaker.speak_up('WorldofP2P not configured, cannot authenticate')
-      end
+    def auth
+      $tracker_client[@base_url].get_url(@base_url + '/login.php?returnto=%2Findex.php')
+      $tracker_client[@base_url].fill_in('username', with: $config[tracker]['username'])
+      $tracker_client[@base_url].fill_in('password', with: $config[tracker]['password'])
+      $tracker_client[@base_url].click_button('Log in!')
     end
 
     def crawl_link(link)
-      cols = link.xpath('.//td')
-      links = cols[1].xpath('.//a')
+      cols = link.all('td')
+      links = cols[1].all('a')
       name = links[0].text
-      tlink = cols[2].xpath('.//a')[0]['href']
-      raw_size = cols[7].to_s
+      tlink = cols[2].all('a')[0]['href']
+      raw_size = cols[7].text.to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+<br>/, '').gsub('</td>', '').to_s.strip
-      case s_unit
-        when 'MB'
-          size *= 1024 * 1024
-        when 'GB'
-          size *= 1024 * 1024 * 1024
-        when 'TB'
-          size *= 1024 * 1024 * 1024 * 1024
-      end
+      s_unit = raw_size.gsub(/[\d\.]+<br>/, '').gsub('</td>', '').to_s.strip
+      size = size_unit_convert(size, s_unit)
       {
           :name => name.to_s.force_encoding('utf-8'),
           :size => size,
@@ -59,10 +44,6 @@ module Wop
           :added => cols[6].text.gsub(/\n/, ''),
           :tracker => tracker
       }
-    end
-
-    def get_rows
-      page.xpath('//table[@class="yenitorrenttable"]/tr[@class="browse_color"]')[0..50] || []
     end
   end
 end

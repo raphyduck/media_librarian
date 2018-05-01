@@ -1,6 +1,7 @@
 periodic:
   task2:
     command: help
+    execution: 3600
     every: 1 minutes
     args:
 continuous:

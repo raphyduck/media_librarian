@@ -1,9 +1,9 @@
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
 sys-filesystem)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine find goodreads io/console
-imdb_party mechanize mp3info net/ssh pdf/reader rarbg rsync shellwords simple-rss sys/filesystem titleize trakt tvdb_party
-tvmaze unrar xbmc-client yaml)
+active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find goodreads io/console
+imdb_party mechanize mp3info net/ssh pdf/reader rsync shellwords sys/filesystem titleize
+trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -187,7 +187,7 @@ class Librarian
   def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
     r = 0
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, Thread.current[:current_daemon], &block)
+      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
@@ -229,7 +229,7 @@ class Librarian
 
   def self.terminate_command(thread, object = nil, cmd = nil)
     return unless thread[:base_thread].nil?
-    return if thread[:childs].to_i > 0 if thread[:childs]
+    return if thread[:childs].to_i > 0
     if thread[:direct].to_i == 0
       $speaker.speak_up("Command #{cmd} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
       Report.sent_out(object || thread[:object], thread) if Env.email_notif?

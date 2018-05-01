@@ -1,7 +1,5 @@
 require File.dirname(__FILE__) + '/torrent_site'
 module TorrentLeech
-  ##
-  # Extract a list of results from your search
   class Search < TorrentSite::Search
 
     attr_accessor :url
@@ -10,57 +8,38 @@ module TorrentLeech
       @base_url = 'https://www.torrentleech.org'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/torrents/browse/index/query/#{URI.escape(search.gsub(/\ \ +/,' '))}/newfilter/2/#{'facets/category%253A' + cid.to_s if cid.to_s != ''}#{'/orderby/seeders/order/desc' if search.to_s != ''}" #/torrents/browse/index/query/batman/newfilter/2orderby/seeders/order/desc
+      @url = url || "#{@base_url}/torrents/browse/index#{'/categories/' + cid.to_s if cid.to_s != ''}/query/#{URI.escape(search.gsub(/\ \ +/, ' '))}#{'/orderby/seeders/order/desc' if search.to_s != ''}" #/torrents/browse/index/categories/11,37,43,14,12,13,26,32,27/query/batman/orderby/seeders/order/desc
+      @css_path = 'table.torrents tbody tr'
       post_init
     end
 
     private
 
-    def authenticate!
-      if $config['torrentleech']
-        $speaker.speak_up('Authenticating on TorrentLeech.', 0)
-        login = $tracker_client[@base_url].get(@base_url + '/')
-        login_form = login.form('form')
-        login_form.username = $config['torrentleech']['username']
-        login_form.password = $config['torrentleech']['password']
-        $tracker_client[@base_url].submit login_form
-        $tracker_client_logged[@base_url] = true
-      else
-        $speaker.speak_up('TorrentLeech not configured, cannot authenticate')
-      end
+    def auth
+      $tracker_client[@base_url].get_url(@base_url + '/')
+      $tracker_client[@base_url].fill_in('username', with: $config[tracker]['username'])
+      $tracker_client[@base_url].fill_in('password', with: $config[tracker]['password'])
+      $tracker_client[@base_url].click_button('Log in')
     end
 
     def crawl_link(link)
-      cols = link.xpath('.//td')
-      links = cols[1].xpath('.//a')
-      tlink = cols[2].xpath('.//a')[0]['href']
-      raw_size = cols[4].to_s
+      cols = link.all('td')
+      raw_size = cols[5].text.to_s
       size = raw_size.match(/[\d\.]+/).to_s.to_d
-      s_unit = raw_size.gsub(/<td [\w=\"]*>[\d\.]+/, '').gsub('</td>', '').to_s.strip
-      case s_unit
-        when 'MB'
-          size *= 1024 * 1024
-        when 'GB'
-          size *= 1024 * 1024 * 1024
-        when 'TB'
-          size *= 1024 * 1024 * 1024 * 1024
-      end
+      s_unit = raw_size.gsub(/[\d\. ]+/, '').to_s.strip
+      size = size_unit_convert(size, s_unit)
       {
-          :name => links[0].text.to_s.force_encoding('utf-8'),
+          :name => cols[1].all('a')[0].text.to_s.force_encoding('utf-8'),
           :size => size,
-          :link => @base_url + '/' + links[0]['href'],
-          :torrent_link => tlink,
+          :link => cols[1].all('a')[0]['href'],
+          :torrent_link => cols[2].find_link(:visible => :visible)['href'],
           :magnet_link => '',
-          :seeders => cols[6].text.to_i,
-          :leechers => cols[7].text.to_i,
-          :id => link.attr('id'),
-          :added => cols[1].css('span[class="addedInLine"]').text.to_s.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/).to_s,
+          :seeders => cols[7].text.to_i,
+          :leechers => cols[8].text.to_i,
+          :id => link['data-tid'].to_i,
+          :added => cols[3].text.to_s,
           :tracker => tracker
       }
-    end
-
-    def get_rows
-      page.xpath('//table[@id="torrenttable"]/tbody/tr')[0..50] || []
     end
   end
 end

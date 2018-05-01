@@ -63,6 +63,10 @@ class Utils
     @mutex[process_name].synchronize &block
   end
 
+  def self.match_release_year(year, target_year)
+    target_year == 0 || year == 0 || (year <= target_year + 1 && year >= target_year - 1)
+  end
+
   def self.parse_filename_template(tpl, metadata)
     return nil if metadata.nil?
     FILENAME_NAMING_TEMPLATE.each do |k|

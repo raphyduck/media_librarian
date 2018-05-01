@@ -2,7 +2,8 @@ APP_NAME='librarian'
 $env_flags = {
     :debug => 0,
     :no_email_notif => 0,
-    :pretend => 0
+    :pretend => 0,
+    :expiration_period => 0
 }
 $config_dir = Dir.home + '/.medialibrarian'
 $config_file = $config_dir + '/conf.yml'

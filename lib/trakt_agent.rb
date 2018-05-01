@@ -109,7 +109,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   end
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [], cr_value = 0, folder = '')
-    print "Ok, will filter all #{filter_type.gsub('_', ' ')} items, it can take a long time..."
+    $speaker.speak_up("Ok, will filter all #{filter_type.gsub('_', ' ')} items, it can take a long time...", 0)
     complete = if filter_type.include?('entirely')
                  1
                elsif filter_type.include?('partially')
@@ -122,7 +122,11 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
       delete_it = 0
       next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
-      next if exception && exception.include?(title)
+      $speaker.speak_up "Will filter item titled '#{title}' for #{filter_type.gsub('_', ' ')}" if Env.debug?
+      if exception && exception.include?(title)
+        $speaker.speak_up "Skipping because '#{title}' is included in exceptions" if Env.debug?
+        next
+      end
       case filter_type
         when 'watched', 'entirely_watched', 'partially_watched'
           break if cr_value.to_i != 0
@@ -136,7 +140,8 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
                 end
               end
             end
-            if item[type[0...-1]]['title']+item[type[0...-1]]['year'].to_s == h[type[0...-1]]['title']+h[type[0...-1]]['year'].to_s
+            if item[type[0...-1]]['title'] == h[type[0...-1]]['title'] &&
+                Utils.match_release_year(item[type[0...-1]]['year'].to_i, h[type[0...-1]]['year'].to_i)
               delete_it = 1
               break
             end

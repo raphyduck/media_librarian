@@ -4,8 +4,10 @@ ruby '2.4.2'
 gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :require => false
 gem 'activesupport', :require => false
 gem 'bencode', :require => false
+gem 'capybara', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'eventmachine', :require => false
+gem 'feedjira', :require => false
 gem 'fuzzy-string-match', :require => false
 gem 'goodreads', :git => 'https://github.com/raphyduck/goodreads.git', :require => false
 gem 'hanami-mailer', :require => false
@@ -15,7 +17,7 @@ gem 'mechanize', :require => false
 gem 'net-ssh', :require => false
 gem 'nokogiri', :require => false
 gem 'pdf-reader', :require => false
-gem 'rarbg', :require => false
+gem 'poltergeist', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
 gem 'ruby-mp3info', :git => 'https://github.com/raphyduck/ruby-mp3info.git', :require => false
 gem 'simple_args_dispatch', :require => false
