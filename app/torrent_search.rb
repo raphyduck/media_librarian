@@ -298,6 +298,7 @@ class TorrentSearch
     $db.get_rows('torrents', {}, {'identifier like' => "%#{f[:identifier]}%"}).each do |d|
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
       if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2
+        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
         $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
         next
       end
@@ -427,7 +428,7 @@ class TorrentSearch
       torrent[:download_now] = 1
     else
       $speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
-      $db.delete_rows('torrents', {}, {'name != ' => torrent[:name], 'identifier = ' => torrent[:identifier]})
+      $db.delete_rows('torrents', {}, {'name != ' => torrent[:name], 'identifier = ' => torrent[:identifier]}) unless torrent[:identifier].to_s[0..6].downcase.include?('book') #TODO: Find better way to handle books
       torrent[:download_now] = 2
     end
     if torrent[:in_db]

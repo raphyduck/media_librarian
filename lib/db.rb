@@ -136,7 +136,10 @@ module Storage
     end
 
     def execute_query(query, values, write = 1)
-      return $speaker.speak_up("Would #{query}") if Env.pretend? && write > 0
+      query_str = query.dup
+      values.each { |v| query_str.sub!(/([\(,])\?([\),])/, '\1\'' + v.to_s + '\'\2') }
+      return $speaker.speak_up("Would #{query_str}") if Env.pretend? && write > 0
+      $speaker.speak_up("Executing SQL query: '#{query_str}'", 0) if Env.debug?
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
       Utils.lock_block('db') {
         ins = @s_db.prepare(query)

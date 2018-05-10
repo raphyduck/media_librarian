@@ -50,6 +50,9 @@ module FileUtils
     def get_disk_space(path)
       stat = Sys::Filesystem.stat(path)
       return stat.block_size * stat.blocks_available, stat.blocks * stat.block_size
+    rescue => e
+      $speaker.tell_error(e, "FileUtils.get_disk_space('#{path}')", 0)
+      return 0, 0
     end
 
     def get_only_folder_levels(path, level = 1)
@@ -137,7 +140,7 @@ module FileUtils
           return false, destination
         end
       end
-      $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'") if Env.debug?
+      $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'", 0)
       mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
       if hard_link.to_i > 0
         ln(original, destination)

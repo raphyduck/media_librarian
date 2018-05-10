@@ -117,7 +117,7 @@ class TorrentClient
         }
         Cache.queue_state_add_or_update('deluge_options', opts)
         success = process_download_torrent(ttype, path, opts[@tdid], torrent[:tracker]) if path.to_s != ''
-        $speaker.speak_up "Download of torrent '#{torrent[:name]}' #{success ? 'succeeded' : 'failed'}" if Env.debug?
+        $speaker.speak_up "Download of torrent '#{torrent[:name]}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
         if success
           if torrent[:files].is_a?(Array) && !torrent[:files].empty?
             torrent[:files].each do |f|
@@ -131,6 +131,9 @@ class TorrentClient
       end
       unless success
         $db.update_rows('torrents', {:status => -1}, {:name => t[:name]})
+        if torrent[:tracker].to_s != ''
+          TorrentSearch.launch_search(torrent[:tracker], '').init rescue nil
+        end
       end
     end
   end
@@ -201,11 +204,10 @@ class TorrentClient
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => opts[:t_name]})
     true
   rescue => e
-    $speaker.tell_error(e, "torrentclient.process_download_torrent(#{opts[:t_name]}, path='#{path}, tracker = '#{tracker})")
-    $speaker.tell_error('', "Torrent[#{opts[:t_name]}].length='#{torrent.to_s.length}'") if defined?(torrent) && torrent
-    if tracker.to_s != ''
-      TorrentSearch.launch_search(tracker, '').init rescue nil
-    end
+    $speaker.tell_error(
+        e,
+        "torrentclient.process_download_torrent(#{opts[:t_name]}, path='#{path}, tracker = '#{tracker})#{'Torrent[' + opts[:t_name].to_s + '].length=' + torrent.to_s.length.to_s if defined?(torrent) && torrent}"
+    )
     false
   end
 

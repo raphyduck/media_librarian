@@ -13,7 +13,7 @@ DIMENSIONS = %w(3d)
 SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bit hevc h265 x265 h264 x264 xvid divx)
 AUDIO = %w(truehd dts dtshd flac dd+5.1 ac3 dd5.1 aac2.0 aac mp3)
-LANGUAGES = %w(multi vo eng french vfq vff vf german)
+LANGUAGES = %w(multi vo eng vostfr french vfq vff vf german fastsub)
 VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
 FILENAME_NAMING_TEMPLATE=%w(
     full_name
