@@ -80,6 +80,7 @@ module TorrentSite
 
     def get_rows
       authenticate! if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
+      $speaker.speak_up "Fetching url '#{@url}'" if Env.debug?
       $tracker_client[@base_url].get_url(@url)
       $tracker_client[@base_url].all(@css_path)[0..50] || []
     end

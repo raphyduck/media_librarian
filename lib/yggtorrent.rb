@@ -8,7 +8,7 @@ module Yggtorrent
       @base_url = 'https://yggtorrent.is'
       # Order by seeds desc
       @query = search
-      @url = url || "#{@base_url}/engine/search?#{cid}name=#{URI.escape(search)}&do=search&order=desc&sort=seed"
+      @url = url || "#{@base_url}/engine/search?#{cid}name=#{URI.escape(search)}&do=search#{'&order=desc&sort=seed' if search.to_s != ''}"
       @css_path = 'table.table tbody tr'
       post_init
     end

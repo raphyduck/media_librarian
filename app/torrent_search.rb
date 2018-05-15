@@ -75,11 +75,11 @@ class TorrentSearch
         }.fetch(category.to_sym, nil)
       when 'yggtorrent'
         {
-            :movies => 'category=2145&subcategory=2183&',
-            :shows => 'category=2145&subcategory=2184&',
-            :music => 'category=2139&subcategory=2148&',
-            :books => 'category=2140&subcategory=all&',
-            :comics => 'category=2140&subcategory=2152&'
+            :movies => 'category=2145&sub_category=2183&',
+            :shows => 'category=2145&sub_category=2184&',
+            :music => 'category=2139&sub_category=2148&',
+            :books => 'category=2140&sub_category=all&',
+            :comics => 'category=2140&sub_category=2152&'
         }.fetch(category.to_sym, nil)
       when 'wop'
         {

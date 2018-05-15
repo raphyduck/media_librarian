@@ -61,7 +61,7 @@ class TvSeries
     end
     ep_nb = ep_nb_single.uniq if ep_nb.empty?
     season = seasonp if season.empty?
-    ep_ids = (ep_nb.empty? ? season.map{|s| {:s => s}} : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
+    ep_ids = (ep_nb.empty? ? season.map { |s| {:s => s} } : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
     return season, ep_nb.uniq, ep_ids
   end
 
@@ -83,8 +83,10 @@ class TvSeries
         episodes_in_files[:shows].each do |series_name, show|
           _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
           tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
-          existing_season_eps = {}
-          tv_episodes[series_name].each do |ep|
+          existing_season_eps, last_season = {}, nil
+          tv_episodes[series_name].sort_by { |e| (e.air_date || Time.now + 6.months) }.reverse.each do |ep|
+            is_new_season = (last_season != ep.season_number.to_i)
+            last_season = ep.season_number.to_i
             next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) ||
                 (ep.air_date.to_s == '' && MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1)))
             next if include_specials.to_i == 0 && ep.season_number.to_i == 0
@@ -92,7 +94,7 @@ class TvSeries
             if existing_season_eps[ep.season_number].nil?
               existing_season_eps[ep.season_number] = MediaInfo.media_get(episodes_in_files, identifier_season(series_name, ep.season_number))
             end
-            if tv_seasons[series_name][ep.season_number.to_i].nil? && (ep.air_date.nil? || ep.air_date < Time.now - 6.months) && existing_season_eps[ep.season_number].empty?
+            if tv_seasons[series_name][ep.season_number.to_i].nil? && (is_new_season || ep.air_date.nil? || ep.air_date < Time.now - 6.months) && existing_season_eps[ep.season_number].empty?
               tv_seasons[series_name][ep.season_number.to_i] = 1
               full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}"
               full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)

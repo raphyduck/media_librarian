@@ -25,36 +25,31 @@ class TorrentClient
     @deluge_connected = nil
   end
 
-  def download(url, options = {}, magnet = 0)
+  def download_file(download, options = {}, meta_id = '')
+    options.select! { |key, _| [:move_completed, :rename_main, :main_only, :add_paused].include?(key) }
     options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
     if options['move_completed'].to_s != ''
       options['move_completed_path'] = options['move_completed']
       options['move_completed'] = true
     end
-    if magnet.to_i > 0
-      $t_client.add_torrent_magnet(url, options)
-    else
-      $t_client.add_torrent_url(url, options)
+    case download[:type]
+      when 1
+        $t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
+        if meta_id.to_s != ''
+          status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
+          raise 'Download failed' if status.nil? || status.empty?
+        end
+      when 2
+        $t_client.add_torrent_magnet(download[:url], options)
+      when 3
+        $t_client.add_torrent_url(download[:url], options)
     end
-  end
-
-  def download_file(file, filename, options = {}, meta_id = '')
-    options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
-    if options['move_completed'].to_s != ''
-      options['move_completed_path'] = options['move_completed']
-      options['move_completed'] = true
-    end
-    $t_client.add_torrent_file(filename, Base64.encode64(file), options)
-    if meta_id
+  rescue => e
+    if meta_id.to_s != '' && download.is_a?(Hash) && download[:type].to_i == 1
       status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
-      raise 'Download failed' if status.nil? || status.empty?
-    end
-  rescue
-    if meta_id.to_s != ''
-      status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
-      raise 'Download failed' if status.nil? || status.empty?
+      raise e if status.nil? || status.empty?
     else
-      raise 'Download failed'
+      raise e
     end
   end
 
@@ -194,19 +189,20 @@ class TorrentClient
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
       Cache.queue_state_add_or_update('deluge_options', {@tdid => opts.merge({:info_hash => meta_id})})
       $speaker.speak_up "Adding file torrent #{opts[:t_name]}"
-      download_file(torrent, File.basename(path), opts, meta_id)
+      download = {:type => 1, :file => torrent, :filename => File.basename(path)}
       Cache.queue_state_add_or_update('deluge_torrents_added', {meta_id => 2})
     else
       meta_id = @tdid
       $speaker.speak_up "Adding magnet torrent #{opts[:t_name]}"
-      download(path, opts, 1)
+      download = {:type => 2, :url => path}
     end
+    download_file(download, opts, meta_id)
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => opts[:t_name]})
     true
   rescue => e
     $speaker.tell_error(
         e,
-        "torrentclient.process_download_torrent(#{opts[:t_name]}, path='#{path}, tracker = '#{tracker})#{'Torrent[' + opts[:t_name].to_s + '].length=' + torrent.to_s.length.to_s if defined?(torrent) && torrent}"
+        "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
     )
     false
   end
