@@ -181,6 +181,7 @@ class TorrentClient
 
   def process_download_torrent(torrent_type, path, opts, tracker = '')
     return true if Env.pretend?
+    t_name = opts[:t_name].dup
     if torrent_type == 1
       file = File.open(path, "r")
       torrent = file.read
@@ -188,16 +189,16 @@ class TorrentClient
       meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
       Cache.queue_state_add_or_update('deluge_options', {@tdid => opts.merge({:info_hash => meta_id})})
-      $speaker.speak_up "Adding file torrent #{opts[:t_name]}"
+      $speaker.speak_up "Adding file torrent #{t_name}"
       download = {:type => 1, :file => torrent, :filename => File.basename(path)}
       Cache.queue_state_add_or_update('deluge_torrents_added', {meta_id => 2})
     else
       meta_id = @tdid
-      $speaker.speak_up "Adding magnet torrent #{opts[:t_name]}"
+      $speaker.speak_up "Adding magnet torrent #{t_name}"
       download = {:type => 2, :url => path}
     end
     download_file(download, opts, meta_id)
-    $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => opts[:t_name]})
+    $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => t_name})
     true
   rescue => e
     $speaker.tell_error(
