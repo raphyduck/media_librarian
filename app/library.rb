@@ -595,7 +595,7 @@ class Library
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.nil?
-      $speaker.speak_up 'Destination is empty, skipping...'
+      $speaker.speak_up "Destination of rename file '#{original}' is empty, skipping..."
       return ''
     end
     destination += ".#{metadata['extension'].downcase}"
