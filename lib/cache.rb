@@ -67,6 +67,13 @@ class Cache
     $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', '')})
   end
 
+  def self.entry_delete(category, entry)
+    entry = [entry] unless entry.is_a?(Array)
+    entry.each do |e|
+      $db.delete_rows('seen', {:category => category}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"})
+    end
+  end
+
   def self.object_pack(object, to_hash_only = 0)
     obj = object.clone
     oclass = obj.class.to_s

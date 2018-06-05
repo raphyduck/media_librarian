@@ -293,6 +293,7 @@ class MediaInfo
 
   def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
     title = StringUtils.prepare_str_search(title)
+    $speaker.speak_up "Looking for movie '#{title}'" if Env.debug?
     id = ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']
     cache_name = title.to_s + id.to_s
     cached = Cache.cache_get('movie_lookup', title.to_s + id.to_s)

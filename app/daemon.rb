@@ -3,7 +3,7 @@ class Daemon < EventMachine::Connection
   @last_execution = {}
   @threads = {}
   @last_flush = Time.now
-  @last_email_report = Time.now
+  @last_email_report = {}
   @queues = {}
   @queues_max_pool = {}
   @is_daemon = false
@@ -88,11 +88,11 @@ class Daemon < EventMachine::Connection
             thread_cache_add('exclusive', args, job_id, task, 0, params['max_pool_size'] || 0, 0, Thread.current[:current_daemon], params['expiration'] || 43200) if @last_execution[task].nil? || Time.now > @last_execution[task] + freq.seconds
           when 'continuous'
             if queue_busy?(task)
-              if @last_email_report + 12.hours < Time.now
+              if !@last_email_report[task].is_a?(Time) || @last_email_report[task] + 12.hours < Time.now
                 @threads[task]['working'].each do |t|
                   Report.sent_out(task, t)
+                  @last_email_report[task] = Time.now
                 end
-                @last_email_report = Time.now
               end
             else
               thread_cache_add(task, args + ["--continuous=1"], job_id, task, 0, 1, 1)

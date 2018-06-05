@@ -58,6 +58,7 @@ class Movie
   end
 
   def self.movie_get(imdb_id)
+    $speaker.speak_up "Getting movie ID '#{imdb_id}'" if Env.debug?
     cached = Cache.cache_get('movie_get', imdb_id.to_s)
     return cached if cached
     movie = TraktAgent.movie__summary(imdb_id, "?extended=full") rescue nil

@@ -121,7 +121,7 @@ class Library
         $speaker.speak_up("Finished copying media from #{source_list}!", 0)
       end
       break unless continuous.to_i > 0
-      sleep 3600
+      sleep 86400
     end
   end
 

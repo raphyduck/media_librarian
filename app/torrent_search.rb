@@ -14,15 +14,16 @@ class TorrentSearch
       return if d.empty?
       download = d.first
     end
-    progress = 0
+    progress, state = 0, ''
     $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
     progress = -1 if download[:torrent_id].to_s == '' && Time.parse(download[:updated_at]) < Time.now - 1.hour
     if progress >= 0
-      status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress'])
+      status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress','state'])
       progress = status['progress'].to_i rescue -1
+      state = status['state'].to_s rescue ''
     end
-    $speaker.speak_up("Progress for #{download[:name]} is #{progress}") if Env.debug?
-    return if (progress >= 0 && progress < 100) && Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days
+    $speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}") if Env.debug?
+    return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
       Cache.entry_seen('global', identifier) unless identifier.to_s[0..6].include?('book')
@@ -31,7 +32,7 @@ class TorrentSearch
       $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0 rescue nil
       $db.update_rows('torrents', {:status => -1}, {:name => download[:name]})
     end
-    $db.delete_rows('seen', {:category => 'download', :entry => identifier})
+    Cache.entry_delete('download', identifier)
   end
 
   def self.check_all_download(timeout: 10)
