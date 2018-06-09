@@ -22,10 +22,6 @@ DB_SCHEMA = {
         :torrent_id => 'text',
         :status => 'integer'
     },
-    :seen => {:category => 'varchar(200)',
-              :entry => 'text primary key',
-              :created_at => 'datetime'
-    },
     :trakt_auth => {
         :account => 'varchar(30) primary key',
         :access_token => 'varchar(200)',
@@ -65,8 +61,6 @@ module Storage
 
     def get_main_column(table)
       case table
-        when 'seen'
-          :entry
         when 'torrents'
           :name
         when 'metadata_search'
@@ -79,7 +73,7 @@ module Storage
     def get_rows(table, conditions = {}, additionals = {})
       q = "select * from #{table}"
       q << prepare_conditions(conditions, additionals)
-      r = execute_query(q, conditions.map { |_, v| v } + additionals.map { |_, v| v }, 0)
+      r = execute_query(q, conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s }, 0)
       res = []
       r.each do |l|
         i = -1
@@ -118,7 +112,7 @@ module Storage
       values = prepare_values(table, values, 1)
       q = "update #{table} set #{values.map { |c, _| c.to_s + ' = (?)' }.join(', ')}"
       q << prepare_conditions(conditions, additionals)
-      execute_query(q, values.map { |_, v| v } + conditions.map { |_, v| v } + additionals.map { |_, v| v })
+      execute_query(q, values.map { |_, v| v.to_s } + conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s })
     rescue => e
       $speaker.tell_error(e, "Storage::Db.new.update_rows")
     end

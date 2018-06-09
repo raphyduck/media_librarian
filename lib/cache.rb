@@ -44,36 +44,6 @@ class Cache
     METADATA_SEARCH[:media_type][type.to_sym][:enum] rescue nil
   end
 
-  def self.entry_deja_vu?(category, entry, expiration = 180)
-    entry = [entry] unless entry.is_a?(Array)
-    dejavu = false
-    entry.each do |e|
-      a = $db.get_rows('seen', {:category => 'global'}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"})
-      a = $db.get_rows('seen', {:category => category}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"}) if a.empty?
-      a.delete_if do |r|
-        created = Time.parse(r[:created_at])
-        $db.delete_rows('seen',{:entry => r[:entry]}) if created < Time.now - expiration.days
-        created < Time.now - expiration.days
-      end
-      dejavu = true unless a.empty?
-    end
-    $speaker.speak_up("#{category.to_s.titleize} entry #{entry.join} already seen", 0) if dejavu
-    dejavu
-  end
-
-  def self.entry_seen(category, entry)
-    entry = YAML.load(entry) if entry.is_a?(String) && entry.match(/^\[.*\]$/)
-    entry = entry.join if entry.is_a?(Array)
-    $db.insert_row('seen', {:category => category, :entry => entry.downcase.gsub(' ', '')})
-  end
-
-  def self.entry_delete(category, entry)
-    entry = [entry] unless entry.is_a?(Array)
-    entry.each do |e|
-      $db.delete_rows('seen', {:category => category}, {'entry like' => "%#{e.downcase.gsub(' ', '')}%"})
-    end
-  end
-
   def self.object_pack(object, to_hash_only = 0)
     obj = object.clone
     oclass = obj.class.to_s
@@ -160,5 +130,45 @@ class Cache
     el
   rescue
     nil
+  end
+
+  def self.torrent_deja_vu?(identifier, qualities, f_type)
+    return true if identifier[0..3] == 'book' #TODO: Find a more elegant way of handling this
+    torrent_get(identifier, f_type).each do |t|
+      next unless t[:in_db].to_i > 0 && t[:download_now].to_i >= 3
+      timeframe, accept = MediaInfo.filter_quality(t[:name], qualities)
+      if timeframe.to_s == '' && accept
+        $speaker.speak_up "Torrent for identifier '#{identifier}' already existing at correct quality (#{qualities})" if Env.debug?
+        return true
+      end
+    end
+    $speaker.speak_up "No torrent found for identifier '#{identifier}' at quality (#{qualities})" if Env.debug?
+    false
+  end
+
+  def self.torrent_get(identifier, f_type = nil)
+    torrents = []
+    $db.get_rows('torrents', {}, {'identifier like' => "%#{identifier}%"}).each do |d|
+      d[:tattributes] = Cache.object_unpack(d[:tattributes])
+      if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2 && d[:status].to_i >= 0
+        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
+        $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
+        next
+      end
+      next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
+      t = -1
+      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0 && d[:status].to_i < 2
+        $speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
+        t = 1
+      elsif d[:status].to_i >= 0 && d[:status].to_i < 2
+        t = 2
+      elsif d[:status].to_i > 2
+        t = 3
+      elsif Env.debug?
+        $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
+      end
+      torrents << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0
+    end
+    torrents
   end
 end

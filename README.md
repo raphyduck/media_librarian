@@ -10,12 +10,12 @@ Requirements:
 
 TODO:
 * General
-    * Reload and restart daemon
     * Parse YAML template file and alert in case of errors
     * Rename all command line funtion arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
     * Automatically check for new commits on master and auto-update (as a task)
     * Install external requirements like phantomjs from in-app
+    * Restart daemon
     
 * Ebooks/Comics:
     
@@ -27,7 +27,6 @@ TODO:
     * Automatically watch future movies releases and add them to watchlist based on criteria (genres,?)
 
 * Torrent search:
-    * Allow replacing existing files by better quality if existing quality is less than target
     
 * TvSeries:
     

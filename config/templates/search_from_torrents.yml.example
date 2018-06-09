@@ -20,6 +20,7 @@ filter_sources:
       days_newer:
       days_older:
     delta: 10
+    upgrade: 1 #if '1', will try to download episodes of better qualities if available
   search:
     keywords:
       - 'keyword'
@@ -28,6 +29,7 @@ filter_sources:
     list_name: 'watchlist'
     include_specials: 1 #For tv shows
     delta: 10
+    upgrade: 1 #if '1', will try to download episodes of better qualities if available
     existing_folder:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'

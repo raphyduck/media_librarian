@@ -62,23 +62,15 @@ class MediaInfo
           end
         end
       end
-      qualities['min_quality'].to_s.split(' ').each do |q|
-        if eval(t).include?(q) && (file_q.empty? || eval(t).index(q) < eval(t).index(file_q))
-          $speaker.speak_up "'#{filename}' is of lower quality than the minimum required (#{q}), removing from list" if Env.debug?
-          return timeframe, false
-        end
+      if qualities_compare(qualities['min_quality'], t, file_q, '<', "'#{filename}' is of lower quality than the minimum required, removing from list")
+        return timeframe, false
       end
-      qualities['max_quality'].to_s.split(' ').each do |q|
-        if eval(t).include?(q) && eval(t).index(q) > eval(t).index(file_q)
-          $speaker.speak_up "'#{filename}' is of higher quality than the maximum allowed (#{q}), removing from list" if Env.debug?
-          return timeframe, false
-        end
+      if qualities_compare(qualities['max_quality'], t, file_q, '>', "'#{filename}' is of higher quality than the maximum allowed, removing from list")
+        return timeframe, false
       end
-      (qualities['target_quality'] || qualities['max_quality']).to_s.split(' ').each do |q|
-        if eval(t).include?(q) && timeframe == '' && eval(t).index(q) < eval(t).index(file_q)
-          $speaker.speak_up "'#{filename}' is of lower quality than the target quality (#{q}), setting timeframe '#{qualities['timeframe']}'" if Env.debug?
-          timeframe = qualities['timeframe'].to_s
-        end
+      if qualities_compare((qualities['target_quality'] || qualities['max_quality']), t, file_q, '<', "'#{filename}' is of lower quality than the target quality, setting timeframe '#{qualities['timeframe']}'") &&
+          timeframe == ''
+        timeframe = qualities['timeframe'].to_s
       end
     end
     return timeframe, true
@@ -291,6 +283,14 @@ class MediaInfo
     return title, item
   end
 
+  def self.media_list_qualities(file, type = 'file')
+    if file[:files]
+      file[:files].select { |f| f[:type] == type }.map { |f| parse_qualities(f[:name]) }.compact.flatten
+    else
+      []
+    end
+  end
+
   def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
     title = StringUtils.prepare_str_search(title)
     $speaker.speak_up "Looking for movie '#{title}'" if Env.debug?
@@ -402,6 +402,65 @@ class MediaInfo
     end.uniq.flatten
     pq = parse_3d(filename, pq)
     pq
+  end
+
+  def self.qualities_compare(qualities, type, qt, comparison, message = '')
+    qualities.to_s.split(' ').each do |q|
+      if eval(type).include?(q) && ((qt.empty? && comparison == '<') || (!qt.empty? && eval(type).index(q).send(comparison, eval(type).index(qt))))
+        $speaker.speak_up "#{message} (target '#{q}')" if Env.debug? && message.to_s != ''
+        return true
+      end
+    end
+    return false
+  end
+
+  def self.qualities_array_compare(arr, comparison)
+    min = []
+    until arr.empty? do
+      cmin = arr.shift
+      arr.delete_if do |q|
+        delete = false
+        ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
+          if eval(t).include?(cmin) && eval(t).include?(q)
+            cmin = q if eval(t).index(q).send(comparison, eval(t).index(cmin))
+            delete = true
+          end
+        end
+        delete
+      end
+      min << cmin if cmin
+    end
+    min
+  end
+
+  def self.qualities_file_filter(file, qualities)
+    accept = true
+    if !qualities.nil? && !qualities.empty? && (qualities['target_quality'] || qualities['max_quality'])
+      existing_qualities, min_q = qualities_set_minimum(file, (qualities['target_quality'] || qualities['max_quality']))
+      _, accept = filter_quality(
+          '.' + existing_qualities.join('.') + '.',
+          {'min_quality' => min_q}
+      )
+      $speaker.speak_up "Ignoring file '#{file[:full_name]}' as it is lower than target quality '#{(qualities['target_quality'] || qualities['max_quality'])}'" if Env.debug? && !accept
+    end
+    accept
+  end
+
+  def self.qualities_min(arr)
+    qualities_array_compare(arr, '>').join(' ')
+  end
+
+  def self.qualities_max(arr)
+    qualities_array_compare(arr, '<').join(' ')
+  end
+
+  def self.qualities_set_minimum(file, reference_q)
+    existing_qualities = media_list_qualities(file, 'file')
+    unless existing_qualities.empty?
+      reference_q = qualities_max(reference_q.to_s.split(' ') + existing_qualities.dup)
+      $speaker.speak_up "Already existing file(s) with an existing quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
+    end
+    return existing_qualities, reference_q
   end
 
   def self.sort_media_files(files, qualities = {})

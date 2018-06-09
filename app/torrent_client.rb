@@ -120,7 +120,6 @@ class TorrentClient
               TraktAgent.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tdid) if f[:type] == 'trakt'
             end
           end
-          Cache.entry_seen('download', torrent[:identifiers]) unless torrent[:identifiers].join[0..3]=='book'
         end
         File.delete($temp_dir + "/#{@tdid}.torrent") rescue nil
       end

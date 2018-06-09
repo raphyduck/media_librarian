@@ -15,7 +15,7 @@ MIN_REQ.each do |r|
 end
 
 class Librarian
-  attr_accessor :args, :quit
+  attr_accessor :args, :quit, :reload
 
   $available_actions = {
       :help => ['Librarian', 'help'],
@@ -24,6 +24,7 @@ class Librarian
           :start => ['Daemon', 'start'],
           :status => ['Daemon', 'status'],
           :stop => ['Daemon', 'stop'],
+          :reload => ['Daemon', 'reload']
       },
       :books => {
           :compress_comics => ['Book', 'compress_comics'],
@@ -74,12 +75,6 @@ class Librarian
     suppress_output
   end
 
-  def run!
-    trap_signals
-    $speaker.speak_up("Welcome to your library assistant!\n\n")
-    Librarian.route_cmd(args)
-  end
-
   def leave
     $speaker.speak_up("End of session, good bye...")
   end
@@ -104,8 +99,12 @@ class Librarian
         $speaker.speak_up "A server is already running. Check #{$pidfile}"
         exit(1)
       when :dead
-        File.delete($pidfile)
+        delete_pid
     end
+  end
+
+  def delete_pid
+    File.delete($pidfile)
   end
 
   def pid_status(pidfile)
@@ -118,6 +117,10 @@ class Librarian
     :dead
   rescue Errno::EPERM
     :not_owned
+  end
+
+  def quit?
+    quit || reload
   end
 
   def requirments
@@ -133,6 +136,12 @@ class Librarian
     @loaded = true
   end
 
+  def run!
+    trap_signals
+    $speaker.speak_up("Welcome to your library assistant!\n\n")
+    Librarian.route_cmd(args)
+  end
+
   def suppress_output
     $stderr.reopen('/dev/null', 'a')
     $stdout.reopen($stderr)
@@ -144,14 +153,14 @@ class Librarian
     end
   end
 
-  def self.burst_thread(client = nil, parent = nil, &block)
-    t = Thread.new { block.call }
-    reset_notifications(t)
-    t[:debug] = Thread.current[:debug].to_i
-    t[:no_email_notif] = Thread.current[:no_email_notif].to_i
-    t[:pretend] = Thread.current[:pretend].to_i #TODO: Check this is working all the time, seems that it randomly fails
-    t[:current_daemon] = client || Thread.current[:current_daemon]
-    t[:parent] = parent
+  def self.burst_thread(client = nil, parent = nil, envf = Daemon.dump_env_flags, &block)
+    t = Thread.new do
+      $args_dispatch.set_env_variables($env_flags, envf)
+      reset_notifications(t)
+      t[:current_daemon] = client || Thread.current[:current_daemon]
+      t[:parent] = parent
+      block.call
+    end
     t
   end
 
@@ -208,8 +217,7 @@ class Librarian
     t[:send_email] = 0
   end
 
-  def self.run_command(cmd, direct = 0, object = '', env_flags = nil, &block)
-    $args_dispatch.set_env_variables($env_flags, env_flags) if env_flags
+  def self.run_command(cmd, direct = 0, object = '', &block)
     object = cmd[0..1].join(' ') if object == 'rcv'
     init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
@@ -232,7 +240,7 @@ class Librarian
     return if thread[:childs].to_i > 0
     if thread[:direct].to_i == 0
       $speaker.speak_up("Command #{cmd} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
-      Report.sent_out(object || thread[:object], thread) if Env.email_notif?
+      Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif?
     end
     thread[:block].call if thread[:block]
     if thread[:parent]
@@ -246,5 +254,12 @@ class Librarian
 end
 
 $librarian = Librarian.new
-$librarian.run!
+arguments = $librarian.args.dup
+first_time = true
+while ($librarian.reload && !Daemon.is_daemon?) || first_time
+  first_time = false
+  $librarian.args = arguments.dup
+  $librarian.reload = false
+  $librarian.run!
+end
 $librarian.leave

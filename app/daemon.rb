@@ -14,6 +14,21 @@ class Daemon < EventMachine::Connection
     t[:childs] -= 1 if t[:childs]
   end
 
+  def self.dump_env_flags(expiration = 43200)
+    env_flags = {}
+    $env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
+    env_flags['expiration_period'] = expiration
+    env_flags
+  end
+
+  def self.ensure_daemon
+    unless is_daemon?
+      $speaker.speak_up 'No daemon running'
+      return false
+    end
+    true
+  end
+
   def self.get_workers_count(qname)
     @threads[qname] = {} if @threads[qname].nil?
     @threads[qname]['working'] = [] unless @threads[qname]['working']
@@ -46,7 +61,7 @@ class Daemon < EventMachine::Connection
       if get_workers_count(qname) < max_pool_size(qname)
         args = q.shift
         next if args.nil?
-        t = Librarian.burst_thread(args[4], args[7]) { Librarian.run_command(args[5], args[1], args[2], args[3], &args[6]) }
+        t = Librarian.burst_thread(args[4], args[7], args[3]) { Librarian.run_command(args[5], args[1], args[2], &args[6]) }
         t[:jid] = args[0]
         @threads[qname]['working'] << t
       end
@@ -68,12 +83,20 @@ class Daemon < EventMachine::Connection
   end
 
   def self.quit
-    if $librarian.quit && !@is_quitting
+    if $librarian.quit? && !@is_quitting
       @is_quitting = true
+      @is_daemon = false
       thread_cache_add('exclusive', ['flush_queues'], Daemon.job_id, 'flush', 1) {
         EventMachine::stop
       }
     end
+  end
+
+  def self.reload
+    #TODO: Fix me, when a command is issued before the daemon is reloaded, the pid file is never created
+    return unless ensure_daemon
+    $speaker.speak_up('Will reload after pending operations')
+    $librarian.reload = true
   end
 
   def self.schedule(jobs)
@@ -121,6 +144,7 @@ class Daemon < EventMachine::Connection
       EM.add_periodic_timer(1) { schedule(jobs) }
       EM.add_periodic_timer(1) { Librarian.burst_thread { quit } }
     end
+    $librarian.delete_pid
     $speaker.speak_up('Shutting down')
   end
 
@@ -135,7 +159,7 @@ class Daemon < EventMachine::Connection
     @queues.each do |qname, _|
       bq += 1 if queue_busy?(qname)
     end
-    $speaker.speak_up "Busy queues: #{bq} out of #{@queues.map{|k,_| k}.count}"
+    $speaker.speak_up "Busy queues: #{bq} out of #{@queues.map { |k, _| k }.count}"
     $speaker.speak_up LINE_SEPARATOR
     @queues.each do |qname, q|
       wc = get_workers_count(qname)
@@ -152,18 +176,16 @@ class Daemon < EventMachine::Connection
   end
 
   def self.stop
-    return $speaker.speak_up "No daemon running" unless is_daemon?
+    return unless ensure_daemon
     $speaker.speak_up('Will shutdown after pending operations')
     $librarian.quit = true
   end
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, &block)
-    env_flags = {}
-    $env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
-    env_flags['expiration_period'] = continuous.to_i > 0 ? 0 : expiration
     @queues[queue] = [] if @queues[queue].nil?
     @queues_max_pool[queue] = max_pool_size if max_pool_size.to_i > 0
-    @queues[queue] << [jid, internal, task, env_flags, client, args, block, Thread.current]
+    @queues[queue] << [jid, internal, task, dump_env_flags(continuous.to_i > 0 ? 0 : expiration),
+                       client, args, block, Thread.current]
     @threads[queue] = {} if @threads[queue].nil?
     @last_execution[task] = Time.now
     incremente_children(Thread.current)

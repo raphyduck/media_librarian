@@ -18,7 +18,7 @@ class TorrentSearch
     $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
     progress = -1 if download[:torrent_id].to_s == '' && Time.parse(download[:updated_at]) < Time.now - 1.hour
     if progress >= 0
-      status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress','state'])
+      status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress', 'state'])
       progress = status['progress'].to_i rescue -1
       state = status['state'].to_s rescue ''
     end
@@ -26,13 +26,11 @@ class TorrentSearch
     return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
-      Cache.entry_seen('global', identifier) unless identifier.to_s[0..6].include?('book')
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
       $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0 rescue nil
       $db.update_rows('torrents', {:status => -1}, {:name => download[:name]})
     end
-    Cache.entry_delete('download', identifier)
   end
 
   def self.check_all_download(timeout: 10)
@@ -56,9 +54,9 @@ class TorrentSearch
     case type
       when 'rarbg'
         {
-            :movies => [14,48,17,44,45,47,50,51,52,42,46],
-            :shows => [18,41,49],
-            :music => [23,25]
+            :movies => [14, 48, 17, 44, 45, 47, 50, 51, 52, 42, 46],
+            :shows => [18, 41, 49],
+            :music => [23, 25]
         }.fetch(category.to_sym, nil)
       when 'thepiratebay'
         {
@@ -294,28 +292,12 @@ class TorrentSearch
       t[:files].map { |ff| ff.merge(attrs) } if t[:files]
     end
     subset.flatten!
-    subset.map { |t| t[:files].select! { |ll| ll[:type].to_s != 'torrent' } if t[:files]; t[:files].uniq! if t[:files]; t }
-    subset.select! { |t| !Cache.entry_deja_vu?('download', t[:identifiers]) }
-    $db.get_rows('torrents', {}, {'identifier like' => "%#{f[:identifier]}%"}).each do |d|
-      d[:tattributes] = Cache.object_unpack(d[:tattributes])
-      if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2
-        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
-        $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
-        next
-      end
-      next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
-      t = -1
-      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0 && d[:status].to_i < 2
-        $speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
-        t = 1
-      elsif d[:status].to_i >= 0
-        t = 2
-      elsif Env.debug?
-        $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
-      end
+    subset.map! { |t| t[:files].select! { |ll| ll[:type].to_s != 'torrent' } if t[:files]; t[:files].uniq! if t[:files]; t }
+    Cache.torrent_get(f[:identifier], f_type).each do |d|
       subset.select! { |tt| tt[:name] != d[:name] }
-      subset << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0 && d[:status].to_i < 2
+      subset << d
     end
+    _, qualities['min_quality'] = MediaInfo.qualities_set_minimum(f, qualities['min_quality'])
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
     if subset.empty?
@@ -337,24 +319,24 @@ class TorrentSearch
           $speaker.speak_up("Link: #{URI.escape(torrent[:link].to_s)}")
         end
         $speaker.speak_up("Tracker: #{torrent[:tracker]}")
-        $speaker.speak_up("Already  in DB") if torrent[:in_db].to_i > 0
+        $speaker.speak_up("Already in DB") if torrent[:in_db].to_i > 0
         i += 1
       end
     end
     download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
     return unless subset[download_id.to_i - 1]
     Utils.lock_block(__method__.to_s) {
-      return if Cache.entry_deja_vu?('download', subset[download_id.to_i - 1][:identifiers])
+      return if subset[download_id.to_i - 1][:in_db].to_i > 0 && subset[download_id.to_i - 1][:download_now].to_i > 2
       torrent_download(subset[download_id.to_i - 1], no_prompt)
     }
   end
 
-  def self.processing_results(filter:, sources: {}, existing_files: {}, results: nil, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
+  def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter = [] if filter.nil?
     filter.select! do |f|
       add = f[:full_name].to_s != '' && f[:identifier].to_s != ''
-      add = !Cache.entry_deja_vu?('download', f[:identifiers]) if add
+      add = !Cache.torrent_deja_vu?(f[:identifier], qualities, f[:f_type]) if add
       add
     end
     if results.nil? || results.empty?
@@ -367,12 +349,14 @@ class TorrentSearch
           p.to_i > 0
         end
         $speaker.speak_up "Releases for '#{ts[:name]} (id '#{i}) have #{propers.count} proper torrent" if Env.debug?
-        if !existing_files.nil? && !existing_files.empty? && propers.count > 0 && filter.select { |f| f[:identifier] == i }.empty? &&
-            !existing_files.map { |_, f| f[:name] }.include?(ts[:name]).empty?
-          $speaker.speak_up "Will add torrents for '#{ts[:name]}' (id '#{i}') because of proper or no filter" if Env.debug?
-          f_i = ts.select { |k, _| k != :files }
-          f_i[:files] = existing_files[i] ? existing_files[i][:files] : []
-          filter << f_i
+        if propers.count > 0 && filter.select { |f| f[:series_name] == ts[:series_name] }.empty?
+          $speaker.speak_up "Will add torrents for '#{ts[:name]}' (id '#{i}') because of proper" if Env.debug?
+          ts[:files] = if existing_files[ts[:identifier]] && existing_files[ts[:identifier]][:files].is_a?(Array)
+                         existing_files[ts[:identifier]][:files]
+                       else
+                         []
+                       end
+          filter << ts
         end
       end
     end
@@ -380,17 +364,19 @@ class TorrentSearch
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
       Librarian.route_cmd(
-          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities, no_prompt, download_criteria],
+          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria],
           1,
           'torrent'
       )
     end
   end
 
-  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, existing_files: {}, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil)
-    search_list = {}
+  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil)
+    search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
-      search_list.merge!(Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination))
+      slist, elist = Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination, qualities: qualities)
+      search_list.merge!(slist)
+      existing_files.merge!(elist)
     end
     $speaker.speak_up "Empty searchlit" if Env.debug? && search_list.empty?
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
