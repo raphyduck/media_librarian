@@ -419,7 +419,7 @@ class Library
           end
         elsif VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
           rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
-          process_folder(ttype, rf, '', 0, {}, {}, 1)
+          process_folder(type: ttype, folder: rf, remove_duplicates: 1, no_prompt: 1)
           handled = 1
         else
           #TODO: Handle flac,...
