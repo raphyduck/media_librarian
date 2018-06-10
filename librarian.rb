@@ -196,7 +196,7 @@ class Librarian
   def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
     r = 0
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
+      r = Daemon.thread_cache_add("#{Thread.current[:object]}#{queue}", args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
@@ -218,7 +218,7 @@ class Librarian
   end
 
   def self.run_command(cmd, direct = 0, object = '', &block)
-    object = cmd[0..1].join(' ') if object == 'rcv'
+    object = cmd[0..1].join(' ') if object == 'rcv' || object.to_s == ''
     init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
       m = cmd.shift
@@ -229,25 +229,25 @@ class Librarian
       $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
-    terminate_command(Thread.current, nil, object)
+    terminate_command(Thread.current)
   rescue => e
     $speaker.tell_error(e, "Librarian.run_command(#{object}")
-    terminate_command(Thread.current, "Error on #{object}", object)
+    terminate_command(Thread.current, "Error on #{object}")
   end
 
-  def self.terminate_command(thread, object = nil, cmd = nil)
+  def self.terminate_command(thread, object = nil)
     return unless thread[:base_thread].nil?
     return if thread[:childs].to_i > 0
-    if thread[:direct].to_i == 0
-      $speaker.speak_up("Command #{cmd} executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
-      Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif?
+    if thread[:direct].to_i == 0 || Env.debug?
+      $speaker.speak_up("Command '#{thread[:object]}' executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
+      Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     end
     thread[:block].call if thread[:block]
     if thread[:parent]
       Utils.lock_block("merge_child_thread#{thread[:object]}") {
         Daemon.merge_notifications(thread, thread[:parent])
         Daemon.decremente_children(thread[:parent])
-        terminate_command(thread[:parent], object, cmd)
+        terminate_command(thread[:parent], object)
       }
     end
   end
