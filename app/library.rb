@@ -378,7 +378,7 @@ class Library
     full_p = torrent_path + '/' + torrent_name
     handled = 0
     handled_files = (
-    if (!handling['file_types'].nil? && handling['file_types'].is_a?(Array))
+    if !handling['file_types'].nil? && handling['file_types'].is_a?(Array)
       handling['file_types'].map { |o| o.is_a?(Hash) ? o.map { |k, _| k } : o } + ['rar', 'zip']
     else
       ['rar', 'zip']
@@ -409,7 +409,7 @@ class Library
           $speaker.speak_up 'File is already hard linked, skipping...'
           return handled
         end
-        rf = "#{completed_folder}/#{type}"
+        rf = "#{destination_folder}/#{type}"
         type.downcase!
         ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
         item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
