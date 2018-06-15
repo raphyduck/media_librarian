@@ -153,10 +153,11 @@ class Librarian
     end
   end
 
-  def self.burst_thread(client = nil, parent = nil, envf = Daemon.dump_env_flags, &block)
+  def self.burst_thread(client = nil, parent = nil, envf = Daemon.dump_env_flags, child = 0, &block)
     t = Thread.new do
       $args_dispatch.set_env_variables($env_flags, envf)
       reset_notifications(t)
+      t[:log_msg] = '' if child.to_i > 0
       t[:current_daemon] = client || Thread.current[:current_daemon]
       t[:parent] = parent
       block.call
@@ -196,7 +197,7 @@ class Librarian
   def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
     r = 0
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
+      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], 43200, 1, &block)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'

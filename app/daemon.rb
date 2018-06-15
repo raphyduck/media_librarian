@@ -62,7 +62,7 @@ class Daemon < EventMachine::Connection
       if get_workers_count(qname) < max_pool_size(qname)
         args = q.shift
         next if args.nil?
-        t = Librarian.burst_thread(args[4], args[7], args[3]) { Librarian.run_command(args[5], args[1], args[2], &args[6]) }
+        t = Librarian.burst_thread(args[4], args[8], args[3], args[7]) { Librarian.run_command(args[5], args[1], args[2], &args[6]) }
         t[:jid] = args[0]
         @threads[qname]['working'] << t
       end
@@ -75,7 +75,7 @@ class Daemon < EventMachine::Connection
 
   def self.merge_notifications(t, parent = Thread.current)
     return if parent[:email_msg].nil?
-    $speaker.speak_up(t[:log_msg].to_s, -1, parent)
+    $speaker.speak_up(t[:log_msg].to_s, -1, parent) if t[:log_msg]
     parent[:email_msg] << t[:email_msg].to_s
     parent[:send_email] = t[:send_email].to_i if t[:send_email].to_i > 0
   end
@@ -183,11 +183,11 @@ class Daemon < EventMachine::Connection
     $librarian.quit = true
   end
 
-  def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, &block)
+  def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
     @queues[queue] = [] if @queues[queue].nil?
     @queues_max_pool[queue] = max_pool_size if max_pool_size.to_i > 0
     @queues[queue] << [jid, internal, task, dump_env_flags(continuous.to_i > 0 ? 0 : expiration),
-                       client, args, block, Thread.current]
+                       client, args, block, child, Thread.current]
     @threads[queue] = {} if @threads[queue].nil?
     @last_execution[task] = Time.now
     incremente_children(Thread.current)
