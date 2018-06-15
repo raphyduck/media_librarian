@@ -283,7 +283,7 @@ class TorrentSearch
             post_actions: f.select { |key, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps].include?(key) }.deep_dup,
             filter_keyword: filter_k
         )
-        break unless results.empty?
+        break unless results.empty? #&& Cache.torrent_get(f[:identifier], f_type).empty?
       end
     end
     subset = MediaInfo.media_get(results, f[:identifiers], f_type).map { |_, t| t }
@@ -301,7 +301,7 @@ class TorrentSearch
     filtered = MediaInfo.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
     if subset.empty?
-      $speaker.speak_up("No torrent found!", 0) if Env.debug?
+      $speaker.speak_up("No torrent found for #{f[:full_name]}!", 0) if Env.debug?
       return
     end
     if no_prompt.to_i == 0 || Env.debug?
@@ -366,7 +366,7 @@ class TorrentSearch
       Librarian.route_cmd(
           ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria],
           1,
-          'torrent'
+          "#{Thread.current[:object]}torrent"
       )
     end
   end

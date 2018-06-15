@@ -196,7 +196,7 @@ class Librarian
   def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
     r = 0
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add("#{Thread.current[:object]}#{queue}", args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
+      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], &block)
     elsif $librarian.pid_status($pidfile) == :running
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'

@@ -81,7 +81,7 @@ class TvSeries
           next if k.is_a?(Symbol)
           MediaInfo.qualities_file_filter(f, qualities)
         end
-        episodes_in_files[:shows].each do |series_name, show|
+        episodes_in_files[:shows].sort_by {|series_name, _| series_name}.each do |series_name, show|
           _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
           tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
           existing_season_eps, qualifying_season_eps, last_season = {}, {}, nil

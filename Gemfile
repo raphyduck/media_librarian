@@ -20,9 +20,9 @@ gem 'pdf-reader', :require => false
 gem 'poltergeist', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
 gem 'ruby-mp3info', :git => 'https://github.com/raphyduck/ruby-mp3info.git', :require => false
-gem 'simple_args_dispatch', :require => false
-gem 'simple_config_man', :require => false
-gem 'simple_speaker', '~>0.2.3', :require => false
+gem 'simple_args_dispatch', '~>0.4.0', :require => false
+gem 'simple_config_man', '~>0.3.8', :require => false
+gem 'simple_speaker', '~>0.3.0', :require => false
 gem 'sqlite3', :require => false
 gem 'sys-filesystem', :require => false
 gem 'titleize', :require => false
