@@ -9,7 +9,7 @@ class TvSeries
     @id = @tvdb_id
     @language = options['language']
     @name = options["name"] || options['SeriesName']
-    @overview = options["overview"] || options['Overview']
+    @overview = options["overview"] || options['Overview'] || options['summary']
     @network = options["network"] || options['Network']
     @runtime = options["runtime"]
     @air_time = options['air_time']
@@ -21,6 +21,10 @@ class TvSeries
     @rating_count = options["rating_count"]
     @first_aired = options["first_aired"] || options['FirstAired'] || options['premiered']
     @url = options['url']
+  end
+
+  def anthology?
+    @overview.downcase.include?('anthology')
   end
 
   def self.ep_name_to_season(name)

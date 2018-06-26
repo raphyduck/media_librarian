@@ -173,7 +173,7 @@ module FileUtils
       else
         rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
       end
-      $speaker.speak_up("rm #{files}") if Env.debug?
+      $speaker.speak_up("Removing file '#{files}'")
       file_remove_parents(files)
     end
 
@@ -183,7 +183,7 @@ module FileUtils
       else
         rm_r_orig(files, force: force, noop: noop, verbose: verbose, secure: secure)
       end
-      $speaker.speak_up("rm_r #{files}") if Env.debug?
+      $speaker.speak_up("Removing file or directory '#{files}'")
       file_remove_parents(files)
     end
 

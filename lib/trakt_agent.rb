@@ -147,10 +147,12 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
             end
           end
         when 'ended', 'not_ended'
-          break if cr_value.to_i != 0
+          break if cr_value.to_i > 1
           ids = item[type[0...-1]]['ids'] || {}
           _, show = MediaInfo.tv_show_search(title, 1, ids)
-          if show.nil? || (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))
+          if show &&
+              ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))) ||
+              (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.status.downcase != 'ended'))
             delete_it = 1
           end
         when 'released_before', 'released_after'
@@ -166,7 +168,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
           delete_it = 1 unless folders.first
       end
       if delete_it > 0
-        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'") if Env.debug?
+        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'='#{cr_value}'") if Env.debug?
         list.delete(item)
       end
       print '.'

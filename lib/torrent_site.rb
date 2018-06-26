@@ -74,7 +74,7 @@ module TorrentSite
     rescue Net::OpenTimeout
       []
     rescue => e
-      $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links")
+      $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links", 0)
       []
     end
 

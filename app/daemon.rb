@@ -35,7 +35,10 @@ class Daemon < EventMachine::Connection
     @threads[qname]['working'].delete_if do |t|
       if t[:start_time].is_a?(Time) && t[:expiration_period].to_i > 0 && t[:start_time] < Time.now - t[:expiration_period].to_i.seconds
         Report.sent_out("Stuck job #{t[:object].to_s} (jid '#{t[:jid].to_s}')", nil, "Job '#{t[:object].to_s}' (jid '#{t[:jid]}') is stuck, (started at #{t[:start_time].to_s}), will be killed")
-        t.kill
+        while t.alive?
+          t.kill
+          sleep 3
+        end
         Librarian.terminate_command(t)
       end
       t = nil unless t.alive?

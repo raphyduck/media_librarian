@@ -66,9 +66,13 @@ class Library
   def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0, continuous: 0)
     source_folders = {} if source_folders.nil?
     return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
-    complete_list = TraktAgent.list(source_list, '')
-    return $speaker.speak_up("Empty list #{source_list}", 0) if complete_list.empty?
     loop do
+      complete_list = TraktAgent.list(source_list, '')
+      if complete_list.empty?
+        sleep 3600
+        $speaker.speak_up("Empty list #{source_list}", 0)
+        next
+      end
       abort = 0
       list = TraktAgent.parse_custom_list(complete_list)
       path_list = {}
@@ -107,7 +111,7 @@ class Library
             final_path = StringUtils.clean_search(p).gsub("#{source_folders[type]}/", dest_type)
             FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
             $speaker.speak_up "Syncing '#{p}' to '#{final_path}'" if Env.debug?
-            Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
+            Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--partial', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
               if result.success?
                 result.changes.each do |change|
                   $speaker.speak_up "#{change.filename} (#{change.summary})"
@@ -117,8 +121,8 @@ class Library
               end
             end
           end
+          $speaker.speak_up("Finished copying media from #{source_list}!", 0)
         end
-        $speaker.speak_up("Finished copying media from #{source_list}!", 0)
       end
       break unless continuous.to_i > 0
       sleep 86400
@@ -376,7 +380,7 @@ class Library
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {}, force_process: 0, root_process: 1)
     full_p = torrent_path + '/' + torrent_name
-    handled = 0
+    handled, process_folder_list = 0, []
     handled_files = (
     if !handling['file_types'].nil? && handling['file_types'].is_a?(Array)
       handling['file_types'].map { |o| o.is_a?(Hash) ? o.map { |k, _| k } : o } + ['rar', 'zip']
@@ -419,7 +423,7 @@ class Library
           end
         elsif VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
           rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
-          process_folder(type: ttype, folder: rf, remove_duplicates: 1, no_prompt: 1)
+          process_folder_list << [ttype, rf]
           handled = 1
         else
           #TODO: Handle flac,...
@@ -431,8 +435,13 @@ class Library
         $speaker.speak_up 'File type not handled, skipping...'
       end
     end
-    $speaker.speak_up('Could not find any file to handle!') if root_process.to_i > 0 && handled == 0
-    handled
+    if root_process.to_i > 0
+      $speaker.speak_up('Could not find any file to handle!') if handled == 0
+      process_folder_list.each do |p|
+        process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
+      end
+    end
+    return handled, process_folder_list
   end
 
   def self.handle_duplicates(files, remove_duplicates = 0, no_prompt = 0)

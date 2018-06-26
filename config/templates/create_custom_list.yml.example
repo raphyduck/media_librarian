@@ -23,7 +23,7 @@ criteria:
       - A title to keep in the list
       - A second title
     noadd: 0
-    not_ended: 1
+    not_ended: 2 #If = 1, then anthology will be added but not regular shows that are not ended
     partially_watched: 1
     review:
       add_all: 0
