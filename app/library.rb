@@ -389,14 +389,14 @@ class Library
     end).flatten
     if FileTest.directory?(full_p)
       FileUtils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s}).each do |f|
-        handled += handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, root_process: 0)
+        handled += handle_completed_download(torrent_path: File.dirname(f[0]), torrent_name: File.basename(f[0]), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, root_process: 0)[0]
       end
     else
       $speaker.speak_up "Handling downloaded file '#{full_p}'" if Env.debug?
       extension = torrent_name.gsub(/.*\.(\w{2,4}$)/, '\1')
       if ['rar', 'zip'].include?(extension)
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extracted')
-        handled += handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, root_process: 0)
+        handled += handle_completed_download(torrent_path: torrent_path, torrent_name: 'extracted', completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, root_process: 0)[0]
         FileUtils.rm_r(torrent_path + '/extracted')
       elsif handling['file_types']
         if force_process.to_i == 0 && !handled_files.include?(extension)
@@ -419,7 +419,7 @@ class Library
         item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
         if args && args['convert_comics'].to_s != ''
           Book.convert_comics(full_p, extension, args['convert_comics'], 1).each do |nf|
-            handled += handle_completed_download(torrent_path: File.dirname(nf), torrent_name: File.basename(nf), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, force_process: force_process, root_process: 0)
+            handled += handle_completed_download(torrent_path: File.dirname(nf), torrent_name: File.basename(nf), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, force_process: force_process, root_process: 0)[0]
           end
         elsif VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
           rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
