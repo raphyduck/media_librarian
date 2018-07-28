@@ -76,7 +76,7 @@ class Movie
     cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
     cached = Cache.cache_get(type, cache_name)
     return cached if cached
-    title = ''
+    title, full_save = '', movie
     case type
     when 'movie_get'
       if movie.nil? && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
@@ -84,6 +84,7 @@ class Movie
       end
       movie = $tmdb.movie(ids['tmdb'] || ids['imdb']) rescue nil if (movie.nil? || movie['error']) && (ids['tmdb'] || ids['imdb']).to_s != ''
       movie = Movie.new(Cache.object_pack(movie, 1)) if movie
+      full_save = movie
       title = movie.name if movie&.name.to_s != ''
     when 'movie_set_get'
       if ids['tmdb'].to_s == ''
@@ -94,9 +95,9 @@ class Movie
       movie = $tmdb.collection(m.set.id) if $tmdb && m&.set.to_s != ''
       movie = MoviesSet.new(Cache.object_pack(movie, 1)) if movie.is_a?(Hash)
       title = movie.name if movie&.name.to_s != ''
-      movie = {} unless movie
+      full_save = movie || {}
     end
-    Cache.cache_add(type, cache_name, [title, movie], movie)
+    Cache.cache_add(type, cache_name, [title, movie], full_save)
     return title, movie
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
