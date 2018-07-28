@@ -62,7 +62,7 @@ class LibraryBus
 
   def self.put_in_queue(value, thread = Thread.current)
     if value.nil?
-      $speaker.speak_up "Value is nil" if Env.debug?
+      $speaker.speak_up "Value of thread[#{thread[:object]}] is nil" if Env.debug?
       return
     end
     if @buses[bus_id(thread)].nil?

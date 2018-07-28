@@ -54,6 +54,7 @@ class TorrentClient
   end
 
   def find_main_file(status)
+    #TODO: If cant find main file for movies or episode, and if the files are not archives, we need to discard the torrent
     status['files'].each do |file|
       if file['size'].to_i > (status['total_size'].to_i * 0.9)
         return file
@@ -154,7 +155,9 @@ class TorrentClient
         end
         (opts || {}).each do |did, o|
           torrent_cache = $db.get_rows('torrents', {:name => o[:t_name]}).first
-          $db.update_rows('torrents', {:torrent_id => tid}) if torrent_cache && torrent_cache[:torrent_id].nil?
+          if torrent_cache && torrent_cache[:torrent_id].nil?
+            $db.update_rows('torrents', {:torrent_id => tid}, {:name => torrent_cache[:name]})
+          end
           set_options = {}
           if (o[:rename_main] && o[:rename_main] != '') || (o[:main_only] && o[:main_only].to_i > 0)
             main_file = find_main_file(status)

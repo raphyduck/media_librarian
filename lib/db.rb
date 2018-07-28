@@ -137,7 +137,7 @@ module Storage
         query_log.sub!(/([\(,])\?([\),])/, '\1\'' + v.to_s[0..100] + '\'\2')
       end
       return $speaker.speak_up("Would #{query_log}") if Env.pretend? && write > 0
-      $speaker.speak_up("Executing SQL query: '#{query_str}'", 0) if Env.debug?
+      $speaker.speak_up("Executing SQL query: '#{query_log}'", 0) if Env.debug?
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
       Utils.lock_block("db_#{table}") {
         ins = @s_db.prepare(query)

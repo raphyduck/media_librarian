@@ -422,7 +422,7 @@ class MediaInfo
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
     pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.join('|') + ')' + SEP_CHARS + '))')).
         map {|q| q[2]}.flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26')
     end.uniq.flatten
     pq = parse_3d(filename, pq)
     pq

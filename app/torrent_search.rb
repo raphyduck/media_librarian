@@ -379,8 +379,8 @@ class TorrentSearch
       search_list.merge!(slist)
       existing_files.merge!(elist)
     end
-    $speaker.speak_up "Empty searchlist" if Env.debug? && search_list.empty?
-    $speaker.speak_up "No trackers source configured!" if Env.debug? && (torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?)
+    $speaker.speak_up "Empty searchlist" if search_list.empty?
+    $speaker.speak_up "No trackers source configured!" if (torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?)
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
     authenticate_all(torrent_sources['trackers'])
     results = case torrent_sources['type'].to_s

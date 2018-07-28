@@ -404,32 +404,34 @@ class Library
   end
 
   def self.get_search_list(source_type, category, source, no_prompt = 0)
-    search_list = {}
-    #TODO: Cache this
-    return search_list unless source['existing_folder'] && source['existing_folder'][category]
-    case source_type
-    when 'filesystem'
-      search_list = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
-    when 'trakt'
-      $speaker.speak_up('Parsing trakt list, can take a long time...', 0)
-      TraktAgent.list(source['list_name']).each do |item|
-        type = item['type'] rescue next
-        f = item[type]
-        type = Utils.regularise_media_type(type)
-        next if Time.now.year < (f['year'] || Time.now.year + 3)
-        search_list = parse_media({:type => 'trakt', :name => "#{f['title']} (#{f['year']})".gsub('/', ' ')},
-                                  type,
-                                  no_prompt,
-                                  search_list,
-                                  {},
-                                  {},
-                                  {:trakt_obj => f, :trakt_list => source['list_name'], :trakt_type => type},
-                                  '',
-                                  f['ids']
-        )
+    return {} unless source['existing_folder'] && source['existing_folder'][category]
+    search_list, cache_name = {}, "#{source_type}#{category}#{source['existing_folder'][category]}"
+    Utils.lock_block(__method__.to_s + cache_name) do
+      search_list = BusVariable.new('search_list', Vash)
+      case source_type
+      when 'filesystem'
+        search_list[cache_name, CACHING_TTL] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
+      when 'trakt'
+        $speaker.speak_up('Parsing trakt list, can take a long time...', 0)
+        TraktAgent.list(source['list_name']).each do |item|
+          type = item['type'] rescue next
+          f = item[type]
+          type = Utils.regularise_media_type(type)
+          next if Time.now.year < (f['year'] || Time.now.year + 3)
+          search_list[cache_name, CACHING_TTL] = parse_media({:type => 'trakt', :name => "#{f['title']} (#{f['year']})".gsub('/', ' ')},
+                                                             type,
+                                                             no_prompt,
+                                                             search_list[cache_name] || {},
+                                                             {},
+                                                             {},
+                                                             {:trakt_obj => f, :trakt_list => source['list_name'], :trakt_type => type},
+                                                             '',
+                                                             f['ids']
+          )
+        end
       end
     end
-    search_list
+    search_list[cache_name] || {}
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {}, force_process: 0, root_process: 1)
@@ -532,11 +534,11 @@ class Library
           MediaInfo.qualities_file_filter(f, qualities)
         end
         missing_media[cache_name, CACHING_TTL] = case type
-                                                  when 'shows'
-                                                    TvSeries.list_missing_episodes(files, qualifying_files, no_prompt, delta, include_specials, qualities)
-                                                  when 'movies'
-                                                    MoviesSet.list_missing_movie(files, qualifying_files, no_prompt, delta)
-                                                  end
+                                                 when 'shows'
+                                                   TvSeries.list_missing_episodes(files, qualifying_files, no_prompt, delta, include_specials, qualities)
+                                                 when 'movies'
+                                                   MoviesSet.list_missing_movie(files, qualifying_files, no_prompt, delta)
+                                                 end
       end
     }
     missing_media[cache_name]
