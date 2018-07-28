@@ -292,7 +292,7 @@ class TorrentSearch
       t[:files].map {|ff| ff.merge(attrs)} if t[:files]
     end
     subset.flatten!
-    subset.map! {|t| t[:files].select! {|ll| ll[:type].to_s != 'torrent'} if t[:files]; t[:files].uniq! if t[:files]; $speaker.speak_up "t[:files]=#{DataUtils.dump_variable(t[:files], 2)}"; t}
+    subset.map! {|t| t[:files].select! {|ll| ll[:type].to_s != 'torrent'} if t[:files]; t[:files].uniq! if t[:files]; t}
     Cache.torrent_get(f[:identifier], f_type).each do |d|
       subset.select! {|tt| tt[:name] != d[:name]}
       subset << d if d[:download_now].to_i >= 0

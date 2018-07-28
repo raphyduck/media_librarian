@@ -80,7 +80,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.max_pool_size(qname)
-    return $workers_pool_size.to_i unless @queues[qname]
+    return [$workers_pool_size.to_i, 1].max unless @queues[qname]
     [(@queues[qname][:max_pool_size] || $workers_pool_size.to_i), 1].max
   end
 
