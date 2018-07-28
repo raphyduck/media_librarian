@@ -75,7 +75,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    $speaker.tell_error(e, "traktList.get_history")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
@@ -104,7 +104,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    $speaker.tell_error(e, "TraktAgent.get_watched")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
@@ -176,11 +176,12 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     $speaker.speak_up('done!', 0)
     list
   rescue => e
-    $speaker.tell_error(e, "TraktAgent.filter_trakt_list")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     list
   end
 
   def self.list(name = 'watchlist', type = 'movies')
+    tries ||= 3
     authenticate!
     case name
       when 'watchlist'
@@ -195,8 +196,13 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     end
     list
   rescue => e
-    $speaker.tell_error(e, "TraktAgent.list")
-    []
+    if (tries -= 1).to_i >= 0
+      sleep 120
+      retry
+    else
+      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      []
+    end
   end
 
   def self.list_cache_add(list_name, type, item, id = Time.now.to_i)

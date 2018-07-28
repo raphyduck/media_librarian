@@ -1,8 +1,6 @@
 class BookSeries
   attr_accessor :name, :goodread_id, :description
 
-  @book_series = Vash.new
-
   def initialize(opts)
     @name = (opts['name'] || opts['title'] || opts[:name] || opts[:title]).to_s.strip
     @goodread_id = opts['goodread_id'] || opts['id']
@@ -38,7 +36,7 @@ class BookSeries
     Cache.cache_add('book_series_search', cache_name, [exact_title, series], series)
     return exact_title, series
   rescue => e
-    $speaker.tell_error(e, "BookSeries.book_series_search")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('book_search', cache_name, ['', nil], nil)
     return '', nil
   end
@@ -53,30 +51,31 @@ class BookSeries
     Cache.cache_add('books_series_get', goodread_series_id.to_s, [title, series], series)
     return title, series
   rescue => e
-    $speaker.tell_error(e, "BookSeries.get_series")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('books_series_get', goodread_series_id.to_s, ['', nil], nil)
     return '', nil
   end
 
   def self.subscribe_series(no_prompt = 1)
     cache_name = 'subscribe_series'
-    return @book_series[cache_name] if @book_series[cache_name] && !@book_series[cache_name].empty?
-    @book_series[cache_name, CACHING_TTL] = {}
-    Utils.lock_block(__method__.to_s + cache_name) {
+    book_series = BusVariable.new('book_series', Vash)
+    return book_series[cache_name] if book_series[cache_name] && !book_series[cache_name].empty?
+    book_series[cache_name, CACHING_TTL] = {}
+    Utils.lock_block("#{__method__}_#{cache_name}") {
       series = Book.existing_books(no_prompt)
       (series[:book_series] || {}).each do |series_name, s|
         full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'books', s, series_name, no_prompt)
-        @book_series[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
+        book_series[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
                                                                     'books',
                                                                     full_name,
                                                                     identifiers,
                                                                     info,
                                                                     {},
                                                                     {},
-                                                                    @book_series[cache_name]
+                                                                    book_series[cache_name]
         )
       end
     }
-    @book_series[cache_name]
+    book_series[cache_name]
   end
 end

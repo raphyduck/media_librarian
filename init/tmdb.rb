@@ -1,0 +1,1 @@
+$tmdb = Tmdb.new($config['tmdb']['api_key']) if $config['tmdb'] && $config['tmdb']['api_key']

@@ -15,12 +15,12 @@ filter_sources:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'
     include_specials: 1 #For tv shows
-    replace: 1
     filter_criteria:
       days_newer:
       days_older:
     delta: 10
     upgrade: 1 #if '1', will try to download episodes of better qualities if available
+    get_missing_set: 1 #If '1', will look for missing movies from a given set
   search:
     keywords:
       - 'keyword'
@@ -30,6 +30,7 @@ filter_sources:
     include_specials: 1 #For tv shows
     delta: 10
     upgrade: 1 #if '1', will try to download episodes of better qualities if available
+    get_missing_set: 1 #If '1', will look for missing movies from a given set
     existing_folder:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'

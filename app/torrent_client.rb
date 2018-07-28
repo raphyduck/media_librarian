@@ -1,6 +1,6 @@
 class TorrentClient
 
-  def initialize()
+  def initialize
     @deluge = Deluge::Rpc::Client.new(
         host: $config['deluge']['host'], port: 58846,
         login: $config['deluge']['username'], password: $config['deluge']['password']
@@ -8,7 +8,7 @@ class TorrentClient
     @deluge_connected = nil
     @tdid = 0
   rescue => e
-    $speaker.tell_error(e, "TorrentClient.new")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     raise
   end
 
@@ -61,7 +61,7 @@ class TorrentClient
     end
     nil
   rescue => e
-    $speaker.tell_error(e, "torrentclient.find_main_file")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def listen

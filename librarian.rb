@@ -1,9 +1,7 @@
-MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3
-sys-filesystem)
+MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find goodreads io/console
-imdb_party mechanize mp3info net/ssh pdf/reader rsync shellwords sys/filesystem titleize
-trakt tvdb_party tvmaze unrar xbmc-client yaml)
+active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3
+goodreads io/console imdb_party mechanize mp3info net/ssh pdf/reader rsync shellwords titleize trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -24,11 +22,12 @@ class Librarian
           :start => ['Daemon', 'start'],
           :status => ['Daemon', 'status'],
           :stop => ['Daemon', 'stop'],
-          :reload => ['Daemon', 'reload']
+          :reload => ['Daemon', 'reload'],
+          :dump_bus_variable => ['BusVariable', 'display_bus_variable']
       },
       :books => {
           :compress_comics => ['Book', 'compress_comics'],
-          :convert_comics => ['Book', 'convert_comics'],
+          :convert_comics => ['Library', 'convert_media'],
       },
       :library => {
           :compare_remote_files => ['Library', 'compare_remote_files'],
@@ -42,6 +41,7 @@ class Librarian
       },
       :music => {
           :create_playlists => ['Muic', 'create_playlists'],
+          :convert_songs => ['Library', 'convert_media'],
       },
       :torrent => {
           :check_all_download => ['TorrentSearch', 'check_all_download'],
@@ -153,13 +153,15 @@ class Librarian
     end
   end
 
-  def self.burst_thread(client = nil, parent = nil, envf = Daemon.dump_env_flags, child = 0, &block)
+  def self.burst_thread(tid = Daemon.job_id, client = nil, parent = nil, envf = Daemon.dump_env_flags, child = 0, &block)
     t = Thread.new do
       $args_dispatch.set_env_variables($env_flags, envf)
-      reset_notifications(t)
-      t[:log_msg] = '' if child.to_i > 0
-      t[:current_daemon] = client || Thread.current[:current_daemon]
-      t[:parent] = parent
+      reset_notifications(Thread.current)
+      Thread.current[:log_msg] = '' if child.to_i > 0
+      Thread.current[:current_daemon] = client || Thread.current[:current_daemon]
+      Thread.current[:parent] = parent
+      Thread.current[:jid] = tid
+      LibraryBus.initialize_queue(Thread.current)
       block.call
     end
     t
@@ -187,6 +189,7 @@ class Librarian
     t[:start_time] = Time.now
     t[:direct] = direct
     t[:block] = block
+    t[:is_active] = 1
   end
 
   def self.reconfigure
@@ -194,11 +197,10 @@ class Librarian
     SimpleConfigMan.reconfigure($config_file, $config_example)
   end
 
-  def self.route_cmd(args, internal = 0, queue = 'exclusive', &block)
-    r = 0
+  def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 0, &block)
     if Daemon.is_daemon?
-      r = Daemon.thread_cache_add(queue, args, Daemon.job_id, queue, internal, 0, 0, Thread.current[:current_daemon], 43200, 1, &block)
-    elsif $librarian.pid_status($pidfile) == :running
+      Daemon.thread_cache_add(Thread.current[:jid], args, Daemon.job_id, task, internal, max_pool_size, 0, Thread.current[:current_daemon], 43200, 1, &block)
+    elsif $librarian.pid_status($pidfile) == :running && internal.to_i == 0
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
       EventMachine.run do
@@ -210,7 +212,6 @@ class Librarian
       run_command(args, internal)
       Librarian.flush_queues if internal.to_i == 0
     end
-    r
   end
 
   def self.reset_notifications(t)
@@ -220,35 +221,38 @@ class Librarian
 
   def self.run_command(cmd, direct = 0, object = '', &block)
     object = cmd[0..1].join(' ') if object == 'rcv' || object.to_s == ''
+    thread_value = nil
     init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
       m = cmd.shift
       a = cmd.shift
       p = Object.const_get(m).method(a.to_sym)
-      cmd.nil? ? p.call : p.call(*cmd)
+      thread_value = cmd.nil? ? p.call : p.call(*cmd)
     else
       $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
-      $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
+      thread_value = $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
-    terminate_command(Thread.current)
+    Thread.current[:is_active] = 0
+    terminate_command(Thread.current, thread_value)
   rescue => e
-    $speaker.tell_error(e, "Librarian.run_command(#{object}")
-    terminate_command(Thread.current, "Error on #{object}")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    Thread.current[:is_active] = 0
+    terminate_command(Thread.current, thread_value, "Error on #{object}")
   end
 
-  def self.terminate_command(thread, object = nil)
+  def self.terminate_command(thread, thread_value = nil, object = nil, caller = Thread.current)
     return unless thread[:base_thread].nil?
-    return if thread[:childs].to_i > 0
+    return if Daemon.get_children_count(thread[:jid], caller[:jid]).to_i > 0 || thread[:is_active].to_i > 0
+    LibraryBus.put_in_queue(thread_value)
     if thread[:direct].to_i == 0 || Env.debug?
-      $speaker.speak_up("Command '#{thread[:object]}' executed in #{(Time.now - thread[:start_time])} seconds", 0, thread)
+      $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
       Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     end
     thread[:block].call if thread[:block]
     if thread[:parent]
-      Utils.lock_block("merge_child_thread#{thread[:object]}") {
+      Utils.lock_block("merge_child_thread_#{thread[:object]}") {
         Daemon.merge_notifications(thread, thread[:parent])
-        Daemon.decremente_children(thread[:parent])
-        terminate_command(thread[:parent], object)
+        terminate_command(thread[:parent], thread_value, object, thread)
       }
     end
   end

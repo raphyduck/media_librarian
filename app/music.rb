@@ -1,5 +1,16 @@
 class Music
 
+  def self.convert_songs(path, dest_file, input_format, output_format = 'mp3', qualities = nil)
+    destination = dest_file.gsub(/(.*)\.[\w\d]{1,4}/, '\1' + ".#{output_format}")
+    case input_format
+      when 'flac' && output_format == 'mp3'
+        f2m = Flac2mp3.new({'encoding' => qualities || ' -b320 -q0'})
+        f2m.convert(path)
+        FileUtils.mv(path.chomp('.flac') + '.mp3', destination)
+    end
+    destination
+  end
+
   def self.create_playlists(folder:, criteria: {}, move_untagged: '', remove_existing_playlists: 1, random: 0)
     folder = "#{folder}/" unless folder[-1] == '/'
     ordered_collection = {}

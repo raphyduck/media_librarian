@@ -8,6 +8,35 @@ class StringUtils
     filename.gsub(Regexp.new(VALID_VIDEO_EXT), '\1')
   end
 
+  def self.commatize(previous)
+    previous != '' ? ', ' : ''
+  end
+
+  def self.intersection(str1, str2)
+    return '' if [str1, str2].any?(&:empty?) || str1[0] != str2[0]
+    matrix = Array.new(str1.length) { Array.new(str2.length) { 0 } }
+    intersection_length = 0
+    intersection_end    = 0
+    str1.length.times do |x|
+      break unless str1[x] == str2[x]
+      str2.length.times do |y|
+        next unless str1[x] == str2[y]
+        matrix[x][y] = 1 + (([x, y].all?(&:zero?)) ? 0 : matrix[x-1][y-1])
+
+        next unless matrix[x][y] > intersection_length
+        intersection_length = matrix[x][y]
+        intersection_end    = x
+      end
+    end
+    intersection_start = intersection_end - intersection_length + 1
+
+    str1.slice(intersection_start..intersection_end)
+  end
+
+  def self.pluralize(number)
+    number > 1 ? "s" : ""
+  end
+
   def self.prepare_str_search(str)
     clear_extension(str).downcase.gsub(/[_]/, ' ')
   end

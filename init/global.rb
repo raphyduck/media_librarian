@@ -27,14 +27,30 @@ FILENAME_NAMING_TEMPLATE=%w(
     proper
     part
 )
-SEP_CHARS='[ \.\(\)\-]'
+VALID_CONVERSION_INPUTS = {
+    :books => ['cbz', 'pdf', 'cbr'],
+    :music => ['flac']
+}
+VALID_CONVERSION_OUTPUT = {
+    :books => ['cbz'],
+    :music => ['mp3']
+}
+VALID_MUSIC_MEDIA_TYPE=['music']
+VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
+EXTENSIONS_TYPE= {
+    :books => %w(cbz cbr pdf),
+    :music => %w(flac mp3),
+    :video => %w(mkv avi mp4 mpg m4v mpg divx)
+}
+VALID_VIDEO_EXT="(.*)\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
+VALID_MUSIC_EXT="(.*)\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
+SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
 SPACE_SUBSTITUTE='\. _'
-VALID_VIDEO_EXT='(.*)\.(mkv|avi|mp4|mpg|m4v|mpg|divx)$'
 BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})(\.(\d))?[\&-]?([exEX](\d{1,2})(\.(\d))?)?[\&-]?([exEX](\d{1,2})(\.(\d))?)?|([\. ]|^)[sS](\d{1,3}))'
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. ]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]]#{VALID_VIDEO_EXT}/
-REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4})?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
-REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+))\)$/
+REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
+REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
 PRIVATE_TRACKERS = {'yggtorrent' => 'https://yggtorrent.is',
                     'torrentleech' => 'https://www.torrentleech.org',
                     'wop' => 'https://worldofp2p.net'}
@@ -44,7 +60,6 @@ FOLDER_HIERARCHY = {
     'shows' => 3,
     'movies' => 0
 }
-VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
 DEFAULT_MEDIA_DESTINATION = {
     'movies' => Dir.home + '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
     'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
@@ -60,6 +75,7 @@ METADATA_SEARCH = {
         :book_search => 6,
         :books_series_get => 7,
         :book_series_search => 8,
-        :movie_get => 9
+        :movie_get => 9,
+        :movie_set_get => 10
     }
 }

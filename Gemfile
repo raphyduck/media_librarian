@@ -8,6 +8,7 @@ gem 'capybara', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'eventmachine', :require => false
 gem 'feedjira', :require => false
+gem 'flac2mp3', :require => false
 gem 'fuzzy-string-match', :require => false
 gem 'goodreads', :git => 'https://github.com/raphyduck/goodreads.git', :require => false
 gem 'hanami-mailer', :require => false
@@ -24,7 +25,6 @@ gem 'simple_args_dispatch', '~>0.4.0', :require => false
 gem 'simple_config_man', '~>0.3.8', :require => false
 gem 'simple_speaker', '~>0.3.0', :require => false
 gem 'sqlite3', :require => false
-gem 'sys-filesystem', :require => false
 gem 'titleize', :require => false
 gem 'trakt', :git => 'https://github.com/raphyduck/trakt.git', :require => false
 gem 'tvdb_party', :require => false

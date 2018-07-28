@@ -71,7 +71,7 @@ module TorrentSite
         get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
       }
       links.first(limit)
-    rescue Net::OpenTimeout
+    rescue Net::OpenTimeout, Faraday::ConnectionFailed, SocketError
       []
     rescue => e
       $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links", 0)

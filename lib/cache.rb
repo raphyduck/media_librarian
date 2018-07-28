@@ -1,9 +1,13 @@
 require File.dirname(__FILE__) + '/vash'
 class Cache
   @tqueues = {}
-  @cache_metadata = Vash.new
+  @cache_metadata = BusVariable.new('cache_metadata', Vash)
 
   def self.cache_add(type, keyword, result, full_save = nil)
+    if keyword.to_s == ''
+      $speaker.speak_up("Empty keyword, not saving cache") if Env.debug?
+      return
+    end
     $speaker.speak_up "Refreshing #{type} cache for #{keyword}#{' will not be saved to db' if full_save.nil?}" if Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = object_pack(result)
@@ -45,7 +49,7 @@ class Cache
   end
 
   def self.object_pack(object, to_hash_only = 0)
-    obj = object.clone
+    obj = object.is_a?(Thread) ? object : object.clone
     oclass = obj.class.to_s
     if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(obj.class)
       obj = obj.to_s
@@ -53,6 +57,8 @@ class Cache
       obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only) }
     elsif obj.is_a?(Hash)
       obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only) }
+    elsif obj.is_a?(Thread)
+      obj = "thread[#{obj[:object]}]"
     else
       obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only) }
     end
@@ -106,7 +112,7 @@ class Cache
   end
 
   def self.queue_state_save(qname, value)
-    Utils.lock_block(__method__.to_s + qname) {
+    Utils.lock_block("#{__method__}_#{qname}") {
       @tqueues[qname] = value
       r = object_pack(value)
       $db.insert_row('queues_state', {
@@ -142,7 +148,7 @@ class Cache
         return true
       end
     end
-    $speaker.speak_up "No torrent found for identifier '#{identifier}' at quality (#{qualities})" if Env.debug?
+    $speaker.speak_up "No downloaded torrent found for identifier '#{identifier}' at quality (#{qualities})" if Env.debug?
     false
   end
 
@@ -167,7 +173,7 @@ class Cache
       elsif Env.debug?
         $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
       end
-      torrents << d[:tattributes].merge({:download_now => t, :in_db => 1}) if d[:status].to_i >= 0
+      torrents << d[:tattributes].merge({:download_now => t, :in_db => 1})
     end
     torrents
   end

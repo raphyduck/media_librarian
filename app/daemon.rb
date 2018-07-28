@@ -1,22 +1,22 @@
 class Daemon < EventMachine::Connection
 
   @last_execution = {}
-  @threads = {}
   @last_flush = Time.now
   @last_email_report = {}
   @queues = {}
-  @queues_max_pool = {}
   @is_daemon = false
   @is_quitting = false
+  @childs_sum = {}
   @daemons = []
 
-  def self.decremente_children(t)
-    t[:childs] -= 1 if t[:childs]
+  def self.consolidate_children(thread = Thread.current)
+    wait_for_children(thread)
+    LibraryBus.merge_queue(thread)
   end
 
   def self.dump_env_flags(expiration = 43200)
     env_flags = {}
-    $env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
+    $env_flags.keys.each {|k| env_flags[k.to_s] = Thread.current[k]}
     env_flags['expiration_period'] = expiration
     env_flags
   end
@@ -29,10 +29,13 @@ class Daemon < EventMachine::Connection
     true
   end
 
-  def self.get_workers_count(qname)
-    @threads[qname] = {} if @threads[qname].nil?
-    @threads[qname]['working'] = [] unless @threads[qname]['working']
-    @threads[qname]['working'].delete_if do |t|
+  def self.get_children_count(qname, skip_jid = nil)
+    get_workers_count(qname, skip_jid) + (@queues[qname][:jobs] rescue []).length + Thread.current[:job_added].to_i
+  end
+
+  def self.get_workers_count(qname, skip_jid = nil)
+    return 0 if qname.nil?
+    @queues[qname][:threads].delete_if do |t|
       if t[:start_time].is_a?(Time) && t[:expiration_period].to_i > 0 && t[:start_time] < Time.now - t[:expiration_period].to_i.seconds
         Report.sent_out("Stuck job #{t[:object].to_s} (jid '#{t[:jid].to_s}')", nil, "Job '#{t[:object].to_s}' (jid '#{t[:jid]}') is stuck, (started at #{t[:start_time].to_s}), will be killed")
         while t.alive?
@@ -41,15 +44,18 @@ class Daemon < EventMachine::Connection
         end
         Librarian.terminate_command(t)
       end
-      t = nil unless t.alive?
+      t = nil unless t.alive? && (t[:jid] != skip_jid || skip_jid.nil?)
       t.nil?
     end
-    @threads[qname]['working'].count
+    @queues[qname][:threads].count
+  rescue
+    0
   end
 
-  def self.incremente_children(t)
-    t[:childs] = 0 if t[:childs].nil?
-    t[:childs] += 1
+  def self.init_queue(qname)
+    @queues[qname] = {} if @queues[qname].nil?
+    @queues[qname][:jobs] = [] if @queues[qname][:jobs].nil?
+    @queues[qname][:threads] = [] if @queues[qname][:threads].nil?
   end
 
   def self.is_daemon?
@@ -61,22 +67,25 @@ class Daemon < EventMachine::Connection
   end
 
   def self.launch_command
-    @queues.each do |qname, q|
-      if get_workers_count(qname) < max_pool_size(qname)
-        args = q.shift
-        next if args.nil?
-        t = Librarian.burst_thread(args[4], args[8], args[3], args[7]) { Librarian.run_command(args[5], args[1], args[2], &args[6]) }
-        t[:jid] = args[0]
-        @threads[qname]['working'] << t
+    @queues.keys.each do |qname|
+      (0...max_pool_size(qname)).each do
+        break if @queues[qname][:jobs].empty? || get_workers_count(qname) >= max_pool_size(qname)
+        args = @queues[qname][:jobs].pop
+        @queues[qname][:threads] << Librarian.burst_thread(args[0], args[4], args[8], args[3], args[7]) do
+          Librarian.run_command(args[5], args[1], args[2], &args[6])
+        end
       end
+      remove_queue(qname)
     end
   end
 
   def self.max_pool_size(qname)
-    [(@queues_max_pool[qname] || $workers_pool_size.to_i), 1].max
+    return $workers_pool_size.to_i unless @queues[qname]
+    [(@queues[qname][:max_pool_size] || $workers_pool_size.to_i), 1].max
   end
 
   def self.merge_notifications(t, parent = Thread.current)
+    Utils.lock_time_merge(t, parent)
     return if parent[:email_msg].nil?
     $speaker.speak_up(t[:log_msg].to_s, -1, parent) if t[:log_msg]
     parent[:email_msg] << t[:email_msg].to_s
@@ -104,37 +113,43 @@ class Daemon < EventMachine::Connection
     $librarian.reload = true
   end
 
+  def self.remove_queue(qname)
+    return if get_children_count(qname).to_i > 0 || qname.nil?
+    @queues.delete(qname)
+  end
+
   def self.schedule(jobs)
     ['periodic', 'continuous'].each do |type|
       (jobs[type] || {}).each do |task, params|
         args = params['command'].split('.')
-        args += params['args'].map { |a, v| "--#{a}=#{v.to_s}" } if params['args'].is_a?(Hash)
+        args += params['args'].map {|a, v| "--#{a}=#{v.to_s}"} if params['args'].is_a?(Hash)
         args += params['args'] if params['args'].is_a?(Array)
         case type
-          when 'periodic'
-            freq = Utils.timeperiod_to_sec(params['every']).to_i
-            thread_cache_add('exclusive', args, job_id, task, 0, params['max_pool_size'] || 0, 0, Thread.current[:current_daemon], params['expiration'] || 43200) if @last_execution[task].nil? || Time.now > @last_execution[task] + freq.seconds
-          when 'continuous'
-            if queue_busy?(task)
-              if !@last_email_report[task].is_a?(Time) || @last_email_report[task] + 12.hours < Time.now
-                @threads[task]['working'].each do |t|
-                  Report.sent_out(task, t)
-                  @last_email_report[task] = Time.now
-                end
+        when 'periodic'
+          freq = Utils.timeperiod_to_sec(params['every']).to_i
+          thread_cache_add('exclusive', args, job_id, task, 0, params['max_pool_size'] || 0, 0, Thread.current[:current_daemon], params['expiration'] || 43200) if @last_execution[task].nil? || Time.now > @last_execution[task] + freq.seconds
+        when 'continuous'
+          if queue_busy?(task)
+            if !@last_email_report[task].is_a?(Time) || @last_email_report[task] + 12.hours < Time.now
+              @queues[task][:threads].each do |t|
+                Report.sent_out(task, t)
+                @last_email_report[task] = Time.now
               end
-            else
-              thread_cache_add(task, args + ["--continuous=1"], job_id, task, 0, 1, 1)
             end
+          else
+            thread_cache_add(task, args + ["--continuous=1"], job_id, task, 0, 1, 1)
+          end
         end
       end
     end
+    thread_cache_fetch
     launch_command
     if @last_flush + 60.minutes < Time.now
       thread_cache_add('exclusive', ['flush_queues'], Daemon.job_id, 'flush queues')
       @last_flush = Time.now
     end
   rescue => e
-    $speaker.tell_error(e, "Daemon.schedule(jobs)")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.start(scheduler: 'scheduler')
@@ -146,11 +161,13 @@ class Daemon < EventMachine::Connection
     @is_daemon = true
     EventMachine.run do
       start_server($api_option)
-      EM.add_periodic_timer(1) { schedule(jobs) }
-      EM.add_periodic_timer(1) { Librarian.burst_thread { quit } }
+      EM.add_periodic_timer(0.2) {schedule(jobs)}
+      EM.add_periodic_timer(1) {Librarian.burst_thread {quit}}
     end
     $librarian.delete_pid
     $speaker.speak_up('Shutting down')
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.start_server(opts = {})
@@ -164,20 +181,31 @@ class Daemon < EventMachine::Connection
     @queues.each do |qname, _|
       bq += 1 if queue_busy?(qname)
     end
-    $speaker.speak_up "Busy queues: #{bq} out of #{@queues.map { |k, _| k }.count}"
+    $speaker.speak_up "Busy queues: #{bq} out of #{@queues.keys.count}"
     $speaker.speak_up LINE_SEPARATOR
-    @queues.each do |qname, q|
+    @queues.keys.each do |qname|
       wc = get_workers_count(qname)
       $speaker.speak_up "Queue #{qname}:"
       $speaker.speak_up "* #{wc} worker(s) (max #{max_pool_size(qname)})"
       if wc > 0
-        @threads[qname]['working'].each do |w|
-          $speaker.speak_up "  -Job '#{w[:jid]}' ('#{w[:object]}') #{' working since ' + w[:start_time].to_s if w[:start_time]}#{' waiting for ' + w[:childs].to_s + ' childs' if w[:childs].to_i > 0}" if w.alive?
+        @queues[qname][:threads].each do |w|
+          childs = Daemon.get_children_count(w[:jid])
+          $speaker.speak_up "  -Job '#{w[:jid]}' ('#{w[:object]}') #{' working for ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]}#{' waiting for ' + childs.to_s + ' childs' if childs.to_i > 0},#{Utils.lock_time_get(w)}" if w.alive?
         end
       end
-      $speaker.speak_up "* #{q.count} in queue"
+      $speaker.speak_up "* #{@queues[qname][:jobs].count} in queue"
       $speaker.speak_up LINE_SEPARATOR
     end
+    $speaker.speak_up LINE_SEPARATOR
+    bus_vars = BusVariable.list_bus_variables
+    $speaker.speak_up "Bus Variables:" unless bus_vars.empty?
+    bus_vars.each do |vname|
+      v = LibraryBus.bus_variable_get(vname)
+      $speaker.speak_up "* Variable '#{vname}': Type '#{v.class}'#{', with ' + v.length.to_s + ' elements' if [Hash, Vash, Array].include?(v.class)}"
+    end
+    $speaker.speak_up LINE_SEPARATOR
+    # $speaker.speak_up "Global lock time:#{Utils.lock_time_get}"
+    # $speaker.speak_up LINE_SEPARATOR
   end
 
   def self.stop
@@ -187,14 +215,30 @@ class Daemon < EventMachine::Connection
   end
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
-    @queues[queue] = [] if @queues[queue].nil?
-    @queues_max_pool[queue] = max_pool_size if max_pool_size.to_i > 0
-    @queues[queue] << [jid, internal, task, dump_env_flags(continuous.to_i > 0 ? 0 : expiration),
-                       client, args, block, child, Thread.current]
-    @threads[queue] = {} if @threads[queue].nil?
-    @last_execution[task] = Time.now
-    incremente_children(Thread.current)
-    jid
+    return if queue.nil?
+    Thread.current[:job_added] = 1
+    LibraryBus.cache_add([queue, args, jid, task, internal, max_pool_size, client, child, Thread.current, dump_env_flags(continuous.to_i > 0 ? 0 : expiration), block])
+  end
+
+  def self.thread_cache_fetch
+    loop do
+      job = LibraryBus.cache_fetch
+      break if job.nil?
+      queue, args, jid, task, internal, max_pool_size, client, child, parent, env_flags, block = job
+      return if queue.nil?
+      init_queue(queue)
+      parent[:job_added] = nil
+      @queues[queue][:max_pool_size] = max_pool_size if max_pool_size.to_i > 0
+      @queues[queue][:jobs] << [jid, internal, task, env_flags,
+                                client, args, block, child, parent]
+      @last_execution[task] = Time.now
+    end
+  end
+
+  def self.wait_for_children(thread)
+    while get_children_count(thread[:jid]).to_i > 0
+      sleep 5
+    end
   end
 
   def post_init
@@ -204,7 +248,7 @@ class Daemon < EventMachine::Connection
   def receive_data(data)
     data = YAML.load(data.gsub('=>', ': ')) rescue data
     if data.is_a?(Array) && !@client.nil?
-      if data[0].to_s.downcase == 'daemon' && data[1].to_s.downcase == 'status'
+      if data[0].to_s.downcase == 'daemon'
         q = 'status'
       else
         q = 'exclusive'
@@ -214,16 +258,16 @@ class Daemon < EventMachine::Connection
       }
     else
       case data.to_s
-        when /^hello from/
-          @client = data.gsub('hello from ', '').to_s
-          send_data('listening')
-        when /^user_input/
-          $speaker.user_input(data.to_s.gsub('user_input ', ''))
-        else
-          send_data('identify yourself first')
+      when /^hello from/
+        @client = data.gsub('hello from ', '').to_s
+        send_data('listening')
+      when /^user_input/
+        $speaker.user_input(data.to_s.gsub('user_input ', ''))
+      else
+        send_data('identify yourself first')
       end
     end
   rescue => e
-    $speaker.tell_error(e, "Daemon.new.receive data")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 end

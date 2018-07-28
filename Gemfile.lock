@@ -89,7 +89,7 @@ GEM
       public_suffix (>= 2.0.2, < 4.0)
     afm (0.2.2)
     bencode (0.8.2)
-    capybara (3.2.1)
+    capybara (3.3.1)
       addressable
       mini_mime (>= 0.1.3)
       nokogiri (~> 1.8)
@@ -112,7 +112,10 @@ GEM
       faraday_middleware (>= 0.9)
       loofah (>= 2.0)
       sax-machine (>= 1.0)
-    ffi (1.9.25)
+    flac2mp3 (0.4.2)
+      flacinfo-rb (>= 0.4)
+      ruby-mp3info (>= 0.5.1)
+    flacinfo-rb (1.0)
     fuzzy-string-match (1.0.1)
       RubyInline (>= 3.8.6)
     hanami-mailer (1.2.0)
@@ -156,9 +159,9 @@ GEM
     net-http-digest_auth (1.4.1)
     net-http-persistent (3.0.0)
       connection_pool (~> 2.2)
-    net-ssh (5.0.1)
+    net-ssh (5.0.2)
     netrc (0.11.0)
-    nokogiri (1.8.2)
+    nokogiri (1.8.4)
       mini_portile2 (~> 2.3.0)
     ntlm-http (0.1.1)
     oauth (0.5.4)
@@ -187,10 +190,8 @@ GEM
       simple_speaker (~> 0.3.0)
     simple_config_man (0.3.8.1)
       simple_speaker (~> 0.3.0)
-    simple_speaker (0.3.0.2)
+    simple_speaker (0.3.0.3)
     sqlite3 (1.3.13)
-    sys-filesystem (1.1.9)
-      ffi
     thread_safe (0.3.6)
     tilt (2.0.8)
     titleize (1.4.1)
@@ -221,6 +222,7 @@ DEPENDENCIES
   deluge-rpc!
   eventmachine
   feedjira
+  flac2mp3
   fuzzy-string-match
   goodreads!
   hanami-mailer
@@ -237,7 +239,6 @@ DEPENDENCIES
   simple_config_man (~> 0.3.8)
   simple_speaker (~> 0.3.0)
   sqlite3
-  sys-filesystem
   titleize
   trakt!
   tvdb_party

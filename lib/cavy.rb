@@ -30,7 +30,7 @@ class Cavy
     if (tries -= 1) >= 0
       retry
     else
-      $speaker.tell_error(e, "Cavy.get_url('#{url}')")
+      $speaker.tell_error(e, Utils.arguments_dump(binding))
       false
     end
   end

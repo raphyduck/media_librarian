@@ -1,6 +1,5 @@
 module FileUtils
   class << self
-    include Sys
     alias_method :mkdir_orig, :mkdir
     alias_method :mkdir_p_orig, :mkdir_p
     alias_method :mv_orig, :mv
@@ -21,7 +20,7 @@ module FileUtils
       Dir.chdir(File.dirname(folder)) do
         if Env.pretend?
           $speaker.speak_up "Would compress the following files:"
-          Dir.foreach('.') { |f| $speaker.speak_up f }
+          Dir.foreach('.') {|f| $speaker.speak_up f}
         else
           Archive::Zip.archive(name, File.basename(folder))
         end
@@ -32,27 +31,30 @@ module FileUtils
       FileUtils.mkdir(destination) unless Dir.exist?(destination)
       return $speaker.speak_up "Would extract archive #{type} '#{archive}' to '#{destination}'" if Env.pretend?
       case type
-        when 'cbr', 'rar'
-          $unrar = Unrar::Archive.new(archive, destination)
-          extracted = $unrar.extract
-          $speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
-        when 'cbz', 'zip'
-          Archive::Zip.extract(archive, destination, {:ignore_check_flags => 1})
+      when 'cbr', 'rar'
+        $unrar = Unrar::Archive.new(archive, destination)
+        extracted = $unrar.extract
+        $speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
+      when 'cbz', 'zip'
+        Archive::Zip.extract(archive, destination, {:ignore_check_flags => 1})
       end
     end
 
     def get_disk_size(path)
-      size=0
-      Find.find(path) { |file| size+= File.size(file)}
+      size = 0
+      Find.find(path) {|file| size += File.size(file)}
       size
     end
 
     def get_disk_space(path)
-      stat = Sys::Filesystem.stat(path)
-      return stat.block_size * stat.blocks_available, stat.blocks * stat.block_size
+      return `df --output=avail -k #{path} | tail -1`.to_i * 1024, `df --output=size -k #{path} | tail -1`.to_i * 1024
     rescue => e
-      $speaker.tell_error(e, "FileUtils.get_disk_space('#{path}')", 0)
+      $speaker.tell_error(e, Utils.arguments_dump(binding), 0)
       return 0, 0
+    end
+
+    def get_extension(filename)
+      filename.gsub(/.*\.(\w{2,4}$)/, '\1')
     end
 
     def get_only_folder_levels(path, level = 1)
@@ -87,16 +89,16 @@ module FileUtils
     end
 
     def is_in_path(path_list, folder)
-      folder = folder.clone.gsub(/\/\/+/,'/').gsub(/^\//,'').gsub(/\/$/,'')
+      folder = folder.clone.gsub(/\/\/+/, '/').gsub(/^\//, '').gsub(/\/$/, '')
       path_list.each do |p|
-        p = p.clone.gsub(/\/\/+/,'/').gsub(/^\//,'').gsub(/\/$/,'')
+        p = p.clone.gsub(/\/\/+/, '/').gsub(/^\//, '').gsub(/\/$/, '')
         if folder.match(/(\/|^)#{Regexp.escape(p)}(\/|$)/) || p.match(/(\/|^)#{Regexp.escape(folder)}(\/|$)/)
           return p
         end
       end
       return nil
     rescue => e
-      $speaker.tell_error(e, "FileUtils.is_in_path(#{path_list}, #{folder}")
+      $speaker.tell_error(e, Utils.arguments_dump(binding))
       nil
     end
 
@@ -156,7 +158,7 @@ module FileUtils
     def file_remove_parents(files)
       files = [files] if files.is_a?(String)
       files.each do |f|
-        rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select { |e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil? } - %w{ . .. }).empty?
+        rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select {|e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil?} - %w{ . .. }).empty?
       end
     end
 
@@ -228,7 +230,7 @@ module FileUtils
       end
       search_folder
     rescue => e
-      $speaker.tell_error(e, "FileUtils.search_folder")
+      $speaker.tell_error(e, Utils.arguments_dump(binding))
       []
     end
   end

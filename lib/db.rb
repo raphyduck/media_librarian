@@ -42,7 +42,7 @@ module Storage
     def delete_rows(table, conditions = {}, additionals = {})
       q = "delete from #{table}"
       q << prepare_conditions(conditions, additionals)
-      execute_query(q, conditions.map { |_, v| v } + additionals.map { |_, v| v })
+      execute_query(table, q, conditions.map { |_, v| v } + additionals.map { |_, v| v })
     rescue => e
       $speaker.tell_error(e, "Storage::Db.new.delete_rows")
     end
@@ -73,7 +73,7 @@ module Storage
     def get_rows(table, conditions = {}, additionals = {})
       q = "select * from #{table}"
       q << prepare_conditions(conditions, additionals)
-      r = execute_query(q, conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s }, 0)
+      r = execute_query(table, q, conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s }, 0)
       res = []
       r.each do |l|
         i = -1
@@ -88,7 +88,7 @@ module Storage
     def insert_row(table, values, or_replace = 0)
       values = prepare_values(table, values)
       q = "insert#{' or replace' if or_replace.to_i > 0} into #{table} (#{values.map { |k, _| k.to_s }.join(',')}) values (#{values.map { |_, _| '?' }.join(',')})"
-      execute_query(q, values.map { |_, v| v.to_s })
+      execute_query(table, q, values.map { |_, v| v.to_s })
     end
 
     def insert_rows(table, rows)
@@ -112,7 +112,7 @@ module Storage
       values = prepare_values(table, values, 1)
       q = "update #{table} set #{values.map { |c, _| c.to_s + ' = (?)' }.join(', ')}"
       q << prepare_conditions(conditions, additionals)
-      execute_query(q, values.map { |_, v| v.to_s } + conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s })
+      execute_query(table, q, values.map { |_, v| v.to_s } + conditions.map { |_, v| v.to_s } + additionals.map { |_, v| v.to_s })
     rescue => e
       $speaker.tell_error(e, "Storage::Db.new.update_rows")
     end
@@ -129,13 +129,17 @@ module Storage
       {}
     end
 
-    def execute_query(query, values, write = 1)
+    def execute_query(table, query, values, write = 1)
       query_str = query.dup
-      values.each { |v| query_str.sub!(/([\(,])\?([\),])/, '\1\'' + v.to_s + '\'\2') }
+      query_log = query.dup
+      values.each do |v|
+        query_str.sub!(/([\(,])\?([\),])/, '\1\'' + v.to_s + '\'\2')
+        query_log.sub!(/([\(,])\?([\),])/, '\1\'' + v.to_s[0..100] + '\'\2')
+      end
       return $speaker.speak_up("Would #{query_log}") if Env.pretend? && write > 0
       $speaker.speak_up("Executing SQL query: '#{query_str}'", 0) if Env.debug?
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
-      Utils.lock_block('db') {
+      Utils.lock_block("db_#{table}") {
         ins = @s_db.prepare(query)
         ins.execute(values)
       }

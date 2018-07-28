@@ -73,46 +73,48 @@ class Book
 
   def self.book_search(title, no_prompt = 0, ids = {}, no_series_search = 0)
     cache_name = title.to_s + ids['isbn'].to_s
-    cached = Cache.cache_get('book_search', cache_name)
-    return cached if cached
     rs, book, exact_title = [], nil, title
-    if ids['isbn'].to_s != ''
-      book = ($goodreads.book_by_isbn(ids['isbn']) rescue nil)
-      if book
-        book = new(book.merge({:no_series_search => no_series_search}))
-        exact_title = book.name
+    Utils.lock_block("#{__method__}_#{title}#{ids}#{no_series_search}") {
+      cached = Cache.cache_get('book_search', cache_name)
+      return cached if cached
+      if ids['isbn'].to_s != ''
+        book = ($goodreads.book_by_isbn(ids['isbn']) rescue nil)
+        if book
+          book = new(book.merge({:no_series_search => no_series_search}))
+          exact_title = book.name
+        end
       end
-    end
-    if book.nil?
-      books = $goodreads.search_books(title)
-      if books['results'] && books['results']['work']
-        bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
-        rs = bs.map do |b|
-          if b['best_book']
-            sname, tname, _ = detect_book_title(b['best_book']['title'])
-            sname = tname if sname == ''
-            b['best_book']['title'] = sname
-            Utils.recursive_typify_keys(b['best_book'])
-          end
-        end.select { |b| !b.nil? }
+      if book.nil?
+        books = $goodreads.search_books(title)
+        if books['results'] && books['results']['work']
+          bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
+          rs = bs.map do |b|
+            if b['best_book']
+              sname, tname, _ = detect_book_title(b['best_book']['title'])
+              sname = tname if sname == ''
+              b['best_book']['title'] = sname
+              Utils.recursive_typify_keys(b['best_book'])
+            end
+          end.select { |b| !b.nil? }
+        end
+        exact_title, book = MediaInfo.media_chose(
+            title,
+            rs.uniq,
+            {'name' => :title, 'url' => :url},
+            'books',
+            no_prompt.to_i
+        )
+        if book
+          book = new(book.merge({:no_series_search => no_series_search}))
+        else
+          book = new({:filename => title}.merge({:no_series_search => no_series_search}))
+        end
       end
-      exact_title, book = MediaInfo.media_chose(
-          title,
-          rs.uniq,
-          {'name' => :title, 'url' => :url},
-          'books',
-          no_prompt.to_i
-      )
-      if book
-        book = new(book.merge({:no_series_search => no_series_search}))
-      else
-        book = new({:filename => title}.merge({:no_series_search => no_series_search}))
-      end
-    end
-    Cache.cache_add('book_search', cache_name, [exact_title, book], book)
+      Cache.cache_add('book_search', cache_name, [exact_title, book], book)
+    }
     return exact_title, book
   rescue => e
-    $speaker.tell_error(e, "Book.book_search")
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('book_search', cache_name, [title, nil], nil)
     return title, nil
   end
@@ -135,96 +137,57 @@ class Book
     return skip_compress
   end
 
-  def self.convert_comics(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '')
-    name, results = '', []
-    move_destination = '.' if move_destination.to_s == ''
-    valid_inputs = ['cbz', 'pdf', 'cbr']
-    valid_outputs = ['cbz']
-    return $speaker.speak_up("Invalid input format, needs to be one of #{valid_inputs}") unless valid_inputs.include?(input_format)
-    return $speaker.speak_up("Invalid output format, needs to be one of #{valid_outputs}") unless valid_outputs.include?(output_format)
-    return if no_warning.to_i == 0 && input_format == 'pdf' && $speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
-    return $speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
-    if FileTest.directory?(path)
-      FileUtils.search_folder(path, {'regex' => ".*#{search_pattern.to_s + '.*' if search_pattern.to_s != ''}\.#{input_format}"}).each do |f|
-        results += convert_comics(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
-      end
-    elsif search_pattern.to_s != ''
-      $speaker.speak_up "Can not use search_pattern if path is not a directory"
-      return results
-    else
-      skipping = 0
-      Dir.chdir(File.dirname(path)) do
-        name = File.basename(path).gsub(/(.*)\.[\w\d]{1,4}/, '\1')
-        dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.#{output_format}"
-        final_file = dest_file
-        if File.exist?(File.basename(dest_file))
-          if input_format == output_format
-            dest_file = "#{move_destination}/#{name.gsub(/^_?/, '')}.proper.#{output_format}"
+  def self.convert_comics(path, name, input_format, output_format, dest_file, no_warning = 0)
+    skipping = 0
+    FileUtils.mkdir(name) unless File.exist?(name)
+    Dir.chdir(Env.pretend? ? '.' : name) do
+      case input_format
+        when 'pdf'
+          if Env.pretend?
+            $speaker.speak_up "Would extract images from pdf"
           else
-            return results
-          end
-        end
-        $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
-        FileUtils.mkdir(name) unless File.exist?(name)
-        Dir.chdir(Env.pretend? ? '.' : name) do
-          case input_format
-            when 'pdf'
-              if Env.pretend?
-                $speaker.speak_up "Would extract images from pdf"
-              else
-                extractor = ExtractImages::Extractor.new
-                extracted = 0
-                PDF::Reader.open('../' +File.basename(path)) do |reader|
-                  reader.pages.each do |page|
-                    extracted += extractor.page(page)
-                  end
-                end
-                unless extracted > 0
-                  $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
-                  skipping = 1
-                end
+            extractor = ExtractImages::Extractor.new
+            extracted = 0
+            PDF::Reader.open('../' +File.basename(path)) do |reader|
+              reader.pages.each do |page|
+                extracted += extractor.page(page)
               end
-            when 'cbr', 'cbz'
-              FileUtils.extract_archive(input_format, '../' + File.basename(path), '.')
-            else
-              $speaker.speak_up('Nothing to do, skipping')
+            end
+            unless extracted > 0
+              $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
               skipping = 1
+            end
           end
-          FileUtils.search_folder('.').each do |f|
-            if File.dirname(f[0]) != Dir.pwd
-              if FileUtils.get_path_depth(f[0], Dir.pwd).to_i > 1
-                FileUtils.mv(f[0], File.dirname(f[0]) + '/..')
-              end
-            end
-            ff = './' + File.basename(f[0])
-            nf = ff.clone
-            nums = ff.scan(/(?=(([^\d]|^)(\d+)[^\d]))/)
-            nums.each do |n|
-              if n[2].length < 3
-                nf.gsub!(/([^\d]|^)(#{n[2]})([^\d])/, '\1' + format('%03d', n[2]) + '\3')
-              end
-            end
-            FileUtils.mv(ff, nf) if ff != nf
+        when 'cbr', 'cbz'
+          FileUtils.extract_archive(input_format, '../' + File.basename(path), '.')
+        else
+          $speaker.speak_up('Nothing to do, skipping')
+          skipping = 1
+      end
+      FileUtils.search_folder('.').each do |f|
+        if File.dirname(f[0]) != Dir.pwd
+          if FileUtils.get_path_depth(f[0], Dir.pwd).to_i > 1
+            FileUtils.mv(f[0], File.dirname(f[0]) + '/..')
           end
         end
-        skipping = if Env.pretend?
-                     $speaker.speak_up "Would compress '#{name}' to '#{dest_file}' (#{output_format})"
-                     1
-                   else
-                     compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
-                   end
-        return results if skipping > 0
-        FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
-        FileUtils.mv(dest_file, final_file) if final_file != dest_file
-        $speaker.speak_up("#{name} converted!")
-        results << final_file
+        ff = './' + File.basename(f[0])
+        nf = ff.clone
+        nums = ff.scan(/(?=(([^\d]|^)(\d+)[^\d]))/)
+        nums.each do |n|
+          if n[2].length < 3
+            nf.gsub!(/([^\d]|^)(#{n[2]})([^\d])/, '\1' + format('%03d', n[2].to_i) + '\3')
+          end
+        end
+        FileUtils.mv(ff, nf) if ff != nf
       end
     end
-    results
-  rescue => e
-    $speaker.tell_error(e, "Library.convert_comics")
-    name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
-    []
+    skipping = if Env.pretend?
+                 $speaker.speak_up "Would compress '#{name}' to '#{dest_file}' (#{output_format})"
+                 1
+               else
+                 compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
+               end
+    skipping
   end
 
   def self.detect_book_title(name)
@@ -256,7 +219,7 @@ class Book
     return nb if id.nil?
     case id[3].to_s[0].downcase
       when 't', '#'
-        nb = id[5].to_i
+        nb = id[5].to_s
       when 'h'
         nb = ('0.' << id[4].to_s)
     end
