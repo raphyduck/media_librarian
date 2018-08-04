@@ -18,8 +18,8 @@ module Wop
 
     def auth
       $tracker_client[@base_url].get_url(@base_url + '/login.php?returnto=%2Findex.php')
-      $tracker_client[@base_url].fill_in('username', with: $config[tracker]['username'])
-      $tracker_client[@base_url].fill_in('password', with: $config[tracker]['password'])
+      $tracker_client[@base_url].fill_in('username', with: $config[tracker]['username'], wait: 30)
+      $tracker_client[@base_url].fill_in('password', with: $config[tracker]['password'], wait: 30)
       $tracker_client[@base_url].click_button('Log in!')
     end
 

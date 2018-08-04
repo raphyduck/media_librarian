@@ -18,8 +18,8 @@ module Yggtorrent
     def auth
       $tracker_client[@base_url].get_url(@base_url + '/')
       $tracker_client[@base_url].find('a#register').click
-      $tracker_client[@base_url].fill_in('id', with: $config[tracker]['username'])
-      $tracker_client[@base_url].fill_in('pass', with: $config[tracker]['password'])
+      $tracker_client[@base_url].fill_in('id', with: $config[tracker]['username'], wait: 30)
+      $tracker_client[@base_url].fill_in('pass', with: $config[tracker]['password'], wait: 30)
       $tracker_client[@base_url].click_button('Connexion')
     end
 

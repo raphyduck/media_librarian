@@ -34,7 +34,7 @@ class MoviesSet
     movies_files.each do |id, movie|
       next if id.is_a?(Symbol)
       collec_title, collection = Movie.movie_get(movie[:movie].ids, 'movie_set_get')
-      next if collection.nil? || collections.include?(collec_title) || !collection.movies.is_a?(Array)
+      next if !collection.is_a?(MoviesSet) || collections.include?(collec_title) || !collection.movies.is_a?(Array)
       $speaker.speak_up("Checking movies set '#{collec_title}' for missing part") if Env.debug?
       collections << collec_title
       collection.movies.each do |m|

@@ -254,6 +254,7 @@ class TorrentSearch
       if f[:type] == 'shows' && f[:f_type] == 'episode'
         ks += [TvSeries.ep_name_to_season(f[:full_name]), MediaInfo.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0)]
       end
+      f[:expect_main_file] = 1 if f[:type] == 'movies' || (f[:type] == 'shows' && f[:f_type] == 'episode')
       ks.uniq.each do |k|
         skip = false
         Utils.lock_block("#{__method__}_keywording") {
@@ -413,7 +414,7 @@ class TorrentSearch
   def self.torrent_download(torrent, no_prompt = 0)
     waiting_until = Time.now + torrent[:timeframe_quality].to_i + torrent[:timeframe_tracker].to_i + torrent[:timeframe_size].to_i
     if torrent[:download_now].to_i < 2 && no_prompt.to_i > 0 && (torrent[:timeframe_quality].to_i > 0 || torrent[:timeframe_tracker].to_i > 0 || torrent[:timeframe_size].to_i > 0)
-      $speaker.speak_up("Setting timeframe for #{torrent[:name]} on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
+      $speaker.speak_up("Setting timeframe for '#{torrent[:name]}' on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
       torrent[:download_now] = 1
     else
       $speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")

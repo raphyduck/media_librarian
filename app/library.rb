@@ -405,7 +405,7 @@ class Library
 
   def self.get_search_list(source_type, category, source, no_prompt = 0)
     return {} unless source['existing_folder'] && source['existing_folder'][category]
-    search_list, cache_name = {}, "#{source_type}#{category}#{source['existing_folder'][category]}"
+    search_list, cache_name = {}, "#{source_type}#{category}#{source['existing_folder'][category]}#{source['list_name']}"
     Utils.lock_block(__method__.to_s + cache_name) do
       search_list = BusVariable.new('search_list', Vash)
       case source_type
@@ -431,7 +431,7 @@ class Library
         end
       end
     end
-    search_list[cache_name] || {}
+    (search_list[cache_name] || {}).deep_dup
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {}, force_process: 0, root_process: 1)

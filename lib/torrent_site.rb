@@ -10,17 +10,19 @@ module TorrentSite
     attr_accessor :url
 
     def download(url, destination, name)
-      authenticate! if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
-      return '' if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      return '' if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       path = "#{destination}/#{name}.torrent"
       url = @base_url + '/' + url if url.start_with?('/')
-      $tracker_client[@base_url].download(url, path)
+      Utils.lock_block("torrentsite-#{base_url}") do
+        $tracker_client[@base_url].download(url, path, @base_url)
+      end
       path
     end
 
     def init
       $tracker_client[@base_url] = Cavy.new
-      if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url)
+      if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url)
         $tracker_client_logged[@base_url] = false
         authenticate!
       end
@@ -36,14 +38,14 @@ module TorrentSite
 
     def size_unit_convert(size, s_unit)
       case s_unit
-        when 'KB', 'KiB', 'kB'
-          size *= 1024
-        when 'MB', 'MiB'
-          size *= 1024 * 1024
-        when 'GB', 'GiB'
-          size *= 1024 * 1024 * 1024
-        when 'TB', 'TiB'
-          size *= 1024 * 1024 * 1024 * 1024
+      when 'KB', 'KiB', 'kB'
+        size *= 1024
+      when 'MB', 'MiB'
+        size *= 1024 * 1024
+      when 'GB', 'GiB'
+        size *= 1024 * 1024 * 1024
+      when 'TB', 'TiB'
+        size *= 1024 * 1024 * 1024 * 1024
       end
       size
     end
@@ -58,7 +60,7 @@ module TorrentSite
           $tracker_client_logged[@base_url] = true
         rescue => e
           $speaker.tell_error(e, "#{tracker}.authenticate!")
-          $tracker_client_logged[@base_url] = false
+          init
         end
       else
         $speaker.speak_up("'#{tracker}' not configured, cannot authenticate")
@@ -68,7 +70,7 @@ module TorrentSite
     def generate_links(limit = NUMBER_OF_LINKS)
       links = []
       Utils.lock_block("torrentsite-#{@base_url}") {
-        get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
+        get_rows.each {|link| l = crawl_link(link); links << l unless l.nil?}
       }
       links.first(limit)
     rescue Net::OpenTimeout, Faraday::ConnectionFailed, SocketError
@@ -79,10 +81,10 @@ module TorrentSite
     end
 
     def get_rows
-      authenticate! if PRIVATE_TRACKERS.map { |_, u| u }.include?(@base_url) && !$tracker_client_logged[@base_url]
+      authenticate! if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       $speaker.speak_up "Fetching url '#{@url}'" if Env.debug?
       $tracker_client[@base_url].get_url(@url)
-      $tracker_client[@base_url].all(@css_path)[0..50] || []
+      $tracker_client[@base_url].all(@css_path, {wait: 30})[0..50] || []
     end
 
     def tracker

@@ -1,7 +1,6 @@
 class Daemon < EventMachine::Connection
 
   @last_execution = {}
-  @last_flush = Time.now
   @last_email_report = {}
   @queues = {}
   @is_daemon = false
@@ -144,10 +143,6 @@ class Daemon < EventMachine::Connection
     end
     thread_cache_fetch
     launch_command
-    if @last_flush + 60.minutes < Time.now
-      thread_cache_add('exclusive', ['flush_queues'], Daemon.job_id, 'flush queues')
-      @last_flush = Time.now
-    end
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
   end

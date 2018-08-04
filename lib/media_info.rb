@@ -509,20 +509,22 @@ class MediaInfo
   end
 
   def self.tv_episodes_search(title, no_prompt = 0, show = nil, tvdb_id = '')
-    cached = Cache.cache_get('tv_episodes_search', title.to_s + tvdb_id.to_s, 1)
-    return cached if cached
-    title, show = tv_show_search(title, no_prompt) unless show
-    episodes = []
-    unless show.nil?
-      $speaker.speak_up("Using #{title} as series name", 0)
-      episodes = $tvdb.get_all_episodes(show)
-      episodes.map! {|e| Episode.new(Cache.object_pack(e, 1))}
+    cache_name, episodes = title.to_s + tvdb_id.to_s, []
+    Utils.lock_block("#{__method__}#{cache_name}") do
+      cached = Cache.cache_get('tv_episodes_search', cache_name, 1)
+      return cached if cached
+      title, show = tv_show_search(title, no_prompt) unless show
+      unless show.nil?
+        $speaker.speak_up("Using #{title} as series name", 0)
+        episodes = $tvdb.get_all_episodes(show)
+        episodes.map! {|e| Episode.new(Cache.object_pack(e, 1))}
+      end
+      Cache.cache_add('tv_episodes_search', cache_name, [show, episodes], show)
     end
-    Cache.cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [show, episodes], show)
     return show, episodes
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding), 0)
-    Cache.cache_add('tv_episodes_search', title.to_s + tvdb_id.to_s, [nil, []], nil)
+    Cache.cache_add('tv_episodes_search', cache_name, [nil, []], nil)
     return nil, []
   end
 

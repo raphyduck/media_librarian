@@ -4,9 +4,9 @@ class Cavy
     @mechanize = Mechanize.new
     @mechanize.user_agent_alias = opts['user_agent'] || 'Mac Firefox'
     @mechanize.history.max_size = opts['max_history_size'] || 0
-    @mechanize.history_added = Proc.new { sleep 1 }
+    @mechanize.history_added = Proc.new {sleep 1}
     @mechanize.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
-    @capybara.driver.headers = { 'User-Agent' => @mechanize.user_agent }
+    @capybara.driver.headers = {'User-Agent' => @mechanize.user_agent}
   end
 
   def download(url, destination)
@@ -15,7 +15,7 @@ class Cavy
     @mechanize.get(url).save(destination)
   rescue => e
     if (tries -= 1) >= 0
-      visit(url)
+      @capybara.visit url
       retry
     else
       raise e
@@ -24,7 +24,7 @@ class Cavy
 
   def get_url(url)
     tries ||= 3
-    visit(url)
+    @capybara.visit url
     true
   rescue => e
     if (tries -= 1) >= 0
@@ -48,7 +48,7 @@ class Cavy
   private
 
   def get_cookies
-    @capybara.driver.browser.cookies.map { |_, v| (Cache.object_pack(v, 1) || {})['attributes'] }
+    @capybara.driver.browser.cookies.map {|_, v| (Cache.object_pack(v, 1) || {})['attributes']}
   end
 
   def sync_cookies
@@ -62,11 +62,6 @@ class Cavy
           :expires => c['expires']
       )
     end
-  end
-
-  def visit(url)
-    @capybara.visit url
-    sleep 3 #FIXME: find cleverer way to wait for page being loaded
   end
 
 end
