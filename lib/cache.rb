@@ -15,7 +15,7 @@ class Cache
         :keywords => keyword,
         :type => cache_get_enum(type),
         :result => r,
-    }) if cache_get_enum(type) && full_save && r
+    }, 0) if cache_get_enum(type) && full_save && r
   end
 
   def self.cache_expire(row)
@@ -94,18 +94,21 @@ class Cache
   end
 
   def self.queue_state_add_or_update(qname, el)
-    h = queue_state_get(qname)
-    queue_state_save(qname, h.merge(el))
+    $speaker.speak_up "Will add element '#{el}' to queue '#{qname}'" if Env.debug?
+    el = [el] unless el.is_a?(Hash)
+    h = queue_state_get(qname, el.is_a?(Hash) ? Hash : Array)
+    queue_state_save(qname, h + el)
   end
 
-  def self.queue_state_get(qname)
+  def self.queue_state_get(qname, type = Hash)
     return @tqueues[qname] if @tqueues[qname]
     res = $db.get_rows('queues_state', {:queue_name => qname}).first
-    @tqueues[qname] = object_unpack(res[:value]) rescue {}
+    @tqueues[qname] = object_unpack(res[:value]) rescue type.new
     @tqueues[qname]
   end
 
   def self.queue_state_remove(qname, key)
+    $speaker.speak_up "Will remove key '#{key}' from queue '#{qname}'" if Env.debug?
     h = queue_state_get(qname)
     h.delete(key)
     queue_state_save(qname, h)
@@ -114,6 +117,7 @@ class Cache
   def self.queue_state_save(qname, value)
     Utils.lock_block("#{__method__}_#{qname}") {
       @tqueues[qname] = value
+      return @tqueues[qname] if Env.pretend?
       r = object_pack(value)
       $db.insert_row('queues_state', {
           :queue_name => qname,
@@ -130,6 +134,7 @@ class Cache
   end
 
   def self.queue_state_shift(qname)
+    $speaker.speak_up "Will shift from queue '#{qname}'" if Env.debug?
     h = queue_state_get(qname)
     el = h.shift
     queue_state_save(qname, h)

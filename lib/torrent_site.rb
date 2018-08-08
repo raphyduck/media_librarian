@@ -14,8 +14,8 @@ module TorrentSite
       return '' if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
       path = "#{destination}/#{name}.torrent"
       url = @base_url + '/' + url if url.start_with?('/')
-      Utils.lock_block("torrentsite-#{base_url}") do
-        $tracker_client[@base_url].download(url, path, @base_url)
+      Utils.lock_block("torrentsite-#{@base_url}") do
+        $tracker_client[@base_url].download(url, path)
       end
       path
     end

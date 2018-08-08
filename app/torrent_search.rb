@@ -26,8 +26,7 @@ class TorrentSearch
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
-      $t_client.remove_torrent(download[:torrent_id], true) if progress >= 0 rescue nil
-      $db.update_rows('torrents', {:status => -1}, {:name => download[:name]})
+      $t_client.delete_torrent(download[:name], progress >= 0 ? download[:torrent_id] : 0)
     end
   end
 

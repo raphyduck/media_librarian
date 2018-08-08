@@ -164,7 +164,10 @@ class Library
             final_path = StringUtils.clean_search(p).gsub("#{source_folders[type]}/", dest_type)
             FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
             $speaker.speak_up "Syncing '#{p}' to '#{final_path}'" if Env.debug?
-            Rsync.run("#{p}/", final_path, ['--update', '--times', '--delete', '--recursive', '--partial', '--verbose', "--bwlimit=#{bandwith_limit}"]) do |result|
+            next if Env.pretend?
+            args = ['--update', '--delete', '--recursive', '--partial', '--verbose', "--bwlimit=#{bandwith_limit}"]
+            args += ['--times'] unless File.exist?(final_path)
+            Rsync.run("#{p}/", final_path, args) do |result|
               if result.success?
                 result.changes.each do |change|
                   $speaker.speak_up "#{change.filename} (#{change.summary})"

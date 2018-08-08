@@ -47,9 +47,6 @@ class Librarian
           :check_all_download => ['TorrentSearch', 'check_all_download'],
           :search => ['TorrentSearch', 'search_from_torrents']
       },
-      :trakt => {
-          :refresh_auth => ['TraktAgent', 'refresh_auth']
-      },
       :usage => ['Librarian', 'help'],
       :list_db => ['Utils', 'list_db'],
       :flush_queues => ['Librarian', 'flush_queues'],
@@ -172,6 +169,7 @@ class Librarian
       $t_client.parse_torrents_to_download
       sleep 15
       $t_client.process_added_torrents
+      $t_client.cleanup_deluge_options
       $t_client.disconnect
     end
     #Cleanup lists and folders

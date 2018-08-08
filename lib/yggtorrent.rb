@@ -5,7 +5,7 @@ module Yggtorrent
     attr_accessor :url
 
     def initialize(search, url = nil, cid = '')
-      @base_url = 'https://yggtorrent.is'
+      @base_url = 'https://ww3.yggtorrent.is'
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/engine/search?#{cid}name=#{URI.escape(search)}&do=search#{'&order=desc&sort=seed' if search.to_s != ''}"

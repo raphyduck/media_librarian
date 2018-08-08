@@ -1,17 +1,9 @@
 class TraktAgent
-  def self.access_token(vals)
-    {"access_token" => vals[:access_token],
-     "token_type" => "bearer",
-     "expires_in" => (Time.parse(vals[:expires_in])-Time.now).to_i,
-     "refresh_token" => vals[:refresh_token],
-     "scope" => "public"}
-  end
 
   def self.add_to_list(items, list_name = '', type = 'movies')
     return if Env.pretend?
-    authenticate!
     items = [items] unless items.is_a?(Array)
-    items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_name == 'collection'
+    items.map! {|i| i.merge({'collected_at' => Time.now})} if list_name == 'collection'
     begin
       tries ||= 3
       $trakt.sync.add_or_remove_item('add', list_name, type, items)
@@ -23,8 +15,8 @@ class TraktAgent
   def self.clean_list(list_to_clean = Cache.queue_state_get('cleanup_trakt_list'))
     return if Env.pretend?
     list_to_clean.each do |list_name, list|
-      list.map { |m| m[:t] }.uniq.each do |type|
-        l = list.select { |m| m[:t] == type }.map { |m| m[:c] }
+      list.map {|m| m[:t]}.uniq.each do |type|
+        l = list.select {|m| m[:t] == type}.map {|m| m[:c]}
         $speaker.speak_up "Cleaning trakt list '#{list_name}' (type #{type}, #{l.count} elements)" if Env.debug?
         TraktAgent.remove_from_list(l, list_name, type)
       end
@@ -34,7 +26,6 @@ class TraktAgent
 
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
     return if Env.pretend?
-    authenticate!
     $trakt.list.create_list({
                                 'name' => name,
                                 'description' => description,
@@ -44,33 +35,7 @@ class TraktAgent
                             })
   end
 
-  def self.authenticate!
-    raise 'No trakt account configured' unless $trakt
-    token_rows = $db.get_rows('trakt_auth', {:account => $trakt_account})
-    token_row = token_rows.first
-    if token_row.nil? || Time.parse(token_row[:expires_in]) < Time.now
-      if Daemon.is_daemon? && !Thread.current[:current_daemon]
-        Report.sent_out('Expired TraktAgent token', nil, 'Your trakt authentication is not set or has expired.
-Please run \'librarian trakt refresh_auth\' to set it up!')
-        return
-      else
-        token = $trakt.access_token
-        $db.delete_rows('trakt_auth', token_row) if token_row
-        $db.insert_row('trakt_auth', {
-            :account => $trakt_account,
-            :access_token => token['access_token'],
-            :refresh_token => token['refresh_token'],
-            :expires_in => Time.now + token['expires_in'].to_i.seconds
-        }) if token
-      end
-    else
-      token = self.access_token(token_row)
-    end
-    $trakt.token = token
-  end
-
   def self.get_history(type, trakt_id = '')
-    authenticate!
     h = $trakt.list.get_history(type, trakt_id)
     return [] if h.is_a?(Hash) && h['error']
     h
@@ -80,13 +45,12 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   end
 
   def self.get_watched(type, complete = 0)
-    authenticate!
     h, k = [], []
     case type
-      when 'movies'
-        k = Kodi.get_media(type, ["title", "year", "lastplayed", "playcount", "imdbnumber"])
-      when 'shows', 'episodes'
-        k = Kodi.get_media('shows', ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"])
+    when 'movies'
+      k = Kodi.get_media(type, ["title", "year", "lastplayed", "playcount", "imdbnumber"])
+    when 'shows', 'episodes'
+      k = Kodi.get_media('shows', ["title", "year", "playcount", "episode", "imdbnumber", "premiered", "lastplayed", "season", "watchedepisodes"])
     end
     k.each do |m|
       next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
@@ -128,44 +92,44 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
         next
       end
       case filter_type
-        when 'watched', 'entirely_watched', 'partially_watched'
-          break if cr_value.to_i != 0
-          watched_videos = get_watched(type, complete) if watched_videos.nil?
-          watched_videos.each do |h|
-            if h[type[0...-1]] && h[type[0...-1]]['ids']
-              h[type[0...-1]]['ids'].each do |k, id|
-                if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/, '').to_i == id.gsub(/\D/, '').to_i
-                  delete_it = 1
-                  break
-                end
+      when 'watched', 'entirely_watched', 'partially_watched'
+        break if cr_value.to_i != 0
+        watched_videos = get_watched(type, complete) if watched_videos.nil?
+        watched_videos.each do |h|
+          if h[type[0...-1]] && h[type[0...-1]]['ids']
+            h[type[0...-1]]['ids'].each do |k, id|
+              if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/, '').to_i == id.gsub(/\D/, '').to_i
+                delete_it = 1
+                break
               end
             end
-            if item[type[0...-1]]['title'] == h[type[0...-1]]['title'] &&
-                Utils.match_release_year(item[type[0...-1]]['year'].to_i, h[type[0...-1]]['year'].to_i)
-              delete_it = 1
-              break
-            end
           end
-        when 'ended', 'not_ended'
-          break if cr_value.to_i > 1
-          ids = item[type[0...-1]]['ids'] || {}
-          _, show = MediaInfo.tv_show_search(title, 1, ids)
-          if show &&
-              ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))) ||
-              (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.status.downcase != 'ended'))
+          if item[type[0...-1]]['title'] == h[type[0...-1]]['title'] &&
+              Utils.match_release_year(item[type[0...-1]]['year'].to_i, h[type[0...-1]]['year'].to_i)
             delete_it = 1
+            break
           end
-        when 'released_before', 'released_after'
-          next unless type == 'movies'
-          break if cr_value.to_i == 0
-          next if item[type[0...-1]]['year'].to_i == 0
-          delete_it = 1 if item[type[0...-1]]['year'].to_i > cr_value.to_i && filter_type == 'released_before'
-          delete_it = 1 if item[type[0...-1]]['year'].to_i < cr_value.to_i && filter_type == 'released_after'
-        when 'days_older', 'days_newer'
-          next unless type == 'movies'
-          break if cr_value.to_i == 0
-          folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title, 0), 'return_first' => 1, filter_type => cr_value})
-          delete_it = 1 unless folders.first
+        end
+      when 'ended', 'not_ended'
+        break if cr_value.to_i > 1
+        ids = item[type[0...-1]]['ids'] || {}
+        _, show = MediaInfo.tv_show_search(title, 1, ids)
+        if show &&
+            ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))) ||
+                (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.status.downcase != 'ended'))
+          delete_it = 1
+        end
+      when 'released_before', 'released_after'
+        next unless type == 'movies'
+        break if cr_value.to_i == 0
+        next if item[type[0...-1]]['year'].to_i == 0
+        delete_it = 1 if item[type[0...-1]]['year'].to_i > cr_value.to_i && filter_type == 'released_before'
+        delete_it = 1 if item[type[0...-1]]['year'].to_i < cr_value.to_i && filter_type == 'released_after'
+      when 'days_older', 'days_newer'
+        next unless type == 'movies'
+        break if cr_value.to_i == 0
+        folders = FileUtils.search_folder(folder, {'regex' => StringUtils.title_match_string(title, 0), 'return_first' => 1, filter_type => cr_value})
+        delete_it = 1 unless folders.first
       end
       if delete_it > 0
         $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'='#{cr_value}'") if Env.debug?
@@ -182,17 +146,16 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
 
   def self.list(name = 'watchlist', type = 'movies')
     tries ||= 3
-    authenticate!
     case name
-      when 'watchlist'
-        list = $trakt.list.watchlist(type)
-        list.sort_by! { |i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now+100.years).year }
-      when 'collection'
-        list = $trakt.list.collection(type)
-      when 'lists'
-        list = $trakt.list.get_user_lists
-      else
-        list = $trakt.list.list(name)
+    when 'watchlist'
+      list = $trakt.list.watchlist(type)
+      list.sort_by! {|i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now + 100.years).year}
+    when 'collection'
+      list = $trakt.list.collection(type)
+    when 'lists'
+      list = $trakt.list.get_user_lists
+    else
+      list = $trakt.list.list(name)
     end
     list
   rescue => e
@@ -213,7 +176,7 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   def self.list_cache_remove(item_id)
     list_cache = Cache.queue_state_get('cleanup_trakt_list')
     list_cache.each do |k, list|
-      list_cache[k] = list.select { |x| x[:id] != item_id }
+      list_cache[k] = list.select {|x| x[:id] != item_id}
     end
     Cache.queue_state_add_or_update('cleanup_trakt_list', list_cache)
   end
@@ -238,20 +201,15 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
     end
     parsed.each do |k, cat|
       cat.each do |t, c|
-        parsed[k][t]['seasons'] = c['seasons'].map { |s, v| v } if c['seasons']
+        parsed[k][t]['seasons'] = c['seasons'].map {|s, v| v} if c['seasons']
       end
-      parsed[k] = cat.map { |s, i| i }
+      parsed[k] = cat.map {|s, i| i}
     end
     parsed
   end
 
-  def self.refresh_auth
-    authenticate!
-  end
-
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
     return if Env.pretend?
-    authenticate!
     begin
       tries = 3
       $trakt.sync.add_or_remove_item('remove', list, type, items)
@@ -263,13 +221,12 @@ Please run \'librarian trakt refresh_auth\' to set it up!')
   def self.search_list(type, item, list)
     title = item[type] && item[type]['title'] ? item[type]['title'] : nil
     return false unless title && list && !list.empty?
-    !list.select { |x| x['title'] && x['title'] == title }.empty?
+    !list.select {|x| x['title'] && x['title'] == title}.empty?
   end
 
   def self.method_missing(name, *args)
     m = name.to_s.split('__')
     return unless m[0] && m[1]
-    authenticate!
     if args.empty?
       eval("$trakt.#{m[0]}").method(m[1]).call
     else
