@@ -37,7 +37,7 @@ class BookSeries
     return exact_title, series
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
-    Cache.cache_add('book_search', cache_name, ['', nil], nil)
+    Cache.cache_add('book_series_search', cache_name, ['', nil], nil)
     return '', nil
   end
 
