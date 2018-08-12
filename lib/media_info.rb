@@ -77,11 +77,10 @@ class MediaInfo
     metadata = {}
     ep_filename = File.basename(filename)
     item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item_name.to_s == '' || item.nil?
-    return nil if item.nil? && (no_prompt.to_i > 0 || item_name.to_s == '')
-    metadata['quality'] = metadata['quality'] ||
-        parse_qualities(File.basename(ep_filename)).join('.')
+    metadata['quality'] = parse_qualities(File.basename(ep_filename)).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
+    return metadata if item.nil? && (no_prompt.to_i > 0 || item_name.to_s == '')
     case type
     when 'shows'
       tv_episodes = BusVariable.new('tv_episodes', Vash)
