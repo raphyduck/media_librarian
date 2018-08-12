@@ -20,6 +20,7 @@ TODO:
     * Install external requirements like phantomjs from in-app
     * Restart daemon
     * Make it cross-platform
+    * Trackers as templates
     
 * Ebooks/Comics:
     

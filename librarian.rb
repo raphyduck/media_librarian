@@ -169,7 +169,6 @@ class Librarian
       $t_client.parse_torrents_to_download
       sleep 15
       $t_client.process_added_torrents
-      $t_client.cleanup_deluge_options
       $t_client.disconnect
     end
     #Cleanup lists and folders
@@ -207,6 +206,7 @@ class Librarian
       end
     else
       $librarian.requirments unless $librarian.loaded
+      LibraryBus.initialize_queue(Thread.current)
       run_command(args, internal)
       Librarian.flush_queues if internal.to_i == 0
     end
@@ -244,9 +244,11 @@ class Librarian
     LibraryBus.put_in_queue(thread_value)
     if thread[:direct].to_i == 0 || Env.debug?
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
-      Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     end
-    thread[:block].call if thread[:block]
+    if thread[:block]
+      thread[:block].call
+    end
+    Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     if thread[:parent]
       Utils.lock_block("merge_child_thread_#{thread[:object]}") {
         Daemon.merge_notifications(thread, thread[:parent])

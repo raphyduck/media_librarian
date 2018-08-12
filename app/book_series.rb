@@ -64,7 +64,8 @@ class BookSeries
     Utils.lock_block("#{__method__}_#{cache_name}") {
       series = Book.existing_books(no_prompt)
       (series[:book_series] || {}).each do |series_name, s|
-        full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'books', s, series_name, no_prompt)
+        series_name = series_name.dup
+        full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'books', s, series_name.dup, no_prompt)
         book_series[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
                                                                     'books',
                                                                     full_name,

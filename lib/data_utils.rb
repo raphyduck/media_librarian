@@ -8,11 +8,11 @@ class DataUtils
       dump << "#{'  ' * start * new_line}<#{[Vash,Hash,Array].include?(val.class) ? val.count : 1} element(s)>#{nl}"
     else
       if val.is_a?(Hash)
+        hs = []
         val.each do |k, v|
-          dump << "#{'  ' * start * new_line}{'#{k}' =>#{nl}"
-          dump << dump_variable(v, max_depth - 1, start + 1, new_line)
-          dump << "#{'  ' * start * new_line}}#{nl}"
+          hs << "#{k.is_a?(Symbol) ? ':' : '\''}#{k}#{'\'' unless k.is_a?(Symbol)}=>#{nl}#{dump_variable(v, max_depth - 1, start + 1, new_line)}"
         end
+        dump << "#{'  ' * start * new_line}{#{nl}#{hs.join(', ')}#{'  ' * start * new_line}}#{nl}"
       elsif val.is_a?(Array)
         dump << "#{'  ' * start * new_line}[#{nl}"
         dump << val.map {|v| dump_variable(v, max_depth - 1, start + 1, new_line)}. join(', ')

@@ -16,6 +16,9 @@ class Cache
         :type => cache_get_enum(type),
         :result => r,
     }, 0) if cache_get_enum(type) && full_save && r
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    raise e
   end
 
   def self.cache_expire(row)
@@ -93,10 +96,11 @@ class Cache
     object
   end
 
-  def self.queue_state_add_or_update(qname, el)
+  def self.queue_state_add_or_update(qname, el, unique = 1)
     $speaker.speak_up "Will add element '#{el}' to queue '#{qname}'" if Env.debug?
     el = [el] unless el.is_a?(Hash)
     h = queue_state_get(qname, el.is_a?(Hash) ? Hash : Array)
+    return if unique.to_i > 0 && h.is_a?(Array) && h.include?(el[0])
     queue_state_save(qname, h + el)
   end
 
@@ -144,7 +148,7 @@ class Cache
   end
 
   def self.torrent_deja_vu?(identifier, qualities, f_type)
-    return true if identifier[0..3] == 'book' #TODO: Find a more elegant way of handling this
+    return false if identifier[0..3] == 'book' #TODO: Find a more elegant way of handling this
     torrent_get(identifier, f_type).each do |t|
       next unless t[:in_db].to_i > 0 && t[:download_now].to_i >= 3
       timeframe, accept = MediaInfo.filter_quality(t[:name], qualities)

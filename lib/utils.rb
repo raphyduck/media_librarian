@@ -124,9 +124,8 @@ class Utils
   end
 
   def self.parse_filename_template(tpl, metadata)
-    return nil if metadata.nil?
     FILENAME_NAMING_TEMPLATE.each do |k|
-      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) {StringUtils.regularise_media_filename(recursive_typify_keys(metadata)[k.to_sym], $1)}
+      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) {StringUtils.regularise_media_filename(recursive_typify_keys(metadata || {})[k.to_sym], $1)}
     end
     tpl
   end

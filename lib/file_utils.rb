@@ -200,6 +200,7 @@ module FileUtils
     end
 
     def search_folder(folder, filter_criteria = {})
+      $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
       filter_criteria = {} if filter_criteria.nil?
       search_folder = []
       Find.find(folder).each do |path|

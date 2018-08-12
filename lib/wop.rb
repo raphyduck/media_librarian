@@ -5,7 +5,7 @@ module Wop
     attr_accessor :url
 
     def initialize(search, url = nil, cid = '')
-      @base_url = 'https://worldofp2p.net'
+      @base_url = TORRENT_TRACKERS['wop'] #'https://worldofp2p.net'
       # Order by seeds desc
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search

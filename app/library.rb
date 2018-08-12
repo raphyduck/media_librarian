@@ -480,7 +480,7 @@ class Library
           convert_media(path: full_p, input_format: extension, output_format: args[extension]['convert_to'], no_warning: 1).each do |nf|
             handled += handle_completed_download(torrent_path: File.dirname(nf), torrent_name: File.basename(nf), completed_folder: completed_folder, destination_folder: destination_folder, handling: handling, remove_duplicates: remove_duplicates, force_process: force_process, root_process: 0)[0]
           end
-        elsif VALID_VIDEO_MEDIA_TYPE.include?(ttype) && handling[type]['move_to']
+        elsif handling[type]['move_to']
           rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
           process_folder_list << [ttype, rf]
           handled = 1
@@ -637,9 +637,9 @@ class Library
           else
             already_exists = get_duplicates(existing_files[ct][id], 1)
             already_exists.each do |ae|
-              if $speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", (no_prompt.to_i * source['upgrade'].to_i), 'y').to_s == 'y'
+              if $speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, 'y').to_s == 'y'
                 search_list[id][:files] << ae
-              elsif $speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", (no_prompt.to_i * source['upgrade'].to_i), 'n').to_s == 'y'
+              elsif $speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'n').to_s == 'y'
                 TraktAgent.list_cache_add(source['list_name'], ct, search_list[id][:trakt_obj]) if search_list[id][:trakt_obj]
                 search_list.delete(id)
               end
@@ -688,7 +688,7 @@ class Library
     }
     if filter_criteria && !filter_criteria.empty? && !media_list[cache_name].empty?
       files = media_list[cache_name]
-      files.keep_if {|_, f| !(f[:files] & raw_filtered.flatten).empty?}
+      files.keep_if {|k, f| !k.is_a?(Symbol) && !(f[:files].map{|x| x[:name]} & raw_filtered.flatten).empty?}
     end
     return files || media_list[cache_name]
   rescue => e
@@ -700,7 +700,7 @@ class Library
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     destination = Utils.parse_filename_template(destination, metadata)
-    if destination.nil?
+    if destination.to_s == ''
       $speaker.speak_up "Destination of rename file '#{original}' is empty, skipping..."
       return ''
     end

@@ -42,9 +42,9 @@ class StringUtils
   end
 
   def self.regexify(str)
+    str = str.dup
     sep_chars = '[:,-_\. ]{1,2}'
     trailing_sep = ''
-    str = str.dup
     d=str.match(/.*:([\. \w]+)(.+)?/)
     if d
       trailing_sep = sep_chars if d[2]

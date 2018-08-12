@@ -26,7 +26,7 @@ class TorrentSearch
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
-      $t_client.delete_torrent(download[:name], progress >= 0 ? download[:torrent_id] : 0)
+      $t_client.delete_torrent(download[:name], progress >= 0 ? 1 : 0)
     end
   end
 
@@ -370,6 +370,10 @@ class TorrentSearch
           8
       )
     end
+  end
+
+  def self.reauth(site)
+    launch_search(site, '').init
   end
 
   def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil)

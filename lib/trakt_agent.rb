@@ -168,7 +168,7 @@ class TraktAgent
     end
   end
 
-  def self.list_cache_add(list_name, type, item, id = Time.now.to_i)
+  def self.list_cache_add(list_name, type, item, id = Time.now.to_s)
     ex = Cache.queue_state_get('cleanup_trakt_list')[list_name] || []
     Cache.queue_state_add_or_update('cleanup_trakt_list', {list_name => ex.push({:id => id, :c => item, :t => type})})
   end

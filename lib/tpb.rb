@@ -5,7 +5,7 @@ module Tpb
     attr_accessor :url
 
     def initialize(search, cid = '')
-      @base_url = 'https://thepiratebay.org'
+      @base_url = TORRENT_TRACKERS['thepiratebay'] #'https://thepiratebay.org'
       @query = search
       @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
       @css_path = 'table#searchResult tr'
