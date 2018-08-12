@@ -90,7 +90,7 @@ class MediaInfo
     )
     return metadata if ['shows','movies'].include?(type) && (identifiers.empty? || full_name == '')
     metadata['is_found'] = true
-    metadata['part'] = info[:parts].map {|p| "part#{p}"}.join('.')
+    metadata['part'] = info[:parts].map {|p| "part#{p}"}.join('.') unless info[:parts].nil?
     case type
     when 'shows'
       tv_episodes = BusVariable.new('tv_episodes', Vash)
