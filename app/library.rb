@@ -710,6 +710,7 @@ class Library
         _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated)
       end
     else
+      $speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''
     end
     destination

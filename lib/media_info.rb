@@ -76,39 +76,35 @@ class MediaInfo
   def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = '')
     metadata = {}
     ep_filename = File.basename(filename)
-    item_name, item = identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item_name.to_s == '' || item.nil?
     metadata['quality'] = parse_qualities(File.basename(ep_filename)).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
-    return metadata if item.nil? && (no_prompt.to_i > 0 || item_name.to_s == '')
+    full_name, identifiers, info = MediaInfo.parse_media_filename(
+        filename,
+        type,
+        item,
+        item_name,
+        no_prompt,
+        folder_hierarchy,
+        base_folder
+    )
+    return metadata if ['shows','movies'].include?(type) && (identifiers.empty? || full_name == '')
+    metadata['is_found'] = true
+    metadata['part'] = info[:parts].map {|p| "part#{p}"}.join('.')
     case type
     when 'shows'
       tv_episodes = BusVariable.new('tv_episodes', Vash)
-      seasons, ep_nb, _ = TvSeries.identify_tv_episodes_numbering(ep_filename)
-      metadata['episode_season'] = seasons.join
-      if metadata['episode_season'].to_s == '' || ep_nb.empty?
-        metadata['episode_season'] = $speaker.ask_if_needed("Season number not recognized for #{ep_filename}, please enter the season number now (empty to skip)", no_prompt, '').to_i
-        ep_nb = [{:ep => $speaker.ask_if_needed("Episode number not recognized for #{ep_filename}, please enter the episode number now (empty to skip)", no_prompt, '').to_i, :part => 0}]
-      end
       _, tv_episodes[item_name, CACHING_TTL] = tv_episodes_search(item_name, no_prompt, item) if tv_episodes[item_name].nil?
       episode_name = []
-      episode_numbering = []
-      ep_nb.each do |n|
+      info[:episode].each do |n|
         tvdb_ep = !tv_episodes[item_name].empty? && n[:ep] ? tv_episodes[item_name].select {|e| e.season_number.to_i == n[:s].to_i && e.number.to_i == n[:ep].to_i}.first : nil
         episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
-        if n[:ep]
-          metadata['episode_season'] = n[:s].to_i
-          episode_numbering << "S#{format('%02d', metadata['episode_season'].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}."
-        end
       end
       metadata['episode_name'] = episode_name.join(' ')[0..50]
-      metadata['episode_numbering'] = episode_numbering.join(' ')
-      metadata['series_name'] = item_name
+      metadata.merge!(Utils.recursive_typify_keys(info,0))
       metadata['is_found'] = (metadata['episode_numbering'] != '')
     when 'movies'
       metadata['movies_name'] = item_name
-      metadata['part'] = Movie.identify_split_files(filename).map {|p| "part#{p}"}.join('.')
-      metadata['is_found'] = true
     end
     metadata
   end
@@ -389,16 +385,18 @@ class MediaInfo
       ids = e.map {|n| TvSeries.identifier(item_name, n[:s], n[:ep])}
       ids = s.map {|i| TvSeries.identifier(item_name, i, '')}.join if ids.empty?
       ids = TvSeries.identifier(item_name, '', '') if ids.empty?
+      episode_numbering = e.map{|n| "S#{format('%02d', s.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}"}.join(' ')
       f_type = TvSeries.identify_file_type(filename, e, s)
       full_name = "#{item_name}"
       if f_type != 'series'
-        full_name << " #{e.empty? ? s.map {|i| 'S' + format('%02d', i.to_i)}.join : e.map {|n| 'S' + format('%02d', n[:s].to_i).to_s + 'E' + format('%02d', n[:ep].to_i).to_s}.join}"
+        full_name << " #{e.empty? ? s.map {|i| 'S' + format('%02d', i.to_i)}.join : episode_numbering}"
       end
       parts = e.map {|ep| ep[:part].to_i}
       info = {
           :series_name => item_name,
-          :episode_season => s.map {|i| i.to_i},
-          :episode => e.map {|ep| ep[:ep].to_i},
+          :episode_season => s.join(' '),
+          :episode => e,
+          :episode_numbering => episode_numbering,
           :show => item,
           :f_type => f_type
       }

@@ -246,6 +246,7 @@ class Librarian
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
     end
     if thread[:block]
+      $speaker.speak_up 'Executing ending code block' if Env.debug? #REMOVEME
       thread[:block].call
     end
     Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
