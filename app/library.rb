@@ -437,7 +437,7 @@ class Library
     (search_list[cache_name] || {}).deep_dup
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: {}, force_process: 0, root_process: 1)
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1)
     full_p = torrent_path + '/' + torrent_name
     handled, process_folder_list = 0, []
     handled_files = (
@@ -698,6 +698,7 @@ class Library
   end
 
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
+    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.to_s == ''
