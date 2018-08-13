@@ -149,7 +149,9 @@ class TorrentSearch
       download_criteria = Utils.recursive_typify_keys(download_criteria)
       download_criteria[:move_completed] = download_criteria[:destination][category.to_sym] if download_criteria[:destination]
       download_criteria.delete(:destination)
+      download_criteria[:whitelisted_extensions] = download_criteria[:whitelisted_extensions][MediaInfo.media_type_get(category)] rescue nil
     end
+    download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) if !download_criteria[:whitelisted_extensions].is_a?(Array)
     download_criteria.merge!(post_actions)
     $speaker.speak_up "Download criteria: #{download_criteria}" if Env.debug?
     get_results.each do |t|
@@ -242,7 +244,7 @@ class TorrentSearch
     timeframe_trackers
   end
 
-  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria)
+  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0)
     $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}') (category '#{f[:type]}')" if Env.debug?
     f_type = f[:f_type]
     if results.nil?
@@ -327,11 +329,11 @@ class TorrentSearch
     return unless subset[download_id.to_i - 1]
     Utils.lock_block(__method__.to_s) {
       return if subset[download_id.to_i - 1][:in_db].to_i > 0 && subset[download_id.to_i - 1][:download_now].to_i > 2
-      torrent_download(subset[download_id.to_i - 1], no_prompt)
+      torrent_download(subset[download_id.to_i - 1], no_prompt, no_waiting)
     }
   end
 
-  def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {})
+  def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {}, no_waiting: 0)
     filter = filter.map {|_, a| a}.flatten if filter.is_a?(Hash)
     filter = [] if filter.nil?
     filter.select! do |f|
@@ -364,7 +366,7 @@ class TorrentSearch
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
       Librarian.route_cmd(
-          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria],
+          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria, no_waiting],
           1,
           "#{Thread.current[:object]}torrent",
           8
@@ -376,7 +378,7 @@ class TorrentSearch
     launch_search(site, '').init
   end
 
-  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil)
+  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0)
     search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
       slist, elist = Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination, qualities: qualities)
@@ -410,13 +412,14 @@ class TorrentSearch
         no_prompt: no_prompt,
         qualities: qualities,
         limit: 0,
-        download_criteria: download_criteria
+        download_criteria: download_criteria,
+        no_waiting: no_waiting
     )
   end
 
-  def self.torrent_download(torrent, no_prompt = 0)
+  def self.torrent_download(torrent, no_prompt = 0, no_waiting = 0)
     waiting_until = Time.now + torrent[:timeframe_quality].to_i + torrent[:timeframe_tracker].to_i + torrent[:timeframe_size].to_i
-    if torrent[:download_now].to_i < 2 && no_prompt.to_i > 0 && (torrent[:timeframe_quality].to_i > 0 || torrent[:timeframe_tracker].to_i > 0 || torrent[:timeframe_size].to_i > 0)
+    if no_waiting.to_i == 0 && torrent[:download_now].to_i < 2 && no_prompt.to_i > 0 && (torrent[:timeframe_quality].to_i > 0 || torrent[:timeframe_tracker].to_i > 0 || torrent[:timeframe_size].to_i > 0)
       $speaker.speak_up("Setting timeframe for '#{torrent[:name]}' on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
       torrent[:download_now] = 1
     else

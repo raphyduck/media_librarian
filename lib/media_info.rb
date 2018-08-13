@@ -288,6 +288,12 @@ class MediaInfo
     end
   end
 
+  def self.media_type_get(type)
+    VALID_MEDIA_TYPES.select{|_,v| v.include?(Utils.regularise_media_type(type))}.first[0]
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+  end
+
   def self.missing_media_add(missing_eps, type, full_name, release_date, item_name, identifiers, info, display_name = nil)
     return missing_eps if full_name == ''
     $speaker.speak_up("Missing #{display_name || full_name} (released on #{release_date})", 0)
@@ -305,9 +311,9 @@ class MediaInfo
 
   def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
     title = StringUtils.prepare_str_search(title)
-    $speaker.speak_up "Looking for movie '#{title}'" if Env.debug?
+    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     exact_title, movie = title, nil
-    cache_name = title.to_s + (ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']).to_s
+    cache_name = title.to_s + (ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']).to_s + original_filename.to_s
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
       cached = Cache.cache_get('movie_lookup', cache_name)
       return cached if cached
@@ -385,7 +391,7 @@ class MediaInfo
       ids = e.map {|n| TvSeries.identifier(item_name, n[:s], n[:ep])}
       ids = s.map {|i| TvSeries.identifier(item_name, i, '')}.join if ids.empty?
       ids = TvSeries.identifier(item_name, '', '') if ids.empty?
-      episode_numbering = e.map{|n| "S#{format('%02d', s.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}"}.join(' ')
+      episode_numbering = e.map{|n| "S#{format('%02d', n[:s].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}"}.join(' ')
       f_type = TvSeries.identify_file_type(filename, e, s)
       full_name = "#{item_name}"
       if f_type != 'series'

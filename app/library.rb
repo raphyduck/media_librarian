@@ -687,7 +687,7 @@ class Library
       end
     }
     if filter_criteria && !filter_criteria.empty? && !media_list[cache_name].empty?
-      files = media_list[cache_name]
+      files = media_list[cache_name].dup
       files.keep_if {|k, f| !k.is_a?(Symbol) && !(f[:files].map{|x| x[:name]} & raw_filtered.flatten).empty?}
     end
     return files || media_list[cache_name]

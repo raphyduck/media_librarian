@@ -19,6 +19,7 @@ class Kodi
   end
 
   def self.kodi_lookup(type, filename, title)
+    $speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     exact_title, item = title, nil
     properties = case type
                    when 'movies'

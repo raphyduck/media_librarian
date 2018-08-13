@@ -147,7 +147,7 @@ class Utils
   end
 
   def self.regularise_media_type(type)
-    return type + 's' if VALID_VIDEO_MEDIA_TYPE.include?(type + 's')
+    return type + 's' if VALID_MEDIA_TYPES.map {|_, v| v}.flatten.include?(type + 's')
     type
   rescue
     type

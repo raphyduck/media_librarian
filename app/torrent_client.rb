@@ -54,19 +54,22 @@ class TorrentClient
     end
   end
 
-  def find_main_file(status)
+  def find_main_file(status, whitelisted_exts = [])
     files = {}
     status['files'].each do |file|
       if FileUtils.get_extension(file['path']).match(/r(ar|\d{2})/)
         fname = file['path'].gsub(FileUtils.get_extension(file['path']), '')
-      else
+      elsif whitelisted_exts.empty? || whitelisted_exts.include?(FileUtils.get_extension(file['path']))
         fname = file['path']
+      else
+        $speaker.speak_up "The file '#{file['path']}' is not on the allowed extension list (#{whitelisted_exts.join(', ')}), will not be included" if Env.debug?
+        fname = 'illegalext'
       end
       files[fname] = {:s => 0, :f => []} unless files[fname]
       files[fname][:s] += file['size'].to_i
       files[fname][:f] << file['path']
     end
-    files.select {|_, f| f[:s] > 0.9 * status['total_size'].to_i}.map {|_, v| v[:f]}.flatten
+    files.select {|k, f| k != 'illegalext' && f[:s] > 0.9 * status['total_size'].to_i}.map {|_, v| v[:f]}.flatten
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     []
@@ -116,13 +119,11 @@ class TorrentClient
                 :tdid => tdid,
                 :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
                 :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
-                :main_only => torrent[:main_only].to_i,
-                :add_paused => (torrent[:add_paused].to_s == 'true' || torrent[:add_paused].to_i == 1) ? 1 : 0,
                 :entry_id => torrent[:identifiers].join,
-                :expect_main_file => torrent[:expect_main_file],
                 :added_at => Time.now.to_i
             }
         }
+        opts[@tname].merge!(torrent.select {|k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k)})
         Cache.queue_state_add_or_update('deluge_options', opts)
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
@@ -131,6 +132,7 @@ class TorrentClient
             torrent[:files].each do |f|
               Cache.queue_state_add_or_update('dir_to_delete', {f[:name] => @tname}) if f[:type] == 'file'
               TraktAgent.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tname) if f[:type] == 'trakt'
+              #TODO: Move that bit upon torrent completion success
             end
           end
         else
@@ -165,13 +167,13 @@ class TorrentClient
             $db.update_rows('torrents', {:torrent_id => tid}, {:name => tname})
           end
           set_options = {}
-          if (o[:rename_main] && o[:rename_main] != '') || (o[:main_only] && o[:main_only].to_i > 0)
-            main_file = find_main_file(status)
+          if (o[:rename_main] && o[:rename_main] != '') || o[:main_only].to_i > 0
+            main_file = find_main_file(status, o[:whitelisted_extensions] | [])
             if !main_file.empty?
               set_options = main_file_only(status, main_file) if o[:main_only]
               rename_main_file(tid, status['files'], o[:rename_main]) if o[:rename_main] && o[:rename_main] != ''
             elsif o[:expect_main_file].to_i > 0
-              $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) is split in multiple files and not an archive, removing" if Env.debug?
+              $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) is does not contain an archive or an acceptable file, removing" if Env.debug?
               delete_torrent(tname, tid)
               next
             end

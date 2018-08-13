@@ -11,7 +11,7 @@ LINE_SEPARATOR = '---------------------------------------------------------'
 RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
 DIMENSIONS = %w(3d)
 SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
-CODECS = %w(10bit hevc h265 x265 h264 x264 xvid divx)
+CODECS = %w(10bits 10bit hevc h265 x265 h264 x264 xvid divx)
 AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5 1', 'ac3', 'ddp5.1', 'ddp5 1', 'dd5.1', 'dd5 1', 'aac2 0', 'aac', 'mp3']
 LANGUAGES = %w(multi vo eng vostfr french vfq vff vf german fastsub)
 VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
@@ -35,8 +35,11 @@ VALID_CONVERSION_OUTPUT = {
     :books => ['cbz'],
     :music => ['mp3']
 }
-VALID_MUSIC_MEDIA_TYPE=['music']
-VALID_VIDEO_MEDIA_TYPE=['movies', 'shows']
+VALID_MEDIA_TYPES = {
+    :books => ['books'],
+    :music => ['music'],
+    :video => ['movies', 'shows']
+}
 EXTENSIONS_TYPE= {
     :books => %w(cbz cbr pdf),
     :music => %w(flac mp3),
@@ -61,8 +64,8 @@ FOLDER_HIERARCHY = {
     'movies' => 0
 }
 DEFAULT_MEDIA_DESTINATION = {
-    'movies' => Dir.home + '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
-    'shows' => Dir.home + '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    'movies' => Dir.home + '/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
+    'shows' => Dir.home + '/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']
 METADATA_SEARCH = {

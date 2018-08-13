@@ -88,6 +88,10 @@ module FileUtils
       return path.gsub(/^\/?([^\/]*)\/.*/, '\1').to_s, path.gsub(/^\/?([^\/]*)\//, '').to_s
     end
 
+    def get_valid_extensions(type)
+      EXTENSIONS_TYPE[MediaInfo.media_type_get(type)]
+    end
+
     def is_in_path(path_list, folder)
       folder = folder.clone.gsub(/\/\/+/, '/').gsub(/^\//, '').gsub(/\/$/, '')
       path_list.each do |p|

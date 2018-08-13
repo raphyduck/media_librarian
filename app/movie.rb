@@ -72,7 +72,7 @@ class Movie
   end
 
   def self.movie_get(ids, type = 'movie_get', movie = nil)
-    $speaker.speak_up "Getting movie from IDs '#{ids}'" if Env.debug?
+    $speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
     cached = Cache.cache_get(type, cache_name)
     return cached if cached
