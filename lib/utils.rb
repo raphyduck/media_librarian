@@ -18,19 +18,30 @@ class Utils
             active_hours['end'].to_i >= Time.now.hour))
   end
 
-  def self.arguments_dump(binding, max_depth = 2)
-    class_name = caller[0].match(/\/(\w*)\.rb:/)[1].gsub('_', ' ').titleize.gsub(' ', '')
-    calling_name = caller[0][/`.*'/][1..-2].gsub('rescue in ', '')
+  def self.arguments_dump(binding, max_depth = 2, class_name = '', calling_name = '')
+    class_name = caller[0].match(/\/(\w*)\.rb:/)[1].gsub('_', ' ').titleize.gsub(' ', '') if class_name.to_s == ''
+    calling_name = caller[0][/`.*'/][1..-2].gsub('rescue in ', '') if calling_name.to_s == ''
     hash_params = Hash[arguments_get(binding, class_name, calling_name, 0, max_depth)]
     "#{class_name}.#{calling_name}(#{hash_params})"
   end
 
   def self.arguments_get(binding, cname, mname, ptype = 0, max_depth = 1)
     params = Object.const_get(cname).method(mname).parameters rescue nil
+    params = Object.const_get(cname).method(ExecutionHooks.alias_hook(mname)).parameters unless params.nil? || params != [[:rest, :args]]
     params = Object.const_get(cname).instance_method(mname).parameters unless params && params != [[:rest]]
+    i = -1
     params.map.collect do |k, name|
+      i += 1
       next if (k[0..2] == 'key' && ptype.to_i == 1) || (ptype.to_i == 2 && k[0..2] != 'key')
-      [name, DataUtils.dump_variable(binding.local_variable_get(name), max_depth, 0, 0).to_s]
+      binding = binding[i] if k[0..2] == 'key'
+      v = if binding.is_a?(Binding)
+        binding.local_variable_get(name)
+      elsif binding.is_a?(Array)
+        binding[i]
+      elsif binding.is_a?(Hash)
+        binding[name]
+      end
+      [name, DataUtils.dump_variable(v, max_depth, 0, 0).to_s]
     end.compact
   rescue
     [[:error, "error fetching arguments from cname='#{cname}', mname='#{mname}', ptype='#{ptype}'"]]
@@ -119,8 +130,8 @@ class Utils
     thread[:lock_time][process_name] += value
   end
 
-  def self.match_release_year(year, target_year)
-    year == 0 || (year <= target_year + 1 && year >= target_year - 1) #|| target_year == 0
+  def self.match_release_year(target_year, year)
+    target_year == 0 || (year <= target_year + 1 && year >= target_year - 1) #|| year == 0
   end
 
   def self.parse_filename_template(tpl, metadata)

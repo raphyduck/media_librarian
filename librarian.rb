@@ -53,6 +53,7 @@ class Librarian
       :forget => ['Utils', 'forget'],
       :send_email => ['Report', 'push_email']
   }
+  $debug_classes = []
 
   def initialize
     @args = ARGV
@@ -135,6 +136,7 @@ class Librarian
 
   def run!
     trap_signals
+    ExecutionHooks.on_the_fly_hooking($debug_classes)
     $speaker.speak_up("Welcome to your library assistant!\n\n")
     Librarian.route_cmd(args)
   end
@@ -171,9 +173,6 @@ class Librarian
       $t_client.process_added_torrents
       $t_client.disconnect
     end
-    #Cleanup lists and folders
-    FileUtils.cleanup_folder unless Cache.queue_state_get('dir_to_delete').empty?
-    TraktAgent.clean_list(Cache.queue_state_get('cleanup_trakt_list')) unless Cache.queue_state_get('cleanup_trakt_list').empty?
   end
 
   def self.help

@@ -127,14 +127,8 @@ class TorrentClient
         Cache.queue_state_add_or_update('deluge_options', opts)
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
-        if success
-          if torrent[:files].is_a?(Array) && !torrent[:files].empty?
-            torrent[:files].each do |f|
-              Cache.queue_state_add_or_update('dir_to_delete', {f[:name] => @tname}) if f[:type] == 'file'
-              TraktAgent.list_cache_add(f[:trakt_list], f[:trakt_type], f[:trakt_obj], @tname) if f[:type] == 'trakt'
-              #TODO: Move that bit upon torrent completion success
-            end
-          end
+        if success && torrent[:files].is_a?(Array) && !torrent[:files].empty?
+          Cache.queue_state_add_or_update('file_handling', {torrent[:identifier] => torrent[:files]})
         else
           TorrentSearch.reauth(torrent[:tracker])
         end
@@ -168,7 +162,7 @@ class TorrentClient
           end
           set_options = {}
           if (o[:rename_main] && o[:rename_main] != '') || o[:main_only].to_i > 0
-            main_file = find_main_file(status, o[:whitelisted_extensions] | [])
+            main_file = find_main_file(status, o[:whitelisted_extensions] || [])
             if !main_file.empty?
               set_options = main_file_only(status, main_file) if o[:main_only]
               rename_main_file(tid, status['files'], o[:rename_main]) if o[:rename_main] && o[:rename_main] != ''
@@ -262,10 +256,6 @@ class TorrentClient
       retry
     else
       $speaker.tell_error(e, "$t_client.#{debug_str}")
-      if @tname.to_s != ''
-        TraktAgent.list_cache_remove(@tname)
-        Cache.queue_state_select('dir_to_delete', 1) {|_, v| v != @tname}
-      end
       raise 'Lost connection'
     end
   end

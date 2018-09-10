@@ -78,7 +78,7 @@ class MediaInfo
     ep_filename = File.basename(filename)
     metadata['quality'] = parse_qualities(File.basename(ep_filename)).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
-    metadata['extension'] = ep_filename.gsub(/.*\.(\w{2,4}$)/, '\1')
+    metadata['extension'] = FileUtils.get_extension(ep_filename)
     full_name, identifiers, info = MediaInfo.parse_media_filename(
         filename,
         type,
@@ -88,7 +88,7 @@ class MediaInfo
         folder_hierarchy,
         base_folder
     )
-    return metadata if ['shows','movies'].include?(type) && (identifiers.empty? || full_name == '')
+    return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
     metadata['is_found'] = true
     metadata['part'] = info[:parts].map {|p| "part#{p}"}.join('.') unless info[:parts].nil?
     case type
@@ -101,7 +101,7 @@ class MediaInfo
         episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
       end
       metadata['episode_name'] = episode_name.join(' ')[0..50]
-      metadata.merge!(Utils.recursive_typify_keys(info,0))
+      metadata.merge!(Utils.recursive_typify_keys(info, 0))
       metadata['is_found'] = (metadata['episode_numbering'] != '')
     when 'movies'
       metadata['movies_name'] = item_name
@@ -183,7 +183,7 @@ class MediaInfo
         Regexp.new(
             '^\[?.{0,2}[\] ]?' + StringUtils.regexify(target_title) + '([' + SPACE_SUBSTITUTE + ']|[\&-]?e\d{1,4})?$',
             Regexp::IGNORECASE)
-    ) && ep_match && Utils.match_release_year(year, target_year)
+    ) && ep_match && Utils.match_release_year(target_year, year)
     $speaker.speak_up "title '#{title}' ('#{year}')#{' does NOT' unless m} match#{'es' if m} target_title '#{target_title}'" if Env.debug?
     m
   end
@@ -289,7 +289,7 @@ class MediaInfo
   end
 
   def self.media_type_get(type)
-    VALID_MEDIA_TYPES.select{|_,v| v.include?(Utils.regularise_media_type(type))}.first[0]
+    VALID_MEDIA_TYPES.select {|_, v| v.include?(Utils.regularise_media_type(type))}.first[0]
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
@@ -311,7 +311,6 @@ class MediaInfo
 
   def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
     title = StringUtils.prepare_str_search(title)
-    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     exact_title, movie = title, nil
     cache_name = title.to_s + (ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']).to_s + original_filename.to_s
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
@@ -389,9 +388,9 @@ class MediaInfo
     when 'shows'
       s, e, _ = TvSeries.identify_tv_episodes_numbering(filename)
       ids = e.map {|n| TvSeries.identifier(item_name, n[:s], n[:ep])}
-      ids = s.map {|i| TvSeries.identifier(item_name, i, '')}.join if ids.empty?
-      ids = TvSeries.identifier(item_name, '', '') if ids.empty?
-      episode_numbering = e.map{|n| "S#{format('%02d', n[:s].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}"}.join(' ')
+      ids = s.map {|i| TvSeries.identifier(item_name, i, '')} if ids.empty?
+      ids = [TvSeries.identifier(item_name, '', '')] if ids.empty?
+      episode_numbering = e.map {|n| "S#{format('%02d', n[:s].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}"}.join(' ')
       f_type = TvSeries.identify_file_type(filename, e, s)
       full_name = "#{item_name}"
       if f_type != 'series'
@@ -400,7 +399,7 @@ class MediaInfo
       parts = e.map {|ep| ep[:part].to_i}
       info = {
           :series_name => item_name,
-          :episode_season => s.join(' '),
+          :episode_season => s.map {|i| i.to_i}.join(' '),
           :episode => e,
           :episode_numbering => episode_numbering,
           :show => item,
@@ -423,7 +422,7 @@ class MediaInfo
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
-    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.join('|') + ')' + SEP_CHARS + '))')).
+    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map{|q| q.gsub('.', '[\. ]')}.join('|') + ')' + SEP_CHARS + '))')).
         map {|q| q[2]}.flatten.map do |q|
       q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26')
     end.uniq.flatten
@@ -576,5 +575,4 @@ class MediaInfo
     Cache.cache_add('tv_show_search', cache_name, [title, nil], nil)
     return title, nil
   end
-
 end

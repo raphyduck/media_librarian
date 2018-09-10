@@ -11,7 +11,7 @@ class BookSeries
     "book#{name}#{goodread_id}"
   end
 
-  def self.book_series_search(title, no_prompt, ids = {}, goodread_id = '')
+  def self.book_series_search(title, ids = {}, goodread_id = '')
     cache_name = title.to_s + ids['isbn'].to_s + goodread_id.to_s
     cached = Cache.cache_get('book_series_search', cache_name)
     return cached if cached
@@ -19,19 +19,15 @@ class BookSeries
     if goodread_id.to_s != ''
       exact_title, series = get_series(goodread_id)
     end
-    if series.nil?
-      _, book = Book.book_search(title, no_prompt, ids, 1)
-      if book
-        bid = book.is_a?(Book) ? book.ids['goodreads'] : book[:id]
-        book = bid.nil? ? {} : $goodreads.book(bid)
-        series_id = if book['series_works']['series_work'].is_a?(Array)
-                      book['series_works']['series_work'][0]
-                    else
-                      book['series_works']['series_work']
-                    end['series']['id'] rescue nil
-        exact_title, series = get_series(series_id) if series_id
-        series = {} if series.nil?
-      end
+    if series.nil? && ids && ids['goodreads'].to_s != ''
+      book = $goodreads.book(ids['goodreads'])
+      series_id = if book['series_works']['series_work'].is_a?(Array)
+                    book['series_works']['series_work'][0]
+                  else
+                    book['series_works']['series_work']
+                  end['series']['id'] rescue nil
+      exact_title, series = get_series(series_id) if series_id
+      series = {} if series.nil?
     end
     Cache.cache_add('book_series_search', cache_name, [exact_title, series], series)
     return exact_title, series
@@ -67,13 +63,13 @@ class BookSeries
         series_name = series_name.dup
         full_name, identifiers, info = MediaInfo.parse_media_filename(series_name, 'books', s, series_name.dup, no_prompt)
         book_series[cache_name, CACHING_TTL] = MediaInfo.media_add(series_name,
-                                                                    'books',
-                                                                    full_name,
-                                                                    identifiers,
-                                                                    info,
-                                                                    {},
-                                                                    {},
-                                                                    book_series[cache_name]
+                                                                   'books',
+                                                                   full_name,
+                                                                   identifiers,
+                                                                   info,
+                                                                   {},
+                                                                   {},
+                                                                   book_series[cache_name]
         )
       end
     }

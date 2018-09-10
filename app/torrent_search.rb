@@ -14,7 +14,7 @@ class TorrentSearch
     end
     progress, state = 0, ''
     $speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
-    progress = -1 if download[:torrent_id].to_s == '' && Time.parse(download[:updated_at]) < Time.now - 1.hour
+    progress = -1 if download[:torrent_id].to_s == ''
     if progress >= 0
       status = $t_client.get_torrent_status(download[:torrent_id], ['name', 'progress', 'state'])
       progress = status['progress'].to_i rescue -1
@@ -26,7 +26,7 @@ class TorrentSearch
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
-      $t_client.delete_torrent(download[:name], progress >= 0 ? 1 : 0)
+      $t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
     end
   end
 
@@ -312,16 +312,17 @@ class TorrentSearch
       subset.each do |torrent|
         $speaker.speak_up(LINE_SEPARATOR)
         $speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
-        $speaker.speak_up("Name: #{torrent[:name]}")
-        if no_prompt.to_i == 0
-          $speaker.speak_up("Size: #{(torrent[:size].to_f / 1024 / 1024 / 1024).round(2)} GB")
-          $speaker.speak_up("Seeders: #{torrent[:seeders]}")
-          $speaker.speak_up("Leechers: #{torrent[:leechers]}")
-          $speaker.speak_up("Added: #{torrent[:added]}")
-          $speaker.speak_up("Link: #{URI.escape(torrent[:link].to_s)}")
+        torrent.select {|k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :in_db].include?(k)}.each do |k, v|
+          val = case k
+                when :size
+                  (v.to_f / 1024 / 1024 / 1024).round(2)
+                when :link
+                  URI.escape(v.to_s)
+                else
+                  v
+                end
+          $speaker.speak_up "#{k.to_s.titleize}: #{val}"
         end
-        $speaker.speak_up("Tracker: #{torrent[:tracker]}")
-        $speaker.speak_up("Already in DB") if torrent[:in_db].to_i > 0
         i += 1
       end
     end

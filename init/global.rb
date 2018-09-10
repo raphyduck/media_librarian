@@ -12,7 +12,7 @@ RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
 DIMENSIONS = %w(3d)
 SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
 CODECS = %w(10bits 10bit hevc h265 x265 h264 x264 xvid divx)
-AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5 1', 'ac3', 'ddp5.1', 'ddp5 1', 'dd5.1', 'dd5 1', 'aac2 0', 'aac', 'mp3']
+AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5 1', 'ac3', 'ddp5.1', 'dd5.1', 'aac2.0', 'aac', 'mp3']
 LANGUAGES = %w(multi vo eng vostfr french vfq vff vf german fastsub)
 VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
 FILENAME_NAMING_TEMPLATE=%w(
@@ -28,7 +28,7 @@ FILENAME_NAMING_TEMPLATE=%w(
     part
 )
 VALID_CONVERSION_INPUTS = {
-    :books => ['cbz', 'pdf', 'cbr'],
+    :books => ['cbz', 'pdf', 'cbr', 'epub'],
     :music => ['flac']
 }
 VALID_CONVERSION_OUTPUT = {
@@ -54,7 +54,7 @@ BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. ]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
-PRIVATE_TRACKERS = {'yggtorrent' => 'https://ww3.yggtorrent.is',
+PRIVATE_TRACKERS = {'yggtorrent' => 'https://ww4.yggtorrent.is',
                     'torrentleech' => 'https://www.torrentleech.org',
                     'wop' => 'https://worldofp2p.net'}
 TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => 'https://rarbgto.org',

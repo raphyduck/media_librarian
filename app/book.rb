@@ -36,8 +36,8 @@ class Book
         @series = s[1]
       end
     end
-    if @series.nil? && opts[:no_series_search].to_i == 0
-      t, @series = BookSeries.book_series_search(filename, 1, ids)
+    if @series.nil?
+      t, @series = BookSeries.book_series_search(filename, ids)
       @series_name = t if @series
       @series = nil if @series.is_a?(Hash) && @series.empty?
     end
@@ -71,16 +71,16 @@ class Book
     "book#{series_name}#{series.goodread_id.to_s if series.to_s != ''}T#{series_nb}"
   end
 
-  def self.book_search(title, no_prompt = 0, ids = {}, no_series_search = 0)
+  def self.book_search(title, no_prompt = 0, ids = {})
     cache_name = title.to_s + ids['isbn'].to_s
     rs, book, exact_title = [], nil, title
-    Utils.lock_block("#{__method__}_#{title}#{ids}#{no_series_search}") {
+    Utils.lock_block("#{__method__}_#{cache_name}") {
       cached = Cache.cache_get('book_search', cache_name)
       return cached if cached
       if ids['isbn'].to_s != ''
         book = ($goodreads.book_by_isbn(ids['isbn']) rescue nil)
         if book
-          book = new(book.merge({:no_series_search => no_series_search}))
+          book = new(book)
           exact_title = book.name
         end
       end
@@ -105,9 +105,9 @@ class Book
             no_prompt.to_i
         )
         if book
-          book = new(book.merge({:no_series_search => no_series_search}))
+          book = new(book)
         else
-          book = new({:filename => title}.merge({:no_series_search => no_series_search}))
+          book = new({:filename => title})
         end
       end
       Cache.cache_add('book_search', cache_name, [exact_title, book], book)

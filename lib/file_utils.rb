@@ -8,14 +8,6 @@ module FileUtils
     alias_method :rmdir_orig, :rmdir
     alias_method :ln_orig, :ln
 
-    def cleanup_folder
-      Cache.queue_state_get('dir_to_delete').each do |f, _|
-        next if f.to_s == '/'
-        rm(f) if File.exist?(f)
-        Cache.queue_state_remove('dir_to_delete', f)
-      end
-    end
-
     def compress_archive(folder, name)
       Dir.chdir(File.dirname(folder)) do
         if Env.pretend?
@@ -181,6 +173,7 @@ module FileUtils
       end
       $speaker.speak_up("Removing file '#{files}'")
       file_remove_parents(files)
+      true
     end
 
     def rm_r(files, force: nil, noop: nil, verbose: nil, secure: nil)

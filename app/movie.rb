@@ -36,7 +36,8 @@ class Movie
       v = {'tmdb' => opts['id']} if v.nil? && opts['id']
     when 'name'
       v = opts['title']
-      @year = (opts['year'] || year).to_i
+      title_year = MediaInfo.identify_release_year(v) > 0 ? MediaInfo.identify_release_year(v) : nil
+      @year = (opts['year'] || title_year || year ).to_i
       v << " (#{@year})" if MediaInfo.identify_release_year(v).to_i == 0
     when 'released'
       v = opts['release_date'] || opts['premiered']
@@ -60,7 +61,8 @@ class Movie
   end
 
   def year
-    (@year || release_date || Time.now + 3.years).year.to_i
+    title_year = name && MediaInfo.identify_release_year(name) > 0 ? MediaInfo.identify_release_year(name) : nil
+    (@year || title_year || (release_date || Time.now + 3.years).year).to_i
   end
 
   def self.identifier(movie_name, year)

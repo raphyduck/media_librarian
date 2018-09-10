@@ -38,13 +38,13 @@ module TorrentSite
 
     def size_unit_convert(size, s_unit)
       case s_unit
-      when 'KB', 'KiB', 'kB'
+      when 'KB', 'KiB', 'kB', 'Ko', 'KO'
         size *= 1024
-      when 'MB', 'MiB'
+      when 'MB', 'MiB', 'Mo', 'MO'
         size *= 1024 * 1024
-      when 'GB', 'GiB'
+      when 'GB', 'GiB', 'Go', 'GO'
         size *= 1024 * 1024 * 1024
-      when 'TB', 'TiB'
+      when 'TB', 'TiB', 'To', 'TO'
         size *= 1024 * 1024 * 1024 * 1024
       end
       size

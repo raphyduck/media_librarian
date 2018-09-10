@@ -29,7 +29,7 @@ class MoviesSet
   end
 
   def self.list_missing_movie(movies_files, qualifying_files, no_prompt = 0, delta = 30)
-    $speaker.speak_up "Will parse movies set for missing movies released more than #{delta} days ago..." if Env.debug?
+    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     collections, missing_movies = [], {}
     movies_files.each do |id, movie|
       next if id.is_a?(Symbol)

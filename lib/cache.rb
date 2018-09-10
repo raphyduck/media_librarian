@@ -54,7 +54,7 @@ class Cache
   def self.object_pack(object, to_hash_only = 0)
     obj = object.is_a?(Thread) ? object : object.clone
     oclass = obj.class.to_s
-    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass].include?(obj.class)
+    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass, TrueClass, FalseClass].include?(obj.class)
       obj = obj.to_s
     elsif obj.is_a?(Array)
       obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only) }
@@ -98,10 +98,11 @@ class Cache
 
   def self.queue_state_add_or_update(qname, el, unique = 1)
     $speaker.speak_up "Will add element '#{el}' to queue '#{qname}'" if Env.debug?
-    el = [el] unless el.is_a?(Hash)
+    el = [el] unless el.is_a?(Hash) || el.is_a?(Array)
     h = queue_state_get(qname, el.is_a?(Hash) ? Hash : Array)
     return if unique.to_i > 0 && h.is_a?(Array) && h.include?(el[0])
-    queue_state_save(qname, h + el)
+    h = (el + h rescue el)
+    queue_state_save(qname, h)
   end
 
   def self.queue_state_get(qname, type = Hash)

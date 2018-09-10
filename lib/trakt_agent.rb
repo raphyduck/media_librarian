@@ -12,18 +12,6 @@ class TraktAgent
     end
   end
 
-  def self.clean_list(list_to_clean = Cache.queue_state_get('cleanup_trakt_list'))
-    return if Env.pretend?
-    list_to_clean.each do |list_name, list|
-      list.map {|m| m[:t]}.uniq.each do |type|
-        l = list.select {|m| m[:t] == type}.map {|m| m[:c]}
-        $speaker.speak_up "Cleaning trakt list '#{list_name}' (type #{type}, #{l.count} elements)" if Env.debug?
-        TraktAgent.remove_from_list(l, list_name, type)
-      end
-      Cache.queue_state_remove('cleanup_trakt_list', list_name)
-    end
-  end
-
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
     return if Env.pretend?
     $trakt.list.create_list({
@@ -98,7 +86,7 @@ class TraktAgent
         watched_videos.each do |h|
           if h[type[0...-1]] && h[type[0...-1]]['ids']
             h[type[0...-1]]['ids'].each do |k, id|
-              if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].gsub(/\D/, '').to_i == id.gsub(/\D/, '').to_i
+              if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].to_s.gsub(/\D/, '').to_i == id.to_s.gsub(/\D/, '').to_i
                 delete_it = 1
                 break
               end
@@ -145,6 +133,15 @@ class TraktAgent
   end
 
   def self.list(name = 'watchlist', type = 'movies')
+    list, t = [], 0
+    while list.empty? && t < 4
+      list = list_fetch(name, type)
+      t += 1
+    end
+    list
+  end
+
+  def self.list_fetch(name, type)
     tries ||= 3
     case name
     when 'watchlist'
@@ -166,19 +163,6 @@ class TraktAgent
       $speaker.tell_error(e, Utils.arguments_dump(binding))
       []
     end
-  end
-
-  def self.list_cache_add(list_name, type, item, id = Time.now.to_s)
-    ex = Cache.queue_state_get('cleanup_trakt_list')[list_name] || []
-    Cache.queue_state_add_or_update('cleanup_trakt_list', {list_name => ex.push({:id => id, :c => item, :t => type})})
-  end
-
-  def self.list_cache_remove(item_id)
-    list_cache = Cache.queue_state_get('cleanup_trakt_list')
-    list_cache.each do |k, list|
-      list_cache[k] = list.select {|x| x[:id] != item_id}
-    end
-    Cache.queue_state_add_or_update('cleanup_trakt_list', list_cache)
   end
 
   def self.parse_custom_list(items)
@@ -209,13 +193,16 @@ class TraktAgent
   end
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
-    return if Env.pretend?
+    $speaker.speak_up "Cleaning trakt list '#{list}' (type #{type}, #{items.count} elements)" if Env.debug?
+    tries, result = 3, false
+    return result if Env.pretend?
     begin
-      tries = 3
       $trakt.sync.add_or_remove_item('remove', list, type, items)
+      result = true
     rescue
       retry unless (tries -= 1).to_i <= 0
     end
+    result
   end
 
   def self.search_list(type, item, list)
