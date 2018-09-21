@@ -578,7 +578,7 @@ class Library
         file
     )
     return files if identifiers.empty? || full_name == ''
-    $speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}') to list", 0) if Env.debug?
+    $speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     file = nil unless file[:type].to_s != 'file' || File.exists?(file[:name])
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|

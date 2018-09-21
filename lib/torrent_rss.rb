@@ -1,3 +1,4 @@
+require File.dirname(__FILE__) + '/torrent_site'
 class TorrentRss < TorrentSite::Search
   attr_accessor :url
 

@@ -21,6 +21,8 @@ class MediaInfo
   def self.detect_real_title(name, type, id_info = 0, complete = 1)
     name = I18n.transliterate(name.clone)
     case type
+    when 'books'
+      name.gsub!(/.*\/([^\/]*)/, '\1')
     when 'movies'
       m = name.match(/^(\[[^\]])?(.*[#{SPACE_SUBSTITUTE}]\(?\d{4}\)?)([#{SPACE_SUBSTITUTE}]|$)/i)
       name = m[2] if m
@@ -79,7 +81,7 @@ class MediaInfo
     metadata['quality'] = parse_qualities(File.basename(ep_filename)).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
-    full_name, identifiers, info = MediaInfo.parse_media_filename(
+    full_name, identifiers, info = parse_media_filename(
         filename,
         type,
         item,
@@ -101,11 +103,11 @@ class MediaInfo
         episode_name << (tvdb_ep.nil? ? '' : tvdb_ep.name.to_s.downcase)
       end
       metadata['episode_name'] = episode_name.join(' ')[0..50]
-      metadata.merge!(Utils.recursive_typify_keys(info, 0))
       metadata['is_found'] = (metadata['episode_numbering'] != '')
     when 'movies'
       metadata['movies_name'] = item_name
     end
+    metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select{|k,_| ![:show, :movie, :book].include?(k)}), 0))
     metadata
   end
 
@@ -296,7 +298,7 @@ class MediaInfo
 
   def self.missing_media_add(missing_eps, type, full_name, release_date, item_name, identifiers, info, display_name = nil)
     return missing_eps if full_name == ''
-    $speaker.speak_up("Missing #{display_name || full_name} (released on #{release_date})", 0)
+    $speaker.speak_up("Missing #{display_name || full_name} (ids '#{identifiers}') (released on #{release_date})", 0)
     missing_eps = MediaInfo.media_add(item_name,
                                       type,
                                       full_name,
