@@ -1,7 +1,9 @@
+---
 calibre_library:
-  path: /path/to/calibre/library
+  path: "/path/to/calibre/library"
 daemon:
   workers_pool_size: 4
+  queue_slots: 4
 deluge:
   host: host
   username: username
@@ -13,8 +15,8 @@ email:
   username: username
   password: pwd
   auth_type: plain
-  notification_from: 'noreply@sender.com'
-  notification_to: 'noreply@recipient.com'
+  notification_from: noreply@sender.com
+  notification_to: noreply@recipient.com
   notification_cc: ''
   notification_bcc: ''
 goodreads:
@@ -29,7 +31,7 @@ kodi:
   password: password
 thepiratebay:
   site_specific_kw:
-      shows: ''
+    shows: ''
 torrentleech:
   username: username
   password: password
@@ -45,9 +47,9 @@ yggtorrent:
   username: username
   password: password
   site_specific_kw:
-      movies: 'multi'
+    movies: multi
 worldofp2p:
   username: username
   password: password
   site_specific_kw:
-      movies: 'multi'
+    movies: multi

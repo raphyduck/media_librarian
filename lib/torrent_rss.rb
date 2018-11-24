@@ -2,10 +2,10 @@ require File.dirname(__FILE__) + '/torrent_site'
 class TorrentRss < TorrentSite::Search
   attr_accessor :url
 
-  def initialize(url)
+  def initialize(url, quit_only = 0)
     @url = url
     @base_url = url
-    post_init
+    post_init(quit_only)
   end
 
   private

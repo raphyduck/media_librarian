@@ -41,6 +41,11 @@ class Cache
       return result
     end
     nil
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    $speaker.speak_up "An error occured loading cache for type '#{type}' and keyword '#{keyword}', removing entry"
+    $db.delete_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
+    nil
   end
 
   def self.cache_get_enum(type)
@@ -54,16 +59,18 @@ class Cache
   def self.object_pack(object, to_hash_only = 0)
     obj = object.is_a?(Thread) ? object : object.clone
     oclass = obj.class.to_s
-    if [String, Integer, Float, BigDecimal, Date, DateTime, Time, NilClass, TrueClass, FalseClass].include?(obj.class)
+    if [String, Integer, Float, BigDecimal, NilClass, TrueClass, FalseClass].include?(obj.class)
       obj = obj.to_s
+    elsif [Date, DateTime, Time].include?(obj.class)
+      obj = obj.strftime('%Y-%m-%dT%H:%M:%S%z')
     elsif obj.is_a?(Array)
-      obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only) }
+      obj.each_with_index {|o, idx| obj[idx] = object_pack(o, to_hash_only)}
     elsif obj.is_a?(Hash)
-      obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only) }
+      obj.keys.each {|k| obj[k] = object_pack(obj[k], to_hash_only)}
     elsif obj.is_a?(Thread)
-      obj = "thread[#{obj[:object]}]"
+      obj = "thread[#{Hash[obj.keys.map{|k| [k,obj[k]]}]}]"
     else
-      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only) }
+      obj = object.instance_variables.each_with_object({}) {|var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only)}
     end
     obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
@@ -84,14 +91,22 @@ class Cache
         rescue Exception
           object[1]
         end
-        object.keys.each { |k| object[k] = object_unpack(object[k]) } rescue nil
+        object.keys.each {|k| object[k] = object_unpack(object[k])}
+      elsif Object.const_get(object[0]).respond_to?('strptime')
+        object = begin
+          Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%dT%H:%M:%S%z')
+        rescue
+          Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%d %H:%M:%S %z')
+        end
+      elsif Object.const_get(object[0]).respond_to?('new')
+        object = Object.const_get(object[0]).new(object_unpack(object[1]))
       else
-        object = Object.const_get(object[0]).new(object_unpack(object[1])) rescue object_unpack(object[1])
+        object = object_unpack(object[1])
       end
     elsif object.is_a?(Array)
-      object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
+      object.each_with_index {|o, idx| object[idx] = object_unpack(o)}
     else
-      object.keys.each { |k| object[k] = object_unpack(object[k]) }
+      object.keys.each {|k| object[k] = object_unpack(object[k])}
     end
     object
   end
@@ -134,8 +149,8 @@ class Cache
 
   def self.queue_state_select(qname, save = 0, &block)
     h = queue_state_get(qname)
-    return h.select { |k, v| block.call(k, v) } if save == 0
-    queue_state_save(qname, h.select { |k, v| block.call(k, v) })
+    return h.select {|k, v| block.call(k, v)} if save == 0
+    queue_state_save(qname, h.select {|k, v| block.call(k, v)})
   end
 
   def self.queue_state_shift(qname)

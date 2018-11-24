@@ -45,6 +45,12 @@ class Cavy
     end
   end
 
+  def quit
+    return unless defined?(@capybara) && @capybara
+    @capybara.driver.quit
+    @capybara = nil
+  end
+
   private
 
   def get_cookies

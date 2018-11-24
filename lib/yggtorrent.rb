@@ -4,13 +4,13 @@ module Yggtorrent
 
     attr_accessor :url
 
-    def initialize(search, url = nil, cid = '')
+    def initialize(search, url = nil, cid = '', quit_only = 0)
       @base_url = TORRENT_TRACKERS['yggtorrent'] #'https://ww3.yggtorrent.is'
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/engine/search?#{cid}name=#{URI.escape(search)}&do=search#{'&order=desc&sort=seed' if search.to_s != ''}"
       @css_path = 'table.table tbody tr'
-      post_init
+      post_init(quit_only)
     end
 
     private
@@ -20,7 +20,7 @@ module Yggtorrent
       $tracker_client[@base_url].find('a#register').click
       $tracker_client[@base_url].fill_in('id', with: $config[tracker]['username'], wait: 30)
       $tracker_client[@base_url].fill_in('pass', with: $config[tracker]['password'], wait: 30)
-      $tracker_client[@base_url].click_button('Connexion')
+      $tracker_client[@base_url].find_button("Connexion").trigger('click')
     end
 
     def crawl_link(link)
@@ -34,7 +34,7 @@ module Yggtorrent
           break
         end
       end
-      raw_size = cols[5].text.to_s
+      raw_size = cols[5] ? cols[5].text.to_s : 0
       size = raw_size.match(/[\d\.]+/).to_s.to_d
       s_unit = raw_size.gsub(/[\d\.]+/, '').to_s.strip
       size = size_unit_convert(size, s_unit)

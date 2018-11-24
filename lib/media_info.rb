@@ -107,7 +107,7 @@ class MediaInfo
     when 'movies'
       metadata['movies_name'] = item_name
     end
-    metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select{|k,_| ![:show, :movie, :book].include?(k)}), 0))
+    metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select {|k, _| ![:show, :movie, :book].include?(k)}), 0))
     metadata
   end
 
@@ -379,7 +379,7 @@ class MediaInfo
     case type
     when 'movies'
       release = item&.release_date ? item.release_date : Time.new(MediaInfo.identify_release_year(item_name))
-      ids = [Movie.identifier(item_name, release.year)]
+      ids = [Movie.identifier(item_name, item.year)]
       full_name = item_name
       info = {
           :movies_name => item_name,
@@ -424,9 +424,9 @@ class MediaInfo
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
-    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map{|q| q.gsub('.', '[\. ]')}.join('|') + ')' + SEP_CHARS + '))')).
+    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map {|q| q.gsub('.', '[\. ]')}.join('|') + ')' + SEP_CHARS + '))')).
         map {|q| q[2]}.flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26').gsub(' ', '.')
     end.uniq.flatten
     pq = parse_3d(filename, pq)
     pq

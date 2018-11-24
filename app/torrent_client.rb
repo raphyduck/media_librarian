@@ -1,11 +1,7 @@
 class TorrentClient
 
   def initialize
-    @deluge = Deluge::Rpc::Client.new(
-        host: $config['deluge']['host'], port: 58846,
-        login: $config['deluge']['username'], password: $config['deluge']['password']
-    )
-    @deluge_connected = nil
+    init
     @tname = ''
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
@@ -18,6 +14,12 @@ class TorrentClient
     @deluge.connect
     @deluge_connected = 1
     listen
+  end
+
+  def delete_torrent(tname, tid = 0, remove_opts = 0)
+    $t_client.remove_torrent(tid, true) if tid.to_i > 0 rescue nil
+    $db.update_rows('torrents', {:status => -1}, {:name => tname})
+    Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
 
   def disconnect
@@ -75,6 +77,14 @@ class TorrentClient
     []
   end
 
+  def init
+    @deluge = Deluge::Rpc::Client.new(
+        host: $config['deluge']['host'], port: 58846,
+        login: $config['deluge']['username'], password: $config['deluge']['password']
+    )
+    @deluge_connected = nil
+  end
+
   def listen
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       $speaker.speak_up "Torrent #{torrent_id} was successfully added!"
@@ -103,42 +113,37 @@ class TorrentClient
       @tname = torrent[:name]
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
+      opts = {
+          @tname => {
+              :tdid => tdid,
+              :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
+              :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
+              :entry_id => torrent[:identifiers].join,
+              :added_at => Time.now.to_i
+          }
+      }
+      opts[@tname].merge!(torrent.select {|k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k)})
       path, ttype = nil, 1
       success = false
       tries = 5
       while (tries -= 1) >= 0 && !success
         $speaker.speak_up("Will download torrent '#{torrent[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
-        File.delete($temp_dir + "/#{tdid}.torrent") rescue nil
         if url.to_s != ''
           path = TorrentSearch.get_torrent_file(torrent[:tracker], tdid, url)
         elsif magnet.to_s != ''
           path, ttype = magnet, 2
         end
-        opts = {
-            @tname => {
-                :tdid => tdid,
-                :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
-                :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
-                :entry_id => torrent[:identifiers].join,
-                :added_at => Time.now.to_i
-            }
-        }
-        opts[@tname].merge!(torrent.select {|k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k)})
         Cache.queue_state_add_or_update('deluge_options', opts)
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
-        if success && torrent[:files].is_a?(Array) && !torrent[:files].empty?
-          Cache.queue_state_add_or_update('file_handling', {torrent[:identifier] => torrent[:files]})
+        if success
+          Cache.queue_state_add_or_update('file_handling', {torrent[:identifier] => torrent[:files]}) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
         else
-          TorrentSearch.reauth(torrent[:tracker])
+          TorrentSearch.deauth(torrent[:tracker])
         end
+        FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
-      unless success
-        delete_torrent(t[:name], 0, 1)
-        if torrent[:tracker].to_s != ''
-          TorrentSearch.launch_search(torrent[:tracker], '').init rescue nil
-        end
-      end
+      delete_torrent(t[:name], 0, 1) unless success
     end
     @tname = ''
   end
@@ -161,16 +166,14 @@ class TorrentClient
             $db.update_rows('torrents', {:torrent_id => tid}, {:name => tname})
           end
           set_options = {}
-          if (o[:rename_main] && o[:rename_main] != '') || o[:main_only].to_i > 0
-            main_file = find_main_file(status, o[:whitelisted_extensions] || [])
-            if !main_file.empty?
-              set_options = main_file_only(status, main_file) if o[:main_only]
-              rename_main_file(tid, status['files'], o[:rename_main]) if o[:rename_main] && o[:rename_main] != ''
-            elsif o[:expect_main_file].to_i > 0
-              $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) is does not contain an archive or an acceptable file, removing" if Env.debug?
-              delete_torrent(tname, tid)
-              next
-            end
+          main_file = find_main_file(status, o[:whitelisted_extensions] || [])
+          torrent_qualities = MediaInfo.parse_qualities(tname)
+          set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
+          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
+          if main_file.empty? && o[:expect_main_file].to_i > 0
+            $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) is does not contain an archive or an acceptable file, removing" if Env.debug?
+            delete_torrent(tname, tid)
+            next
           end
           unless set_options.empty?
             $t_client.set_torrent_options([tid], set_options)
@@ -221,42 +224,62 @@ class TorrentClient
     false
   end
 
-  def rename_main_file(tid, files, new_dir_name)
-    $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.")
+  def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '')
+    $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.") if new_dir_name.to_s != ''
     paths = []
     files.each do |file|
       old_name = File.basename(file['path'])
-      new_path = new_dir_name + '/' + old_name
+      extension = FileUtils.get_extension(old_name)
+      ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
+        file_q = MediaInfo.parse_qualities(old_name, eval(t))[0].to_s
+        t_q = MediaInfo.parse_qualities(".#{torrent_qualities.join('.')}.", eval(t))[0].to_s
+        if t_q != file_q
+          new_name = old_name.gsub(/\.#{extension}$/, '').to_s + ".#{t_q}.#{extension}"
+          $speaker.speak_up"File '#{old_name}' does not contain the qualities information '#{t_q}', will rename to '#{new_name}'" if Env.debug?
+          old_name = new_name
+        end
+      end
+      new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{old_name}"
       paths << [file['index'], new_path]
     end
     $t_client.rename_files(tid, paths)
   end
 
-  def delete_torrent(tname, tid = 0, remove_opts = 0)
-    $t_client.remove_torrent(tid, true) if tid.to_i > 0 rescue nil
-    $db.update_rows('torrents', {:status => -1}, {:name => tname})
-    Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
-  end
-
   def method_missing(name, *args)
     tries ||= 3
     debug_str = "#{name}#{'(' + args.map {|a| a.to_s[0..100]}.join(',') + ')' if args}"
-    authenticate
     $speaker.speak_up "Running @deluge.core.#{debug_str}" if Env.debug?
     return if Env.pretend? && !['get_torrent_status'].include?(name)
-    if args.empty?
-      eval("@deluge.core").method(name).call
-    else
-      eval("@deluge.core").method(name).call(*args)
+    result = nil
+    Timeout.timeout(60) do
+      authenticate
+      if args.empty?
+        result = eval("@deluge.core").method(name).call
+      else
+        result = eval("@deluge.core").method(name).call(*args)
+      end
     end
+    result
   rescue => e
     @deluge_connected = nil
+    @deluge = nil #Nuke it, start over
+    init
     if !(tries -= 1).zero?
-      sleep 3
+      sleep 5
       retry
     else
       $speaker.tell_error(e, "$t_client.#{debug_str}")
       raise 'Lost connection'
+    end
+  end
+
+  def self.flush_queues
+    if $t_client
+      $t_client.parse_torrents_to_download
+      sleep 15
+      $t_client.process_added_torrents
+      $t_client.disconnect
+      TorrentSearch.quit_all
     end
   end
 

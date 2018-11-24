@@ -4,14 +4,14 @@ module Wop
 
     attr_accessor :url
 
-    def initialize(search, url = nil, cid = '')
+    def initialize(search, url = nil, cid = '', quit_only = 0)
       @base_url = TORRENT_TRACKERS['wop'] #'https://worldofp2p.net'
       # Order by seeds desc
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
       @url = url || "#{@base_url}/browse.php?#{cid}search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
       @css_path = 'table.yenitorrenttable tr.browse_color'
-      post_init
+      post_init(quit_only)
     end
 
     private

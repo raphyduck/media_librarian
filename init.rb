@@ -33,4 +33,5 @@ $api_option = {
     'listen_port' => '8888'
 }
 $workers_pool_size = $config['daemon'] ? $config['daemon']['workers_pool_size'] || 4 : 4
+$queue_slots = $config['daemon'] ? $config['daemon']['queue_slots'] || 4 : 4
 $daemon_client = nil

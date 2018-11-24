@@ -1,7 +1,7 @@
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
 active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3
-goodreads io/console imdb_party mechanize mp3info net/ssh pdf/reader rsync shellwords titleize trakt tvdb_party tvmaze unrar xbmc-client yaml)
+goodreads io/console imdb_party mechanize mp3info net/ssh pdf/reader rsync shellwords timeout titleize trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -49,9 +49,10 @@ class Librarian
       },
       :usage => ['Librarian', 'help'],
       :list_db => ['Utils', 'list_db'],
-      :flush_queues => ['Librarian', 'flush_queues'],
+      :flush_queues => ['TorrentClient', 'flush_queues'],
       :forget => ['Utils', 'forget'],
-      :send_email => ['Report', 'push_email']
+      :send_email => ['Report', 'push_email'],
+      :test_childs => ['Librarian', 'test_childs']
   }
   $debug_classes = []
 
@@ -59,7 +60,7 @@ class Librarian
     @args = ARGV
     @loaded = false
     #Require libraries
-    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
+    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each {|file| require file}
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
   end
@@ -83,8 +84,8 @@ class Librarian
 
   def write_pid
     begin
-      File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) { |f| f.write("#{Process.pid}") }
-      at_exit { File.delete($pidfile) if File.exists?($pidfile) }
+      File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) {|f| f.write("#{Process.pid}")}
+      at_exit {File.delete($pidfile) if File.exists?($pidfile)}
     rescue Errno::EEXIST
       check_pid
       retry
@@ -93,11 +94,11 @@ class Librarian
 
   def check_pid
     case pid_status($pidfile)
-      when :running, :not_owned
-        $speaker.speak_up "A server is already running. Check #{$pidfile}"
-        exit(1)
-      when :dead
-        delete_pid
+    when :running, :not_owned
+      $speaker.speak_up "A server is already running. Check #{$pidfile}"
+      exit(1)
+    when :dead
+      delete_pid
     end
   end
 
@@ -130,7 +131,7 @@ class Librarian
         raise
       end
     end
-    Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
+    Dir[File.dirname(__FILE__) + '/init/*.rb'].each {|file| require file}
     @loaded = true
   end
 
@@ -152,7 +153,7 @@ class Librarian
     end
   end
 
-  def self.burst_thread(tid = Daemon.job_id, client = nil, parent = nil, envf = Daemon.dump_env_flags, child = 0, &block)
+  def self.burst_thread(tid = Daemon.job_id, client = nil, parent = nil, envf = Daemon.dump_env_flags, child = 0, queue_name = '', &block)
     t = Thread.new do
       $args_dispatch.set_env_variables($env_flags, envf)
       reset_notifications(Thread.current)
@@ -160,19 +161,11 @@ class Librarian
       Thread.current[:current_daemon] = client || Thread.current[:current_daemon]
       Thread.current[:parent] = parent
       Thread.current[:jid] = tid
+      Thread.current[:queue_name] = queue_name
       LibraryBus.initialize_queue(Thread.current)
       block.call
     end
     t
-  end
-
-  def self.flush_queues
-    if $t_client
-      $t_client.parse_torrents_to_download
-      sleep 15
-      $t_client.process_added_torrents
-      $t_client.disconnect
-    end
   end
 
   def self.help
@@ -193,7 +186,7 @@ class Librarian
     SimpleConfigMan.reconfigure($config_file, $config_example)
   end
 
-  def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 0, &block)
+  def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, &block)
     if Daemon.is_daemon?
       Daemon.thread_cache_add(Thread.current[:jid], args, Daemon.job_id, task, internal, max_pool_size, 0, Thread.current[:current_daemon], 43200, 1, &block)
     elsif $librarian.pid_status($pidfile) == :running && internal.to_i == 0
@@ -207,7 +200,6 @@ class Librarian
       $librarian.requirments unless $librarian.loaded
       LibraryBus.initialize_queue(Thread.current)
       run_command(args, internal)
-      Librarian.flush_queues if internal.to_i == 0
     end
   end
 
@@ -226,20 +218,25 @@ class Librarian
       p = Object.const_get(m).method(a.to_sym)
       thread_value = cmd.nil? ? p.call : p.call(*cmd)
     else
-      $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
+      $speaker.speak_up("Running command: #{cmd.map {|a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'')}.join(' ')}\n\n", 0)
       thread_value = $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
-    Thread.current[:is_active] = 0
-    terminate_command(Thread.current, thread_value)
+    run_termination(Thread.current, thread_value)
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
-    Thread.current[:is_active] = 0
-    terminate_command(Thread.current, thread_value, "Error on #{object}")
+    run_termination(Thread.current, thread_value, "Error on #{object}")
+  end
+
+  def self.run_termination(thread, thread_value, object = nil)
+    thread[:end_time] = Time.now
+    Daemon.terminate_worker(thread)
+    thread[:is_active] = 0
+    terminate_command(thread, thread_value, object)
   end
 
   def self.terminate_command(thread, thread_value = nil, object = nil, caller = Thread.current)
     return unless thread[:base_thread].nil?
-    return if Daemon.get_children_count(thread[:jid], caller[:jid]).to_i > 0 || thread[:is_active].to_i > 0
+    return if Daemon.get_children_count(thread[:jid], caller[:jid]).to_i > 0 || thread[:is_active] > 0
     LibraryBus.put_in_queue(thread_value)
     if thread[:direct].to_i == 0 || Env.debug?
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
@@ -254,6 +251,24 @@ class Librarian
         terminate_command(thread[:parent], thread_value, object, thread)
       }
     end
+    Daemon.clear_waiting_worker(thread)
+  end
+
+  def self.test_childs(how_many: 10000)
+    (0...how_many.to_i).each do |i|
+      Librarian.route_cmd(
+          ['Librarian', 'da_child', i],
+          1,
+          "#{Thread.current[:object]}test",
+          6
+      )
+    end
+    $speaker.speak_up "Finale result is #{Daemon.consolidate_children}"
+  end
+
+  def self.da_child(i = "")
+    $speaker.speak_up "i is '#{i}'"
+    1
   end
 end
 

@@ -1,7 +1,6 @@
 class LibraryBus
 
   @buses = {}
-  @jobs_cache = Queue.new
 
   def self.bus_get(thread = Thread.current, omni = 0)
     t = thread
@@ -28,18 +27,6 @@ class LibraryBus
     bus_get(thread, 1)[vname] = value
   end
 
-  def self.cache_add(j)
-    @jobs_cache << j
-  end
-
-  def self.cache_fetch
-    @jobs_cache.pop unless @jobs_cache.empty?
-  end
-
-  def self.cache_size
-    @jobs_cache.length
-  end
-
   def self.initialize_queue(thread = Thread.current)
     @buses[bus_id(thread)] = Queue.new unless @buses[bus_id(thread)]
   end
@@ -61,10 +48,7 @@ class LibraryBus
   end
 
   def self.put_in_queue(value, thread = Thread.current)
-    if value.nil?
-      $speaker.speak_up("Value of thread[#{thread[:object]}] is nil", 0) if Env.debug?
-      return
-    end
+    return if value.nil?
     if @buses[bus_id(thread)].nil?
       $speaker.speak_up "Queue '#{bus_id(thread)}' is not initialized" if Env.debug?
       return

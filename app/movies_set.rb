@@ -38,6 +38,7 @@ class MoviesSet
       $speaker.speak_up("Checking movies set '#{collec_title}' for missing part") if Env.debug?
       collections << collec_title
       collection.movies.each do |m|
+        #TODO: Fix me, when title is not original for example in french
         $speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
         next if (m.release_date.nil? && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
         next if MediaInfo.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))

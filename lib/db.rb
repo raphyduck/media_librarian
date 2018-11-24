@@ -139,6 +139,10 @@ module Storage
       end
     end
 
+    def touch_rows(table, conditions, additionals = {})
+      update_rows(table, {}, conditions, additionals)
+    end
+
     def update_rows(table, values, conditions, additionals = {})
       values = prepare_values(table, values, 1)
       q = "update #{table} set #{values.map {|c, _| c.to_s + ' = (?)'}.join(', ')}"

@@ -12,6 +12,7 @@ class Movie
     end
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
+    raise e
   end
 
   def fetch_val(valname, opts)
@@ -85,7 +86,7 @@ class Movie
         movie = TraktAgent.movie__summary((ids['trakt'] || ids['imdb'] || ids['slug']), "?extended=full") rescue nil
       end
       movie = $tmdb.movie(ids['tmdb'] || ids['imdb']) rescue nil if (movie.nil? || movie['error']) && (ids['tmdb'] || ids['imdb']).to_s != ''
-      movie = Movie.new(Cache.object_pack(movie, 1)) if movie
+      movie = Movie.new(Cache.object_pack(movie, 1)) if movie #&& (movie['title'] || movie['name']).to_s != ''
       full_save = movie
       title = movie.name if movie&.name.to_s != ''
     when 'movie_set_get'

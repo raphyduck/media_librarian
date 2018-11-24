@@ -33,6 +33,9 @@ class TraktAgent
   end
 
   def self.get_watched(type, complete = 0)
+    get_watched = BusVariable.new('get_watched', Vash)
+    cache_name = "#{type}#{complete}"
+    return get_watched[cache_name] if get_watched[cache_name]
     h, k = [], []
     case type
     when 'movies'
@@ -54,6 +57,7 @@ class TraktAgent
     end
     h = $trakt.list.get_watched(type) if h.nil? || h.empty?
     return [] if h.is_a?(Hash) && h['error']
+    get_watched[cache_name, CACHING_TTL] = h
     h
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))

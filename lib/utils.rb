@@ -88,12 +88,25 @@ class Utils
 
   def self.lock_block(process_name, &block)
     process_name.gsub!(/[\{\}\(\)]/, '')
-    start = Time.now
-    @lock.synchronize {
-      @mutex[process_name] = Mutex.new if @mutex[process_name].nil?
-    }
-    r = @mutex[process_name].synchronize &block
-    lock_timer_register(process_name, Time.now - start)
+    lock_name = "lock_#{process_name}_on"
+    if Thread.current[lock_name] == 1
+      r = block.call
+    else
+      start = Time.now
+      @lock.synchronize {
+        @mutex[process_name] = Mutex.new if @mutex[process_name].nil?
+      }
+      Thread.current[:waiting_for_lock] = 1
+      @mutex[process_name].synchronize do
+        Thread.current[lock_name] = 1
+        Thread.current[:waiting_for_lock] = nil
+        r = block.call
+        Thread.current[:waiting_for_lock] = 1
+        Thread.current[lock_name] = nil
+      end
+      Thread.current[:waiting_for_lock] = nil
+      lock_timer_register(process_name, Time.now - start)
+    end
     r
   end
 

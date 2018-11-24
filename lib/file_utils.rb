@@ -166,12 +166,9 @@ module FileUtils
     end
 
     def rm(files, force: nil, noop: nil, verbose: nil)
-      if Env.pretend?
-        $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != ''
-      else
-        rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
-      end
-      $speaker.speak_up("Removing file '#{files}'")
+      return $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != '' if Env.pretend?
+      $speaker.speak_up("Removing file '#{files}'") if Env.debug?
+      rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
       file_remove_parents(files)
       true
     end

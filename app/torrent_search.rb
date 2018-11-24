@@ -21,6 +21,7 @@ class TorrentSearch
       state = status['state'].to_s rescue ''
     end
     $speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}") if Env.debug?
+    $db.touch_rows('torrents', {:name => download[:name]}) if state == 'Paused'
     return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
@@ -34,6 +35,10 @@ class TorrentSearch
     $db.get_rows('torrents', {:status => 3}).each do |d|
       check_status(d[:identifiers], timeout, d)
     end
+  end
+
+  def self.deauth(site)
+    launch_search(site, '', nil, '', 1).quit
   end
 
   def self.filter_results(results, condition_name, required_value, &condition)
@@ -97,7 +102,7 @@ class TorrentSearch
     timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
     trackers.each do |t|
       $speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
-      cid = self.get_cid(t, search_category)
+      cid = get_cid(t, search_category)
       keyword_s = keyword + self.get_site_keywords(t, search_category)
       cr = launch_search(t, keyword_s, url, cid).links
       cr = launch_search(t, keyword, url, cid).links if cr.nil? || cr.empty?
@@ -191,20 +196,20 @@ class TorrentSearch
     trackers
   end
 
-  def self.launch_search(site, keyword, url = nil, cid = '')
+  def self.launch_search(site, keyword, url = nil, cid = '', quit_only = 0)
     case site
     when 'rarbg'
-      RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid)
+      RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid, quit_only)
     when 'thepiratebay'
-      Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid)
+      Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid, quit_only)
     when 'torrentleech'
-      TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid)
+      TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
     when 'yggtorrent'
-      Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid)
+      Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
     when 'wop'
-      Wop::Search.new(StringUtils.clean_search(keyword), url)
+      Wop::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
     else
-      TorrentRss.new(site)
+      TorrentRss.new(site, quit_only)
     end
   end
 
@@ -342,9 +347,7 @@ class TorrentSearch
       add = !Cache.torrent_deja_vu?(f[:identifier], qualities, f[:f_type]) if add
       add
     end
-    if results.nil? || results.empty?
-      authenticate_all(sources)
-    else
+    if !results.nil? && !results.empty?
       results.each do |i, ts|
         next if i.is_a?(Symbol)
         propers = ts[:files].select do |t|
@@ -370,13 +373,15 @@ class TorrentSearch
           ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria, no_waiting],
           1,
           "#{Thread.current[:object]}torrent",
-          8
+          6
       )
     end
   end
 
-  def self.reauth(site)
-    launch_search(site, '').init
+  def self.quit_all(sources = TORRENT_TRACKERS.keys)
+    get_trackers(sources).each do |t|
+      launch_search(t, '', nil, '', 1).quit
+    end
   end
 
   def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0)
@@ -416,6 +421,7 @@ class TorrentSearch
         download_criteria: download_criteria,
         no_waiting: no_waiting
     )
+    Thread.current[:block] = lambda {quit_all(torrent_sources['trackers'])}
   end
 
   def self.torrent_download(torrent, no_prompt = 0, no_waiting = 0)
