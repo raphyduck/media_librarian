@@ -186,9 +186,9 @@ class Librarian
     SimpleConfigMan.reconfigure($config_file, $config_example)
   end
 
-  def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, &block)
+  def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, queue = Thread.current[:jid], &block)
     if Daemon.is_daemon?
-      Daemon.thread_cache_add(Thread.current[:jid], args, Daemon.job_id, task, internal, max_pool_size, 0, Thread.current[:current_daemon], 43200, 1, &block)
+      Daemon.thread_cache_add(queue, args, Daemon.job_id, task, internal, max_pool_size, 0, Thread.current[:current_daemon], 43200, 1, &block)
     elsif $librarian.pid_status($pidfile) == :running && internal.to_i == 0
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
@@ -229,7 +229,7 @@ class Librarian
 
   def self.run_termination(thread, thread_value, object = nil)
     thread[:end_time] = Time.now
-    Daemon.terminate_worker(thread)
+    Daemon.terminate_worker(thread, thread_value, object)
     thread[:is_active] = 0
     terminate_command(thread, thread_value, object)
   end
@@ -244,14 +244,11 @@ class Librarian
     if thread[:block]
       thread[:block].call
     end
-    Report.sent_out("#{'[DEBUG]' if Env.debug?}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
+    Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     if thread[:parent]
-      Utils.lock_block("merge_child_thread_#{thread[:object]}") {
-        Daemon.merge_notifications(thread, thread[:parent])
-        terminate_command(thread[:parent], thread_value, object, thread)
-      }
+      Utils.lock_block("merge_child_thread_#{thread[:object]}") {Daemon.merge_notifications(thread, thread[:parent])}
     end
-    Daemon.clear_waiting_worker(thread)
+    Daemon.clear_waiting_worker(thread, thread_value, object)
   end
 
   def self.test_childs(how_many: 10000)

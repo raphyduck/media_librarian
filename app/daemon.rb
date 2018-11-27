@@ -11,26 +11,30 @@ class Daemon < EventMachine::Connection
   @daemons = []
   @worker_clearance = Queue.new
 
-  def self.clear_waiting_worker(worker)
+  def self.clear_waiting_worker(worker, worker_value, object)
     return if worker[:queue_name].to_s == '' || worker[:jid].to_s == ''
-    @worker_clearance << [worker, :waiting_threads]
+    @worker_clearance << [worker, worker_value, object]
   end
 
   def self.clear_workers
     loop do
-      worker, queue_clearance_name = @worker_clearance.empty? ? nil : @worker_clearance.pop
+      worker, worker_value, object = @worker_clearance.empty? ? nil : @worker_clearance.pop
       break if worker.nil?
+      qname = worker[:queue_name]
       begin
-        @queues[worker[:queue_name]][queue_clearance_name].delete_if do |t|
-          if queue_clearance_name == :waiting_threads
-            worker[:jid] == t[:jid]
-          elsif queue_clearance_name == :threads
-            worker[:jid] == t[:jid]
-          end
+        if @queues[qname][:threads][worker[:jid]]
+          @queues[qname][:threads].delete(worker[:jid])
+          @queues[qname][:waiting_threads][worker[:jid]] = worker
+        elsif @queues[qname][:waiting_threads][worker[:jid]]
+          Librarian.terminate_command(worker[:parent], worker_value, object, worker) if worker[:parent]
+          @queues[qname][:waiting_threads].delete(worker[:jid])
+        else
+          @worker_clearance << worker
         end
-        @queues[worker[:queue_name]][:waiting_threads] << worker if queue_clearance_name == :threads
-      rescue
+      rescue => e
+        $speaker.tell_error(e, "Daemon.clear_workers block worker='#{DataUtils.dump_variable(worker)}'")
       end
+      remove_queue(qname)
     end
   end
 
@@ -62,15 +66,15 @@ class Daemon < EventMachine::Connection
 
   def self.get_workers_count(qname, skip_jid = nil)
     return 0 if qname.nil? || @queues[qname].nil?
-    (@queues[qname][:waiting_threads] + @queues[qname][:threads]).select {|t| (skip_jid.nil? || t[:jid].to_i != skip_jid.to_i)}.count
+    (@queues[qname][:waiting_threads] + @queues[qname][:threads]).select {|jid, _| (skip_jid.nil? || jid.to_i != skip_jid.to_i)}.count
   end
 
   def self.init_queue(qname, task = '')
     @queues[qname] = {} if @queues[qname].nil?
     @queues[qname][:task_name] = task if task != ''
     @queues[qname][:jobs] = [] if @queues[qname][:jobs].nil?
-    @queues[qname][:threads] = [] if @queues[qname][:threads].nil?
-    @queues[qname][:waiting_threads] = [] if @queues[qname][:waiting_threads].nil?
+    @queues[qname][:threads] = {} if @queues[qname][:threads].nil?
+    @queues[qname][:waiting_threads] = {} if @queues[qname][:waiting_threads].nil?
   end
 
   def self.is_daemon?
@@ -87,12 +91,10 @@ class Daemon < EventMachine::Connection
       (0...max_pool_size(qname)).each do
         break if @queues[qname][:jobs].empty? || get_workers_count(qname) >= max_pool_size(qname)
         args = @queues[qname][:jobs].pop
-        @queues[qname][:threads] << Librarian.burst_thread(args[0], args[4], args[8], args[3], args[7], qname) do
+        @queues[qname][:threads][args[0]] = Librarian.burst_thread(args[0], args[4], args[8], args[3], args[7], qname) do
           Librarian.run_command(args[5], args[1], args[2], &args[6])
         end
       end
-      clear_workers
-      remove_queue(qname)
     end
   end
 
@@ -122,7 +124,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.queue_slot_taken?(qname)
-    (@queues[qname][:threads].select {|w| w&.alive? && w[:waiting_for].nil? && w[:waiting_for_lock].nil?} || []).count > 0
+    (@queues[qname][:threads].select {|_, w| w&.alive? && w[:waiting_for].nil? && w[:waiting_for_lock].nil?} || []).count > 0
   end
 
   def self.quit
@@ -160,7 +162,7 @@ class Daemon < EventMachine::Connection
         when 'continuous'
           if queue_busy?(task)
             if !@last_email_report[task].is_a?(Time) || @last_email_report[task] + 12.hours < Time.now
-              @queues[task][:threads].each do |t|
+              @queues[task][:threads].each do |_, t|
                 Report.sent_out(task, t)
                 @last_email_report[task] = Time.now
               end
@@ -188,6 +190,7 @@ class Daemon < EventMachine::Connection
       start_server($api_option)
       EM.add_periodic_timer(0.2) {schedule(jobs)}
       EM.add_periodic_timer(1) {Librarian.burst_thread {quit}}
+      EM.add_periodic_timer(0.1) {clear_workers}
     end
     $librarian.delete_pid
     $speaker.speak_up('Shutting down')
@@ -215,7 +218,7 @@ class Daemon < EventMachine::Connection
       wwc = @queues[qname][:waiting_threads].compact.dup
       $speaker.speak_up "Queue #{qname}#{' (' + @queues[qname][:task_name].to_s + ')' if @queues[qname][:task_name].to_s != ''}#{' (slot taken)' if queue_slot_taken?(qname)}:"
       $speaker.speak_up " * #{wc.count} worker(s) (max #{max_pool_size(qname)})"
-      wc.each do |w|
+      wc.each do |_, w|
         childs = get_children_count(w[:jid])
         $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]}')\
 #{' working for ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]}\
@@ -226,7 +229,7 @@ class Daemon < EventMachine::Connection
       end
       if wwc && wwc.count > 0
         $speaker.speak_up " * Finished jobs waiting for completion of children:"
-        wwc.each do |w|
+        wwc.each do |_, w|
           childs = get_children_count(w[:jid])
           $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]})\
 #{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
@@ -254,9 +257,9 @@ class Daemon < EventMachine::Connection
     $librarian.quit = true
   end
 
-  def self.terminate_worker(worker)
+  def self.terminate_worker(worker, worker_value, object)
     return if worker[:queue_name].to_s == ''
-    @worker_clearance << [worker, :threads]
+    @worker_clearance << [worker, worker_value, object]
   end
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)

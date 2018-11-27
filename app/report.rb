@@ -30,7 +30,7 @@ class Report
   def self.sent_out(object, t = Thread.current, content = '')
     content = (t || Thread.current)[:email_msg].to_s if content.to_s == ''
     if $email && content.to_s != '' && (t.nil? || t[:send_email].to_i > 0)
-      Librarian.route_cmd(['Report', 'push_email', object, content], 1, 'email')
+      Librarian.route_cmd(['Report', 'push_email', object, content], 1, 'email', 1, (t || Thread.current)[:jid])
       Librarian.reset_notifications(t) if t
       Thread.current[:parent] = nil
     end

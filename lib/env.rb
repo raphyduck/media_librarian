@@ -1,14 +1,14 @@
 class Env
 
-  def self.debug?
-    $env_flags[:debug].to_i > 0 || Thread.current[:debug].to_i > 0
+  def self.debug?(thread = Thread.current)
+    $env_flags[:debug].to_i > 0 || thread[:debug].to_i > 0
   end
 
-  def self.email_notif?
-    $env_flags[:no_email_notif].to_i == 0 && Thread.current[:no_email_notif].to_i == 0
+  def self.email_notif?(thread = Thread.current)
+    $env_flags[:no_email_notif].to_i == 0 && thread[:no_email_notif].to_i == 0
   end
 
-  def self.pretend?
-    $env_flags[:pretend].to_i > 0 || Thread.current[:pretend].to_i > 0
+  def self.pretend?(thread = Thread.current)
+    $env_flags[:pretend].to_i > 0 || thread[:pretend].to_i > 0
   end
 end
