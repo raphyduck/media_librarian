@@ -424,7 +424,7 @@ class MediaInfo
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES)
-    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map {|q| q.gsub('.', '[\. ]')}.join('|') + ')' + SEP_CHARS + '))')).
+    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map {|q| q.gsub('.', '[\. ]').gsub('+', '[+]')}.join('|') + ')' + SEP_CHARS + '))')).
         map {|q| q[2]}.flatten.map do |q|
       q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26').gsub(' ', '.')
     end.uniq.flatten
