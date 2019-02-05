@@ -1,5 +1,5 @@
 class Movie
-  SHOW_MAPPING = {id: :id, url: :url, released: :release_date, name: :name, genres: :genres, country: :country, ids: :ids,
+  SHOW_MAPPING = {id: :id, ids: :ids, url: :url, released: :release_date, name: :name, genres: :genres, country: :country,
                   set: :set}
 
   SHOW_MAPPING.values.each do |value|
@@ -36,10 +36,9 @@ class Movie
       v = {'imdb' => (opts['imdb_id'] || opts['imdbnumber'])} if opts['imdb_id'] || opts['imdbnumber']
       v = {'tmdb' => opts['id']} if v.nil? && opts['id']
     when 'name'
-      v = opts['title']
-      title_year = MediaInfo.identify_release_year(v) > 0 ? MediaInfo.identify_release_year(v) : nil
-      @year = (opts['year'] || title_year || year ).to_i
-      v << " (#{@year})" if MediaInfo.identify_release_year(v).to_i == 0
+      v = opts['original_title'] || opts['title']
+      #TODO: Fetch original title from trakt
+      v << " (#{year})" if MediaInfo.identify_release_year(v).to_i == 0
     when 'released'
       v = opts['release_date'] || opts['premiered']
     when 'set'
@@ -62,8 +61,11 @@ class Movie
   end
 
   def year
+    return @year if @year
+    real_year = TraktAgent.movie__releases(ids['imdb'], '').map {|r| Time.parse(r['release_date']).year}.min rescue nil #We need the year to be the same as IMDB, the authority on movies naming
     title_year = name && MediaInfo.identify_release_year(name) > 0 ? MediaInfo.identify_release_year(name) : nil
-    (@year || title_year || (release_date || Time.now + 3.years).year).to_i
+    $speaker.speak_up "Unknow year for m='#{Cache.object_pack(self, 1)}'" if (real_year || title_year || release_date).nil? #REMOVEME
+    @year ||= (real_year || title_year || (release_date || Time.now + 3.years).year).to_i
   end
 
   def self.identifier(movie_name, year)
@@ -89,6 +91,7 @@ class Movie
       movie = Movie.new(Cache.object_pack(movie, 1)) if movie #&& (movie['title'] || movie['name']).to_s != ''
       full_save = movie
       title = movie.name if movie&.name.to_s != ''
+      #TODO: Always use original title
     when 'movie_set_get'
       if ids['tmdb'].to_s == ''
         _, m = movie_get(ids)

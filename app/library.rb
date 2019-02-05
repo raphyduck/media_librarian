@@ -437,7 +437,7 @@ class Library
     (search_list[cache_name] || {}).deep_dup
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1)
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '')
     full_p = torrent_path + '/' + torrent_name
     handled, process_folder_list = 0, []
     handled_files = (
@@ -457,7 +457,8 @@ class Library
             remove_duplicates: remove_duplicates,
             folder_hierarchy: Hash[folder_hierarchy.map {|k, v| [k, v.to_i + 1]}],
             force_process: force_process,
-            root_process: 0
+            root_process: 0,
+            ensure_qualities: ensure_qualities
         )[0]
       end
     else
@@ -465,7 +466,7 @@ class Library
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extracted')
-        #TODO: Ensure correct naming of extracted file
+        ensure_qualities = MediaInfo.parse_qualities(File.basename(torrent_path)).join('.') if ensure_qualities.to_s == ''
         handled += handle_completed_download(
             torrent_path: torrent_path,
             torrent_name: 'extracted',
@@ -475,7 +476,8 @@ class Library
             remove_duplicates: remove_duplicates,
             folder_hierarchy: Hash[folder_hierarchy.map {|k, v| [k, v.to_i + 1]}],
             force_process: force_process,
-            root_process: 0
+            root_process: 0,
+            ensure_qualities: ensure_qualities
         )[0]
         FileUtils.rm_r(torrent_path + '/extracted')
       elsif handling['file_types']
@@ -515,11 +517,12 @@ class Library
                 remove_duplicates: remove_duplicates,
                 folder_hierarchy: folder_hierarchy,
                 force_process: force_process,
-                root_process: 0
+                root_process: 0,
+                ensure_qualities: ensure_qualities
             )[0]
           end
         elsif handling[type] && handling[type]['move_to']
-          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy)
+          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, ensure_qualities)
         else
           destination = full_p.gsub(completed_folder, destination_folder)
           FileUtils.move_file(full_p, destination, 1)
@@ -625,7 +628,7 @@ class Library
         if i.to_s != '' && identifiers.join.include?(i) && !fs.empty? && !fs.map {|obj| obj[:name] if obj[:type] == 'file'}.compact.include?(file[:name])
           ok = false
           fs.each do |f|
-            $speaker.speak_up "Found a '#{f[:type]}' to remove for file '#{file[:name]}' (identifier '#{i}'), removing now..." #if Env.debug?
+            $speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." #if Env.debug?
             ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
             if f[:type] == 'file'
               ok = if File.exist?(f[:name])
@@ -757,10 +760,10 @@ class Library
     {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {})
+  def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '')
     $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
-    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy)
+    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, '', ensure_qualities)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.to_s == ''
       $speaker.speak_up "Destination of rename file '#{original}' is empty, skipping..."
@@ -768,9 +771,7 @@ class Library
     end
     destination += ".#{metadata['extension'].downcase}"
     if metadata['is_found']
-      if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s == 'y'
-        _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated)
-      end
+      _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
     else
       $speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''

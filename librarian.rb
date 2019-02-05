@@ -50,7 +50,7 @@ class Librarian
       :usage => ['Librarian', 'help'],
       :list_db => ['Utils', 'list_db'],
       :flush_queues => ['TorrentClient', 'flush_queues'],
-      :forget => ['Utils', 'forget'],
+      :cache_reset => ['Cache', 'cache_reset'],
       :send_email => ['Report', 'push_email'],
       :test_childs => ['Librarian', 'test_childs']
   }
@@ -234,9 +234,9 @@ class Librarian
     terminate_command(thread, thread_value, object)
   end
 
-  def self.terminate_command(thread, thread_value = nil, object = nil, caller = Thread.current)
+  def self.terminate_command(thread, thread_value = nil, object = nil)
     return unless thread[:base_thread].nil?
-    return if Daemon.get_children_count(thread[:jid], caller[:jid]).to_i > 0 || thread[:is_active] > 0
+    return if Daemon.get_children_count(thread[:jid]).to_i > 0 || thread[:is_active] > 0
     LibraryBus.put_in_queue(thread_value)
     if thread[:direct].to_i == 0 || Env.debug?
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)

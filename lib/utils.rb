@@ -47,11 +47,6 @@ class Utils
     [[:error, "error fetching arguments from cname='#{cname}', mname='#{mname}', ptype='#{ptype}'"]]
   end
 
-  def self.forget(table:, entry:)
-    column = $db.get_main_column(table)
-    $db.delete_rows(table, {column => entry.to_s}) if column
-  end
-
   def self.get_pid(process)
     `ps ax | grep #{process} | grep -v grep | cut -f1 -d' '`.gsub(/\n/, '')
   end

@@ -126,7 +126,7 @@ module FileUtils
       mkdir_p_orig(dirs)
     end
 
-    def move_file(original, destination, hard_link = 0, remove_outdated = 0)
+    def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
       destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
       if File.exists?(destination)
         _, prosper = MediaInfo.identify_proper(original)
@@ -138,6 +138,7 @@ module FileUtils
           return false, destination
         end
       end
+      return if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s != 'y'
       $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'", 0)
       mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
       if hard_link.to_i > 0

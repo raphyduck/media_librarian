@@ -39,8 +39,9 @@ class TorrentClient
     when 1
       $t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
       if meta_id.to_s != ''
-        status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
+        status = $t_client.get_torrent_status(meta_id, ['name', 'progress','queue'])
         raise 'Download failed' if status.nil? || status.empty?
+        $t_client.queue_top(meta_id) if status['queue'].to_i > 1
       end
     when 2
       $t_client.add_torrent_magnet(download[:url], options)
@@ -118,6 +119,7 @@ class TorrentClient
               :tdid => tdid,
               :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
               :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
+              :queue => torrent[:queue].to_s,
               :entry_id => torrent[:identifiers].join,
               :added_at => Time.now.to_i
           }
@@ -179,7 +181,7 @@ class TorrentClient
             $t_client.set_torrent_options([tid], set_options)
             $speaker.speak_up("Will set options: #{set_options}")
           end
-          $t_client.queue_bottom([tid]) #Queue to bottom once all processed
+          $t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' #Queue to bottom once all processed unless option to keep on top
           if o[:add_paused].to_i > 0
             $t_client.pause_torrent([tid])
           else

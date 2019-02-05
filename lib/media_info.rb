@@ -75,12 +75,13 @@ class MediaInfo
     return timeframe, true
   end
 
-  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = '')
+  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = '', ensure_qualities = '')
     metadata = {}
     ep_filename = File.basename(filename)
-    metadata['quality'] = parse_qualities(File.basename(ep_filename)).join('.')
+    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s + '.ext').join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
+    file = {:name => filename}
     full_name, identifiers, info = parse_media_filename(
         filename,
         type,
@@ -88,11 +89,12 @@ class MediaInfo
         item_name,
         no_prompt,
         folder_hierarchy,
-        base_folder
+        base_folder,
+        file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
     metadata['is_found'] = true
-    metadata['part'] = info[:parts].map {|p| "part#{p}"}.join('.') unless info[:parts].nil?
+    metadata['part'] = file[:parts].map {|p| "part#{p}"}.join('.') unless file[:parts].nil?
     case type
     when 'shows'
       tv_episodes = BusVariable.new('tv_episodes', Vash)

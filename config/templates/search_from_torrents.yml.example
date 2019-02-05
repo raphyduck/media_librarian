@@ -53,6 +53,7 @@ download_criteria:
   rename_main: 'rename file'
   main_only: 0
   add_paused: 1
+  queue: bottom #one of 'top' or 'bottom', default is 'bottom'
   whitelisted_extensions:
     video:
       - avi

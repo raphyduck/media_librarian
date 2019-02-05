@@ -59,6 +59,7 @@ class TvSeries
     end
     ep_nb = ep_nb_single.uniq if ep_nb.empty?
     season = seasonp if season.empty?
+    season = (season[0]..season[1]).to_a if ep_nb.empty? && season.count == 2
     ep_ids = (ep_nb.empty? ? season.map { |s| {:s => s} } : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
     return season, ep_nb.uniq, ep_ids
   end

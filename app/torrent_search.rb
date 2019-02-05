@@ -25,7 +25,7 @@ class TorrentSearch
     return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
-    elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
+    elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days && state == 'Queued'
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
       $t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
     end
@@ -298,6 +298,7 @@ class TorrentSearch
       attrs = t.select {|k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps, :files].include?(k)}.deep_dup
       t[:files].map {|ff| ff.merge(attrs)} if t[:files]
     end
+    #TODO: Add all relevant files when downloading
     subset.flatten!
     subset.map! {|t| t[:files].select! {|ll| ll[:type].to_s != 'torrent'} if t[:files]; t[:files].uniq! if t[:files]; t}
     Cache.torrent_get(f[:identifier], f_type).each do |d|

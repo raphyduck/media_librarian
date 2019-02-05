@@ -26,13 +26,13 @@ class Daemon < EventMachine::Connection
           @queues[qname][:threads].delete(worker[:jid])
           @queues[qname][:waiting_threads][worker[:jid]] = worker
         elsif @queues[qname][:waiting_threads][worker[:jid]]
-          Librarian.terminate_command(worker[:parent], worker_value, object, worker) if worker[:parent]
           @queues[qname][:waiting_threads].delete(worker[:jid])
+          Librarian.terminate_command(worker[:parent], worker_value, object) if worker[:parent]
         else
           @worker_clearance << worker
         end
       rescue => e
-        $speaker.tell_error(e, "Daemon.clear_workers block worker='#{DataUtils.dump_variable(worker)}'")
+        $speaker.tell_error(e, "Daemon.clear_workers block worker('#{DataUtils.dump_variable(worker)}')")
       end
       remove_queue(qname)
     end
@@ -60,17 +60,18 @@ class Daemon < EventMachine::Connection
     true
   end
 
-  def self.get_children_count(qname, skip_jid = nil)
-    get_workers_count(qname, skip_jid) + (@queues[qname][:jobs] rescue []).length + Thread.current[:job_added].to_i
+  def self.get_children_count(qname)
+    get_workers_count(qname) + (@queues[qname][:jobs] rescue []).length
   end
 
-  def self.get_workers_count(qname, skip_jid = nil)
+  def self.get_workers_count(qname)
     return 0 if qname.nil? || @queues[qname].nil?
-    (@queues[qname][:waiting_threads] + @queues[qname][:threads]).select {|jid, _| (skip_jid.nil? || jid.to_i != skip_jid.to_i)}.count
+    (@queues[qname][:waiting_threads] + @queues[qname][:threads]).count + @queues[qname][:is_new].to_i
   end
 
   def self.init_queue(qname, task = '')
     @queues[qname] = {} if @queues[qname].nil?
+    @queues[qname][:is_new] = 1
     @queues[qname][:task_name] = task if task != ''
     @queues[qname][:jobs] = [] if @queues[qname][:jobs].nil?
     @queues[qname][:threads] = {} if @queues[qname][:threads].nil?
@@ -86,6 +87,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.launch_command
+    clear_workers
     @queues.keys.each do |qname|
       next if queues_slot_taken >= max_queue_slots && qname != 'status'
       (0...max_pool_size(qname)).each do
@@ -190,7 +192,6 @@ class Daemon < EventMachine::Connection
       start_server($api_option)
       EM.add_periodic_timer(0.2) {schedule(jobs)}
       EM.add_periodic_timer(1) {Librarian.burst_thread {quit}}
-      EM.add_periodic_timer(0.1) {clear_workers}
     end
     $librarian.delete_pid
     $speaker.speak_up('Shutting down')
@@ -264,7 +265,6 @@ class Daemon < EventMachine::Connection
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
     return if queue.nil?
-    Thread.current[:job_added] = 1
     @jobs_cache << [queue, args, jid, task, internal, max_pool_size, client, child, Thread.current, dump_env_flags(continuous.to_i > 0 ? 0 : expiration), block]
   end
 
@@ -275,9 +275,9 @@ class Daemon < EventMachine::Connection
       queue, args, jid, task, internal, max_pool_size, client, child, parent, env_flags, block = job
       return if queue.nil?
       init_queue(queue, task)
-      parent[:job_added] = nil
       @queues[queue][:max_pool_size] = max_pool_size if max_pool_size.to_i > 0
       @queues[queue][:jobs] << [jid, internal, task, env_flags, client, args, block, child, parent]
+      @queues[queue].delete(:is_new)
       @last_execution[task] = Time.now
     end
   end

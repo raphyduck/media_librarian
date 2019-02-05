@@ -1,4 +1,5 @@
 require File.dirname(__FILE__) + '/vash'
+require File.dirname(__FILE__) + '/bus_variable'
 class Cache
   @tqueues = {}
   @cache_metadata = BusVariable.new('cache_metadata', Vash)
@@ -28,9 +29,7 @@ class Cache
   def self.cache_get(type, keyword, expiration = 120)
     return nil unless cache_get_enum(type)
     return @cache_metadata[type.to_s + keyword.to_s] if @cache_metadata[type.to_s + keyword.to_s]
-    res = $db.get_rows('metadata_search', {:type => cache_get_enum(type),
-                                           :keywords => keyword}
-    )
+    res = $db.get_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
     res.each do |r|
       if Time.parse(r[:created_at]) < Time.now - expiration.days && !Env.pretend?
         cache_expire(r)
@@ -56,6 +55,12 @@ class Cache
     METADATA_SEARCH[:media_type][type.to_sym][:enum] rescue nil
   end
 
+  def self.cache_reset(type:)
+    return nil unless cache_get_enum(type)
+    $db.delete_rows('metadata_search', {:type => cache_get_enum(type)})
+    @cache_metadata.delete_if {|c, _| c.start_with?(type)}
+  end
+
   def self.object_pack(object, to_hash_only = 0)
     obj = object.is_a?(Thread) ? object : object.clone
     oclass = obj.class.to_s
@@ -68,7 +73,9 @@ class Cache
     elsif obj.is_a?(Hash)
       obj.keys.each {|k| obj[k] = object_pack(obj[k], to_hash_only)}
     elsif obj.is_a?(Thread)
-      obj = "thread[#{Hash[obj.keys.map{|k| [k,obj[k]]}]}]"
+      obj = "thread[#{Hash[obj.keys.map do |k|
+        [k, to_hash_only.to_i == 1 && obj[k].respond_to?("[]") ? obj[k][0..100] : obj[k]] rescue nil
+      end]}]"
     else
       obj = object.instance_variables.each_with_object({}) {|var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only)}
     end
