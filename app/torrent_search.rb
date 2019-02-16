@@ -20,7 +20,7 @@ class TorrentSearch
       progress = status['progress'].to_i rescue -1
       state = status['state'].to_s rescue ''
     end
-    $speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}") if Env.debug?
+    $speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}, expires in #{Time.parse(download[:updated_at]) - Time.now + timeout.to_i.days} days") if Env.debug?
     $db.touch_rows('torrents', {:name => download[:name]}) if state == 'Paused'
     return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
     if progress >= 100

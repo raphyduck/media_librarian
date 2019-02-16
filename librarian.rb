@@ -229,8 +229,8 @@ class Librarian
 
   def self.run_termination(thread, thread_value, object = nil)
     thread[:end_time] = Time.now
-    Daemon.terminate_worker(thread, thread_value, object)
     thread[:is_active] = 0
+    Daemon.terminate_worker(thread, thread_value, object)
     terminate_command(thread, thread_value, object)
   end
 

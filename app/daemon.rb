@@ -4,21 +4,33 @@ class Daemon < EventMachine::Connection
   @last_email_report = {}
   @queues = {}
   @jobs_cache = Queue.new
-
+  JOB_CLEAR_TRIES = 10000
   @is_daemon = false
   @is_quitting = false
   @childs_sum = {}
   @daemons = []
   @worker_clearance = Queue.new
 
+  def self.clear_queue(pqueue, forward_queue = nil)
+    pqueue.delete_if do |_, t|
+      if t[:is_active].to_i == 0
+        $speaker.speak_up "DAEMON: Thread #{DataUtils.dump_variable(t)}"
+        forward_queue[t[:jid]] = t if forward_queue
+      end
+      t[:is_active].to_i == 0
+    end
+  end
+
   def self.clear_waiting_worker(worker, worker_value, object)
     return if worker[:queue_name].to_s == '' || worker[:jid].to_s == ''
-    @worker_clearance << [worker, worker_value, object]
+    @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
 
   def self.clear_workers
+    spin = 0
     loop do
-      worker, worker_value, object = @worker_clearance.empty? ? nil : @worker_clearance.pop
+      break if spin.to_i > 1000
+      worker, worker_value, object, tries = @worker_clearance.empty? ? nil : @worker_clearance.pop
       break if worker.nil?
       qname = worker[:queue_name]
       begin
@@ -28,13 +40,17 @@ class Daemon < EventMachine::Connection
         elsif @queues[qname][:waiting_threads][worker[:jid]]
           @queues[qname][:waiting_threads].delete(worker[:jid])
           Librarian.terminate_command(worker[:parent], worker_value, object) if worker[:parent]
+        elsif tries.to_i > 0
+          @worker_clearance << [worker, worker_value, object, (tries - 1)]
         else
-          @worker_clearance << worker
+          clear_queue(@queue[qname][:waiting_threads])
+          clear_queue(@queue[qname][:threads], @queue[qname][:waiting_threads])
         end
       rescue => e
         $speaker.tell_error(e, "Daemon.clear_workers block worker('#{DataUtils.dump_variable(worker)}')")
       end
       remove_queue(qname)
+      spin += 1
     end
   end
 
@@ -233,8 +249,8 @@ class Daemon < EventMachine::Connection
         wwc.each do |_, w|
           childs = get_children_count(w[:jid])
           $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]})\
-#{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
-#{', waiting for ' + childs.to_s + ' childs'}"
+  #{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
+  #{', waiting for ' + childs.to_s + ' childs'}"
         end
       end
       $speaker.speak_up " * #{@queues[qname][:jobs].count} in queue"
@@ -260,11 +276,12 @@ class Daemon < EventMachine::Connection
 
   def self.terminate_worker(worker, worker_value, object)
     return if worker[:queue_name].to_s == ''
-    @worker_clearance << [worker, worker_value, object]
+    @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
     return if queue.nil?
+    init_queue(queue, task)
     @jobs_cache << [queue, args, jid, task, internal, max_pool_size, client, child, Thread.current, dump_env_flags(continuous.to_i > 0 ? 0 : expiration), block]
   end
 
@@ -274,7 +291,6 @@ class Daemon < EventMachine::Connection
       break if job.nil?
       queue, args, jid, task, internal, max_pool_size, client, child, parent, env_flags, block = job
       return if queue.nil?
-      init_queue(queue, task)
       @queues[queue][:max_pool_size] = max_pool_size if max_pool_size.to_i > 0
       @queues[queue][:jobs] << [jid, internal, task, env_flags, client, args, block, child, parent]
       @queues[queue].delete(:is_new)
