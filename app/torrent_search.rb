@@ -21,11 +21,11 @@ class TorrentSearch
       state = status['state'].to_s rescue ''
     end
     $speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}, expires in #{Time.parse(download[:updated_at]) - Time.now + timeout.to_i.days} days") if Env.debug?
-    $db.touch_rows('torrents', {:name => download[:name]}) if state == 'Paused'
-    return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state == 'Paused')
+    $db.touch_rows('torrents', {:name => download[:name]}) if state != 'Downloading'
+    return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days || state != 'Downloading')
     if progress >= 100
       $db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
-    elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days && state == 'Queued'
+    elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
       $speaker.speak_up("Download #{identifier} has failed, removing it from download entries")
       $t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
     end
