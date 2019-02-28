@@ -51,6 +51,9 @@ module ExtractImages
         end
       end
       count
+    rescue => e
+      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      count
     end
 
   end

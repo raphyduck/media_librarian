@@ -144,7 +144,7 @@ class Library
             abort = 1
             break
           end
-          create_custom_list(source_list, '', source_list)
+          create_custom_list(name: source_list, description: '', origin: source_list)
           list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
         end
         $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
