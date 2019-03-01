@@ -19,7 +19,7 @@ class MediaInfo
   end
 
   def self.detect_real_title(name, type, id_info = 0, complete = 1)
-    name = I18n.transliterate(name.clone)
+    name = I18n.transliterate(name.clone.to_s.encode("UTF-8")) #TODO: Fix encoding incompatibility errors
     case type
     when 'books'
       name.gsub!(/.*\/([^\/]*)/, '\1')
