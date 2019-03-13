@@ -1,11 +1,15 @@
 class Cavy
   def initialize(opts = {})
-    @capybara = Capybara::Session.new(:poltergeist)
-    @mechanize = Mechanize.new
+    init_capybara
     @mechanize.user_agent_alias = opts['user_agent'] || 'Mac Firefox'
     @mechanize.history.max_size = opts['max_history_size'] || 0
     @mechanize.history_added = Proc.new {sleep 1}
     @mechanize.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
+  end
+
+  def init_capybara
+    @capybara = Capybara::Session.new(:poltergeist)
+    @mechanize = Mechanize.new
     @capybara.driver.headers = {'User-Agent' => @mechanize.user_agent}
   end
 
@@ -31,6 +35,8 @@ class Cavy
       retry
     else
       $speaker.tell_error(e, Utils.arguments_dump(binding))
+      quit
+      init_capybara
       false
     end
   end

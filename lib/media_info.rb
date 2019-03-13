@@ -118,7 +118,7 @@ class MediaInfo
     return p, (p != '' ? 1 : 0)
   end
 
-  def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = '', ids = {})
+  def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = Dir.home, ids = {})
     ids = {} if ids.nil?
     title, item, original_filename = nil, nil, nil
     media_folders = BusVariable.new('media_folders', Hash)
@@ -374,7 +374,7 @@ class MediaInfo
     qs
   end
 
-  def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = '', file = {})
+  def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, file = {})
     item_name, item = MediaInfo.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item.nil? || item_name.to_s == ''
     full_name, ids, info, parts = '', [], {}, []
     return full_name, ids, info unless no_prompt.to_i == 0 || item

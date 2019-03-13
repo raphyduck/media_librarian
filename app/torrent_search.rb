@@ -284,7 +284,7 @@ class TorrentSearch
             limit: limit,
             category: f[:type],
             qualities: qualities,
-            filter_dead: 1,
+            filter_dead: 2,
             strict: no_prompt,
             download_criteria: dc,
             post_actions: f.select {|key, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps].include?(key)}.deep_dup,
