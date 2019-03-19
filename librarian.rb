@@ -210,7 +210,6 @@ class Librarian
 
   def self.run_command(cmd, direct = 0, object = '', &block)
     object = cmd[0..1].join(' ') if object == 'rcv' || object.to_s == ''
-    thread_value = nil
     init_thread(Thread.current, object, direct, &block)
     if direct.to_i > 0
       m = cmd.shift

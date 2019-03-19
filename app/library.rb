@@ -442,7 +442,7 @@ class Library
     handled, process_folder_list = 0, []
     handled_files = (
     if handling['file_types'].is_a?(Array)
-      handling['file_types'].map {|o| o.is_a?(Hash) ? o.map {|k, _| k} : o} + ['rar', 'zip']
+      handling['file_types'].map {|o| o.is_a?(Hash) ? o.map {|k, _| k.downcase} : o.downcase} + ['rar', 'zip']
     else
       ['rar', 'zip']
     end).flatten
