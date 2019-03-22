@@ -534,18 +534,20 @@ class MediaInfo
     return nil, []
   end
 
-  def self.tv_show_get(tvdb_id)
-    cached = Cache.cache_get('tv_show_get', tvdb_id.to_s)
+  def self.tv_show_get(ids, force_refresh = 0)
+    cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
+    cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
     return cached if cached
-    show = $tvdb.get_series_by_id(tvdb_id)
-    show = TVMaze::Show.lookup({'thetvdb' => tvdb_id.to_i}) if show.nil?
+    show = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full') if (ids['trakt'] || ids['imdb']).to_s != ''
+    show = $tvdb.get_series_by_id(ids['tvdb']) if show.nil?
+    show = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}) if show.nil?
     show = TvSeries.new(Cache.object_pack(show, 1))
     title = show.name
-    Cache.cache_add('tv_show_get', tvdb_id.to_s, [title, show], show)
+    Cache.cache_add('tv_show_get', cache_name, [title, show], show)
     return title, show
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
-    Cache.cache_add('tv_show_get', tvdb_id.to_s, ['', nil], nil)
+    Cache.cache_add('tv_show_get', cache_name, ['', nil], nil)
     return '', nil
   end
 
@@ -556,8 +558,8 @@ class MediaInfo
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
       cached = Cache.cache_get('tv_show_search', cache_name)
       return cached if cached
-      if ids['tvdb'].to_i > 0
-        exact_title, show = tv_show_get(ids['tvdb'])
+      if (ids['tvdb'] || ids['trakt'] || ids['imdb']).to_s != ''
+        exact_title, show = tv_show_get(ids)
         Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
         return exact_title, show unless show.nil?
       end
@@ -567,7 +569,7 @@ class MediaInfo
       tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map {|s| Cache.object_pack(s, 1)} if tvdb_shows.empty?
       tvdb_shows.map! {|s| s = Cache.object_pack(TvSeries.new(s), 1); s['first_aired'] = identify_release_year(s['name']).to_s; s}
       exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
-      exact_title, show = tv_show_get(show['tvdb_id']) if show
+      exact_title, show = tv_show_get({'tvdb' => show['tvdb_id']}) if show
       if show.nil? && original_filename.to_s != ''
         exact_title, show = Kodi.kodi_lookup('episode', original_filename, exact_title)
       end

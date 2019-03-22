@@ -16,7 +16,7 @@ class Cache
         :keywords => keyword,
         :type => cache_get_enum(type),
         :result => r,
-    }, 0) if cache_get_enum(type) && full_save && r
+    }, 1) if cache_get_enum(type) && full_save && r
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     raise e
@@ -26,12 +26,12 @@ class Cache
     $db.delete_rows('metadata_search', row)
   end
 
-  def self.cache_get(type, keyword, expiration = 120)
+  def self.cache_get(type, keyword, expiration = 120, force_refresh = 0)
     return nil unless cache_get_enum(type)
-    return @cache_metadata[type.to_s + keyword.to_s] if @cache_metadata[type.to_s + keyword.to_s]
+    return @cache_metadata[type.to_s + keyword.to_s] if force_refresh.to_i == 0 && @cache_metadata[type.to_s + keyword.to_s]
     res = $db.get_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
     res.each do |r|
-      if Time.parse(r[:created_at]) < Time.now - expiration.days && !Env.pretend?
+      if (force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days) && !Env.pretend?
         cache_expire(r)
         next
       end

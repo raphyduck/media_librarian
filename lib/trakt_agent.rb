@@ -33,6 +33,7 @@ class TraktAgent
   end
 
   def self.get_watched(type, complete = 0)
+    $speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     get_watched = BusVariable.new('get_watched', Vash)
     cache_name = "#{type}#{complete}"
     return get_watched[cache_name] if get_watched[cache_name]
@@ -55,8 +56,17 @@ class TraktAgent
       c['last_watched_at'] = m['lastplayed']
       h << c
     end
-    h = $trakt.list.get_watched(type) if h.nil? || h.empty?
-    return [] if h.is_a?(Hash) && h['error']
+    if h.nil? || h.empty?
+      k = $trakt.list.get_watched(type, '?extended=noseasons')
+      return [] if h.is_a?(Hash) && h['error']
+      k.each do |item|
+        _, info = ['shows', 'episodes'].include?(type) ? MediaInfo.tv_show_get(item['show']['ids']) : nil
+        next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
+        next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
+        next if type == 'movies' && item['plays'].to_i == 0
+        h << item
+      end
+    end
     get_watched[cache_name, CACHING_TTL] = h
     h
   rescue => e
@@ -90,7 +100,7 @@ class TraktAgent
         watched_videos.each do |h|
           if h[type[0...-1]] && h[type[0...-1]]['ids']
             h[type[0...-1]]['ids'].each do |k, id|
-              if item[type[0...-1]]['ids'][k] && item[type[0...-1]]['ids'][k].to_s.gsub(/\D/, '').to_i == id.to_s.gsub(/\D/, '').to_i
+              if item[type[0...-1]]['ids'][k].to_s != '' && item[type[0...-1]]['ids'][k].to_s == id.to_s
                 delete_it = 1
                 break
               end

@@ -1,24 +1,25 @@
 class TvSeries
   attr_accessor :id, :tvdb_id, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
-                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language
+                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language, :aired_episodes
 
   def initialize(options={})
-    @tvdb_id = (options['ids'] || {})['thetvdb'] || options['seriesid'] || options['id']
+    @tvdb_id = (options['ids'] || {})['thetvdb'] || (options['ids'] || {})['tvdb'] || options['seriesid'] || options['id']
     @id = @tvdb_id
     @language = options['language']
-    @name = options["name"] || options['SeriesName']
+    @name = options["name"] || options['SeriesName'] || options['title']
     @overview = options["overview"] || options['Overview'] || options['summary']
     @network = options["network"] || options['Network']
     @runtime = options["runtime"]
     @air_time = options['air_time']
-    @imdb_id = options["imdb_id"] || options['IMDB_ID']
-    @content_rating = options["content_rating"]
+    @imdb_id = options["imdb_id"] || options['IMDB_ID'] || options['ids']['imdb'] rescue nil
+    @content_rating = options["content_rating"] || options['certification']
     @status = options["status"]
     @genres = options["genres"]
     @rating = options["rating"]
-    @rating_count = options["rating_count"]
+    @rating_count = options["rating_count"] || options['votes']
     @first_aired = options["first_aired"] || options['FirstAired'] || options['premiered']
     @url = options['url']
+    @aired_episodes = options['aired_episodes']
   end
 
   def anthology?
