@@ -2,7 +2,7 @@ class TvSeries
   attr_accessor :id, :tvdb_id, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
                 :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language, :aired_episodes
 
-  def initialize(options={})
+  def initialize(options = {})
     @tvdb_id = (options['ids'] || {})['thetvdb'] || (options['ids'] || {})['tvdb'] || options['seriesid'] || options['id']
     @id = @tvdb_id
     @language = options['language']
@@ -13,7 +13,7 @@ class TvSeries
     @air_time = options['air_time']
     @imdb_id = options["imdb_id"] || options['IMDB_ID'] || options['ids']['imdb'] rescue nil
     @content_rating = options["content_rating"] || options['certification']
-    @status = options["status"]
+    @status = status_fetch(options["status"])
     @genres = options["genres"]
     @rating = options["rating"]
     @rating_count = options["rating_count"] || options['votes']
@@ -24,6 +24,11 @@ class TvSeries
 
   def anthology?
     @overview.downcase.include?('anthology')
+  end
+
+  def status_fetch(status)
+    {'canceled' => 'ended', 'returning series'=> 'continuing'}.each {|k, v| status[k] &&= v}
+    status.downcase
   end
 
   def self.ep_name_to_season(name)
@@ -42,10 +47,10 @@ class TvSeries
       s = m[17] if m[17]
       if m[20]
         case m[20].to_s.length
-          when 3
-            m_s = /^(\d)(\d+)/
-          when 4
-            m_s = /^(\d{2})(\d+)/
+        when 3
+          m_s = /^(\d)(\d+)/
+        when 4
+          m_s = /^(\d{2})(\d+)/
         end
         sp = m[20].to_s.gsub(m_s, '\1')
         ep_nb_single << {:s => sp, :ep => m[20].gsub(m_s, '\2').to_i, :part => 0}
@@ -53,7 +58,7 @@ class TvSeries
       else
         s = m[4] if s == '' && m[4]
         (0..2).each do |i|
-          ep_nb << {:s => s, :ep => m[5+i*4].to_i, :part => m[7+i*4].to_i} if m[5+i*4]
+          ep_nb << {:s => s, :ep => m[5 + i * 4].to_i, :part => m[7 + i * 4].to_i} if m[5 + i * 4]
         end
       end
       season << s unless season.include?(s) || s == ''
@@ -61,7 +66,7 @@ class TvSeries
     ep_nb = ep_nb_single.uniq if ep_nb.empty?
     season = seasonp if season.empty?
     season = (season[0]..season[1]).to_a if ep_nb.empty? && season.count == 2
-    ep_ids = (ep_nb.empty? ? season.map { |s| {:s => s} } : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
+    ep_ids = (ep_nb.empty? ? season.map {|s| {:s => s}} : ep_nb.uniq).map {|e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}"}
     return season, ep_nb.uniq, ep_ids
   end
 
@@ -77,11 +82,11 @@ class TvSeries
   def self.list_missing_episodes(episodes_in_files, qualifying_files, no_prompt = 0, delta = 10, include_specials = 0, qualities = {})
     $speaker.speak_up "Will parse TV Shows for missing episodes released more than #{delta} days ago, #{'NOT ' if include_specials.to_i == 0} including specials..." if Env.debug?
     tv_episodes, tv_seasons, missing_eps = {}, {}, {}
-    episodes_in_files[:shows].sort_by { |series_name, _| series_name }.each do |series_name, show|
+    episodes_in_files[:shows].sort_by {|series_name, _| series_name}.each do |series_name, show|
       _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
       tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
       existing_season_eps, qualifying_season_eps, last_season = {}, {}, nil
-      tv_episodes[series_name].sort_by { |e| (e.air_date || Time.now + 6.months) }.reverse.each do |ep|
+      tv_episodes[series_name].sort_by {|e| (e.air_date || Time.now + 6.months)}.reverse.each do |ep|
         is_new_season = (last_season != ep.season_number.to_i)
         last_season = ep.season_number.to_i
         next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) ||
@@ -100,17 +105,17 @@ class TvSeries
           tv_seasons[series_name][ep.season_number.to_i] = 1
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}"
           full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
-          info.merge!({:files => existing_season_eps[ep.season_number].map { |_, f| f[:files] }.flatten})
+          info.merge!({:files => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
         elsif tv_seasons[series_name][ep.season_number.to_i].nil? &&
             !MediaInfo.media_exist?(qualifying_season_eps[ep.season_number], identifier(series_name, ep.season_number, ep.number.to_i))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
-          info.merge!({:existing_season_eps => existing_season_eps[ep.season_number].map { |_, f| f[:files] }.flatten})
+          info.merge!({:existing_season_eps => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
           ep_nb = ep.number.to_i
           info.merge!({:files => MediaInfo.media_get(
               existing_season_eps[ep.season_number],
               identifier(series_name, ep.season_number, ep.number.to_i)
-          ).map { |_, f| f[:files] }.flatten})
+          ).map {|_, f| f[:files]}.flatten})
         end
         missing_eps = MediaInfo.missing_media_add(
             missing_eps,

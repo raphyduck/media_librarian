@@ -54,7 +54,7 @@ BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. -]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
-PRIVATE_TRACKERS = {'yggtorrent' => 'https://www2.yggtorrent.gg/',
+PRIVATE_TRACKERS = {'yggtorrent' => 'https://www2.yggtorrent.ch/',
                     'torrentleech' => 'https://www.torrentleech.org',
                     'wop' => 'https://worldofp2p.net'}
 TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => 'https://rarbgto.org',
