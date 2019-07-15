@@ -98,7 +98,7 @@ class MediaInfo
     case type
     when 'shows'
       tv_episodes = BusVariable.new('tv_episodes', Vash)
-      _, tv_episodes[item_name, CACHING_TTL] = tv_episodes_search(item_name, no_prompt, item) if tv_episodes[item_name].nil?
+      _, tv_episodes[item_name, CACHING_TTL] = TvSeries.tv_episodes_search(item_name, no_prompt, item) if tv_episodes[item_name].nil?
       episode_name = []
       info[:episode].each do |n|
         tvdb_ep = !tv_episodes[item_name].empty? && n[:ep] ? tv_episodes[item_name].select {|e| e.season_number.to_i == n[:s].to_i && e.number.to_i == n[:ep].to_i}.first : nil
@@ -514,43 +514,6 @@ class MediaInfo
     r.sort_by! {|f| sorted.map {|x| x[0]}.index(f[:name])}
   end
 
-  def self.tv_episodes_search(title, no_prompt = 0, show = nil, tvdb_id = '')
-    cache_name, episodes = title.to_s + tvdb_id.to_s, []
-    Utils.lock_block("#{__method__}#{cache_name}") do
-      cached = Cache.cache_get('tv_episodes_search', cache_name, 1)
-      return cached if cached
-      title, show = tv_show_search(title, no_prompt) unless show
-      unless show.nil?
-        $speaker.speak_up("Using #{title} as series name", 0)
-        episodes = $tvdb.get_all_episodes(show)
-        episodes.map! {|e| Episode.new(Cache.object_pack(e, 1))}
-      end
-      Cache.cache_add('tv_episodes_search', cache_name, [show, episodes], show)
-    end
-    return show, episodes
-  rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding), 0)
-    Cache.cache_add('tv_episodes_search', cache_name, [nil, []], nil)
-    return nil, []
-  end
-
-  def self.tv_show_get(ids, force_refresh = 0)
-    cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
-    cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
-    return cached if cached
-    show = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full') if (ids['trakt'] || ids['imdb']).to_s != ''
-    show = $tvdb.get_series_by_id(ids['tvdb']) if show.nil?
-    show = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}) if show.nil?
-    show = TvSeries.new(Cache.object_pack(show, 1))
-    title = show.name
-    Cache.cache_add('tv_show_get', cache_name, [title, show], show)
-    return title, show
-  rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
-    Cache.cache_add('tv_show_get', cache_name, ['', nil], nil)
-    return '', nil
-  end
-
   def self.tv_show_search(title, no_prompt = 0, ids = {}, original_filename = '')
     title = StringUtils.prepare_str_search(title)
     cache_name = title.to_s + ids['tvdb'].to_s
@@ -559,7 +522,7 @@ class MediaInfo
       cached = Cache.cache_get('tv_show_search', cache_name)
       return cached if cached
       if (ids['tvdb'] || ids['trakt'] || ids['imdb']).to_s != ''
-        exact_title, show = tv_show_get(ids)
+        exact_title, show = TvSeries.tv_show_get(ids)
         Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
         return exact_title, show unless show.nil?
       end
@@ -569,7 +532,7 @@ class MediaInfo
       tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map {|s| Cache.object_pack(s, 1)} if tvdb_shows.empty?
       tvdb_shows.map! {|s| s = Cache.object_pack(TvSeries.new(s), 1); s['first_aired'] = identify_release_year(s['name']).to_s; s}
       exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
-      exact_title, show = tv_show_get({'tvdb' => show['tvdb_id']}) if show
+      exact_title, show = TvSeries.tv_show_get({'imdb' => show['imdb_id'], 'tvdb' => show['tvdb_id']}) if show
       if show.nil? && original_filename.to_s != ''
         exact_title, show = Kodi.kodi_lookup('episode', original_filename, exact_title)
       end

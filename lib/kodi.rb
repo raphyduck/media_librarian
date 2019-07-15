@@ -40,7 +40,7 @@ class Kodi
                 break
               end
             end
-            exact_title, item = MediaInfo.tv_show_get({'imdb'=>show['imdbnumber']}) if show
+            exact_title, item = TvSeries.tv_show_get({'imdb'=>show['imdbnumber']}) if show
         end
         break
       end

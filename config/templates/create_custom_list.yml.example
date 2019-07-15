@@ -18,6 +18,7 @@ criteria:
     add_only: 0
     entirely_watched: 1
     ended: 1
+    canceled: 1 #If = 2, then show ended but not canceled will be removed
     folder: '/path/to/movies/'
     include:
       - A title to keep in the list

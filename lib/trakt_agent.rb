@@ -60,7 +60,7 @@ class TraktAgent
       k = $trakt.list.get_watched(type, '?extended=noseasons')
       return [] if h.is_a?(Hash) && h['error']
       k.each do |item|
-        _, info = ['shows', 'episodes'].include?(type) ? MediaInfo.tv_show_get(item['show']['ids']) : nil
+        _, info = ['shows', 'episodes'].include?(type) ? TvSeries.tv_show_get(item['show']['ids']) : nil
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
         next if type == 'movies' && item['plays'].to_i == 0
@@ -112,13 +112,13 @@ class TraktAgent
             break
           end
         end
-      when 'ended', 'not_ended'
-        break if cr_value.to_i > 1
+      when 'ended', 'not_ended', 'canceled'
+        break if cr_value.to_i > 1 && filter_type != 'not_ended'
         ids = item[type[0...-1]]['ids'] || {}
         _, show = MediaInfo.tv_show_search(title, 1, ids)
         if show &&
-            ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.status.downcase != 'ended'))) ||
-                (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.status.downcase != 'ended'))
+            ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.formal_status.downcase != 'ended'))) ||
+                (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.formal_status.downcase != 'ended'))
           delete_it = 1
         end
       when 'released_before', 'released_after'

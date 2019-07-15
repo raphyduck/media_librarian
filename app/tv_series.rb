@@ -13,7 +13,7 @@ class TvSeries
     @air_time = options['air_time']
     @imdb_id = options["imdb_id"] || options['IMDB_ID'] || options['ids']['imdb'] rescue nil
     @content_rating = options["content_rating"] || options['certification']
-    @status = status_fetch(options["status"])
+    @status = options["status"]
     @genres = options["genres"]
     @rating = options["rating"]
     @rating_count = options["rating_count"] || options['votes']
@@ -26,9 +26,12 @@ class TvSeries
     @overview.downcase.include?('anthology')
   end
 
-  def status_fetch(status)
-    {'canceled' => 'ended', 'returning series'=> 'continuing'}.each {|k, v| status[k] &&= v}
-    status.downcase
+  def formal_status
+    fs = @status
+    {'canceled' => 'ended', 'returning series'=> 'continuing'}.each {|k, v| fs[k] &&= v}
+    fs.downcase
+  rescue
+    fs
   end
 
   def self.ep_name_to_season(name)
@@ -83,7 +86,7 @@ class TvSeries
     $speaker.speak_up "Will parse TV Shows for missing episodes released more than #{delta} days ago, #{'NOT ' if include_specials.to_i == 0} including specials..." if Env.debug?
     tv_episodes, tv_seasons, missing_eps = {}, {}, {}
     episodes_in_files[:shows].sort_by {|series_name, _| series_name}.each do |series_name, show|
-      _, tv_episodes[series_name] = MediaInfo.tv_episodes_search(series_name, no_prompt, show)
+      _, tv_episodes[series_name] = TvSeries.tv_episodes_search(series_name, no_prompt, show)
       tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
       existing_season_eps, qualifying_season_eps, last_season = {}, {}, nil
       tv_episodes[series_name].sort_by {|e| (e.air_date || Time.now + 6.months)}.reverse.each do |ep|
@@ -130,5 +133,42 @@ class TvSeries
       end
     end
     missing_eps
+  end
+
+  def self.tv_episodes_search(title, no_prompt = 0, show = nil, tvdb_id = '')
+    cache_name, episodes = title.to_s + tvdb_id.to_s, []
+    Utils.lock_block("#{__method__}#{cache_name}") do
+      cached = Cache.cache_get('tv_episodes_search', cache_name, 1)
+      return cached if cached
+      title, show = tv_show_search(title, no_prompt) unless show
+      unless show.nil?
+        $speaker.speak_up("Using #{title} as series name", 0)
+        episodes = $tvdb.get_all_episodes(show)
+        episodes.map! {|e| Episode.new(Cache.object_pack(e, 1))}
+      end
+      Cache.cache_add('tv_episodes_search', cache_name, [show, episodes], show)
+    end
+    return show, episodes
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding), 0)
+    Cache.cache_add('tv_episodes_search', cache_name, [nil, []], nil)
+    return nil, []
+  end
+
+  def self.tv_show_get(ids, force_refresh = 0)
+    cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
+    cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
+    return cached if cached
+    show = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full') if (ids['trakt'] || ids['imdb']).to_s != ''
+    show = $tvdb.get_series_by_id(ids['tvdb']) if show.nil?
+    show = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}) if show.nil?
+    show = TvSeries.new(Cache.object_pack(show, 1))
+    title = show.name
+    Cache.cache_add('tv_show_get', cache_name, [title, show], show)
+    return title, show
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    Cache.cache_add('tv_show_get', cache_name, ['', nil], nil)
+    return '', nil
   end
 end

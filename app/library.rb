@@ -235,7 +235,7 @@ class Library
       end
       folder = $speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       ['released_before', 'released_after', 'days_older', 'days_newer', 'entirely_watched', 'partially_watched',
-       'ended', 'not_ended', 'watched'].each do |cr|
+       'ended', 'not_ended', 'watched', 'canceled'].each do |cr|
         if $speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", no_prompt, t_criteria[cr]).to_s != ''
           new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
         end
@@ -465,11 +465,11 @@ class Library
       $speaker.speak_up "Handling downloaded file '#{full_p}'" if Env.debug?
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
-        FileUtils.extract_archive(extension, full_p, torrent_path + '/extracted')
+        FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
         ensure_qualities = MediaInfo.parse_qualities(File.basename(torrent_path)).join('.') if ensure_qualities.to_s == ''
         handled += handle_completed_download(
             torrent_path: torrent_path,
-            torrent_name: 'extracted',
+            torrent_name: 'extfls',
             completed_folder: completed_folder,
             destination_folder: destination_folder,
             handling: handling,
@@ -479,7 +479,7 @@ class Library
             root_process: 0,
             ensure_qualities: ensure_qualities
         )[0]
-        FileUtils.rm_r(torrent_path + '/extracted')
+        FileUtils.rm_r(torrent_path + '/extfls')
       elsif handling['file_types']
         if force_process.to_i == 0 && !handled_files.include?(extension)
           $speaker.speak_up "Unsupported extension '#{extension}'"
