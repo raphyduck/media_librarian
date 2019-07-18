@@ -516,7 +516,7 @@ class MediaInfo
 
   def self.tv_show_search(title, no_prompt = 0, ids = {}, original_filename = '')
     title = StringUtils.prepare_str_search(title)
-    cache_name = title.to_s + ids['tvdb'].to_s
+    cache_name = title.to_s + ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
     exact_title, show = title, nil
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
       cached = Cache.cache_get('tv_show_search', cache_name)

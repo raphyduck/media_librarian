@@ -43,9 +43,9 @@ qualities:
   target_quality: 1080p
   assume_quality: vo
   timeframe: 1 hour
-  min_size: 100
-  max_size: 3000
-  target_size: 8000
+  min_size: 100 #MB
+  max_size: 3000 #MB
+  target_size: 8000 #MB
   timeframe_size: 96 hours
   illegal:
     - x265 2160p

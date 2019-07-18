@@ -88,7 +88,7 @@ class TraktAgent
       delete_it = 0
       next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
-      $speaker.speak_up "Will filter item titled '#{title}' for #{filter_type.gsub('_', ' ')}" if Env.debug?
+      $speaker.speak_up "Will filter item titled '#{title}' for #{filter_type} = '#{cr_value}'" if Env.debug?
       if exception && exception.include?(title)
         $speaker.speak_up "Skipping because '#{title}' is included in exceptions" if Env.debug?
         next
@@ -116,6 +116,9 @@ class TraktAgent
         break if cr_value.to_i > 1 && filter_type != 'not_ended'
         ids = item[type[0...-1]]['ids'] || {}
         _, show = MediaInfo.tv_show_search(title, 1, ids)
+        if Env.debug?
+          $speaker.speak_up("Show '#{show.name}' status is '#{show.status}'#{' (' + show.formal_status + ')' if show.status != show.formal_status}")
+        end
         if show &&
             ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.formal_status.downcase != 'ended'))) ||
                 (cr_value.to_i == 1 && !show.anthology? && filter_type == 'not_ended' && show.formal_status.downcase != 'ended'))

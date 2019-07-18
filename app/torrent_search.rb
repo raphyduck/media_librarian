@@ -128,9 +128,9 @@ class TorrentSearch
     end
     get_results.sort_by! {|t| sort_by.map {|s| s == :tracker ? trackers.index(t[sort_by]) : -t[sort_by].to_i}}
     if !qualities.nil? && !qualities.empty?
-      filter_results(get_results, 'size', "between #{qualities['min_size']}MN and #{qualities['max_size']}MB") do |t|
+      filter_results(get_results, 'size', "between #{qualities['min_size']}MB and #{qualities['max_size']}MB") do |t|
         f_type = TvSeries.identify_file_type(t[:name])
-        f_type == 'season' || f_type == 'series' ||
+        (category == 'shows' && (f_type == 'season' || f_type == 'series')) ||
             ((t[:size].to_f == 0 || qualities['min_size'].to_f == 0 || t[:size].to_f >= qualities['min_size'].to_f * 1024 * 1024) &&
                 (t[:size].to_f == 0 || qualities['max_size'].to_f == 0 || t[:size].to_f <= qualities['max_size'].to_f * 1024 * 1024))
       end
@@ -321,7 +321,7 @@ class TorrentSearch
         torrent.select {|k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :in_db].include?(k)}.each do |k, v|
           val = case k
                 when :size
-                  (v.to_f / 1024 / 1024 / 1024).round(2)
+                  "#{(v.to_f / 1024 / 1024 / 1024).round(2)} GB"
                 when :link
                   URI.escape(v.to_s)
                 else

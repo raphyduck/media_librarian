@@ -1,6 +1,6 @@
 class TvSeries
   attr_accessor :id, :tvdb_id, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
-                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language, :aired_episodes
+                :actors, :banners, :air_time, :imdb_id, :content_rating, :status, :url, :language, :aired_episodes, :data_source
 
   def initialize(options = {})
     @tvdb_id = (options['ids'] || {})['thetvdb'] || (options['ids'] || {})['tvdb'] || options['seriesid'] || options['id']
@@ -20,6 +20,7 @@ class TvSeries
     @first_aired = options["first_aired"] || options['FirstAired'] || options['premiered']
     @url = options['url']
     @aired_episodes = options['aired_episodes']
+    @data_source = options['data_source']
   end
 
   def anthology?
@@ -27,7 +28,7 @@ class TvSeries
   end
 
   def formal_status
-    fs = @status
+    fs = @status.dup
     {'canceled' => 'ended', 'returning series'=> 'continuing'}.each {|k, v| fs[k] &&= v}
     fs.downcase
   rescue
@@ -159,10 +160,10 @@ class TvSeries
     cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
     cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
     return cached if cached
-    show = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full') if (ids['trakt'] || ids['imdb']).to_s != ''
-    show = $tvdb.get_series_by_id(ids['tvdb']) if show.nil?
-    show = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}) if show.nil?
-    show = TvSeries.new(Cache.object_pack(show, 1))
+    show, src = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full'), 'trakt' if (ids['trakt'] || ids['imdb']).to_s != ''
+    show, src = $tvdb.get_series_by_id(ids['tvdb']), 'tvdb' if show.nil?
+    show, src = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}), 'tvmaze' if show.nil?
+    show = TvSeries.new(Cache.object_pack(show, 1).merge({'@data_source' => src}))
     title = show.name
     Cache.cache_add('tv_show_get', cache_name, [title, show], show)
     return title, show
