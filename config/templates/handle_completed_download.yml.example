@@ -6,7 +6,8 @@ remove_duplicates: 0
 handling:
   file_types:
     - avi
-    - mkv
+    - mkv:
+        no_hdr: 0 #If 1, will convert HDR movies to SDR
     - pdf:
         convert_to: cbz
   shows:

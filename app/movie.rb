@@ -38,7 +38,7 @@ class Movie
     when 'name'
       v = opts['original_title'] || opts['title']
       #TODO: Fetch original title from trakt
-      v << " (#{year})" if MediaInfo.identify_release_year(v).to_i == 0
+      v << " (#{year})" if Metadata.identify_release_year(v).to_i == 0
     when 'released'
       v = opts['release_date'] || opts['premiered']
     when 'set'
@@ -63,7 +63,7 @@ class Movie
   def year
     return @year if @year
     real_year = TraktAgent.movie__releases(ids['imdb'], '').map {|r| Time.parse(r['release_date']).year}.min rescue nil #We need the year to be the same as IMDB, the authority on movies naming
-    title_year = name && MediaInfo.identify_release_year(name) > 0 ? MediaInfo.identify_release_year(name) : nil
+    title_year = name && Metadata.identify_release_year(name) > 0 ? Metadata.identify_release_year(name) : nil
     $speaker.speak_up "Unknow year for m='#{Cache.object_pack(self, 1)}'" if (real_year || title_year || release_date).nil? #REMOVEME
     @year ||= (real_year || title_year || (release_date || Time.now + 3.years).year).to_i
   end

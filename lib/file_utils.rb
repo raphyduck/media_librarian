@@ -81,7 +81,7 @@ module FileUtils
     end
 
     def get_valid_extensions(type)
-      EXTENSIONS_TYPE[MediaInfo.media_type_get(type)]
+      EXTENSIONS_TYPE[Metadata.media_type_get(type)]
     end
 
     def is_in_path(path_list, folder)
@@ -102,6 +102,25 @@ module FileUtils
       return $speaker.speak_up("Would ln #{original} to #{destination}") if Env.pretend?
       $speaker.speak_up("ln #{original} #{destination}") if Env.debug?
       ln_orig(original, destination)
+    end
+
+    def ln_r(source, target)
+      $speaker.speak_up "ln_r copying and hard linking from #{source} to #{target}" if Env.debug?
+      return ln(source, target) unless File.directory?(source)
+      source = File.join(source, "")
+      target = File.join(target, "")
+      rm_r(target) if File.exist?(target)
+      mkdir_p(target)
+      Dir.glob(File.join(source, '**/*')).each do | source_path |
+        target_path = source_path.gsub(Regexp.new("^" + Regexp.escape(source)), target)
+        if File.file? source_path
+          mkdir_p File.dirname(target_path)
+          ln(source_path, target_path)
+        else
+          mkdir_p target_path
+        end
+      end
+      $speaker.speak_up "Done copying/linking." if Env.debug?
     end
 
     def md5sum(file)
@@ -129,7 +148,7 @@ module FileUtils
     def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
       destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
       if File.exists?(destination)
-        _, prosper = MediaInfo.identify_proper(original)
+        _, prosper = Metadata.identify_proper(original)
         if remove_outdated.to_i > 0 && prosper.to_i > 0
           $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
           rm(destination)

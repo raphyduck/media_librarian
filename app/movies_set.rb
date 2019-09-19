@@ -41,13 +41,13 @@ class MoviesSet
         begin ##REMOVEME
           $speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
           next if (m.release_date.to_s == '' && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
-          next if MediaInfo.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))
-          full_name, identifiers, info = MediaInfo.parse_media_filename(m.name, 'movies', m, m.name, no_prompt)
-          info.merge!({:files => MediaInfo.media_get(
+          next if Metadata.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))
+          full_name, identifiers, info = Metadata.parse_media_filename(m.name, 'movies', m, m.name, no_prompt)
+          info.merge!({:files => Metadata.media_get(
               movies_files,
               Movie.identifier(full_name, m.year)
           ).map {|_, f| f[:files]}.flatten})
-          MediaInfo.missing_media_add(
+          Metadata.missing_media_add(
               missing_movies,
               'movies',
               full_name,

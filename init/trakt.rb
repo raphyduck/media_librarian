@@ -12,6 +12,5 @@ if $config['trakt']
                          :speaker => $speaker,
                          :token => token_row
                      })
-  token = $trakt.access_token
-  $db.insert_row('trakt_auth', token.merge({:account => $trakt_account}), 1) if token
+  TraktAgent.get_trakt_token
 end

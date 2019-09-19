@@ -57,9 +57,12 @@ class TraktAgent
       h << c
     end
     if h.nil? || h.empty?
-      k = $trakt.list.get_watched(type, '?extended=noseasons')
-      return [] if h.is_a?(Hash) && h['error']
-      k.each do |item|
+      wk = $trakt.list.get_watched(type, '?extended=noseasons')
+      k = $trakt.list.collection(type, '?extended=noseasons')
+      return [] if k.is_a?(Hash) && k['error']
+      k.each do |i|
+        item = wk.select{|t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title']}.first
+        item = i if item.nil?
         _, info = ['shows', 'episodes'].include?(type) ? TvSeries.tv_show_get(item['show']['ids']) : nil
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
@@ -115,7 +118,7 @@ class TraktAgent
       when 'ended', 'not_ended', 'canceled'
         break if cr_value.to_i > 1 && filter_type != 'not_ended'
         ids = item[type[0...-1]]['ids'] || {}
-        _, show = MediaInfo.tv_show_search(title, 1, ids)
+        _, show = Metadata.tv_show_search(title, 1, ids)
         if Env.debug?
           $speaker.speak_up("Show '#{show.name}' status is '#{show.status}'#{' (' + show.formal_status + ')' if show.status != show.formal_status}")
         end
@@ -207,6 +210,12 @@ class TraktAgent
       parsed[k] = cat.map {|s, i| i}
     end
     parsed
+  end
+
+  def self.get_trakt_token
+    return unless $trakt && $trakt_account
+    token = $trakt.access_token
+    $db.insert_row('trakt_auth', token.merge({:account => $trakt_account}), 1) if token
   end
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')

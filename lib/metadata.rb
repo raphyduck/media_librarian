@@ -1,5 +1,5 @@
 require File.dirname(__FILE__) + '/vash'
-class MediaInfo
+class Metadata
 
   def self.clean_title(title, complete = 0)
     t = title.clone
@@ -51,7 +51,7 @@ class MediaInfo
       end
     end
     return timeframe, true if qualities.nil? || qualities.empty?
-    ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
+    Q_SORT.each do |t|
       file_q = parse_qualities(filename, eval(t))[0].to_s
       if file_q.empty?
         qualities['assume_quality'].to_s.split(' ').each do |q|
@@ -194,7 +194,7 @@ class MediaInfo
 
   def self.media_qualities(filename)
     q = {}
-    ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
+    Q_SORT.each do |t|
       q[t.downcase] = parse_qualities(filename, eval(t)).first.to_s
     end
     q['proper'] = identify_proper(filename)[1]
@@ -301,14 +301,14 @@ class MediaInfo
   def self.missing_media_add(missing_eps, type, full_name, release_date, item_name, identifiers, info, display_name = nil)
     return missing_eps if full_name == ''
     $speaker.speak_up("Missing #{display_name || full_name} (ids '#{identifiers}') (released on #{release_date})", 0)
-    missing_eps = MediaInfo.media_add(item_name,
-                                      type,
-                                      full_name,
-                                      identifiers,
-                                      info,
-                                      {},
-                                      {},
-                                      missing_eps
+    missing_eps = Metadata.media_add(item_name,
+                                     type,
+                                     full_name,
+                                     identifiers,
+                                     info,
+                                     {},
+                                     {},
+                                     missing_eps
     )
     missing_eps
   end
@@ -375,12 +375,12 @@ class MediaInfo
   end
 
   def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, file = {})
-    item_name, item = MediaInfo.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item.nil? || item_name.to_s == ''
+    item_name, item = Metadata.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item.nil? || item_name.to_s == ''
     full_name, ids, info, parts = '', [], {}, []
     return full_name, ids, info unless no_prompt.to_i == 0 || item
     case type
     when 'movies'
-      release = item&.release_date ? item.release_date : Time.new(MediaInfo.identify_release_year(item_name))
+      release = item&.release_date ? item.release_date : Time.new(Metadata.identify_release_year(item_name))
       ids = [Movie.identifier(item_name, item.year)]
       full_name = item_name
       info = {
@@ -450,7 +450,7 @@ class MediaInfo
       cmin = arr.shift
       arr.delete_if do |q|
         delete = false
-        ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
+        Q_SORT.each do |t|
           if eval(t).include?(cmin) && eval(t).include?(q)
             cmin = q if eval(t).index(q).send(comparison, eval(t).index(cmin))
             delete = true
@@ -505,9 +505,9 @@ class MediaInfo
       end
     end
     sorted.sort_by! {|x| (AUDIO.index(x[4]) || 999).to_i}
-    sorted.sort_by! {|x| (LANGUAGES.index(x[6]) || 999).to_i}
     sorted.sort_by! {|x| -x[5].to_i}
     sorted.sort_by! {|x| (CODECS.index(x[3]) || 999).to_i}
+    sorted.sort_by! {|x| (LANGUAGES.index(x[6]) || 999).to_i}
     sorted.sort_by! {|x| (SOURCES.index(x[2]) || 999).to_i}
     sorted.sort_by! {|x| (RESOLUTIONS.index(x[1]) || 999).to_i}
     sorted.sort_by! {|x| x[7].to_i}

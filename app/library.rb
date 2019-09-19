@@ -358,7 +358,7 @@ class Library
     return [] if dup_files.count < threshold
     dups_files = dup_files.select {|x| x[:type].to_s == 'file' && File.exists?(x[:name])} #You never know...
     return [] unless dups_files.count >= threshold
-    dups_files = MediaInfo.sort_media_files(dups_files)
+    dups_files = Metadata.sort_media_files(dups_files)
     dups_files
   end
 
@@ -438,6 +438,11 @@ class Library
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '')
+    return $speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
+    if root_process.to_i > 0
+      FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, $temp_dir + '/') + '/' + torrent_name)
+      completed_folder = $temp_dir
+    end
     full_p = torrent_path + '/' + torrent_name
     handled, process_folder_list = 0, []
     handled_files = (
@@ -466,7 +471,7 @@ class Library
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
-        ensure_qualities = MediaInfo.parse_qualities(File.basename(torrent_path)).join('.') if ensure_qualities.to_s == ''
+        ensure_qualities = Metadata.parse_qualities(File.basename(torrent_path)).join('.') if ensure_qualities.to_s == ''
         handled += handle_completed_download(
             torrent_path: torrent_path,
             torrent_name: 'extfls',
@@ -491,14 +496,14 @@ class Library
           $speaker.speak_up 'File is a sample, skipping...'
           return handled
         end
-        if File.stat(full_p).nlink > 1
+        if File.stat(full_p).nlink > 2
           $speaker.speak_up 'File is already hard linked, skipping...'
           return handled
         end
         type.downcase!
         $speaker.speak_up "File type '#{type}'" if Env.debug?
         ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
-        item_name, item = MediaInfo.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
+        item_name, item = Metadata.identify_title(full_p, ttype, 1, (folder_hierarchy[ttype] || FOLDER_HIERARCHY[ttype]), completed_folder)
         if args && args[extension] && args[extension]['convert_to'].to_s != ''
           convert_media(
               path: full_p,
@@ -522,6 +527,14 @@ class Library
             )[0]
           end
         elsif handling[type] && handling[type]['move_to']
+          if handling[type] && handling[type]['no_hdr'].to_i > 0 && torrent_name.match(Regexp.new(VALID_VIDEO_EXT))
+            media_info = FileInfo.new(full_p)
+            if media_info.isHDR?
+              media_info.hdr_to_sdr("#{full_p}.tmp")
+              FileUtils.rm(full_p)
+              FileUtils.mv("#{full_p}.tmp", full_p)
+            end
+          end
           destination = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, ensure_qualities)
         else
           destination = full_p.gsub(completed_folder, destination_folder)
@@ -536,6 +549,7 @@ class Library
       end
     end
     if root_process.to_i > 0
+      FileUtils.rm_r(full_p)
       $speaker.speak_up('Could not find any file to handle!') if handled == 0
       process_folder_list.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
@@ -576,7 +590,7 @@ class Library
         qualifying_files = files.deep_dup
         qualifying_files.select! do |k, f|
           next if k.is_a?(Symbol)
-          MediaInfo.qualities_file_filter(f, qualities)
+          Metadata.qualities_file_filter(f, qualities)
         end
         missing_media[cache_name, CACHING_TTL] = case type
                                                  when 'shows'
@@ -590,7 +604,7 @@ class Library
   end
 
   def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
-    item_name, item = MediaInfo.identify_title(file[:formalized_name] || file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
+    item_name, item = Metadata.identify_title(file[:formalized_name] || file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
       if Env.debug?
         $speaker.speak_up("File '#{File.basename(file[:name])}' not identified, skipping. (folder_hierarchy='#{folder_hierarchy}', base_folder='#{base_folder}', ids='#{ids}')")
@@ -610,7 +624,7 @@ class Library
       )
       file[:name] = f_path unless f_path == ''
     end
-    full_name, identifiers, info = MediaInfo.parse_media_filename(
+    full_name, identifiers, info = Metadata.parse_media_filename(
         file[:name],
         type,
         item,
@@ -642,14 +656,14 @@ class Library
         end
       end
     end
-    files = MediaInfo.media_add(item_name,
-                                type,
-                                full_name,
-                                identifiers,
-                                info,
-                                file_attrs,
-                                file,
-                                files
+    files = Metadata.media_add(item_name,
+                               type,
+                               full_name,
+                               identifiers,
+                               info,
+                               file_attrs,
+                               file,
+                               files
     )
     files
   end
@@ -694,7 +708,7 @@ class Library
         case ct
         when 'movies'
           search_list[id][:files] = [] unless search_list[id][:files].is_a?(Array)
-          if (source['upgrade'].to_i > 0 && MediaInfo.qualities_file_filter(existing_files[ct][id], qualities)) ||
+          if (source['upgrade'].to_i > 0 && Metadata.qualities_file_filter(existing_files[ct][id], qualities)) ||
               source['get_missing_set'].to_i > 0
             search_list.delete(id)
           else
@@ -763,7 +777,7 @@ class Library
   def self.rename_media_file(original, destination, type, item_name, item, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '')
     $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
-    metadata = MediaInfo.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, '', ensure_qualities)
+    metadata = Metadata.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, '', ensure_qualities)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.to_s == ''
       $speaker.speak_up "Destination of rename file '#{original}' is empty, skipping..."

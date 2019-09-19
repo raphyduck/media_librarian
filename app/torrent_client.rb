@@ -169,7 +169,7 @@ class TorrentClient
           end
           set_options = {}
           main_file = find_main_file(status, o[:whitelisted_extensions] || [])
-          torrent_qualities = MediaInfo.parse_qualities(tname)
+          torrent_qualities = Metadata.parse_qualities(tname)
           set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
           rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
           if main_file.empty? && o[:expect_main_file].to_i > 0
@@ -232,9 +232,9 @@ class TorrentClient
     files.each do |file|
       old_name = File.basename(file['path'])
       extension = FileUtils.get_extension(old_name)
-      ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES'].each do |t|
-        file_q = MediaInfo.parse_qualities(old_name, eval(t))[0].to_s
-        t_q = MediaInfo.parse_qualities(".#{torrent_qualities.join('.')}.", eval(t))[0].to_s
+      Q_SORT.each do |t|
+        file_q = Metadata.parse_qualities(old_name, eval(t))[0].to_s
+        t_q = Metadata.parse_qualities(".#{torrent_qualities.join('.')}.", eval(t))[0].to_s
         if t_q != file_q
           new_name = old_name.gsub(/\.#{extension}$/, '').to_s + ".#{t_q}.#{extension}"
           $speaker.speak_up"File '#{old_name}' does not contain the qualities information '#{t_q}', will rename to '#{new_name}'" if Env.debug?

@@ -10,6 +10,8 @@ Requirements:
 * phantomjs
 * flac
 * lame
+* mediainfo
+* ffmpeg
 
 TODO:
 * General
@@ -38,3 +40,4 @@ TODO:
     * Automatic subtitling for videos. based on https://github.com/agermanidis/autosub (when technology will be good enough, or as a good AI project)
     * Use alternative sources to identify series
     * Detect qualities of file from file itself rather than name
+    * Convert HDR to SDR

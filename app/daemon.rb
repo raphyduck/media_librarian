@@ -63,7 +63,7 @@ class Daemon < EventMachine::Connection
 
   def self.dump_env_flags(expiration = 43200)
     env_flags = {}
-    $env_flags.keys.each {|k| env_flags[k.to_s] = Thread.current[k]}
+    $env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
     env_flags['expiration_period'] = expiration
     env_flags
   end
@@ -138,11 +138,11 @@ class Daemon < EventMachine::Connection
   end
 
   def self.queues_slot_taken
-    @queues.select {|qname, _| queue_slot_taken?(qname)}.count
+    @queues.select { |qname, _| queue_slot_taken?(qname) }.count
   end
 
   def self.queue_slot_taken?(qname)
-    (@queues[qname][:threads].select {|_, w| w&.alive? && w[:waiting_for].nil? && w[:waiting_for_lock].nil?} || []).count > 0
+    (@queues[qname][:threads].select { |_, w| w&.alive? && w[:waiting_for].nil? && w[:waiting_for_lock].nil? } || []).count > 0
   end
 
   def self.quit
@@ -171,7 +171,7 @@ class Daemon < EventMachine::Connection
     ['periodic', 'continuous'].each do |type|
       (jobs[type] || {}).each do |task, params|
         args = params['command'].split('.')
-        args += params['args'].map {|a, v| "--#{a}=#{v.to_s}"} if params['args'].is_a?(Hash)
+        args += params['args'].map { |a, v| "--#{a}=#{v.to_s}" } if params['args'].is_a?(Hash)
         args += params['args'] if params['args'].is_a?(Array)
         case type
         when 'periodic'
@@ -206,8 +206,9 @@ class Daemon < EventMachine::Connection
     @is_daemon = true
     EventMachine.run do
       start_server($api_option)
-      EM.add_periodic_timer(0.2) {schedule(jobs)}
-      EM.add_periodic_timer(1) {Librarian.burst_thread {quit}}
+      EM.add_periodic_timer(0.2) { schedule(jobs) }
+      EM.add_periodic_timer(1) { Librarian.burst_thread { quit } }
+      EM.add_periodic_timer(86400) { TraktAgent.get_trakt_token }
     end
     $librarian.delete_pid
     $speaker.speak_up('Shutting down')
@@ -249,8 +250,8 @@ class Daemon < EventMachine::Connection
         wwc.each do |_, w|
           childs = get_children_count(w[:jid])
           $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]})\
-  #{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
-  #{', waiting for ' + childs.to_s + ' childs'}"
+#{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
+#{', waiting for ' + childs.to_s + ' childs'}"
         end
       end
       $speaker.speak_up " * #{@queues[qname][:jobs].count} in queue"

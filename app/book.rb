@@ -97,7 +97,7 @@ class Book
             end
           end.select { |b| !b.nil? }
         end
-        exact_title, book = MediaInfo.media_chose(
+        exact_title, book = Metadata.media_chose(
             title,
             rs.uniq,
             {'name' => :title, 'url' => :url},

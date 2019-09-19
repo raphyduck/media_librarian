@@ -109,11 +109,11 @@ class TorrentSearch
       get_results += cr
     end
     if keyword.to_s != ''
-      target_year = MediaInfo.identify_release_year(MediaInfo.detect_real_title(filter_keyword, category))
+      target_year = Metadata.identify_release_year(Metadata.detect_real_title(filter_keyword, category))
       filter_results(get_results, 'title', "to match '#{filter_keyword} (#{target_year})'") do |t|
-        year = MediaInfo.identify_release_year(MediaInfo.detect_real_title(t[:name], category))
-        MediaInfo.match_titles(MediaInfo.detect_real_title(t[:name], category, 1, 0),
-                               filter_keyword, year, category)
+        year = Metadata.identify_release_year(Metadata.detect_real_title(t[:name], category))
+        Metadata.match_titles(Metadata.detect_real_title(t[:name], category, 1, 0),
+                              filter_keyword, year, category)
       end
       get_results.map {|t| t[:formalized_name] = filter_keyword; t}
       if target_year.to_i > 0
@@ -154,13 +154,13 @@ class TorrentSearch
       download_criteria = Utils.recursive_typify_keys(download_criteria)
       download_criteria[:move_completed] = download_criteria[:destination][category.to_sym] if download_criteria[:destination]
       download_criteria.delete(:destination)
-      download_criteria[:whitelisted_extensions] = download_criteria[:whitelisted_extensions][MediaInfo.media_type_get(category)] rescue nil
+      download_criteria[:whitelisted_extensions] = download_criteria[:whitelisted_extensions][Metadata.media_type_get(category)] rescue nil
     end
     download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) if !download_criteria[:whitelisted_extensions].is_a?(Array)
     download_criteria.merge!(post_actions)
     $speaker.speak_up "Download criteria: #{download_criteria}" if Env.debug?
     get_results.each do |t|
-      _, accept = MediaInfo.filter_quality(t[:name], qualities)
+      _, accept = Metadata.filter_quality(t[:name], qualities)
       r = Library.parse_media(
           {:type => 'torrent'}.merge(t),
           category,
@@ -255,10 +255,10 @@ class TorrentSearch
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
       results = {}
-      ks = [f[:full_name], MediaInfo.clear_year(f[:full_name], 0)]
+      ks = [f[:full_name], Metadata.clear_year(f[:full_name], 0)]
       filter_k = f[:full_name]
       if f[:type] == 'shows' && f[:f_type] == 'episode'
-        ks += [TvSeries.ep_name_to_season(f[:full_name]), MediaInfo.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0)]
+        ks += [TvSeries.ep_name_to_season(f[:full_name]), Metadata.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0)]
       end
       f[:expect_main_file] = 1 if f[:type] == 'movies' || (f[:type] == 'shows' && f[:f_type] == 'episode')
       ks.uniq.each do |k|
@@ -293,7 +293,7 @@ class TorrentSearch
         break unless results.empty? #&& Cache.torrent_get(f[:identifier], f_type).empty?
       end
     end
-    subset = MediaInfo.media_get(results, f[:identifiers], f_type).map {|_, t| t}
+    subset = Metadata.media_get(results, f[:identifiers], f_type).map {|_, t| t}
     subset.map! do |t|
       attrs = t.select {|k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps, :files].include?(k)}.deep_dup
       t[:files].map {|ff| ff.merge(attrs)} if t[:files]
@@ -305,8 +305,8 @@ class TorrentSearch
       subset.select! {|tt| tt[:name] != d[:name]}
       subset << d if d[:download_now].to_i >= 0
     end
-    _, qualities['min_quality'] = MediaInfo.qualities_set_minimum(f, qualities['min_quality'])
-    filtered = MediaInfo.sort_media_files(subset, qualities)
+    _, qualities['min_quality'] = Metadata.qualities_set_minimum(f, qualities['min_quality'])
+    filtered = Metadata.sort_media_files(subset, qualities)
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
     if subset.empty?
       $speaker.speak_up("No torrent found for #{f[:full_name]}!", 0) if Env.debug?
@@ -352,7 +352,7 @@ class TorrentSearch
       results.each do |i, ts|
         next if i.is_a?(Symbol)
         propers = ts[:files].select do |t|
-          _, p = MediaInfo.identify_proper(t[:name])
+          _, p = Metadata.identify_proper(t[:name])
           p.to_i > 0
         end
         $speaker.speak_up "Releases for '#{ts[:name]} (id '#{i}) have #{propers.count} proper torrent" if Env.debug?

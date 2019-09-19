@@ -94,34 +94,34 @@ class TvSeries
         is_new_season = (last_season != ep.season_number.to_i)
         last_season = ep.season_number.to_i
         next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) ||
-            (ep.air_date.to_s == '' && MediaInfo.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1)))
+            (ep.air_date.to_s == '' && Metadata.media_exist?(episodes_in_files, identifier(series_name, ep.season_number, ep.number.to_i + 1)))
         next if include_specials.to_i == 0 && ep.season_number.to_i == 0
         full_name, identifiers, info, ep_nb = '', '', {}, 0
         if existing_season_eps[ep.season_number].nil?
-          existing_season_eps[ep.season_number] = MediaInfo.media_get(episodes_in_files, identifier(series_name, ep.season_number, 0))
+          existing_season_eps[ep.season_number] = Metadata.media_get(episodes_in_files, identifier(series_name, ep.season_number, 0))
           qualifying_season_eps[ep.season_number] = if qualities.to_s == ''
                                                       existing_season_eps[ep.season_number]
                                                     else
-                                                      MediaInfo.media_get(qualifying_files, identifier(series_name, ep.season_number, 0))
+                                                      Metadata.media_get(qualifying_files, identifier(series_name, ep.season_number, 0))
                                                     end
         end
         if tv_seasons[series_name][ep.season_number.to_i].nil? && (is_new_season || ep.air_date.nil? || ep.air_date < Time.now - 6.months) && qualifying_season_eps[ep.season_number].empty?
           tv_seasons[series_name][ep.season_number.to_i] = 1
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}"
-          full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
+          full_name, identifiers, info = Metadata.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
           info.merge!({:files => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
         elsif tv_seasons[series_name][ep.season_number.to_i].nil? &&
-            !MediaInfo.media_exist?(qualifying_season_eps[ep.season_number], identifier(series_name, ep.season_number, ep.number.to_i))
+            !Metadata.media_exist?(qualifying_season_eps[ep.season_number], identifier(series_name, ep.season_number, ep.number.to_i))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
-          full_name, identifiers, info = MediaInfo.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
+          full_name, identifiers, info = Metadata.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
           info.merge!({:existing_season_eps => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
           ep_nb = ep.number.to_i
-          info.merge!({:files => MediaInfo.media_get(
+          info.merge!({:files => Metadata.media_get(
               existing_season_eps[ep.season_number],
               identifier(series_name, ep.season_number, ep.number.to_i)
           ).map {|_, f| f[:files]}.flatten})
         end
-        missing_eps = MediaInfo.missing_media_add(
+        missing_eps = Metadata.missing_media_add(
             missing_eps,
             'shows',
             full_name,
