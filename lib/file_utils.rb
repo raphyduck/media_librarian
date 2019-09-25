@@ -101,6 +101,9 @@ module FileUtils
     def ln(original, destination)
       return $speaker.speak_up("Would ln #{original} to #{destination}") if Env.pretend?
       $speaker.speak_up("ln #{original} #{destination}") if Env.debug?
+      rm(destination) if File.exist?(destination)
+      mkdir_p(File.dirname(destination)) unless File.exist?(File.dirname(destination))
+      $speaker.speak_up("File '#{original}' doesn't exist!") unless File.exist?(original)
       ln_orig(original, destination)
     end
 

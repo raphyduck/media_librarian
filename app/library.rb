@@ -443,7 +443,7 @@ class Library
       FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, $temp_dir + '/') + '/' + torrent_name)
       completed_folder = $temp_dir
     end
-    full_p = torrent_path + '/' + torrent_name
+    full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/,'/')
     handled, process_folder_list = 0, []
     handled_files = (
     if handling['file_types'].is_a?(Array)
