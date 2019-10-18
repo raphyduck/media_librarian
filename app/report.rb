@@ -21,7 +21,7 @@ class Report
 
   def self.push_email(object, ebody, trials = 10)
     return if (trials -= 1) <= 0
-    deliver(object_s: object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
+    deliver(object_s: '[' + Socket.gethostname.to_s + ']' + object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: ebody.to_s)
   rescue => e
     $speaker.tell_error(e, 'Report.push_email', 0)
     push_email(object, ebody, trials)
