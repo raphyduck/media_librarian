@@ -161,7 +161,7 @@ class Cache
   end
 
   def self.queue_state_shift(qname)
-    $speaker.speak_up "Will shift from queue '#{qname}'" if Env.debug?
+    $speaker.speak_up("Will shift from queue '#{qname}'", 0) if Env.debug?
     h = queue_state_get(qname)
     el = h.shift
     queue_state_save(qname, h)

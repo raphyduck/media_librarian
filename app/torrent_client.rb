@@ -156,12 +156,12 @@ class TorrentClient
       tries = 10
       begin
         status = $t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
-        $speaker.speak_up("Processing added torrent #{status['name']}")
         opts = Cache.queue_state_select('deluge_options') {|_, v| v[:info_hash] == tid}
         opts = Cache.queue_state_select('deluge_options') {|tn, _| tn == status['name']} if opts.nil? || opts.empty?
         if opts.nil? || opts.empty?
           opts = Cache.queue_state_select('deluge_options') {|tn, _| $str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9}
         end
+        $speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
         (opts || {}).each do |tname, o|
           torrent_cache = $db.get_rows('torrents', {:name => tname}).first
           if torrent_cache && torrent_cache[:torrent_id].nil?
@@ -250,7 +250,7 @@ class TorrentClient
   def method_missing(name, *args)
     tries ||= 3
     debug_str = "#{name}#{'(' + args.map {|a| a.to_s[0..100]}.join(',') + ')' if args}"
-    $speaker.speak_up "Running @deluge.core.#{debug_str}" if Env.debug?
+    $speaker.speak_up("Running @deluge.core.#{debug_str}", 0) if Env.debug?
     return if Env.pretend? && !['get_torrent_status'].include?(name)
     result = nil
     Timeout.timeout(60) do

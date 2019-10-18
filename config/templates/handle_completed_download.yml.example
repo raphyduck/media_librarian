@@ -6,8 +6,7 @@ remove_duplicates: 0
 handling:
   file_types:
     - avi
-    - mkv:
-        no_hdr: 0 #If 1, will convert HDR movies to SDR
+    - mkv
     - pdf:
         convert_to: cbz
   shows:
@@ -15,4 +14,5 @@ handling:
     move_to: '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
   movies:
     media_type: movies
+    no_hdr: 0 #If 1, will convert HDR movies to SDR
     move_to: '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'

@@ -530,9 +530,9 @@ class Library
           if handling[type] && handling[type]['no_hdr'].to_i > 0 && torrent_name.match(Regexp.new(VALID_VIDEO_EXT))
             media_info = FileInfo.new(full_p)
             if media_info.isHDR?
-              media_info.hdr_to_sdr("#{full_p}.tmp")
+              media_info.hdr_to_sdr("#{full_p}.tmp.#{extension}")
               FileUtils.rm(full_p)
-              FileUtils.mv("#{full_p}.tmp", full_p)
+              FileUtils.mv("#{full_p}.tmp.#{extension}", full_p)
             end
           end
           destination = rename_media_file(full_p, handling[type]['move_to'], ttype, item_name, item, 1, 1, 1, folder_hierarchy, ensure_qualities)

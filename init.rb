@@ -1,4 +1,4 @@
-APP_NAME='librarian'
+APP_NAME = 'librarian'
 $env_flags = {
     :debug => 0,
     :no_email_notif => 0,
@@ -15,14 +15,13 @@ $pid_dir = $config_dir + '/pids'
 $pidfile = $pid_dir + '/pid.file'
 #Create default folders if doesn't exist
 FileUtils.mkdir($config_dir) unless File.exist?($config_dir)
-FileUtils.mkdir(log_dir) unless File.exist?(log_dir)
 FileUtils.mkdir($temp_dir) unless File.exist?($temp_dir)
 FileUtils.mkdir($pid_dir) unless File.exist?($pid_dir)
 unless File.exist?($template_dir)
   FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
 end
 #Logger
-$speaker = SimpleSpeaker::Speaker.new(log_dir + '/medialibrarian.log', log_dir + '/medialibrarian_errors.log')
+$speaker = SimpleSpeaker::Speaker.new
 $args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags)
 #Load app and settings
 Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }

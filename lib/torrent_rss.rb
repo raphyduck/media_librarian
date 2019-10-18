@@ -42,6 +42,8 @@ class TorrentRss < TorrentSite::Search
   def get_rows
     xml = HTTParty.get(url).body
     (Feedjira.parse(xml)).entries || []
+  rescue => e
+    $speaker.tell_error(e, "TorrentRss.new('#{url}').get_rows")
   end
 
 

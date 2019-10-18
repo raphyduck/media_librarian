@@ -447,6 +447,8 @@ class TorrentSearch
           :status => torrent[:download_now]
       })
     end
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding, 2))
   end
 
 end

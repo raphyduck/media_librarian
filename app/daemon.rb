@@ -13,9 +13,8 @@ class Daemon < EventMachine::Connection
 
   def self.clear_queue(pqueue, forward_queue = nil)
     pqueue.delete_if do |_, t|
-      if t[:is_active].to_i == 0
-        $speaker.speak_up "DAEMON: Thread #{DataUtils.dump_variable(t)}"
-        forward_queue[t[:jid]] = t if forward_queue
+      if forward_queue && t[:is_active].to_i == 0
+        forward_queue[t[:jid]] = t
       end
       t[:is_active].to_i == 0
     end
@@ -35,11 +34,11 @@ class Daemon < EventMachine::Connection
       qname = worker[:queue_name]
       begin
         if @queues[qname][:threads][worker[:jid]]
-          @queues[qname][:threads].delete(worker[:jid])
           @queues[qname][:waiting_threads][worker[:jid]] = worker
+          @queues[qname][:threads].delete(worker[:jid])
         elsif @queues[qname][:waiting_threads][worker[:jid]]
           @queues[qname][:waiting_threads].delete(worker[:jid])
-          Librarian.terminate_command(worker[:parent], worker_value, object) if worker[:parent]
+          Librarian.terminate_command(worker[:parent], worker_value, object) if worker[:parent] && @queues[worker[:parent][:queue_name]]
         elsif tries.to_i > 0
           @worker_clearance << [worker, worker_value, object, (tries - 1)]
         else
