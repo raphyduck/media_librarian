@@ -5,7 +5,7 @@ class DataUtils
     dump = ''
     val = Cache.object_pack(val, 1)
     if max_depth <= 0
-      dump << "#{'  ' * start * new_line}<#{[Vash,Hash,Array].include?(val.class) ? val.count : 1} element(s)>#{nl}"
+      dump << "#{'  ' * start * new_line}<#{[Vash, Hash, Array].include?(val.class) ? val.count : 1} element(s)>#{nl}"
     else
       if val.is_a?(Hash)
         hs, knb = [], 0
@@ -16,12 +16,26 @@ class DataUtils
         dump << "#{'  ' * start * new_line}{#{nl}#{hs.join(', ')}#{'  ' * start * new_line}}#{nl}"
       elsif val.is_a?(Array)
         dump << "#{'  ' * start * new_line}[#{nl}"
-        dump << val[0..(max_nb_keys - 1)].map {|v| dump_variable(v, max_depth - 1, start + 1, new_line)}. join(', ')
+        dump << val[0..(max_nb_keys - 1)].map { |v| dump_variable(v, max_depth - 1, start + 1, new_line) }.join(', ')
         dump << "#{'  ' * start * new_line}]#{nl}"
       else
-        dump << "#{'  ' * start * new_line}#{val}#{nl}"
+        dump << "#{'  ' * start * new_line}#{format_string(val)}#{nl}"
       end
     end
     dump
+  end
+
+  def self.format_string(str)
+    if str.nil?
+      "nil"
+    elsif str.is_a?(Array)
+      str.map { |x| format_string(x) }
+    elsif str.is_a?(Hash)
+      str.keys.each { |k| str[k] = format_string(str[k]) }
+    elsif str.is_a?(String)
+      "\'#{str}\'"
+    else
+      str.to_s
+    end
   end
 end

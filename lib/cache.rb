@@ -61,23 +61,26 @@ class Cache
     @cache_metadata.delete_if {|c, _| c.start_with?(type)}
   end
 
-  def self.object_pack(object, to_hash_only = 0)
+  def self.object_pack(object, to_hash_only = 0, blacklisted_type = [Proc])
     obj = object.is_a?(Thread) ? object : object.clone
     oclass = obj.class.to_s
+    if ([Proc] + blacklisted_type).include?(obj.class)
+      return object_pack("Illegal object type", to_hash_only)
+    end
     if [String, Integer, Float, BigDecimal, NilClass, TrueClass, FalseClass].include?(obj.class)
       obj = obj.to_s
     elsif [Date, DateTime, Time].include?(obj.class)
       obj = obj.strftime('%Y-%m-%dT%H:%M:%S%z')
     elsif obj.is_a?(Array)
-      obj.each_with_index {|o, idx| obj[idx] = object_pack(o, to_hash_only)}
+      obj.each_with_index {|o, idx| obj[idx] = object_pack(o, to_hash_only, blacklisted_type)}
     elsif obj.is_a?(Hash)
-      obj.keys.each {|k| obj[k] = object_pack(obj[k], to_hash_only)}
+      obj.keys.each {|k| obj[k] = object_pack(obj[k], to_hash_only, blacklisted_type)}
     elsif obj.is_a?(Thread)
       obj = "thread[#{Hash[obj.keys.map do |k|
         [k, to_hash_only.to_i == 1 && obj[k].respond_to?("[]") ? obj[k][0..100] : obj[k]] rescue nil
       end]}]"
     else
-      obj = object.instance_variables.each_with_object({}) {|var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only)}
+      obj = object.instance_variables.each_with_object({}) {|var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type)}
     end
     obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
@@ -145,7 +148,7 @@ class Cache
     Utils.lock_block("#{__method__}_#{qname}") {
       @tqueues[qname] = value
       return @tqueues[qname] if Env.pretend?
-      r = object_pack(value)
+      r = object_pack(value, 0, [Thread])
       $db.insert_row('queues_state', {
           :queue_name => qname,
           :value => r,
@@ -188,14 +191,10 @@ class Cache
     torrents = []
     $db.get_rows('torrents', {}, {'identifier like' => "%#{identifier}%"}).each do |d|
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
-      if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i <= 2 && d[:status].to_i >= 0
-        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
-        $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
-        next
-      end
+      d[:waiting_until] = TorrentSearch.waiting_time_set(d[:tattributes]).to_s
       next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
       t = -1
-      if Time.parse(d[:waiting_until]) > Time.now && d[:status].to_i >= 0 && d[:status].to_i < 2
+      if TorrentSearch.download_now?(d[:waiting_until]) == 1 && d[:status].to_i >= 0 && d[:status].to_i < 2
         $speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
         t = 1
       elsif d[:status].to_i >= 0 && d[:status].to_i < 2
@@ -204,6 +203,12 @@ class Cache
         t = 3
       elsif Env.debug?
         $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
+        next
+      end
+      if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i == 1
+        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
+        $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
+        next
       end
       torrents << d[:tattributes].merge({:download_now => t, :in_db => 1})
     end

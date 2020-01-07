@@ -151,8 +151,8 @@ module FileUtils
     def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
       destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
       if File.exists?(destination)
-        _, prosper = Metadata.identify_proper(original)
-        if remove_outdated.to_i > 0 && prosper.to_i > 0
+        _, proper = Metadata.identify_proper(original)
+        if remove_outdated.to_i > 0 && proper.to_i > 0
           $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
           rm(destination)
         else
@@ -190,29 +190,33 @@ module FileUtils
 
     def rm(files, force: nil, noop: nil, verbose: nil)
       return $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != '' if Env.pretend?
-      $speaker.speak_up("Removing file '#{files}'") if Env.debug?
-      rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
+      Utils.lock_block("file_utils_rm") do
+        $speaker.speak_up("Removing file '#{files}'")
+        rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
+      end
       file_remove_parents(files)
       true
     end
 
     def rm_r(files, force: nil, noop: nil, verbose: nil, secure: nil)
-      if Env.pretend?
-        $speaker.speak_up("Would rm_r #{files}")
-      else
-        rm_r_orig(files, force: force, noop: noop, verbose: verbose, secure: secure)
+      Utils.lock_block("file_utils_rm") do
+        $speaker.speak_up("Removing file or directory '#{files}'")
+        if Env.pretend?
+          $speaker.speak_up("Would rm_r #{files}")
+        else
+          rm_r_orig(files, force: force, noop: noop, verbose: verbose, secure: secure)
+        end
       end
-      $speaker.speak_up("Removing file or directory '#{files}'")
       file_remove_parents(files)
     end
 
     def rmdir(dirs)
+      $speaker.speak_up("rmdir #{dirs}") if Env.debug?
       if Env.pretend?
         $speaker.speak_up("Would rmdir #{dirs}")
       else
         rmdir_orig(dirs)
       end
-      $speaker.speak_up("rmdir #{dirs}") if Env.debug?
       file_remove_parents(dirs)
     end
 

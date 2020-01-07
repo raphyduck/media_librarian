@@ -3,6 +3,7 @@ class TorrentClient
   def initialize
     init
     @tname = ''
+    @throttled = false
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     raise
@@ -16,8 +17,8 @@ class TorrentClient
     listen
   end
 
-  def delete_torrent(tname, tid = 0, remove_opts = 0)
-    $t_client.remove_torrent(tid, true) if tid.to_i > 0 rescue nil
+  def delete_torrent(tname, tid = '', remove_opts = 0)
+    $t_client.remove_torrent(tid, true) if tid.to_s != '' rescue nil
     $db.update_rows('torrents', {:status => -1}, {:name => tname})
     Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
@@ -28,7 +29,7 @@ class TorrentClient
   end
 
   def download_file(download, options = {}, meta_id = '')
-    options.select! {|key, _| [:move_completed, :rename_main, :main_only].include?(key)}
+    options.select! { |key, _| [:move_completed, :rename_main, :main_only].include?(key) }
     options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
     if options['move_completed'].to_s != ''
       options['move_completed_path'] = options['move_completed']
@@ -39,7 +40,7 @@ class TorrentClient
     when 1
       $t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
       if meta_id.to_s != ''
-        status = $t_client.get_torrent_status(meta_id, ['name', 'progress','queue'])
+        status = $t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
         raise 'Download failed' if status.nil? || status.empty?
         $t_client.queue_top(meta_id) if status['queue'].to_i > 1
       end
@@ -72,7 +73,7 @@ class TorrentClient
       files[fname][:s] += file['size'].to_i
       files[fname][:f] << file['path']
     end
-    files.select {|k, f| k != 'illegalext' && f[:s] > 0.9 * status['total_size'].to_i}.map {|_, v| v[:f]}.flatten
+    files.select { |k, f| k != 'illegalext' && f[:s] > 0.9 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     []
@@ -96,7 +97,7 @@ class TorrentClient
   def main_file_only(status, main_files)
     priorities = []
     main_files = [main_files] unless main_files.is_a?(Array)
-    status['files'].map {|f| f['path']}.each do |f|
+    status['files'].map { |f| f['path'] }.each do |f|
       priorities << (main_files.include?(f) ? 1 : 0)
     end
     {'file_priorities' => priorities}
@@ -108,7 +109,7 @@ class TorrentClient
       torrent = Cache.object_unpack(t[:tattributes])
       if Env.debug?
         $speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        torrent.each {|k, v| $speaker.speak_up "#{k} = #{v}"}
+        torrent.each { |k, v| $speaker.speak_up "#{k} = #{v}" }
       end
       tdid = (Time.now.to_f * 1000).to_i.to_s
       @tname = torrent[:name]
@@ -124,7 +125,7 @@ class TorrentClient
               :added_at => Time.now.to_i
           }
       }
-      opts[@tname].merge!(torrent.select {|k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k)})
+      opts[@tname].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
       path, ttype = nil, 1
       success = false
       tries = 5
@@ -145,7 +146,6 @@ class TorrentClient
         end
         FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
-      delete_torrent(t[:name], 0, 1) unless success
     end
     @tname = ''
   end
@@ -156,10 +156,10 @@ class TorrentClient
       tries = 10
       begin
         status = $t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
-        opts = Cache.queue_state_select('deluge_options') {|_, v| v[:info_hash] == tid}
-        opts = Cache.queue_state_select('deluge_options') {|tn, _| tn == status['name']} if opts.nil? || opts.empty?
+        opts = Cache.queue_state_select('deluge_options') { |_, v| v[:info_hash] == tid }
+        opts = Cache.queue_state_select('deluge_options') { |tn, _| tn == status['name'] } if opts.nil? || opts.empty?
         if opts.nil? || opts.empty?
-          opts = Cache.queue_state_select('deluge_options') {|tn, _| $str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9}
+          opts = Cache.queue_state_select('deluge_options') { |tn, _| $str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9 }
         end
         $speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
         (opts || {}).each do |tname, o|
@@ -178,8 +178,8 @@ class TorrentClient
             next
           end
           unless set_options.empty?
-            $t_client.set_torrent_options([tid], set_options)
             $speaker.speak_up("Will set options: #{set_options}")
+            $t_client.set_torrent_options([tid], set_options)
           end
           $t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' #Queue to bottom once all processed unless option to keep on top
           if o[:add_paused].to_i > 0
@@ -200,6 +200,39 @@ class TorrentClient
     end
   end
 
+  def process_completed_torrents
+    $speaker.speak_up("Will process completed torrents", 0) if Env.debug?
+    Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
+      t = $db.get_rows('torrents', {:torrent_id => tid}).first
+      remove_it = 0
+      begin
+        if t.nil?
+          $t_client.remove_torrent(tid, true) if $remove_torrent_on_completion
+        else
+          torrent = Cache.object_unpack(t[:tattributes])
+          $speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...",0) if Env.debug?
+          seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
+          if data[:completion_time] + seed_time.hours < Time.now
+            $speaker.speak_up "Torrent finished at #{data[:completion_time]}, more than the seed time set at #{seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
+            $t_client.remove_torrent(tid, true) if $remove_torrent_on_completion && t[:status].to_i < 5
+            $db.update_rows('torrents', {:status => [t[:status], 4].max}, {:name => t[:name]})
+            remove_it = 1
+          elsif Env.debug?
+            $speaker.speak_up("Torrent finished at #{data[:completion_time]}, less than the seed time set at #{seed_time} hour(s) for this tracker. Skipping...", 0)
+          end
+        end
+      rescue => e
+        if e.to_s == "InvalidTorrentError"
+          $speaker.speak_up "Torrent no longer exists, removing from database..." if Env.debug?
+          remove_it = 1
+        else
+          $speaker.tell_error(e, Utils.arguments_dump(binding))
+        end
+      end
+      Cache.queue_state_remove('deluge_torrents_completed', tid) if remove_it > 0
+    end
+  end
+
   def process_download_torrent(torrent_type, path, opts, tracker = '')
     if torrent_type == 1
       file = File.open(path, "r")
@@ -209,16 +242,17 @@ class TorrentClient
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
       Cache.queue_state_add_or_update('deluge_options', {@tname => opts.merge({:info_hash => meta_id})})
       download = {:type => 1, :type_str => 'file', :file => torrent, :filename => File.basename(path)}
-      Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != ''
     else
       meta_id = opts[:tdid]
       download = {:type => 2, :type_str => 'magnet', :url => path}
     end
     $speaker.speak_up "Adding #{download[:type_str]} torrent #{@tname}"
     download_file(download, opts.deep_dup, meta_id)
+    Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => @tname})
     true
   rescue => e
+    Cache.queue_state_add_or_update('deluge_options', @tname)
     $speaker.tell_error(
         e,
         "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
@@ -230,17 +264,7 @@ class TorrentClient
     $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.") if new_dir_name.to_s != ''
     paths = []
     files.each do |file|
-      old_name = File.basename(file['path'])
-      extension = FileUtils.get_extension(old_name)
-      Q_SORT.each do |t|
-        file_q = Metadata.parse_qualities(old_name, eval(t))[0].to_s
-        t_q = Metadata.parse_qualities(".#{torrent_qualities.join('.')}.", eval(t))[0].to_s
-        if t_q != file_q
-          new_name = old_name.gsub(/\.#{extension}$/, '').to_s + ".#{t_q}.#{extension}"
-          $speaker.speak_up"File '#{old_name}' does not contain the qualities information '#{t_q}', will rename to '#{new_name}'" if Env.debug?
-          old_name = new_name
-        end
-      end
+      old_name = Metadata.filename_quality_change(File.basename(file['path']), torrent_qualities)
       new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{old_name}"
       paths << [file['index'], new_path]
     end
@@ -249,8 +273,9 @@ class TorrentClient
 
   def method_missing(name, *args)
     tries ||= 3
-    debug_str = "#{name}#{'(' + args.map {|a| a.to_s[0..100]}.join(',') + ')' if args}"
-    $speaker.speak_up("Running @deluge.core.#{debug_str}", 0) if Env.debug?
+    args = StringUtils.accents_clear(args)
+    debug_str = "#{name}#{'(' + args.map { |a| DataUtils.format_string(a.to_s[0..100]) }.join(',') + ')' if args}"
+    $speaker.speak_up("Running $t_client.#{debug_str}", 0) if Env.debug?
     return if Env.pretend? && !['get_torrent_status'].include?(name)
     result = nil
     Timeout.timeout(60) do
@@ -271,7 +296,7 @@ class TorrentClient
       retry
     else
       $speaker.tell_error(e, "$t_client.#{debug_str}")
-      raise 'Lost connection'
+      raise YAML.load(e.to_s)[0]
     end
   end
 
@@ -280,8 +305,28 @@ class TorrentClient
       $t_client.parse_torrents_to_download
       sleep 15
       $t_client.process_added_torrents
+      $t_client.process_completed_torrents
       $t_client.disconnect
       TorrentSearch.quit_all
+    end
+  end
+
+  def self.get_config(client, key)
+    $config[client][key] rescue nil
+  end
+
+  def self.monitor_torrent_client
+    $speaker.speak_up("Checking free space remaining on torrent server", 0)
+    free_space = $t_client.get_free_space / 1024 / 1024 / 1024
+    $speaker.speak_up("Free space remaining: #{free_space}GB", 0)
+    if free_space <= get_config('deluge', 'min_torrent_free_space').to_i && !@throttled
+      $speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
+      $t_client.set_config({'config' => {'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max}})
+      @throttled = true
+    elsif @throttled && free_space > get_config('deluge', 'min_torrent_free_space').to_i
+      $speaker.speak_up "There is now enoough free space on torrent server, restoring full download speed!"
+      $t_client.set_config({'config' => {'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000}})
+      @throttled = false
     end
   end
 

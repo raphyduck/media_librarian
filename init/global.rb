@@ -8,14 +8,18 @@ CACHING_TTL = 108000
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 LINE_SEPARATOR = '---------------------------------------------------------'
-RESOLUTIONS = %w(2160p 1080p 1080i 720p 720i hr 576p 480p 368p 360p)
+SPACER= '   '
+RESOLUTIONS = %w(2160p 2160i 1080p 1080i 720p 720i hr 576p 576i 480p 480i 368p 360p 360i 240p 240i)
 DIMENSIONS = %w(3d)
-SOURCES = %w(bluray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
-CODECS = %w(10bits 10bit hevc h265 x265 h264 x264 xvid divx)
+SOURCES = %w(bluray blu-ray remux dvdrip webdl web-dl hdtv webrip web bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
+CODECS = %w(10bits 10bit hevc h265 x265 h264 x264 xvid divx vc1 wmv mpeg2)
 AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5.1', 'dd+5 1', 'ac3', 'ddp5.1', 'dd5.1', 'aac2.0', 'aac', 'mp3']
-LANGUAGES = %w(multi vo eng vostfr french vof vfq vff vf german fastsub)
-Q_SORT = ['RESOLUTIONS', 'SOURCES', 'CODECS', 'AUDIO', 'LANGUAGES']
-VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES
+TONES = ['hdr', 'sdr']
+CUT = ['director.s.cut', 'uncut', 'unrated']
+LANGUAGES = %w(multi vo eng en vof vostfr french vfq vff vf truefrench fr german spanish fastsub)
+EXTRA_TAGS = ['nodup']
+Q_SORT = ['RESOLUTIONS', 'SOURCES', 'LANGUAGES', 'CODECS', 'AUDIO', 'TONES', 'CUT']
+VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES + TONES + CUT + EXTRA_TAGS
 FILENAME_NAMING_TEMPLATE=%w(
     full_name
     destination_folder
@@ -55,7 +59,7 @@ BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. -]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
-PRIVATE_TRACKERS = {'yggtorrent' => 'https://www2.yggtorrent.ch/',
+PRIVATE_TRACKERS = {'yggtorrent' => 'https://www2.yggtorrent.ws/',
                     'torrentleech' => 'https://www.torrentleech.org',
                     'wop' => 'https://worldofp2p.net'}
 TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => 'https://rarbgto.org',
@@ -67,6 +71,14 @@ FOLDER_HIERARCHY = {
 DEFAULT_MEDIA_DESTINATION = {
     'movies' => Dir.home + '/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
     'shows' => Dir.home + '/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+}
+DEFAULT_FILTER_PROCESSFOLDER = {
+    'movies' => {
+        'exclude_path' => ['Plex Versions']
+    },
+    'shows' => {
+        'exclude_path' => ['Plex Versions']
+    }
 }
 IRRELEVANT_EXTENSIONS = ['srt', 'nfo', 'txt', 'url']
 METADATA_SEARCH = {

@@ -1,3 +1,6 @@
 $deluge_connected = nil
 #Start torrent_client
-$t_client = TorrentClient.new if $config['deluge'] && !$config['deluge'].empty?
+if $config['deluge'] && !$config['deluge'].empty?
+  $t_client = TorrentClient.new
+  $remove_torrent_on_completion = $config['deluge']['remove_on_completion']
+end

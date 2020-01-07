@@ -1,5 +1,23 @@
 class StringUtils
 
+  def self.accents_clear(str)
+    if str.is_a? String
+      fix_encoding(str).tr(
+          "ÀÁÂÃÄÅàáâãäåĀāĂăĄąÇçĆćĈĉĊċČčÐðĎďĐđÈÉÊËèéêëĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħÌÍÎÏìíîïĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłÑñŃńŅņŇňŉŊŋÒÓÔÕÖØòóôõöøŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšſŢţŤťŦŧÙÚÛÜùúûüŨũŪūŬŭŮůŰűŲųŴŵÝýÿŶŷŸŹźŻżŽž",
+          "AAAAAAaaaaaaAaAaAaCcCcCcCcCcDdDdDdEEEEeeeeEeEeEeEeEeGgGgGgGgHhHhIIIIiiiiIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnNnnNnOOOOOOooooooOoOoOoRrRrRrSsSsSsSssTtTtTtUUUUuuuuUuUuUuUuUuUuWwYyyYyYZzZzZz")
+    elsif str.is_a? Array
+      str.map { |s| accents_clear(s) }
+    elsif str.is_a? Hash
+      Hash[str.map { |k, v| [accents_clear(k), accents_clear(v)] }]
+    else
+      str
+    end
+  end
+
+  def self.fix_encoding(str)
+    str.encode(Encoding.find('UTF-8'), {invalid: :replace, undef: :replace, replace: ''})
+  end
+
   def self.clean_search(str)
     str.gsub(/[,\'\:\&]/, '')
   end
@@ -12,20 +30,29 @@ class StringUtils
     previous != '' ? ', ' : ''
   end
 
+  def self.gsub(string, old, new)
+    if old.is_a?(Array)
+      old.each { |s| string = string.gsub(/#{s}/i, new) }
+    else
+      string = string.gsub(/#{old}/i, new)
+    end
+    string
+  end
+
   def self.intersection(str1, str2)
     return '' if [str1, str2].any?(&:empty?) || str1[0] != str2[0]
     matrix = Array.new(str1.length) { Array.new(str2.length) { 0 } }
     intersection_length = 0
-    intersection_end    = 0
+    intersection_end = 0
     str1.length.times do |x|
       break unless str1[x] == str2[x]
       str2.length.times do |y|
         next unless str1[x] == str2[y]
-        matrix[x][y] = 1 + (([x, y].all?(&:zero?)) ? 0 : matrix[x-1][y-1])
+        matrix[x][y] = 1 + (([x, y].all?(&:zero?)) ? 0 : matrix[x - 1][y - 1])
 
         next unless matrix[x][y] > intersection_length
         intersection_length = matrix[x][y]
-        intersection_end    = x
+        intersection_end = x
       end
     end
     intersection_start = intersection_end - intersection_length + 1
@@ -45,12 +72,12 @@ class StringUtils
     str = str.dup
     sep_chars = '[:,-_\. ]{1,2}'
     trailing_sep = ''
-    d=str.match(/.*:([\. \w]+)(.+)?/)
+    d = str.match(/.*:([\. \w]+)(.+)?/)
     if d
       trailing_sep = sep_chars if d[2]
       d = d[1]
       str.gsub!(d, '<placeholder>') if d
-      d=d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
+      d = d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
     end
     str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
     str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')

@@ -21,6 +21,7 @@ unless File.exist?($template_dir)
   FileUtils.cp_r File.dirname(__FILE__) + '/config/templates/', $template_dir
 end
 #Logger
+FileUtils.mkdir($config_dir + '/log') unless File.exist?($config_dir + '/log')
 $speaker = SimpleSpeaker::Speaker.new
 $args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags)
 #Load app and settings

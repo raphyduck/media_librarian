@@ -1,7 +1,9 @@
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
 active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3
-goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rsync shellwords socket streamio-ffmpeg timeout titleize trakt tvdb_party tvmaze unrar xbmc-client yaml)
+goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rsync shellwords socket streamio-ffmpeg timeout titleize themoviedb trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -20,9 +22,9 @@ class Librarian
       :reconfigure => ['Librarian', 'reconfigure'],
       :daemon => {
           :start => ['Daemon', 'start'],
-          :status => ['Daemon', 'status'],
-          :stop => ['Daemon', 'stop'],
-          :reload => ['Daemon', 'reload'],
+          :status => ['Daemon', 'status', 1, 'status'],
+          :stop => ['Daemon', 'stop', 1, 'status'],
+          :reload => ['Daemon', 'reload', 1, 'status'],
           :dump_bus_variable => ['BusVariable', 'display_bus_variable']
       },
       :books => {
@@ -36,23 +38,24 @@ class Librarian
           :create_custom_list => ['Library', 'create_custom_list'],
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],
-          :handle_completed_download => ['Library', 'handle_completed_download'],
+          :handle_completed_download => ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
           :process_folder => ['Library', 'process_folder']
       },
       :music => {
-          :create_playlists => ['Muic', 'create_playlists'],
+          :create_playlists => ['Music', 'create_playlists'],
           :convert_songs => ['Library', 'convert_media'],
       },
       :torrent => {
-          :check_all_download => ['TorrentSearch', 'check_all_download'],
+          :check_all_download => ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
           :search => ['TorrentSearch', 'search_from_torrents']
       },
       :usage => ['Librarian', 'help'],
       :list_db => ['Utils', 'list_db'],
-      :flush_queues => ['TorrentClient', 'flush_queues'],
+      :flush_queues => ['TorrentClient', 'flush_queues', 1, 'torrenting'],
+      :monitor_torrent_client => ['TorrentClient', 'monitor_torrent_client', 1, 'torrenting'],
       :cache_reset => ['Cache', 'cache_reset'],
       :send_email => ['Report', 'push_email'],
-      :test_childs => ['Librarian', 'test_childs']
+      :test_childs => ['Librarian', 'test_childs', 1, 'test_childs', 1]
   }
   $debug_classes = []
 
@@ -188,7 +191,7 @@ class Librarian
 
   def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, queue = Thread.current[:jid], &block)
     if Daemon.is_daemon?
-      Daemon.thread_cache_add(queue, args, Daemon.job_id, task, internal, max_pool_size, 0, Thread.current[:current_daemon], 43200, 1, &block)
+      Daemon.thread_cache_add(queue, args, Daemon.job_id, task, internal, max_pool_size, 0, Daemon.fetch_function_config(args)[2] || 0, Thread.current[:current_daemon], 43200, 1, &block)
     elsif $librarian.pid_status($pidfile) == :running && internal.to_i == 0
       return if args.nil? || args.empty?
       $speaker.speak_up 'A daemon is already running, sending execution there and waiting to get an execution slot'
@@ -255,7 +258,7 @@ class Librarian
       Librarian.route_cmd(
           ['Librarian', 'da_child', i],
           1,
-          "#{Thread.current[:object]}test",
+          "#{Thread.current[:object]}",
           6
       )
     end

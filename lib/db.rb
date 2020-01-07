@@ -26,7 +26,8 @@ DB_SCHEMA = {
             :waiting_until => 'datetime',
             :torrent_id => 'text',
             :status => 'integer'
-        }
+        },
+        :unique => [:torrent_id]
     },
     :trakt_auth => {
         :columns => {
@@ -53,8 +54,8 @@ module Storage
       q = "delete from #{table}"
       q << prepare_conditions(conditions, additionals)
       execute_query(table, q, conditions.map {|_, v| v} + additionals.map {|_, v| v})
-    rescue => e
-      $speaker.tell_error(e, "Storage::Db.new.delete_rows")
+    rescue
+      nil
     end
 
     def dump_schema
@@ -90,8 +91,7 @@ module Storage
         res << Hash[table_columns(table).map {|k, _| i += 1; [k.to_sym, l[i]]}]
       end
       res
-    rescue => e
-      $speaker.tell_error(e, "Storage::Db.new.get_rows")
+    rescue
       []
     end
 
@@ -148,8 +148,8 @@ module Storage
       q = "update #{table} set #{values.map {|c, _| c.to_s + ' = (?)'}.join(', ')}"
       q << prepare_conditions(conditions, additionals)
       execute_query(table, q, values.map {|_, v| v.to_s} + conditions.map {|_, v| v.to_s} + additionals.map {|_, v| v.to_s})
-    rescue => e
-      $speaker.tell_error(e, "Storage::Db.new.update_rows")
+    rescue
+      nil
     end
 
     private
@@ -168,6 +168,9 @@ module Storage
         ins = @s_db.prepare(query)
         ins.execute(values)
       }
+    rescue => e
+      $speaker.tell_error(e, Utils.arguments_dump(binding, 2, "Storage::Db"))
+      raise e
     end
 
     def index_list(table)

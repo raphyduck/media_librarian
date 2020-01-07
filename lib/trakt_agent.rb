@@ -240,6 +240,7 @@ class TraktAgent
   def self.method_missing(name, *args)
     m = name.to_s.split('__')
     return unless m[0] && m[1]
+    $speaker.speak_up("Running TraktAgent.#{m[0]}__#{m[1]}(#{DataUtils.format_string(args).join(', ')})", 0) if Env.debug?
     if args.empty?
       eval("$trakt.#{m[0]}").method(m[1]).call
     else

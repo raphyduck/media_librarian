@@ -29,7 +29,7 @@ class TvSeries
 
   def formal_status
     fs = @status.dup
-    {'canceled' => 'ended', 'returning series'=> 'continuing'}.each {|k, v| fs[k] &&= v}
+    {'canceled' => 'ended', 'returning series' => 'continuing'}.each { |k, v| fs[k] &&= v }
     fs.downcase
   rescue
     fs
@@ -70,7 +70,7 @@ class TvSeries
     ep_nb = ep_nb_single.uniq if ep_nb.empty?
     season = seasonp if season.empty?
     season = (season[0]..season[1]).to_a if ep_nb.empty? && season.count == 2
-    ep_ids = (ep_nb.empty? ? season.map {|s| {:s => s}} : ep_nb.uniq).map {|e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}"}
+    ep_ids = (ep_nb.empty? ? season.map { |s| {:s => s} } : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
     return season, ep_nb.uniq, ep_ids
   end
 
@@ -86,11 +86,11 @@ class TvSeries
   def self.list_missing_episodes(episodes_in_files, qualifying_files, no_prompt = 0, delta = 10, include_specials = 0, qualities = {})
     $speaker.speak_up "Will parse TV Shows for missing episodes released more than #{delta} days ago, #{'NOT ' if include_specials.to_i == 0} including specials..." if Env.debug?
     tv_episodes, tv_seasons, missing_eps = {}, {}, {}
-    episodes_in_files[:shows].sort_by {|series_name, _| series_name}.each do |series_name, show|
+    episodes_in_files[:shows].sort_by { |series_name, _| series_name }.each do |series_name, show|
       _, tv_episodes[series_name] = TvSeries.tv_episodes_search(series_name, no_prompt, show)
       tv_seasons[series_name] = {} if tv_seasons[series_name].nil?
       existing_season_eps, qualifying_season_eps, last_season = {}, {}, nil
-      tv_episodes[series_name].sort_by {|e| (e.air_date || Time.now + 6.months)}.reverse.each do |ep|
+      tv_episodes[series_name].sort_by { |e| (e.air_date || Time.now + 6.months) }.reverse.each do |ep|
         is_new_season = (last_season != ep.season_number.to_i)
         last_season = ep.season_number.to_i
         next unless (ep.air_date.to_s != '' && ep.air_date < Time.now - delta.to_i.days) ||
@@ -109,17 +109,17 @@ class TvSeries
           tv_seasons[series_name][ep.season_number.to_i] = 1
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}"
           full_name, identifiers, info = Metadata.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
-          info.merge!({:files => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
+          info.merge!({:files => existing_season_eps[ep.season_number].map { |_, f| f[:files] }.flatten})
         elsif tv_seasons[series_name][ep.season_number.to_i].nil? &&
             !Metadata.media_exist?(qualifying_season_eps[ep.season_number], identifier(series_name, ep.season_number, ep.number.to_i))
           full_name = "#{series_name} S#{format('%02d', ep.season_number.to_i)}E#{format('%02d', ep.number.to_i)}"
           full_name, identifiers, info = Metadata.parse_media_filename(full_name, 'shows', show, series_name, no_prompt)
-          info.merge!({:existing_season_eps => existing_season_eps[ep.season_number].map {|_, f| f[:files]}.flatten})
+          info.merge!({:existing_season_eps => existing_season_eps[ep.season_number].map { |_, f| f[:files] }.flatten})
           ep_nb = ep.number.to_i
           info.merge!({:files => Metadata.media_get(
               existing_season_eps[ep.season_number],
               identifier(series_name, ep.season_number, ep.number.to_i)
-          ).map {|_, f| f[:files]}.flatten})
+          ).map { |_, f| f[:files] }.flatten})
         end
         missing_eps = Metadata.missing_media_add(
             missing_eps,
@@ -141,11 +141,11 @@ class TvSeries
     Utils.lock_block("#{__method__}#{cache_name}") do
       cached = Cache.cache_get('tv_episodes_search', cache_name, 1)
       return cached if cached
-      title, show = tv_show_search(title, no_prompt) unless show
+      title, show = Metadata.tv_show_search(title, no_prompt) unless show
       unless show.nil?
         $speaker.speak_up("Using #{title} as series name", 0)
         episodes = $tvdb.get_all_episodes(show)
-        episodes.map! {|e| Episode.new(Cache.object_pack(e, 1))}
+        episodes.map! { |e| Episode.new(Cache.object_pack(e, 1)) }
       end
       Cache.cache_add('tv_episodes_search', cache_name, [show, episodes], show)
     end
@@ -157,13 +157,13 @@ class TvSeries
   end
 
   def self.tv_show_get(ids, force_refresh = 0)
-    cache_name = ids.map {|k, v| k.to_s + v.to_s if v.to_s != ''}.join
+    cache_name = ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join
     cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
     return cached if cached
-    show, src = TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full'), 'trakt' if (ids['trakt'] || ids['imdb']).to_s != ''
-    show, src = $tvdb.get_series_by_id(ids['tvdb']), 'tvdb' if show.nil?
-    show, src = TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}), 'tvmaze' if show.nil?
-    show = TvSeries.new(Cache.object_pack(show, 1).merge({'@data_source' => src}))
+    show, src = Cache.object_pack(TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full'), 1), 'trakt' if (ids['trakt'] || ids['imdb']).to_s != ''
+    show, src = Cache.object_pack($tvdb.get_series_by_id(ids['tvdb']), 1), 'tvdb' if show.to_s == '' || show['name'].to_s == ''
+    show, src = Cache.object_pack(TVMaze::Show.lookup({'thetvdb' => ids['tvdb'].to_i}), 1), 'tvmaze' if show.to_s == '' || show['name'].to_s == ''
+    show = TvSeries.new(show.merge({'@data_source' => src})) if show['name'].to_s != ''
     title = show.name
     Cache.cache_add('tv_show_get', cache_name, [title, show], show)
     return title, show

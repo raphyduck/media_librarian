@@ -37,7 +37,7 @@ module TorrentLeech
           :seeders => cols[7].text.to_i,
           :leechers => cols[8].text.to_i,
           :id => link['data-tid'].to_i,
-          :added => cols[3].text.to_s,
+          :added => cols[3].text.to_s.gsub(/(\d{4}-\d{2}-\d{2})(\d{2}:\d{2}:\d{2})/,'\1 \2'), #Because of capybara failure to extract text correctly...
           :tracker => tracker
       }
     end

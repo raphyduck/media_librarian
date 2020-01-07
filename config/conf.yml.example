@@ -8,6 +8,10 @@ deluge:
   host: host
   username: username
   password: password
+  remove_on_completion: 1
+  max_download_rate: 4000 #In kbps
+  min_torrent_free_space: 10
+  default_seed_time: 1
 email:
   host: host
   port: 587

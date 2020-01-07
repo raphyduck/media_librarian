@@ -7,8 +7,6 @@ class Daemon < EventMachine::Connection
   JOB_CLEAR_TRIES = 10000
   @is_daemon = false
   @is_quitting = false
-  @childs_sum = {}
-  @daemons = []
   @worker_clearance = Queue.new
 
   def self.clear_queue(pqueue, forward_queue = nil)
@@ -22,6 +20,7 @@ class Daemon < EventMachine::Connection
 
   def self.clear_waiting_worker(worker, worker_value, object)
     return if worker[:queue_name].to_s == '' || worker[:jid].to_s == ''
+    @queues[worker[:queue_name]][:current_jobs].delete(worker[:jid])
     @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
 
@@ -75,6 +74,19 @@ class Daemon < EventMachine::Connection
     true
   end
 
+  def self.fetch_function_config(args, config = $available_actions)
+    #Will fetch config of function included in $available_actions
+    args = args.dup
+    config = config[args.shift.to_sym]
+    if config.is_a?(Hash)
+      fetch_function_config(args, config)
+    else
+      return config.dup.drop(2)
+    end
+  rescue
+    return []
+  end
+
   def self.get_children_count(qname)
     get_workers_count(qname) + (@queues[qname][:jobs] rescue []).length
   end
@@ -84,13 +96,15 @@ class Daemon < EventMachine::Connection
     (@queues[qname][:waiting_threads] + @queues[qname][:threads]).count + @queues[qname][:is_new].to_i
   end
 
-  def self.init_queue(qname, task = '')
+  def self.init_queue(qname, task = '', save_to_disk = 0)
     @queues[qname] = {} if @queues[qname].nil?
     @queues[qname][:is_new] = 1
-    @queues[qname][:task_name] = task if task != ''
+    @queues[qname][:task_name] = task != '' ? task : qname
     @queues[qname][:jobs] = [] if @queues[qname][:jobs].nil?
     @queues[qname][:threads] = {} if @queues[qname][:threads].nil?
     @queues[qname][:waiting_threads] = {} if @queues[qname][:waiting_threads].nil?
+    @queues[qname][:save_to_disk] = save_to_disk
+    @queues[qname][:current_jobs] = {} if @queues[qname][:current_jobs].nil?
   end
 
   def self.is_daemon?
@@ -108,8 +122,9 @@ class Daemon < EventMachine::Connection
       (0...max_pool_size(qname)).each do
         break if @queues[qname][:jobs].empty? || get_workers_count(qname) >= max_pool_size(qname)
         args = @queues[qname][:jobs].pop
+        @queues[qname][:current_jobs][args[0]] = args.dup
         @queues[qname][:threads][args[0]] = Librarian.burst_thread(args[0], args[4], args[8], args[3], args[7], qname) do
-          Librarian.run_command(args[5], args[1], args[2], &args[6])
+          Librarian.run_command(args[5].dup, args[1], args[2], &args[6])
         end
       end
     end
@@ -136,6 +151,19 @@ class Daemon < EventMachine::Connection
     get_workers_count(qname) >= max_pool_size(qname)
   end
 
+  def self.queues_restore
+    Cache.queue_state_get('daemon_queues', Hash).each do |qname, v|
+      $speaker.speak_up "Restoring jobs from queue '#{qname}'"
+      (v[:jobs] + v[:current_jobs].map { |_, j| j }).each do |args|
+        thread_cache_add(qname, args[5], args[0], args[2], args[1], fetch_function_config(args[5])[0] || 1, 0, fetch_function_config(args[5])[2] || 0)
+      end
+    end
+  end
+
+  def self.queues_save
+    Cache.queue_state_save('daemon_queues', Hash[@queues.select { |_, q| q[:save_to_disk].to_i > 0 }.map { |k, v| [k, v.select { |t, _| [:jobs, :current_jobs].include?(t) }] }])
+  end
+
   def self.queues_slot_taken
     @queues.select { |qname, _| queue_slot_taken?(qname) }.count
   end
@@ -149,6 +177,7 @@ class Daemon < EventMachine::Connection
       @is_quitting = true
       @is_daemon = false
       thread_cache_add('flush_queues', ['flush_queues'], Daemon.job_id, 'flush', 1) {
+        Daemon.queues_save
         EventMachine::stop
       }
     end
@@ -175,7 +204,7 @@ class Daemon < EventMachine::Connection
         case type
         when 'periodic'
           freq = Utils.timeperiod_to_sec(params['every']).to_i
-          thread_cache_add(task, args, job_id, task, 0, 1, 0, Thread.current[:current_daemon], params['expiration'] || 43200) if @last_execution[task].nil? || Time.now > @last_execution[task] + freq.seconds
+          thread_cache_add(Daemon.fetch_function_config(args)[1] || task, args, job_id, task, 0, 1, 0, 0, Thread.current[:current_daemon], params['expiration'] || 43200) if @last_execution[task].nil? || Time.now > @last_execution[task] + freq.seconds
         when 'continuous'
           if queue_busy?(task)
             if !@last_email_report[task].is_a?(Time) || @last_email_report[task] + 12.hours < Time.now
@@ -192,6 +221,7 @@ class Daemon < EventMachine::Connection
     end
     thread_cache_fetch
     launch_command
+    queues_save
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
@@ -202,12 +232,14 @@ class Daemon < EventMachine::Connection
     $speaker.speak_up("Will now work in the background")
     $librarian.daemonize
     $librarian.write_pid
+    Logger.renew_logs($config_dir + '/log')
     @is_daemon = true
+    queues_restore
     EventMachine.run do
       start_server($api_option)
       EM.add_periodic_timer(0.2) { schedule(jobs) }
       EM.add_periodic_timer(1) { Librarian.burst_thread { quit } }
-      EM.add_periodic_timer(86400) { TraktAgent.get_trakt_token }
+      EM.add_periodic_timer(3700) { TraktAgent.get_trakt_token }
     end
     $librarian.delete_pid
     $speaker.speak_up('Shutting down')
@@ -234,26 +266,26 @@ class Daemon < EventMachine::Connection
       wc = @queues[qname][:threads].compact.dup
       wwc = @queues[qname][:waiting_threads].compact.dup
       $speaker.speak_up "Queue #{qname}#{' (' + @queues[qname][:task_name].to_s + ')' if @queues[qname][:task_name].to_s != ''}#{' (slot taken)' if queue_slot_taken?(qname)}:"
-      $speaker.speak_up " * #{wc.count} worker(s) (max #{max_pool_size(qname)})"
+      $speaker.speak_up "#{SPACER}* #{wc.count} worker(s) (max #{max_pool_size(qname)})"
       wc.each do |_, w|
         childs = get_children_count(w[:jid])
-        $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]}')\
-#{' working for ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]}\
-#{' waiting for ' + childs.to_s + ' childs' if childs.to_i > 0},#{Utils.lock_time_get(w)}\
-#{' (WARNING: Worker is dead' unless w.alive? || (Time.now - w[:end_time]).to_i < 5}\
-#{' for ' + TimeUtils.seconds_in_words(Time.now - w[:end_time]) if w[:end_time] && (Time.now - w[:end_time]).to_i >= 5}\
-#{ '!)' unless w.alive? || (Time.now - w[:end_time]).to_i < 5}"
+        $speaker.speak_up "#{SPACER * 2}-Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]}')\
+#{" working for " + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]}\
+#{" waiting for " + childs.to_s + ' childs' if childs.to_i > 0},#{Utils.lock_time_get(w)}\
+#{" (WARNING: Worker is dead" unless w.alive? || (Time.now - w[:end_time]).to_i < 5}\
+#{"for " + TimeUtils.seconds_in_words(Time.now - w[:end_time]) if w[:end_time] && (Time.now - w[:end_time]).to_i >= 5}\
+#{" !)" unless w.alive? || (Time.now - w[:end_time]).to_i < 5}"
       end
       if wwc && wwc.count > 0
-        $speaker.speak_up " * Finished jobs waiting for completion of children:"
+        $speaker.speak_up "#{SPACER}* Finished jobs waiting for completion of children:"
         wwc.each do |_, w|
           childs = get_children_count(w[:jid])
-          $speaker.speak_up "   -Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]})\
-#{' started ' + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
-#{', waiting for ' + childs.to_s + ' childs'}"
+          $speaker.speak_up "#{SPACER * 2}-Job '#{w[:object]}' (jid '#{w[:jid]}' from queue '#{w[:queue_name]})\
+  #{" started " + TimeUtils.seconds_in_words(Time.now - w[:start_time]) if w[:start_time]} ago\
+  #{", waiting for " + childs.to_s + ' childs'}"
         end
       end
-      $speaker.speak_up " * #{@queues[qname][:jobs].count} in queue"
+      $speaker.speak_up "#{SPACER}* #{@queues[qname][:jobs].count} in queue"
       $speaker.speak_up LINE_SEPARATOR
     end
     $speaker.speak_up LINE_SEPARATOR
@@ -261,7 +293,7 @@ class Daemon < EventMachine::Connection
     $speaker.speak_up "Bus Variables:" unless bus_vars.empty?
     bus_vars.each do |vname|
       v = LibraryBus.bus_variable_get(vname)
-      $speaker.speak_up " * Variable '#{vname}': Type '#{v.class}'#{', with ' + v.length.to_s + ' elements' if [Hash, Vash, Array].include?(v.class)}"
+      $speaker.speak_up "#{SPACER}* Variable '#{vname}': Type '#{v.class}'#{', with ' + v.length.to_s + ' elements' if [Hash, Vash, Array].include?(v.class)}"
     end
     $speaker.speak_up LINE_SEPARATOR
     $speaker.speak_up "Global lock time:#{Utils.lock_time_get}"
@@ -279,9 +311,9 @@ class Daemon < EventMachine::Connection
     @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
 
-  def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
+  def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, save_to_disk = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
     return if queue.nil?
-    init_queue(queue, task)
+    init_queue(queue, task, save_to_disk)
     @jobs_cache << [queue, args, jid, task, internal, max_pool_size, client, child, Thread.current, dump_env_flags(continuous.to_i > 0 ? 0 : expiration), block]
   end
 
@@ -311,12 +343,8 @@ class Daemon < EventMachine::Connection
   def receive_data(data)
     data = YAML.load(data.gsub('=>', ': ')) rescue data
     if data.is_a?(Array) && !@client.nil?
-      if data[0].to_s.downcase == 'daemon'
-        q = 'status'
-      else
-        q = data[0..1].join(' ')
-      end
-      Daemon.thread_cache_add(q, data, Daemon.job_id, q, 0, 1, 0, self) {
+      qconf = Daemon.fetch_function_config(data)
+      Daemon.thread_cache_add(qconf[1] || data[0..1].join(' '), data, Daemon.job_id, qconf[1] || data[0..1].join(' '), 0, qconf[0] || 1, 0, qconf[2] || 0, self) {
         self.send_data('bye')
       }
     else

@@ -21,30 +21,34 @@ class Utils
   def self.arguments_dump(binding, max_depth = 2, class_name = '', calling_name = '')
     class_name = caller[0].match(/\/(\w*)\.rb:/)[1].gsub('_', ' ').titleize.gsub(' ', '') if class_name.to_s == ''
     calling_name = caller[0][/`.*'/][1..-2].gsub('rescue in ', '') if calling_name.to_s == ''
-    hash_params = Hash[arguments_get(binding, class_name, calling_name, 0, max_depth)]
-    "#{class_name}.#{calling_name}(#{hash_params})"
+    args_params, hash_params = arguments_get(binding, class_name, calling_name, max_depth)
+    "#{class_name}.#{calling_name}(#{args_params.map{|_, v| v}.join(', ') unless args_params.nil? || args_params.empty?}#{', ' unless args_params.nil? || args_params.empty? || hash_params.nil? || hash_params.empty?}#{Hash[hash_params] unless hash_params.nil? || hash_params.empty?})"
   end
 
-  def self.arguments_get(binding, cname, mname, ptype = 0, max_depth = 1)
+  def self.arguments_get(binding, cname, mname, max_depth = 1)
     params = Object.const_get(cname).method(mname).parameters rescue nil
     params = Object.const_get(cname).method(ExecutionHooks.alias_hook(mname)).parameters unless params.nil? || params != [[:rest, :args]]
     params = Object.const_get(cname).instance_method(mname).parameters unless params && params != [[:rest]]
+    regs, hashs = [], []
     i = -1
-    params.map.collect do |k, name|
+    params.each do |k, name|
       i += 1
-      next if (k[0..2] == 'key' && ptype.to_i == 1) || (ptype.to_i == 2 && k[0..2] != 'key')
-      binding = binding[i] if k[0..2] == 'key'
       v = if binding.is_a?(Binding)
-        binding.local_variable_get(name)
-      elsif binding.is_a?(Array)
-        binding[i]
-      elsif binding.is_a?(Hash)
-        binding[name]
+            binding.local_variable_get(name)
+          elsif binding.is_a?(Array)
+            binding[i]
+          elsif binding.is_a?(Hash)
+            binding[name]
+          end
+      if k[0..2] == 'key'
+        hashs << [name, DataUtils.dump_variable(v, max_depth, 0, 0).to_s]
+      else
+        regs << [name, DataUtils.dump_variable(v, max_depth, 0, 0).to_s]
       end
-      [name, DataUtils.dump_variable(v, max_depth, 0, 0).to_s]
-    end.compact
+    end
+    return regs.compact, hashs.compact
   rescue
-    [[:error, "error fetching arguments from cname='#{cname}', mname='#{mname}', ptype='#{ptype}'"]]
+    return nil, [[:error, "error fetching arguments from cname='#{cname}', mname='#{mname}'"]]
   end
 
   def self.get_pid(process)
@@ -71,14 +75,14 @@ class Utils
   end
 
   def self.list_db(table:, entry: '')
-    return [] unless DB_SCHEMA.map {|k, _| k.to_s}.include?(table)
+    return [] unless DB_SCHEMA.map { |k, _| k.to_s }.include?(table)
     column = $db.get_main_column(table)
     r = if entry.to_s == ''
           $db.get_rows(table)
         else
           $db.get_rows(table, {column => entry.to_s})
         end
-    r.each {|row| $speaker.speak_up row.to_s}
+    r.each { |row| $speaker.speak_up row.to_s }
   end
 
   def self.lock_block(process_name, &block)
@@ -107,7 +111,7 @@ class Utils
 
   def self.lock_time_get(thread = Thread.current)
     lt = ' including '
-    (thread[:lock_time] || {}).sort_by {|_, t| -t}.each do |p, t|
+    (thread[:lock_time] || {}).sort_by { |_, t| -t }.each do |p, t|
       lt += "#{TimeUtils.seconds_in_words(t)} locked for '#{p}', " if t >= 0.001
     end
     return '' if lt == ' including '
@@ -144,7 +148,7 @@ class Utils
 
   def self.parse_filename_template(tpl, metadata)
     FILENAME_NAMING_TEMPLATE.each do |k|
-      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) {StringUtils.regularise_media_filename(recursive_typify_keys(metadata || {})[k.to_sym], $1)}
+      tpl = tpl.gsub(Regexp.new('\{\{ ' + k + '((\|[a-z]*)+)? \}\}')) { StringUtils.regularise_media_filename(recursive_typify_keys(metadata || {})[k.to_sym], $1) }
     end
     tpl
   end
@@ -159,14 +163,14 @@ class Utils
           end
       ]
     when Enumerable
-      h.map {|v| recursive_typify_keys(v, symbolize)}
+      h.map { |v| recursive_typify_keys(v, symbolize) }
     else
       h
     end
   end
 
   def self.regularise_media_type(type)
-    return type + 's' if VALID_MEDIA_TYPES.map {|_, v| v}.flatten.include?(type + 's')
+    return type + 's' if VALID_MEDIA_TYPES.map { |_, v| v }.flatten.include?(type + 's')
     type
   rescue
     type

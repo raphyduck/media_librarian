@@ -1,5 +1,5 @@
 class Movie
-  SHOW_MAPPING = {id: :id, ids: :ids, url: :url, released: :release_date, name: :name, genres: :genres, country: :country,
+  SHOW_MAPPING = {id: :id, ids: :ids, language: :language, url: :url, released: :release_date, name: :name, genres: :genres, country: :country,
                   set: :set}
 
   SHOW_MAPPING.values.each do |value|
@@ -35,9 +35,10 @@ class Movie
     when 'ids'
       v = {'imdb' => (opts['imdb_id'] || opts['imdbnumber'])} if opts['imdb_id'] || opts['imdbnumber']
       v = {'tmdb' => opts['id']} if v.nil? && opts['id']
+    when 'language'
+      v = opts['original_language']
     when 'name'
       v = opts['original_title'] || opts['title']
-      #TODO: Fetch original title from trakt
       v << " (#{year})" if Metadata.identify_release_year(v).to_i == 0
     when 'released'
       v = opts['release_date'] || opts['premiered']
@@ -64,7 +65,7 @@ class Movie
     return @year if @year
     real_year = TraktAgent.movie__releases(ids['imdb'], '').map {|r| Time.parse(r['release_date']).year}.min rescue nil #We need the year to be the same as IMDB, the authority on movies naming
     title_year = name && Metadata.identify_release_year(name) > 0 ? Metadata.identify_release_year(name) : nil
-    $speaker.speak_up "Unknow year for m='#{Cache.object_pack(self, 1)}'" if (real_year || title_year || release_date).nil? #REMOVEME
+    $speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'" if (real_year || title_year || release_date).nil? #REMOVEME
     @year ||= (real_year || title_year || (release_date || Time.now + 3.years).year).to_i
   end
 
@@ -84,21 +85,20 @@ class Movie
     title, full_save = '', movie
     case type
     when 'movie_get'
-      if movie.nil? && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
+      movie = Tmdb::Movie.detail(ids['tmdb'] || ids['imdb']) rescue nil if movie.nil? && (ids['tmdb'].to_s != '' || ids['imdb'].to_s != '')
+      if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
         movie = TraktAgent.movie__summary((ids['trakt'] || ids['imdb'] || ids['slug']), "?extended=full") rescue nil
       end
-      movie = $tmdb.movie(ids['tmdb'] || ids['imdb']) rescue nil if (movie.nil? || movie['error']) && (ids['tmdb'] || ids['imdb']).to_s != ''
       movie = Movie.new(Cache.object_pack(movie, 1)) if movie #&& (movie['title'] || movie['name']).to_s != ''
       full_save = movie
       title = movie.name if movie&.name.to_s != ''
-      #TODO: Always use original title
     when 'movie_set_get'
       if ids['tmdb'].to_s == ''
         _, m = movie_get(ids)
         ids = {'tmdb' => m.ids['tmdb']} if m
       end
       _, m = movie_get({'tmdb' => ids['tmdb']})
-      movie = $tmdb.collection(m.set.id) if $tmdb && m&.set.to_s != ''
+      movie = Tmdb::Collection.detail(m.set.id) if m&.set.to_s != ''
       movie = MoviesSet.new(Cache.object_pack(movie, 1)) if movie.is_a?(Hash)
       title = movie.name if movie&.name.to_s != ''
       full_save = movie || {}
