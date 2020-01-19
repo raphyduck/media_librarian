@@ -86,8 +86,8 @@ class TorrentSearch
       }.fetch(category.to_sym, nil)
     when 'yggtorrent'
       {
-          :movies => 'category=2145&sub_category=2183&',
-          :shows => 'category=2145&sub_category=2184&',
+          :movies => 'category=2145&sub_category=all&',
+          :shows => 'category=2145&sub_category=all&',
           :music => 'category=2139&sub_category=2148&',
           :books => 'category=2140&sub_category=all&',
           :comics => 'category=2140&sub_category=2152&'
@@ -166,11 +166,12 @@ class TorrentSearch
       download_criteria.delete(:destination)
       download_criteria[:whitelisted_extensions] = download_criteria[:whitelisted_extensions][Metadata.media_type_get(category)] rescue nil
     end
-    download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) if !download_criteria[:whitelisted_extensions].is_a?(Array)
+    download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
     download_criteria.merge!(post_actions)
     $speaker.speak_up "Download criteria: #{download_criteria}" if Env.debug?
     get_results.each do |t|
-      _, accept = Metadata.filter_quality(t[:name], qualities)
+      t[:assume_quality] = get_tracker_config(t[:tracker])['assume_quality']
+      _, accept = Metadata.filter_quality(t[:name], qualities, post_actions[:language], t[:assume_quality])
       r = Library.parse_media(
           {:type => 'torrent'}.merge(t),
           category,
@@ -286,7 +287,7 @@ class TorrentSearch
         skip = false
         Utils.lock_block("#{__method__}_keywording") {
           skip = processed_search_keyword[k].to_i > 0
-          processed_search_keyword[k, CACHING_TTL] = 1
+          processed_search_keyword[k, 600] = 1
         }
         next if skip
         $speaker.speak_up("Looking for keyword '#{k}'", 0)
@@ -308,7 +309,7 @@ class TorrentSearch
             filter_dead: 2,
             strict: no_prompt,
             download_criteria: dc,
-            post_actions: f.select { |key, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps].include?(key) }.deep_dup,
+            post_actions: f.select { |key, _| ![:full_name, :identifier, :identifiers, :language, :type, :name, :existing_season_eps].include?(key) }.deep_dup,
             filter_keyword: filter_k
         )
         break unless results.empty? #&& Cache.torrent_get(f[:identifier], f_type).empty?
@@ -322,9 +323,11 @@ class TorrentSearch
     #TODO: Add all relevant files when downloading
     subset.flatten!
     subset.map! { |t| t[:files].select! { |ll| ll[:type].to_s != 'torrent' } if t[:files]; t[:files].uniq! if t[:files]; t }
+    existing_torrents = []
     Cache.torrent_get(f[:identifier], f_type).each do |d|
       subset.select! { |tt| tt[:name] != d[:name] }
       subset << d if d[:download_now].to_i >= 0
+      existing_torrents << d if d[:download_now].to_i >= 3
     end
     ef, qualities['min_quality'] = Metadata.qualities_set_minimum(f, qualities['min_quality'])
     qualities['strict'] = qualities['strict'].to_i > 0 || ef != '' ? 1 : 0
@@ -340,7 +343,7 @@ class TorrentSearch
       subset.each do |torrent|
         $speaker.speak_up(LINE_SEPARATOR)
         $speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
-        torrent.select { |k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :in_db].include?(k) }.each do |k, v|
+        torrent.select { |k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :assume_quality, :in_db].include?(k) }.each do |k, v|
           val = case k
                 when :size
                   "#{(v.to_f / 1024 / 1024 / 1024).round(2)} GB"
@@ -358,7 +361,7 @@ class TorrentSearch
     return unless subset[download_id.to_i - 1]
     Utils.lock_block(__method__.to_s) {
       return if subset[download_id.to_i - 1][:in_db].to_i > 0 && subset[download_id.to_i - 1][:download_now].to_i > 2
-      torrent_download(subset[download_id.to_i - 1], no_prompt, no_waiting, subset.select { |t| t[:in_db].to_i > 0 && t[:download_now].to_i > 2 }.map { |t| t[:name] })
+      torrent_download(subset[download_id.to_i - 1], no_prompt, no_waiting, existing_torrents.select { |t| t[:in_db].to_i > 0 }.map { |t| t[:name] })
     }
   end
 
@@ -455,12 +458,6 @@ class TorrentSearch
     else
       $speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
       torrent[:download_now] = 2
-      remove_others.each do |tname|
-        t = $db.get_rows('torrents', {:name => tname}).first
-        next if t.nil? || t[:status].to_i > 3
-        $speaker.speak_up "Will remove other torrent from same identifier '#{tname}' (tid '#{t[:torrent_id]}')" if Env.debug?
-        $t_client.delete_torrent(tname, t[:torrent_id])
-      end
     end
     if torrent[:in_db]
       $db.update_rows('torrents', {:status => torrent[:download_now], :waiting_until => waiting_until}, {:name => torrent[:name]})
@@ -473,6 +470,14 @@ class TorrentSearch
           :waiting_until => waiting_until,
           :status => torrent[:download_now]
       })
+    end
+    if torrent[:download_now] == 2
+      remove_others.each do |tname|
+        t = $db.get_rows('torrents', {:name => tname}).first
+        next if t.nil? || t[:status].to_i > 3
+        $speaker.speak_up "Will remove torrent '#{tname}' with same identifier than torrent '#{torrent[:name]}' (tid '#{t[:torrent_id]}')" if Env.debug?
+        $t_client.delete_torrent(tname, t[:torrent_id])
+      end
     end
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding, 2))

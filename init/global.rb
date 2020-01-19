@@ -34,11 +34,13 @@ FILENAME_NAMING_TEMPLATE=%w(
 )
 VALID_CONVERSION_INPUTS = {
     :books => ['cbz', 'pdf', 'cbr', 'epub'],
-    :music => ['flac']
+    :music => ['flac'],
+    :video => ['iso', 'ts']
 }
 VALID_CONVERSION_OUTPUT = {
     :books => ['cbz'],
-    :music => ['mp3']
+    :music => ['mp3'],
+    :video => ['mkv']
 }
 VALID_MEDIA_TYPES = {
     :books => ['books'],
@@ -48,7 +50,7 @@ VALID_MEDIA_TYPES = {
 EXTENSIONS_TYPE= {
     :books => %w(cbz cbr pdf),
     :music => %w(flac mp3),
-    :video => %w(mkv avi mp4 mpg m4v mpg divx)
+    :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts)
 }
 VALID_VIDEO_EXT="(.*)\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
 VALID_MUSIC_EXT="(.*)\.(#{EXTENSIONS_TYPE[:music].join('|')})$"

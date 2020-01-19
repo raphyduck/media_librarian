@@ -21,7 +21,7 @@ class Metadata
   def self.detect_file_quality(file, fileinfo = nil, mv = 0, ensure_qualities = '')
     return file, ensure_qualities unless file.match(Regexp.new(VALID_VIDEO_EXT))
     fileinfo = FileInfo.new(file) if fileinfo.nil?
-    nfile = file
+    nfile = File.basename(file)
     Q_SORT.each do |qtitle|
       q = fileinfo.quality(qtitle)
       unless q.empty?
@@ -29,6 +29,7 @@ class Metadata
         ensure_qualities = filename_quality_change(ensure_qualities, q, eval(qtitle) - q) if ensure_qualities.to_s != ''
       end
     end
+    nfile = File.dirname(file) + '/' + nfile
     if file != nfile && mv.to_i > 0
       FileUtils.mv(file, nfile)
       fileinfo = FileInfo.new(nfile)
@@ -77,7 +78,7 @@ class Metadata
     filename
   end
 
-  def self.filter_quality(filename, qualities, language = '')
+  def self.filter_quality(filename, qualities, language = '', assume_quality = nil)
     timeframe = ''
     unless parse_qualities(filename, ['hc']).empty?
       $speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
@@ -98,14 +99,7 @@ class Metadata
     return timeframe, true if qualities.nil? || qualities.empty?
     Q_SORT.each do |t|
       file_q = parse_qualities(filename, eval(t), language)[0].to_s
-      if file_q.empty?
-        qualities['assume_quality'].to_s.split(' ').each do |q|
-          if eval(t).include?(q)
-            file_q << q
-            break
-          end
-        end
-      end
+      file_q = parse_qualities((assume_quality.to_s + ' ' + qualities['assume_quality'].to_s), eval(t), language)[0].to_s if file_q.empty?
       if qualities_compare(qualities['min_quality'], t, file_q, '<', "'#{filename}' is of lower quality than the minimum required, removing from list")
         return timeframe, false
       end
@@ -135,7 +129,7 @@ class Metadata
         file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
-    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s + '.ext').join('.')
+    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s + '.ext', VALID_QUALITIES, info[:language]).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
     metadata['is_found'] = true
@@ -237,10 +231,11 @@ class Metadata
     m
   end
 
-  def self.media_qualities(filename, language = '')
+  def self.media_qualities(filename, language = '', assume_qualities = '')
     q = {}
     Q_SORT.each do |t|
       q[t.downcase] = parse_qualities(filename, eval(t), language).first.to_s
+      q[t.downcase] = parse_qualities(assume_qualities, eval(t), language).first.to_s if q[t.downcase].empty? && assume_qualities.to_s != ''
     end
     q['proper'] = identify_proper(filename)[1]
     q
@@ -431,8 +426,7 @@ class Metadata
       info = {
           :movies_name => item_name,
           :movie => item,
-          :release_date => release,
-          :language => item.language
+          :release_date => release
       }
       parts = Movie.identify_split_files(filename)
     when 'shows'
@@ -467,6 +461,7 @@ class Metadata
           :book_series => f_type == 'book' ? item.series : item
       }
     end
+    info[:language] = item.language if item&.language
     file[:parts] = parts unless file.nil? || file.empty?
     return full_name, ids, info
   end
@@ -516,7 +511,7 @@ class Metadata
       existing_qualities, min_q = qualities_set_minimum(file, (qualities['target_quality'] || qualities['max_quality']))
       _, accept = filter_quality(
           '.' + existing_qualities.join('.') + '.',
-          {'min_quality' => min_q}
+          {'min_quality' => min_q}, language
       )
       $speaker.speak_up "Ignoring file '#{file[:full_name]}' as it is lower than target quality '#{(qualities['target_quality'] || qualities['max_quality'])}'" if Env.debug? && !accept
     end
@@ -551,8 +546,8 @@ class Metadata
   def self.sort_media_files(files, qualities = {}, language = '')
     sorted, r = [], []
     files.each do |f|
-      qs = media_qualities(File.basename(f[:name]), language)
-      q_timeframe, accept = filter_quality(f[:name], qualities, language)
+      qs = media_qualities(File.basename(f[:name]), language, f[:assume_quality].to_s + ' ' + qualities['assume_quality'].to_s)
+      q_timeframe, accept = filter_quality(f[:name], qualities, language, f[:assume_quality])
       if accept
         timeframe_waiting = Utils.timeperiod_to_sec(q_timeframe).to_i
         sorted << [f[:name], qs['resolutions'], qs['sources'], qs['codecs'], qs['audio'], qs['proper'], qs['languages'], qs['cut'],

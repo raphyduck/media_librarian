@@ -1,6 +1,6 @@
 # media_librarian
 
-WARNING: Alpha stage. Expect things to break and sky to fall.
+WARNING: This is a beta software. It might not works as intended
 
 What is it?
 This program is made to answer my various needs for automation in the management of various media collections.
@@ -12,6 +12,7 @@ Requirements:
 * lame
 * mediainfo
 * ffmpeg
+* mkvmerge
 
 TODO:
 * General
@@ -33,7 +34,6 @@ TODO:
     * Automatically watch future movies releases and add them to watchlist based on criteria (genres,?)
 
 * Torrent search:
-    * Take into account movies original language to decide on language
     
 * TvSeries:
     

@@ -2,6 +2,8 @@ torrent_path: '/path/to/torrent/'
 torrent_name: 'torrentname'
 completed_folder: '/download/folder/'
 destination_folder: '/move/to/folder/'
+move_completed_torrent: '/move/torrent/files/to/folder' #Optional, if set, will move the completed torrent to another folder within the torrent client
+move_completed_destination_folder: 'destination/folder/if/torrent/moved' #If set and torrent files are moved, will move files to this folder instead
 remove_duplicates: 0
 handling:
   file_types:
@@ -11,8 +13,8 @@ handling:
         convert_to: cbz
   shows:
     media_type: shows
-    move_to: '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    move_to: '/home/user/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}' #within destination_folder
   movies:
     media_type: movies
     no_hdr: 0 #If 1, will convert HDR movies to SDR, if 2, will keep HDR movies along side SDR
-    move_to: '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
+    move_to: '/home/user/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}' #within destination_folder

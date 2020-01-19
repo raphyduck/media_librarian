@@ -1,6 +1,7 @@
 LANG_ADJUST = {
-    :de => ['german'],
+    :de => ['de', 'german'],
     :en => ['en', 'eng', 'english'],
-    :es => ['spanish'],
-    :fr => ['vf', 'french', 'vfq', 'vff', 'truefrench', 'fr'],
+    :es => ['es', 'spanish'],
+    :fr => ['vof', 'vf', 'french', 'vfq', 'vff', 'truefrench', 'fr'],
+    :he => ['he', 'hebrew']
 }

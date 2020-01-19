@@ -203,7 +203,6 @@ class Cache
         t = 3
       elsif Env.debug?
         $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
-        next
       end
       if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i == 1
         $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?

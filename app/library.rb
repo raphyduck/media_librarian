@@ -22,7 +22,7 @@ class Library
 
   def self.convert_media(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '', qualities: nil)
     name, results = '', []
-    type = EXTENSIONS_TYPE.select { |k, v| v.include?(input_format) }.first[0]
+    type = EXTENSIONS_TYPE.select { |_, v| v.include?(input_format) }.first[0]
     return $speaker.speak_up("Unknown input format") unless type != ''
     unless VALID_CONVERSION_INPUTS[type] && VALID_CONVERSION_INPUTS[type].include?(input_format)
       return $speaker.speak_up("Invalid input format, needs to be one of #{VALID_CONVERSION_INPUTS[type]}")
@@ -59,6 +59,8 @@ class Library
                      Book.convert_comics(path, name, input_format, output_format, dest_file, no_warning)
                    when :music
                      Music.convert_songs(path, dest_file, input_format, output_format, qualities)
+                   when :video
+                     VideoUtils.convert_videos(path, dest_file, input_format, output_format)
                    end
         return results if skipping.to_i > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
@@ -415,7 +417,7 @@ class Library
       search_list = BusVariable.new('search_list', Vash)
       case source_type
       when 'filesystem'
-        search_list[cache_name, CACHING_TTL] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'])
+        search_list[cache_name, CACHING_TTL] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'], item_name: source['item_name'])
       when 'trakt'
         $speaker.speak_up('Parsing trakt list, can take a long time...', 0)
         TraktAgent.list(source['list_name']).each do |item|
@@ -439,13 +441,32 @@ class Library
     (search_list[cache_name] || {}).deep_dup
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '')
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: '', move_completed_destination_folder: '')
     return $speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
-    if root_process.to_i > 0
-      FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, $temp_dir + '/') + '/' + torrent_name)
-      completed_folder = $temp_dir
-    end
     completion_time = Time.now
+    if root_process.to_i > 0
+      if move_completed_torrent.to_s != '' && torrent_id.to_s != ''
+        t = $db.get_rows('torrents', {:torrent_id => torrent_id}).first
+        torrent = t.nil? ? nil : Cache.object_unpack(t[:tattributes])
+        if torrent && t[:status].to_i < 5
+          seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
+          if seed_time.to_i > 5
+            cd = torrent_path.gsub!(completed_folder, move_completed_torrent.to_s + '/').to_s
+            $t_client.move_storage([torrent_id], cd) rescue nil
+            $speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
+            while FileUtils.is_in_path([($t_client.get_torrent_status(torrent_id, ['name', 'save_path']) rescue {})['save_path'].to_s], cd).nil?
+              sleep 60
+            end
+            $speaker.speak_up "Torrent storage moved to #{move_completed_torrent}" if Env.debug?
+            completed_folder = move_completed_torrent
+          end
+        end
+      end
+      if completed_folder != move_completed_torrent
+        FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, $temp_dir + '/') + '/' + torrent_name)
+        completed_folder = $temp_dir
+      end
+    end
     full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/, '/')
     handled, process_folder_list, error = 0, [], 0
     handled_files = (
@@ -466,7 +487,9 @@ class Library
             folder_hierarchy: Hash[folder_hierarchy.map { |k, v| [k, v.to_i + 1] }],
             force_process: force_process,
             root_process: 0,
-            ensure_qualities: ensure_qualities
+            ensure_qualities: ensure_qualities,
+            move_completed_torrent: move_completed_torrent,
+            move_completed_destination_folder: move_completed_destination_folder
         )
         handled += hcd[0]
         error += hcd[2]
@@ -487,7 +510,9 @@ class Library
             folder_hierarchy: Hash[folder_hierarchy.map { |k, v| [k, v.to_i + 1] }],
             force_process: force_process,
             root_process: 0,
-            ensure_qualities: ensure_qualities
+            ensure_qualities: ensure_qualities,
+            move_completed_torrent: move_completed_torrent,
+            move_completed_destination_folder: move_completed_destination_folder
         )
         handled += hcd[0]
         error += hcd[2]
@@ -531,12 +556,15 @@ class Library
                 folder_hierarchy: folder_hierarchy,
                 force_process: force_process,
                 root_process: 0,
-                ensure_qualities: ensure_qualities
+                ensure_qualities: ensure_qualities,
+                move_completed_torrent: move_completed_torrent,
+                move_completed_destination_folder: move_completed_destination_folder
             )
             handled += hcd[0]
             error += hcd[2]
           end
         elsif handling[type] && handling[type]['move_to']
+          handling[type]['move_to'].gsub!(destination_folder, move_completed_destination_folder) if completed_folder == move_completed_torrent
           if handling[type] && handling[type]['no_hdr'].to_i > 0 && torrent_name.match(Regexp.new(VALID_VIDEO_EXT))
             if media_info.isHDR?
               media_info.hdr_to_sdr("#{full_p}.tmp.#{extension}")
@@ -553,7 +581,8 @@ class Library
           destination = rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities, completed_folder + '/' + otype)
         else
           destination = full_p.gsub(completed_folder, destination_folder)
-          FileUtils.move_file(full_p, destination, 1)
+          _, moved = FileUtils.move_file(full_p, destination, 1)
+          error += 1 unless moved
         end
         if defined?(destination) && destination != ''
           process_folder_list << [ttype, destination]
@@ -564,7 +593,7 @@ class Library
       end
     end
     if root_process.to_i > 0
-      FileUtils.rm_r(full_p)
+      FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent
       $speaker.speak_up('Could not find any file to handle!') if handled == 0
       process_folder_list.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
@@ -579,6 +608,7 @@ class Library
       FileUtils.rm_r(full_p) if defined?(full_p) && full_p.include?($temp_dir)
       raise e
     end
+    return handled, process_folder_list, 1
   end
 
   def self.handle_duplicates(files, remove_duplicates = 0, no_prompt = 0)
@@ -765,14 +795,13 @@ class Library
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL)
     $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
-    files, raw_filtered, cache_name, media_list = nil, [], folder.to_s + type.to_s + item_name.to_s, {}
-    filter_criteria = (filter_criteria || {}).deep_merge(DEFAULT_FILTER_PROCESSFOLDER[type]) { |_, x1, x2| x1 + x2 }
+    files, raw_filtered, cache_name, media_list = nil, [], folder.to_s + type.to_s, {}
+    file_criteria = {'regex' => '.*' + StringUtils.regexify(item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
+    raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
     Utils.lock_block(__method__.to_s + cache_name) {
-      file_criteria = {'regex' => '.*' + StringUtils.regexify(item_name.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
-      raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
       media_list = BusVariable.new('media_list', Vash)
       if media_list[cache_name].nil? || remove_duplicates.to_i > 0 || (rename && !rename.empty?)
-        FileUtils.search_folder(folder, file_criteria.merge(filter_criteria.select { |k, _| ['exclude', 'exclude_strict', 'exclude_path'].include?(k) })).each do |f|
+        FileUtils.search_folder(folder, file_criteria.deep_merge(DEFAULT_FILTER_PROCESSFOLDER[type]) { |_, x1, x2| x1 + x2 }).each do |f|
           next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
           Librarian.route_cmd(
               ['Library', 'parse_media', {:type => 'file', :name => f[0]}, type, no_prompt, {}, folder_hierarchy, rename, {}, folder],
@@ -810,6 +839,7 @@ class Library
     if !metadata.empty? && metadata['is_found']
       destination += ".#{metadata['extension'].downcase}"
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
+      raise "Error moving file" if destination.to_s == ''
     else
       $speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''

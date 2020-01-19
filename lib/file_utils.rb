@@ -7,16 +7,26 @@ module FileUtils
     alias_method :rm_r_orig, :rm_r
     alias_method :rmdir_orig, :rmdir
     alias_method :ln_orig, :ln
+    alias_method :cp_orig, :cp
 
     def compress_archive(folder, name)
       Dir.chdir(File.dirname(folder)) do
         if Env.pretend?
           $speaker.speak_up "Would compress the following files:"
-          Dir.foreach('.') {|f| $speaker.speak_up f}
+          Dir.foreach('.') { |f| $speaker.speak_up f }
         else
           Archive::Zip.archive(name, File.basename(folder))
         end
       end
+    end
+
+    def cp(source, target)
+      return $speaker.speak_up("Would cp #{source} to #{target}") if Env.pretend?
+      $speaker.speak_up("cp #{source} #{target}") if Env.debug?
+      rm(target) if File.exist?(target)
+      mkdir_p(File.dirname(target)) unless File.exist?(File.dirname(target))
+      $speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
+      cp_orig(source, target)
     end
 
     def extract_archive(type, archive, destination)
@@ -34,7 +44,7 @@ module FileUtils
 
     def get_disk_size(path)
       size = 0
-      Find.find(path) {|file| size += File.size(file)}
+      Find.find(path) { |file| size += File.size(file) }
       size
     end
 
@@ -104,7 +114,12 @@ module FileUtils
       rm(destination) if File.exist?(destination)
       mkdir_p(File.dirname(destination)) unless File.exist?(File.dirname(destination))
       $speaker.speak_up("File '#{original}' doesn't exist!") unless File.exist?(original)
-      ln_orig(original, destination)
+      begin
+        ln_orig(original, destination)
+      rescue Errno::ENOSYS => e
+        $speaker.speak_up "Hard linking failed with error '#{e}', trying to copy instead" if Env.debug?
+        cp(original, destination)
+      end
     end
 
     def ln_r(source, target)
@@ -114,7 +129,7 @@ module FileUtils
       target = File.join(target, "")
       rm_r(target) if File.exist?(target)
       mkdir_p(target)
-      Dir.glob(File.join(source, '**/*')).each do | source_path |
+      Dir.glob(File.join(source, '**/*')).each do |source_path|
         target_path = source_path.gsub(Regexp.new("^" + Regexp.escape(source)), target)
         if File.file? source_path
           mkdir_p File.dirname(target_path)
@@ -170,14 +185,14 @@ module FileUtils
       end
       return true, destination
     rescue => e
-      $speaker.tell_error(e, 'utils.move_file')
+      $speaker.tell_error(e, 'FileUtils.move_file')
       return false, ''
     end
 
     def file_remove_parents(files)
       files = [files] if files.is_a?(String)
       files.each do |f|
-        rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select {|e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil?} - %w{ . .. }).empty?
+        rm_r(File.dirname(f)) if (Dir.entries(File.dirname(f)).select { |e| e.match(Regexp.new('\.(' + IRRELEVANT_EXTENSIONS.join('|') + ')$')).nil? } - %w{ . .. }).empty?
       end
     end
 
