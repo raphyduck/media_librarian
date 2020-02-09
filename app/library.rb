@@ -536,8 +536,6 @@ class Library
         end
         type = otype.downcase
         $speaker.speak_up "File type '#{type}'" if Env.debug?
-        media_info = FileInfo.new(full_p)
-        full_p, media_info, ensure_qualities = Metadata.detect_file_quality(full_p, media_info, 1, ensure_qualities)
         ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : 'unknown'
         if args && args[extension] && args[extension]['convert_to'].to_s != ''
           convert_media(
@@ -565,6 +563,8 @@ class Library
             error += hcd[2]
           end
         elsif handling[type] && handling[type]['move_to']
+          media_info = FileInfo.new(full_p)
+          _, qualities = Metadata.detect_file_quality(full_p, media_info, 0, ensure_qualities)
           if completed_folder == move_completed_torrent['torrent_completed_path'].to_s && move_completed_torrent['replace_destination_folder'].to_s != ''
             handling[type]['move_to'].gsub!(destination_folder, move_completed_torrent['replace_destination_folder'].to_s)
           end
@@ -572,16 +572,16 @@ class Library
             if media_info.isHDR?
               media_info.hdr_to_sdr("#{full_p}.tmp.#{extension}")
               if handling[type]['no_hdr'].to_i > 1
-                rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, Metadata.filename_quality_change(".#{ensure_qualities}.", ['hdr', 'nodup']), completed_folder + '/' + otype)
+                rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, qualities + ['hdr', 'nodup'], completed_folder + '/' + otype)
               else
                 FileUtils.rm(full_p)
               end
               FileUtils.mv("#{full_p}.tmp.#{extension}", Metadata.filename_quality_change(full_p, [], ['10bits', '10bit', 'hdr']))
               full_p = Metadata.filename_quality_change(full_p, [], ['10bits', '10bit', 'hdr'])
-              ensure_qualities = Metadata.filename_quality_change(".#{ensure_qualities}.", [], ['10bits', '10bit', 'hdr'])
+              qualities -= ['10bits', '10bit', 'hdr']
             end
           end
-          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities, completed_folder + '/' + otype)
+          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, qualities, completed_folder + '/' + otype)
         else
           destination = full_p.gsub(completed_folder, destination_folder)
           _, moved = FileUtils.move_file(full_p, destination, 1)
@@ -830,10 +830,10 @@ class Library
     {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home)
+  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, qualities = [], base_folder = Dir.home)
     $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
-    metadata = Metadata.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, base_folder, ensure_qualities)
+    metadata = Metadata.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, base_folder, qualities)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.to_s == ''
       $speaker.speak_up "Destination of file '#{original}' is empty, skipping..."

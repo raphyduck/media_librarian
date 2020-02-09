@@ -19,22 +19,21 @@ class Metadata
   end
 
   def self.detect_file_quality(file, fileinfo = nil, mv = 0, ensure_qualities = '')
-    return file, ensure_qualities unless file.match(Regexp.new(VALID_VIDEO_EXT))
+    qualities = []
+    return file, qualities unless file.match(Regexp.new(VALID_VIDEO_EXT))
     fileinfo = FileInfo.new(file) if fileinfo.nil?
     nfile = File.basename(file)
-    Q_SORT.each do |qtitle|
+    (Q_SORT + ['DIMENSIONS']).each do |qtitle|
       q = fileinfo.quality(qtitle)
       unless q.empty?
         nfile = filename_quality_change(nfile, q, eval(qtitle) - q)
-        ensure_qualities = filename_quality_change(ensure_qualities, q, eval(qtitle) - q) if ensure_qualities.to_s != ''
+        ensure_qualities = filename_quality_change(ensure_qualities, q, eval(qtitle) - q)
       end
+      qualities += parse_qualities("#{nfile}.#{ensure_qualities}", eval(qtitle))
     end
     nfile = File.dirname(file) + '/' + nfile
-    if file != nfile && mv.to_i > 0
-      FileUtils.mv(file, nfile)
-      fileinfo = FileInfo.new(nfile)
-    end
-    return nfile, fileinfo, ensure_qualities
+    FileUtils.mv(file, nfile) if file != nfile && mv.to_i > 0
+    return nfile, qualities
   end
 
   def self.detect_real_title(name, type, id_info = 0, complete = 1)
@@ -114,7 +113,7 @@ class Metadata
     return timeframe, true
   end
 
-  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, ensure_qualities = '')
+  def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, qualities = [])
     metadata = {}
     ep_filename = File.basename(filename)
     file = {:name => filename}
@@ -129,7 +128,7 @@ class Metadata
         file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
-    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s, VALID_QUALITIES, info[:language]).join('.')
+    metadata['quality'] = parse_qualities(qualities.join('.') != '' ? ".#{qualities.join('.')}." : ep_filename, VALID_QUALITIES, info[:language]).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
     metadata['is_found'] = true
