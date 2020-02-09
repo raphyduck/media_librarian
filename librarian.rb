@@ -22,10 +22,11 @@ class Librarian
       :reconfigure => ['Librarian', 'reconfigure'],
       :daemon => {
           :start => ['Daemon', 'start'],
-          :status => ['Daemon', 'status', 1, 'status'],
-          :stop => ['Daemon', 'stop', 1, 'status'],
-          :reload => ['Daemon', 'reload', 1, 'status'],
-          :dump_bus_variable => ['BusVariable', 'display_bus_variable']
+          :status => ['Daemon', 'status', 1, 'priority'],
+          :stop => ['Daemon', 'stop', 1, 'priority'],
+          :reload => ['Daemon', 'reload', 1, 'priority'],
+          :dump_bus_variable => ['BusVariable', 'display_bus_variable'],
+          :kill_job => ['Daemon', 'kill', 1, 'priority']
       },
       :books => {
           :compress_comics => ['Book', 'compress_comics'],
@@ -63,7 +64,7 @@ class Librarian
     @args = ARGV
     @loaded = false
     #Require libraries
-    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each {|file| require file}
+    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
   end
@@ -87,8 +88,8 @@ class Librarian
 
   def write_pid
     begin
-      File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) {|f| f.write("#{Process.pid}")}
-      at_exit {File.delete($pidfile) if File.exists?($pidfile)}
+      File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) { |f| f.write("#{Process.pid}") }
+      at_exit { File.delete($pidfile) if File.exists?($pidfile) }
     rescue Errno::EEXIST
       check_pid
       retry
@@ -134,7 +135,7 @@ class Librarian
         raise
       end
     end
-    Dir[File.dirname(__FILE__) + '/init/*.rb'].each {|file| require file}
+    Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
     @loaded = true
   end
 
@@ -180,7 +181,7 @@ class Librarian
     t[:object] = object
     t[:start_time] = Time.now
     t[:direct] = direct
-    t[:block] = block
+    t[:block] = [block]
     t[:is_active] = 1
   end
 
@@ -220,7 +221,7 @@ class Librarian
       p = Object.const_get(m).method(a.to_sym)
       thread_value = cmd.nil? ? p.call : p.call(*cmd)
     else
-      $speaker.speak_up("Running command: #{cmd.map {|a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'')}.join(' ')}\n\n", 0)
+      $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       thread_value = $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
     run_termination(Thread.current, thread_value)
@@ -232,7 +233,7 @@ class Librarian
   def self.run_termination(thread, thread_value, object = nil)
     thread[:end_time] = Time.now
     thread[:is_active] = 0
-    Daemon.terminate_worker(thread, thread_value, object)
+    Daemon.clear_waiting_worker(thread, thread_value, object)
     terminate_command(thread, thread_value, object)
   end
 
@@ -243,14 +244,14 @@ class Librarian
     if thread[:direct].to_i == 0 || Env.debug?
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
     end
-    if thread[:block]
-      thread[:block].call
+    if thread[:block].is_a?(Array) && !thread[:block].empty?
+      thread[:block].reverse.each { |b| b.call if b }
     end
     Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     if thread[:parent]
-      Utils.lock_block("merge_child_thread_#{thread[:object]}") {Daemon.merge_notifications(thread, thread[:parent])}
+      Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
     end
-    Daemon.clear_waiting_worker(thread, thread_value, object)
+    Daemon.clear_waiting_worker(thread, thread_value, object, 1)
   end
 
   def self.test_childs(how_many: 10000)

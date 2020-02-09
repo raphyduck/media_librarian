@@ -441,31 +441,35 @@ class Library
     (search_list[cache_name] || {}).deep_dup
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: '', move_completed_destination_folder: '')
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {})
     return $speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
     completion_time = Time.now
+    completion_time -= (($t_client.get_torrent_status(torrent_id, ['seeding_time']) rescue {})['seeding_time'] || 0).to_i if torrent_id.to_s != '' #Best approximation we can get with this version of deluge
     if root_process.to_i > 0
-      if move_completed_torrent.to_s != '' && torrent_id.to_s != ''
+      opath = torrent_path.dup
+      if move_completed_torrent['torrent_completed_path'].to_s != '' && torrent_id.to_s != ''
         t = $db.get_rows('torrents', {:torrent_id => torrent_id}).first
         torrent = t.nil? ? nil : Cache.object_unpack(t[:tattributes])
         if torrent && t[:status].to_i < 5
-          seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
-          if seed_time.to_i > 5
-            cd = torrent_path.gsub!(completed_folder, move_completed_torrent.to_s + '/').to_s
-            $t_client.move_storage([torrent_id], cd) rescue nil
-            $speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
-            while FileUtils.is_in_path([($t_client.get_torrent_status(torrent_id, ['name', 'save_path']) rescue {})['save_path'].to_s], cd).nil?
-              sleep 60
-            end
-            $speaker.speak_up "Torrent storage moved to #{move_completed_torrent}" if Env.debug?
-            completed_folder = move_completed_torrent
+          if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exists?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
+            FileUtils.mkdir_p(torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
+            FileUtils.mv(torrent_path + '/' + torrent_name, torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
           end
+          opath = torrent_path.gsub!(completed_folder, move_completed_torrent['torrent_completed_path'].to_s + '/').to_s
+          $t_client.move_storage([torrent_id], opath) rescue nil
+          $speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
+          while FileUtils.is_in_path([($t_client.get_torrent_status(torrent_id, ['name', 'save_path']) rescue {})['save_path'].to_s], opath).nil?
+            sleep 60
+          end
+          $speaker.speak_up "Torrent storage moved to #{move_completed_torrent['torrent_completed_path']}" if Env.debug?
+          completed_folder = move_completed_torrent['torrent_completed_path'].to_s
         end
       end
-      if completed_folder != move_completed_torrent
+      if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
         FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, $temp_dir + '/') + '/' + torrent_name)
         completed_folder = $temp_dir
       end
+      opath += +'/' + torrent_name
     end
     full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/, '/')
     handled, process_folder_list, error = 0, [], 0
@@ -488,8 +492,7 @@ class Library
             force_process: force_process,
             root_process: 0,
             ensure_qualities: ensure_qualities,
-            move_completed_torrent: move_completed_torrent,
-            move_completed_destination_folder: move_completed_destination_folder
+            move_completed_torrent: move_completed_torrent
         )
         handled += hcd[0]
         error += hcd[2]
@@ -511,12 +514,11 @@ class Library
             force_process: force_process,
             root_process: 0,
             ensure_qualities: ensure_qualities,
-            move_completed_torrent: move_completed_torrent,
-            move_completed_destination_folder: move_completed_destination_folder
+            move_completed_torrent: move_completed_torrent
         )
         handled += hcd[0]
         error += hcd[2]
-        FileUtils.rm_r(torrent_path + '/extfls')
+        Thread.current[:block] << Proc.new { FileUtils.rm_r(torrent_path + '/extfls') }
       elsif handling['file_types']
         if force_process.to_i == 0 && !handled_files.include?(extension)
           $speaker.speak_up "Unsupported extension '#{extension}'"
@@ -557,14 +559,15 @@ class Library
                 force_process: force_process,
                 root_process: 0,
                 ensure_qualities: ensure_qualities,
-                move_completed_torrent: move_completed_torrent,
-                move_completed_destination_folder: move_completed_destination_folder
+                move_completed_torrent: move_completed_torrent
             )
             handled += hcd[0]
             error += hcd[2]
           end
         elsif handling[type] && handling[type]['move_to']
-          handling[type]['move_to'].gsub!(destination_folder, move_completed_destination_folder) if completed_folder == move_completed_torrent
+          if completed_folder == move_completed_torrent['torrent_completed_path'].to_s && move_completed_torrent['replace_destination_folder'].to_s != ''
+            handling[type]['move_to'].gsub!(destination_folder, move_completed_torrent['replace_destination_folder'].to_s)
+          end
           if handling[type] && handling[type]['no_hdr'].to_i > 0 && torrent_name.match(Regexp.new(VALID_VIDEO_EXT))
             if media_info.isHDR?
               media_info.hdr_to_sdr("#{full_p}.tmp.#{extension}")
@@ -593,19 +596,19 @@ class Library
       end
     end
     if root_process.to_i > 0
-      FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent
+      FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
       $speaker.speak_up('Could not find any file to handle!') if handled == 0
       process_folder_list.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
       end
       raise "An error occured" if error.to_i > 0
-      Cache.queue_state_add_or_update('deluge_torrents_completed', {torrent_id => {:completion_time => completion_time}}) if torrent_id.to_s != ""
+      Cache.queue_state_add_or_update('deluge_torrents_completed', {torrent_id => {:completion_time => completion_time, :path => opath}}) if torrent_id.to_s != "" && handled != 0
     end
     return handled, process_folder_list, error
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     if root_process.to_i > 0
-      FileUtils.rm_r(full_p) if defined?(full_p) && full_p.include?($temp_dir)
+      FileUtils.rm_r(full_p) if defined?(full_p) && full_p.to_s.include?($temp_dir)
       raise e
     end
     return handled, process_folder_list, 1
@@ -756,7 +759,7 @@ class Library
         next if source['existing_folder'].nil? || source['existing_folder'][ct].nil? || ct != category
         unless existing_files[ct]
           existing_files[ct] = process_folder(type: ct, folder: source['existing_folder'][ct], no_prompt: no_prompt, remove_duplicates: 0)
-          existing_files[ct][:shows] = search_list[:shows] if search_list[:shows]
+          existing_files[ct][:shows] = search_list[:shows] if search_list[:shows] && ct.to_s == 'shows'
         end
         case ct
         when 'movies'

@@ -168,7 +168,6 @@ class TorrentSearch
     end
     download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
     download_criteria.merge!(post_actions)
-    $speaker.speak_up "Download criteria: #{download_criteria}" if Env.debug?
     get_results.each do |t|
       t[:assume_quality] = get_tracker_config(t[:tracker])['assume_quality']
       _, accept = Metadata.filter_quality(t[:name], qualities, post_actions[:language], t[:assume_quality])
@@ -272,7 +271,7 @@ class TorrentSearch
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0)
-    $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}') (category '#{f[:type]}')" if Env.debug?
+    $speaker.speak_up "TorrentSearch.processing_result(results, #{sources}, #{limit}, #{DataUtils.dump_variable(f)}, #{qualities}, #{no_prompt}, #{download_criteria}, #{no_waiting})" if Env.debug?
     f_type = f[:f_type]
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
@@ -447,7 +446,7 @@ class TorrentSearch
         download_criteria: download_criteria,
         no_waiting: no_waiting
     )
-    Thread.current[:block] = lambda { quit_all(torrent_sources['trackers']) }
+    Thread.current[:block] << lambda { quit_all(torrent_sources['trackers']) }
   end
 
   def self.torrent_download(torrent, no_prompt = 0, no_waiting = 0, remove_others = [])
@@ -476,7 +475,7 @@ class TorrentSearch
         t = $db.get_rows('torrents', {:name => tname}).first
         next if t.nil? || t[:status].to_i > 3
         $speaker.speak_up "Will remove torrent '#{tname}' with same identifier than torrent '#{torrent[:name]}' (tid '#{t[:torrent_id]}')" if Env.debug?
-        $t_client.delete_torrent(tname, t[:torrent_id])
+        $t_client.delete_torrent(tname, t[:torrent_id], 0, 1)
       end
     end
   rescue => e

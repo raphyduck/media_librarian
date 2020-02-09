@@ -5,7 +5,7 @@ class TvSeries
   def initialize(options = {})
     @tvdb_id = (options['ids'] || {})['thetvdb'] || (options['ids'] || {})['tvdb'] || options['seriesid'] || options['id']
     @id = @tvdb_id
-    @language = options['language']
+    @language = Languages.get_code(options['language'])
     @name = options["name"] || options['SeriesName'] || options['title']
     @overview = options["overview"] || options['Overview'] || options['summary']
     @network = options["network"] || options['Network']

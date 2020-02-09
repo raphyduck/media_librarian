@@ -133,9 +133,9 @@ class FileInfo
 
   def hdr_to_sdr(output)
     options = {
-        custom: ['-c', 'copy', '-max_muxing_queue_size', '40000', '-map', '0', '-vf', 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p', '-c:v', getoptivcodec(getvcodec)] + getoptivcodecparams(getvcodec)
+        custom: ['-c', 'copy', '-max_muxing_queue_size', '40000', '-map', '0', '-map', '-v', '-map', 'V', '-vf', 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p', '-c:v:0', getoptivcodec(getvcodec)] + getoptivcodecparams(getvcodec)
     }
-    Utils.lock_block("ffmpeg") do
+    Utils.lock_block("ffmpeg", 1) do
       movie = FFMPEG::Movie.new(path)
       $speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
       movie.transcode(output, options) { |progress| printf("\rProgress: %d%", (progress * 100).round(4)) }
@@ -157,11 +157,12 @@ class FileInfo
       #q += ac unless ac.empty? #TODO: Better detection of audio codec
     when 'LANGUAGES'
       getaudiochannels.each do |ac|
-        cq = Metadata.parse_qualities(ac.title.to_s, LANGUAGES)
-        cq = [LANG_ADJUST[ac.language.to_sym].first] if cq.empty? && ac.language.to_s != '' && !LANG_ADJUST[ac.language.to_sym].nil?
+        l = Languages.get_code(ac.language.to_s)
+        cq = [LANG_ADJUST[l.to_sym].first] if l.to_s != '' && !LANG_ADJUST[l.to_sym].nil?
+        cq = Metadata.parse_qualities(ac.title.to_s, LANGUAGES) if !defined?(cq) || cq.nil? || cq.empty?
         q += cq
       end
-      q += ['multi'] if getaudiochannels.map { |a| a.language.to_s }.uniq.count > 1
+      q += ['multi'] if getaudiochannels.map { |a| Languages.get_code(a.language.to_s) }.compact.uniq.count > 1
     end
     $speaker.speak_up "#{type} quality of file #{File.basename(path)} is #{q.join('.')}" if Env.debug? && !q.empty?
     q

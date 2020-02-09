@@ -1,5 +1,5 @@
 class Movie
-  SHOW_MAPPING = {id: :id, ids: :ids, language: :language, url: :url, released: :release_date, name: :name, genres: :genres, country: :country,
+  SHOW_MAPPING = {id: :id, ids: :ids, langsearch: :language, url: :url, released: :release_date, name: :name, genres: :genres, country: :country,
                   set: :set}
 
   SHOW_MAPPING.values.each do |value|
@@ -35,8 +35,8 @@ class Movie
     when 'ids'
       v = {'imdb' => (opts['imdb_id'] || opts['imdbnumber'])} if opts['imdb_id'] || opts['imdbnumber']
       v = {'tmdb' => opts['id']} if v.nil? && opts['id']
-    when 'language'
-      v = opts['original_language']
+    when 'langsearch'
+      v = Languages.get_code(opts['original_language'] || opts['language'])
     when 'name'
       v = opts['original_title'] || opts['title']
       v << " (#{year})" if Metadata.identify_release_year(v).to_i == 0

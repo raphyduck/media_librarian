@@ -10,16 +10,18 @@ class TorrentClient
   end
 
   def authenticate
-    return if @deluge_connected
-    @deluge.close rescue nil
-    @deluge.connect
-    @deluge_connected = 1
-    listen
+    Utils.lock_block("deluge_daemon_init") do
+      return if @deluge_connected
+      @deluge.close rescue nil
+      @deluge.connect
+      @deluge_connected = 1
+      listen
+    end
   end
 
-  def delete_torrent(tname, tid = '', remove_opts = 0)
+  def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
     $t_client.remove_torrent(tid, true) if tid.to_s != '' rescue nil
-    $db.update_rows('torrents', {:status => -1}, {:name => tname})
+    $db.update_rows('torrents', {:status => delete_status}, {:name => tname})
     Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
 
@@ -73,18 +75,20 @@ class TorrentClient
       files[fname][:s] += file['size'].to_i
       files[fname][:f] << file['path']
     end
-    files.select { |k, f| k != 'illegalext' && f[:s] > 0.9 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
+    files.select { |k, f| k != 'illegalext' && f[:s] > 0.8 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
   def init
-    @deluge = Deluge::Rpc::Client.new(
-        host: $config['deluge']['host'], port: 58846,
-        login: $config['deluge']['username'], password: $config['deluge']['password']
-    )
-    @deluge_connected = nil
+    Utils.lock_block("deluge_daemon_init") do
+      @deluge = Deluge::Rpc::Client.new(
+          host: $config['deluge']['host'], port: 58846,
+          login: $config['deluge']['username'], password: $config['deluge']['password']
+      )
+      @deluge_connected = nil
+    end
   end
 
   def listen
@@ -169,14 +173,14 @@ class TorrentClient
           end
           set_options = {}
           main_file = find_main_file(status, o[:whitelisted_extensions] || [])
-          torrent_qualities = Metadata.parse_qualities(tname)
-          set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
-          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
           if main_file.empty? && o[:expect_main_file].to_i > 0
-            $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) is does not contain an archive or an acceptable file, removing" if Env.debug?
+            $speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
             delete_torrent(tname, tid)
             next
           end
+          torrent_qualities = Metadata.parse_qualities(tname)
+          set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
+          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
           unless set_options.empty?
             $speaker.speak_up("Will set options: #{set_options}")
             $t_client.set_torrent_options([tid], set_options)
@@ -214,7 +218,10 @@ class TorrentClient
           seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
           if data[:completion_time] + seed_time.hours < Time.now
             $speaker.speak_up "Torrent finished at #{data[:completion_time]}, more than the seed time set at #{seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
-            $t_client.remove_torrent(tid, true) if $remove_torrent_on_completion && t[:status].to_i < 5
+            if $remove_torrent_on_completion && t[:status].to_i < 5
+              $t_client.remove_torrent(tid, true)
+              FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exists?(data[:path].to_s)
+            end
             $db.update_rows('torrents', {:status => [t[:status], 4].max}, {:name => t[:name]})
             remove_it = 1
           elsif Env.debug?

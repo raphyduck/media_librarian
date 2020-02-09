@@ -129,7 +129,7 @@ class Metadata
         file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
-    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s + '.ext', VALID_QUALITIES, info[:language]).join('.')
+    metadata['quality'] = parse_qualities(File.basename(ep_filename) + ensure_qualities.to_s, VALID_QUALITIES, info[:language]).join('.')
     metadata['proper'], _ = identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
     metadata['is_found'] = true
@@ -467,12 +467,13 @@ class Metadata
   end
 
   def self.parse_qualities(filename, qc = VALID_QUALITIES, language = '')
-    filename = qualities_replace(filename, LANG_ADJUST[language.to_sym], '.vo.') if language.to_s != '' && LANG_ADJUST[language.to_sym].is_a?(Array) #Lets adjust language qualities first
-    pq = filename.downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map { |q| q.gsub('.', '[\. ]').gsub('+', '[+]') }.join('|') + ')' + SEP_CHARS + '))')).
+    filename = qualities_replace(filename + '.ext', LANG_ADJUST[language.to_sym], '.vo.') if language.to_s != '' && LANG_ADJUST[language.to_sym].is_a?(Array) #Lets adjust language qualities first
+    pq = (filename + '.ext').downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map { |q| q.gsub('.', '[\. ]').gsub('+', '[+]') }.join('|') + ')' + SEP_CHARS + '))')).
         map { |q| q[2] }.flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('h26', 'x26').gsub(' ', '.')
+      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('avc', 'x264').gsub('h26', 'x26').gsub(' ', '.')
     end.uniq.flatten.sort_by { |q| VALID_QUALITIES.index(q) }
     pq = parse_3d(filename, pq)
+    pq << 'multi' if (pq & LANGUAGES).count > 1 && !pq.include?('multi')
     pq
   end
 
@@ -538,7 +539,7 @@ class Metadata
     existing_qualities = media_list_qualities(file, 'file')
     unless existing_qualities.empty?
       reference_q = qualities_max(reference_q.to_s.split(' ') + existing_qualities.dup).join(' ')
-      $speaker.speak_up "Already existing file(s) with an existing quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
+      $speaker.speak_up "Already existing file '#{file}' with an existing quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
     end
     return existing_qualities, reference_q
   end

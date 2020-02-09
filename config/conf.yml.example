@@ -1,4 +1,5 @@
 ---
+preferred_languages: fr en
 calibre_library:
   path: "/path/to/calibre/library"
 daemon:

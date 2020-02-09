@@ -38,5 +38,6 @@ TODO:
 * TvSeries:
     
 * Library:
+    * Better management of languages
     * Automatic subtitling for videos. based on https://github.com/agermanidis/autosub (when technology will be good enough, or as a good AI project)
     * Use alternative sources to identify series
