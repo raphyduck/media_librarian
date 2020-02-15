@@ -169,7 +169,7 @@ class TorrentSearch
     download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
     download_criteria.merge!(post_actions)
     get_results.each do |t|
-      t[:assume_quality] = get_tracker_config(t[:tracker])['assume_quality']
+      t[:assume_quality] = get_tracker_config(t[:tracker])['assume_quality'].to_s + ' ' + qualities['assume_quality'].to_s
       _, accept = Metadata.filter_quality(t[:name], qualities, post_actions[:language], t[:assume_quality])
       r = Library.parse_media(
           {:type => 'torrent'}.merge(t),
@@ -272,14 +272,14 @@ class TorrentSearch
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0)
     $speaker.speak_up "TorrentSearch.processing_result(results, #{sources}, #{limit}, #{DataUtils.dump_variable(f)}, #{qualities}, #{no_prompt}, #{download_criteria}, #{no_waiting})" if Env.debug?
-    f_type = f[:f_type]
+    f_type, extra_files = f[:f_type], []
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
       results = {}
-      ks = [f[:full_name], Metadata.clear_year(f[:full_name], 0)]
-      filter_k = f[:full_name]
+      ks = [{:s => f[:full_name], :f_type => f_type, :filter_k => f[:full_name]}, {:s => Metadata.clear_year(f[:full_name], 0), :f_type => f_type, :filter_k => f[:full_name]}]
       if f[:type] == 'shows' && f[:f_type] == 'episode'
-        ks += [TvSeries.ep_name_to_season(f[:full_name]), Metadata.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0)]
+        ks = [{:s => TvSeries.ep_name_to_season(f[:full_name]), :f_type => 'season', :filter_k => TvSeries.ep_name_to_season(f[:full_name]), :extra_files => f[:existing_season_eps]},
+              {:s => Metadata.clear_year(TvSeries.ep_name_to_season(f[:full_name]), 0), :f_type => 'season', :filter_k => TvSeries.ep_name_to_season(f[:full_name]), :extra_files => f[:existing_season_eps]}] + ks
       end
       f[:expect_main_file] = 1 if f[:type] == 'movies' || (f[:type] == 'shows' && f[:f_type] == 'episode')
       ks.uniq.each do |k|
@@ -289,19 +289,14 @@ class TorrentSearch
           processed_search_keyword[k, 600] = 1
         }
         next if skip
-        $speaker.speak_up("Looking for keyword '#{k}'", 0)
-        if ks.index(k).to_i == 2
-          f[:files] += f[:existing_season_eps] if f[:files]
-          filter_k = TvSeries.ep_name_to_season(f[:full_name])
-          f_type = 'season'
-        end
+        $speaker.speak_up("Looking for keyword '#{k[:s]}'", 0)
+        f_type = k[:f_type]
+        extra_files = k[:extra_files] || []
         dc = download_criteria.deep_dup
-        if ks.index(k).to_i >= 2
-          dc[:destination][f[:type].to_sym].gsub!(/[^\/]*{{ episode_season }}[^\/]*/, '') if dc && dc[:destination]
-        end
+        dc[:destination][f[:type].to_sym].gsub!(/[^\/]*{{ episode_season }}[^\/]*/, '') if dc && dc[:destination] if f[:type] == 'shows' && f[:f_type] == 'episode' && f_type == 'season'
         results = get_results(
             sources: sources,
-            keyword: k.clone,
+            keyword: k[:s].clone,
             limit: limit,
             category: f[:type],
             qualities: qualities,
@@ -309,7 +304,7 @@ class TorrentSearch
             strict: no_prompt,
             download_criteria: dc,
             post_actions: f.select { |key, _| ![:full_name, :identifier, :identifiers, :language, :type, :name, :existing_season_eps].include?(key) }.deep_dup,
-            filter_keyword: filter_k
+            filter_keyword: k[:filter_k]
         )
         break unless results.empty? #&& Cache.torrent_get(f[:identifier], f_type).empty?
       end
@@ -317,9 +312,10 @@ class TorrentSearch
     subset = Metadata.media_get(results, f[:identifiers], f_type).map { |_, t| t }
     subset.map! do |t|
       attrs = t.select { |k, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps, :files].include?(k) }.deep_dup
-      t[:files].map { |ff| ff.merge(attrs) } if t[:files]
+      t[:files] = [] if t[:files].nil?
+      t[:files] += extra_files
+      t[:files].map { |ff| ff.merge(attrs) }
     end
-    #TODO: Add all relevant files when downloading
     subset.flatten!
     subset.map! { |t| t[:files].select! { |ll| ll[:type].to_s != 'torrent' } if t[:files]; t[:files].uniq! if t[:files]; t }
     existing_torrents = []

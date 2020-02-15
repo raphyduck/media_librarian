@@ -459,6 +459,7 @@ class Library
           $t_client.move_storage([torrent_id], opath) rescue nil
           $speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
           while FileUtils.is_in_path([($t_client.get_torrent_status(torrent_id, ['name', 'save_path']) rescue {})['save_path'].to_s], opath).nil?
+            break if Time.now - completion_time > 3600
             sleep 60
           end
           $speaker.speak_up "Torrent storage moved to #{move_completed_torrent['torrent_completed_path']}" if Env.debug?
@@ -499,6 +500,7 @@ class Library
       end
     else
       $speaker.speak_up "Handling downloaded file '#{full_p}'" if Env.debug?
+      FileUtils.touch(full_p)
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')

@@ -125,11 +125,13 @@ class TorrentClient
               :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
               :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
               :queue => torrent[:queue].to_s,
+              :assume_quality => torrent[:assume_quality],
               :entry_id => torrent[:identifiers].join,
               :added_at => Time.now.to_i
           }
       }
       opts[@tname].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
+      Cache.queue_state_add_or_update('deluge_options', opts)
       path, ttype = nil, 1
       success = false
       tries = 5
@@ -140,7 +142,6 @@ class TorrentClient
         elsif magnet.to_s != ''
           path, ttype = magnet, 2
         end
-        Cache.queue_state_add_or_update('deluge_options', opts)
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
         if success
@@ -178,7 +179,7 @@ class TorrentClient
             delete_torrent(tname, tid)
             next
           end
-          torrent_qualities = Metadata.parse_qualities(tname)
+          torrent_qualities = Metadata.qualities_merge(tname, o[:assume_quality]).split('.')
           set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
           rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
           unless set_options.empty?
@@ -268,7 +269,7 @@ class TorrentClient
   end
 
   def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '')
-    $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}'.") if new_dir_name.to_s != ''
+    $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}', ensuring qualities #{torrent_qualities} in the filenames") if new_dir_name.to_s != ''
     paths = []
     files.each do |file|
       old_name = Metadata.filename_quality_change(File.basename(file['path']), torrent_qualities)

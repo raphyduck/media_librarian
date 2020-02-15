@@ -98,7 +98,7 @@ class Metadata
     return timeframe, true if qualities.nil? || qualities.empty?
     Q_SORT.each do |t|
       file_q = parse_qualities(filename, eval(t), language)[0].to_s
-      file_q = parse_qualities((assume_quality.to_s + ' ' + qualities['assume_quality'].to_s), eval(t), language)[0].to_s if file_q.empty?
+      file_q = parse_qualities((assume_quality.to_s), eval(t), language)[0].to_s if file_q.empty?
       if qualities_compare(qualities['min_quality'], t, file_q, '<', "'#{filename}' is of lower quality than the minimum required, removing from list")
         return timeframe, false
       end
@@ -518,12 +518,22 @@ class Metadata
     accept
   end
 
-  def self.qualities_min(arr)
-    qualities_array_compare(arr, '>')
-  end
-
   def self.qualities_max(arr)
     qualities_array_compare(arr, '<')
+  end
+
+  def self.qualities_merge(oq, aq, lang = '')
+    quality = ''
+    Q_SORT.each do |t|
+      cq = parse_qualities(oq.to_s, eval(t), lang).join('.')
+      cq = parse_qualities((aq.to_s), eval(t), lang).join('.') if cq.to_s == ''
+      quality += ".#{cq}"
+    end
+    quality
+  end
+
+  def self.qualities_min(arr)
+    qualities_array_compare(arr, '>')
   end
 
   def self.qualities_replace(str, qualities = [], replace_with = nil)
@@ -546,7 +556,7 @@ class Metadata
   def self.sort_media_files(files, qualities = {}, language = '')
     sorted, r = [], []
     files.each do |f|
-      qs = media_qualities(File.basename(f[:name]), language, f[:assume_quality].to_s + ' ' + qualities['assume_quality'].to_s)
+      qs = media_qualities(File.basename(f[:name]), language, f[:assume_quality].to_s)
       q_timeframe, accept = filter_quality(f[:name], qualities, language, f[:assume_quality])
       if accept
         timeframe_waiting = Utils.timeperiod_to_sec(q_timeframe).to_i
