@@ -834,7 +834,7 @@ class Library
     {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = [], base_folder = Dir.home)
+  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home)
     $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
     media_info = FileInfo.new(original)
