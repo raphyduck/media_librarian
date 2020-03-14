@@ -9,7 +9,7 @@ class Cache
       $speaker.speak_up("Empty keyword, not saving cache") if Env.debug?
       return
     end
-    $speaker.speak_up "Refreshing #{type} cache for #{keyword}#{' will not be saved to db' if full_save.nil?}" if Env.debug?
+    $speaker.speak_up "Cache '#{type}' for '#{keyword}' will not be saved to db" if full_save.nil? && Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = object_pack(result)
     $db.insert_row('metadata_search', {
@@ -28,10 +28,11 @@ class Cache
 
   def self.cache_get(type, keyword, expiration = 120, force_refresh = 0)
     return nil unless cache_get_enum(type)
+    return nil if Env.pretend?
     return @cache_metadata[type.to_s + keyword.to_s] if force_refresh.to_i == 0 && @cache_metadata[type.to_s + keyword.to_s]
     res = $db.get_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
     res.each do |r|
-      if (force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days) && !Env.pretend?
+      if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days
         cache_expire(r)
         next
       end
@@ -58,7 +59,7 @@ class Cache
   def self.cache_reset(type:)
     return nil unless cache_get_enum(type)
     $db.delete_rows('metadata_search', {:type => cache_get_enum(type)})
-    @cache_metadata.delete_if {|c, _| c.start_with?(type)}
+    @cache_metadata.delete_if { |c, _| c.start_with?(type) }
   end
 
   def self.object_pack(object, to_hash_only = 0, blacklisted_type = [Proc])
@@ -72,15 +73,15 @@ class Cache
     elsif [Date, DateTime, Time].include?(obj.class)
       obj = obj.strftime('%Y-%m-%dT%H:%M:%S%z')
     elsif obj.is_a?(Array)
-      obj.each_with_index {|o, idx| obj[idx] = object_pack(o, to_hash_only, blacklisted_type)}
+      obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only, blacklisted_type) }
     elsif obj.is_a?(Hash)
-      obj.keys.each {|k| obj[k] = object_pack(obj[k], to_hash_only, blacklisted_type)}
+      obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only, blacklisted_type) }
     elsif obj.is_a?(Thread)
       obj = "thread[#{Hash[obj.keys.map do |k|
         [k, to_hash_only.to_i == 1 && obj[k].respond_to?("[]") ? obj[k][0..100] : obj[k]] rescue nil
       end]}]"
     else
-      obj = object.instance_variables.each_with_object({}) {|var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type)}
+      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type) }
     end
     obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
@@ -101,7 +102,7 @@ class Cache
         rescue Exception
           object[1]
         end
-        object.keys.each {|k| object[k] = object_unpack(object[k])}
+        object.keys.each { |k| object[k] = object_unpack(object[k]) }
       elsif Object.const_get(object[0]).respond_to?('strptime')
         object = begin
           Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%dT%H:%M:%S%z')
@@ -114,18 +115,19 @@ class Cache
         object = object_unpack(object[1])
       end
     elsif object.is_a?(Array)
-      object.each_with_index {|o, idx| object[idx] = object_unpack(o)}
+      object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
     else
-      object.keys.each {|k| object[k] = object_unpack(object[k])}
+      object.keys.each { |k| object[k] = object_unpack(object[k]) }
     end
     object
   end
 
-  def self.queue_state_add_or_update(qname, el, unique = 1)
-    $speaker.speak_up "Will add element '#{el}' to queue '#{qname}'" if Env.debug?
+  def self.queue_state_add_or_update(qname, el, unique = 1, replace = 0)
+    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     el = [el] unless el.is_a?(Hash) || el.is_a?(Array)
     h = queue_state_get(qname, el.is_a?(Hash) ? Hash : Array)
     return if unique.to_i > 0 && h.is_a?(Array) && h.include?(el[0])
+    el.keys.each { |k| h.delete(k) } if el.is_a?(Hash) && replace.to_i > 0
     h = (el + h rescue el)
     queue_state_save(qname, h)
   end
@@ -159,8 +161,8 @@ class Cache
 
   def self.queue_state_select(qname, save = 0, &block)
     h = queue_state_get(qname)
-    return h.select {|k, v| block.call(k, v)} if save == 0
-    queue_state_save(qname, h.select {|k, v| block.call(k, v)})
+    return h.select { |k, v| block.call(k, v) } if save == 0
+    queue_state_save(qname, h.select { |k, v| block.call(k, v) })
   end
 
   def self.queue_state_shift(qname)
@@ -173,11 +175,11 @@ class Cache
     nil
   end
 
-  def self.torrent_deja_vu?(identifier, qualities, f_type)
+  def self.torrent_deja_vu?(identifier, qualities, f_type, language = '', category = '')
     return false if identifier[0..3] == 'book' #TODO: Find a more elegant way of handling this
     torrent_get(identifier, f_type).each do |t|
       next unless t[:in_db].to_i > 0 && t[:download_now].to_i >= 3
-      timeframe, accept = Metadata.filter_quality(t[:name], qualities)
+      timeframe, accept = Quality.filter_quality(t[:name], qualities, language, category)
       if timeframe.to_s == '' && accept
         $speaker.speak_up "Torrent for identifier '#{identifier}' already existing at correct quality (#{qualities})" if Env.debug?
         return true

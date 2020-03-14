@@ -31,7 +31,7 @@ class TorrentClient
   end
 
   def download_file(download, options = {}, meta_id = '')
-    options.select! { |key, _| [:move_completed, :rename_main, :main_only].include?(key) }
+    options.select! { |key, _| [:move_completed, :main_only].include?(key) }
     options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
     if options['move_completed'].to_s != ''
       options['move_completed_path'] = options['move_completed']
@@ -127,7 +127,8 @@ class TorrentClient
               :queue => torrent[:queue].to_s,
               :assume_quality => torrent[:assume_quality],
               :entry_id => torrent[:identifiers].join,
-              :added_at => Time.now.to_i
+              :added_at => Time.now.to_i,
+              :category => torrent[:category]
           }
       }
       opts[@tname].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
@@ -161,7 +162,7 @@ class TorrentClient
       tries = 10
       begin
         status = $t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
-        opts = Cache.queue_state_select('deluge_options') { |_, v| v[:info_hash] == tid }
+        opts = Cache.queue_state_select('deluge_options') { |_, v| v && v[:info_hash] == tid }
         opts = Cache.queue_state_select('deluge_options') { |tn, _| tn == status['name'] } if opts.nil? || opts.empty?
         if opts.nil? || opts.empty?
           opts = Cache.queue_state_select('deluge_options') { |tn, _| $str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9 }
@@ -179,9 +180,9 @@ class TorrentClient
             delete_torrent(tname, tid)
             next
           end
-          torrent_qualities = Metadata.qualities_merge(tname, o[:assume_quality]).split('.')
+          torrent_qualities = Quality.qualities_merge(tname, o[:assume_quality], o[:category]).split('.')
           set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
-          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities)
+          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities, o[:category])
           unless set_options.empty?
             $speaker.speak_up("Will set options: #{set_options}")
             $t_client.set_torrent_options([tid], set_options)
@@ -216,17 +217,18 @@ class TorrentClient
         else
           torrent = Cache.object_unpack(t[:tattributes])
           $speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...",0) if Env.debug?
-          seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
-          if data[:completion_time] + seed_time.hours < Time.now
-            $speaker.speak_up "Torrent finished at #{data[:completion_time]}, more than the seed time set at #{seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
-            if $remove_torrent_on_completion && t[:status].to_i < 5
-              $t_client.remove_torrent(tid, true)
-              FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exists?(data[:path].to_s)
-            end
+          target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
+          seed_time = $t_client.get_torrent_status(tid, ['seeding_time'])['seeding_time']
+          if seed_time.nil?
+            $speaker.speak_up "Torrent no longer exists, will remove now..." if Env.debug?
+            remove_it = 1
+          elsif target_seed_time < seed_time.to_i / 3600
+            $speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
+            $t_client.remove_torrent(tid, false) if $remove_torrent_on_completion && t[:status].to_i < 5
             $db.update_rows('torrents', {:status => [t[:status], 4].max}, {:name => t[:name]})
             remove_it = 1
           elsif Env.debug?
-            $speaker.speak_up("Torrent finished at #{data[:completion_time]}, less than the seed time set at #{seed_time} hour(s) for this tracker. Skipping...", 0)
+            $speaker.speak_up("Torrent has been seeding for #{seed_time.to_i / 3600} hours, less than the seed time set at #{target_seed_time} hour(s) for this tracker. Skipping...", 0)
           end
         end
       rescue => e
@@ -237,7 +239,10 @@ class TorrentClient
           $speaker.tell_error(e, Utils.arguments_dump(binding))
         end
       end
-      Cache.queue_state_remove('deluge_torrents_completed', tid) if remove_it > 0
+      if remove_it > 0
+        Cache.queue_state_remove('deluge_torrents_completed', tid)
+        FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exists?(data[:path].to_s)
+      end
     end
   end
 
@@ -260,7 +265,7 @@ class TorrentClient
     $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => @tname})
     true
   rescue => e
-    Cache.queue_state_add_or_update('deluge_options', @tname)
+    Cache.queue_state_remove('deluge_options', @tname)
     $speaker.tell_error(
         e,
         "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
@@ -268,12 +273,12 @@ class TorrentClient
     false
   end
 
-  def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '')
+  def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '', category = '')
     $speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}', ensuring qualities #{torrent_qualities} in the filenames") if new_dir_name.to_s != ''
     paths = []
     files.each do |file|
-      old_name = Metadata.filename_quality_change(File.basename(file['path']), torrent_qualities)
-      new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{old_name}"
+      old_name = Quality.filename_quality_change(File.basename(file['path']), torrent_qualities, [], category)
+      new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{StringUtils.fix_encoding(old_name)}"
       paths << [file['index'], new_path]
     end
     $t_client.rename_files(tid, paths)
@@ -305,6 +310,19 @@ class TorrentClient
     else
       $speaker.tell_error(e, "$t_client.#{debug_str}")
       raise YAML.load(e.to_s)[0]
+    end
+  end
+
+  def self.check_orphaned_torrent_folders(completed_folder:)
+    ff = FileUtils.search_folder(completed_folder, {'maxdepth' => 1, 'dironly' => 1}).map { |f| File.basename(f[0]) }
+    tids = $t_client.get_session_state
+    tids.each do |tid|
+      status = $t_client.get_torrent_status(tid, ['name', 'state'])
+      ff.delete(status['name'])
+    end
+    ff.each do |f|
+      $speaker.speak_up "Warning, folder '#{f}' is orphaned, will be removed"
+      FileUtils.rm_r("#{completed_folder}/#{f}")
     end
   end
 

@@ -147,7 +147,7 @@ class Utils
   end
 
   def self.match_release_year(target_year, year)
-    target_year == 0 || (year <= target_year + 1 && year >= target_year - 1) #|| year == 0
+    target_year.to_i == 0 || (target_year.to_i - Time.now.year).abs >= 100 || (year.to_i - Time.now.year).abs >= 100 || (year.to_i <= target_year.to_i + 1 && year.to_i >= target_year.to_i - 1) #|| year == 0
   end
 
   def self.parse_filename_template(tpl, metadata)

@@ -126,7 +126,7 @@ class Book
   def self.compress_comics(path:, destination: '', output_format: 'cbz', remove_original: 1, skip_compress: 0)
     destination = path.gsub(/\/$/, '') + '.' + output_format if destination.to_s == ''
     case output_format
-      when 'cbz'
+      when 'cbz', 'zip'
         FileUtils.compress_archive(path, destination) if skip_compress.to_i == 0
       else
         $speaker.speak_up('Nothing to do, skipping')

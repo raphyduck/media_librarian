@@ -10,6 +10,7 @@ gem 'eventmachine', :require => false
 gem 'feedjira', :require => false
 gem 'flac2mp3', :require => false
 gem 'fuzzy-string-match', :require => false
+gem 'get_process_mem', :require => false
 gem 'goodreads', :git => 'https://github.com/raphyduck/goodreads.git', :require => false
 gem 'hanami-mailer', :require => false
 gem 'httparty', :require => false

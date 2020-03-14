@@ -79,7 +79,7 @@ class FileInfo
     end
   end
 
-  def getoptivcodecparams(codec, crf = 20, preset = 'medium')
+  def getoptivcodecparams(codec, crf = $ffmpeg_crf, preset = $ffmpeg_preset)
     if codec.to_s == ''
       return []
     elsif codec.downcase.gsub("-", "") == "vc1"
@@ -106,8 +106,8 @@ class FileInfo
 
   def getresolution
     h = media_info.video.height
-    st = media_info.video.scantype || "p"
-    h *= 2 if st == 'Interlaced'
+    st = getscantype
+    h *= 2 if st == 'interlaced'
     r = case h
         when 0..360
           360
@@ -123,12 +123,20 @@ class FileInfo
     "#{r}#{st[0].downcase}"
   end
 
-  def isHDR?
-    ishdr = false
-    if getcolor.include?("BT.2020")
-      ishdr = true
+  def getscantype
+    case media_info.video.scantype.to_s.downcase
+    when 'progressive'
+      'progressive'
+    when 'interlaced', 'mbaff'
+      'interlaced'
+    else
+      'progressive'
     end
-    ishdr
+  end
+
+  def isHDR?
+    return true if getcolor.include?("BT.2020")
+    false
   end
 
   def hdr_to_sdr(output)
@@ -138,6 +146,7 @@ class FileInfo
     Utils.lock_block("ffmpeg", 1) do
       movie = FFMPEG::Movie.new(path)
       $speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
+      FileUtils.rm(output) if File.exists?(output) #Remove exists file if already exists
       movie.transcode(output, options) { |progress| printf("\rProgress: %d%", (progress * 100).round(4)) }
     end
   end
@@ -159,10 +168,12 @@ class FileInfo
       getaudiochannels.each do |ac|
         l = Languages.get_code(ac.language.to_s)
         cq = [LANG_ADJUST[l.to_sym].first] if l.to_s != '' && !LANG_ADJUST[l.to_sym].nil?
-        cq = Metadata.parse_qualities(ac.title.to_s, LANGUAGES) if !defined?(cq) || cq.nil? || cq.empty?
+        cq = Quality.parse_qualities(ac.title.to_s, LANGUAGES) if !defined?(cq) || cq.nil? || cq.empty?
         q += cq
       end
       q += ['multi'] if getaudiochannels.map { |a| Languages.get_code(a.language.to_s) }.compact.uniq.count > 1
+    else
+      return nil
     end
     $speaker.speak_up "#{type} quality of file #{File.basename(path)} is #{q.join('.')}" if Env.debug? && !q.empty?
     q

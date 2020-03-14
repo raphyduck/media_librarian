@@ -19,11 +19,8 @@ class StringUtils
   end
 
   def self.clean_search(str)
-    str.gsub(/[,\'\:\&]/, '')
-  end
-
-  def self.clear_extension(filename)
-    filename.gsub(Regexp.new(VALID_VIDEO_EXT), '\1')
+    accents_clear(str).gsub(/[,\'\:\&\-\?\!]/, '').gsub(/^the[#{SPACE_SUBSTITUTE}](\w+.*)/i, '\1').
+        gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/[#{SPACE_SUBSTITUTE}]\(?(US|UK)\)?$/, '')
   end
 
   def self.commatize(previous)
@@ -64,12 +61,10 @@ class StringUtils
     number > 1 ? "s" : ""
   end
 
-  def self.prepare_str_search(str)
-    clear_extension(str).downcase.gsub(/[_]/, ' ')
-  end
-
   def self.regexify(str)
     str = str.dup
+    str.gsub!('?', '\?')
+    str.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
     sep_chars = '[:,-_\. ]{1,2}'
     trailing_sep = ''
     d = str.match(/.*:([\. \w]+)(.+)?/)
@@ -79,11 +74,19 @@ class StringUtils
       str.gsub!(d, '<placeholder>') if d
       d = d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
     end
-    str = str.strip.gsub("'", "'?").gsub(/(\w)s /, '\1\'?s ')
+    e = str.match(/.*[#{SPACE_SUBSTITUTE}]+([A-Z]+)[#{SPACE_SUBSTITUTE}]*$/)
+    if e
+      e = e[1]
+      str.gsub!(e, '<placeholder2>') if e
+      e = e.chars.map{|w| "#{w}([a-z]+[#{SPACE_SUBSTITUTE}]?)?"}.join
+    end
+    str = str.strip.gsub("'", "'?").gsub('+', '.').gsub('$', '.').gsub(/(\w)s([#{SPACE_SUBSTITUTE}])/, '\1\'?s\2')
+    str = str.gsub(/(\w)re([#{SPACE_SUBSTITUTE}])/, '\1\'?re\2')
     str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')
-    str.gsub!(/(&|and|et)/, '(&|and|et)')
+    str.gsub!(/(&|and|et)/i, '(&|and|et)')
     str.gsub!(/le\'\?s\[:,-_\\\. \]\{1,2\}/i, '(les )?')
     str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
+    str.gsub!('<placeholder2>', "#{e}#{trailing_sep}") if e
     str
   end
 
@@ -99,7 +102,7 @@ class StringUtils
   def self.title_match_string(str, strict = 1)
     year = Metadata.identify_release_year(str).to_i
     str = str.gsub(/\((\d{4})\)$/, '\(?(' + (year - 1).to_s + '|\1|' + (year + 1).to_s + ')\)?')
-    str = '(\/|^)([Tt]he )?' + regexify(str.gsub(/^[Tt]he /, '').gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/ \(US\)$/, ''))
+    str = '(\/|^)([Tt]he )?' + regexify(clean_search(str))
     str << '.{0,7}$' if strict.to_i > 0
     str
   end

@@ -129,7 +129,7 @@ module FileUtils
       target = File.join(target, "")
       rm_r(target) if File.exist?(target)
       mkdir_p(target)
-      Dir.glob(File.join(source, '**/*')).each do |source_path|
+      Dir.glob(File.join(source.gsub("[","\\[").gsub("]","\\]"), '**/*')).each do |source_path|
         target_path = source_path.gsub(Regexp.new("^" + Regexp.escape(source)), target)
         if File.file? source_path
           mkdir_p File.dirname(target_path)
@@ -166,7 +166,7 @@ module FileUtils
     def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
       destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
       if File.exists?(destination)
-        _, proper = Metadata.identify_proper(original)
+        _, proper = Quality.identify_proper(original)
         if remove_outdated.to_i > 0 && proper.to_i > 0
           $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
           rm(destination)

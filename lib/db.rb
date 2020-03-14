@@ -155,6 +155,7 @@ module Storage
     private
 
     def execute_query(table, query, values, write = 1)
+      tries ||= 3
       query_str = query.dup
       query_log = query.dup
       values.each do |v|
@@ -169,8 +170,13 @@ module Storage
         ins.execute(values)
       }
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding, 2, "Storage::Db"))
-      raise e
+      if (tries -= 1) >= 0
+        sleep 10
+        retry
+      else
+        $speaker.tell_error(e, Utils.arguments_dump(binding, 2, "Storage::Db"))
+        raise e
+      end
     end
 
     def index_list(table)

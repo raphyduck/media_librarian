@@ -1,8 +1,8 @@
 GIT
   remote: https://github.com/raphyduck/archive-zip.git
-  revision: 6f59e9bc339d1582c290e27c7c66f0bf6f453dd0
+  revision: d585329765c324ab0f0a2364671429138a3e1971
   specs:
-    archive-zip (0.11.0)
+    archive-zip (0.12.0)
       io-like (~> 0.3.0)
 
 GIT
@@ -15,11 +15,11 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/goodreads.git
-  revision: 71d57a0f5921011ed5ed9d48ccda64390b36b07b
+  revision: 9c33913a0ac05b9fbc05498b28a0b4200ab23ed7
   specs:
-    goodreads (0.5.3)
+    goodreads (0.7.0)
       activesupport (>= 3.0)
-      i18n (~> 0.5)
+      i18n (>= 0.6, < 2)
       oauth (~> 0.4)
       rest-client (~> 2.0)
 
@@ -32,13 +32,13 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/mediainfo.git
-  revision: 0ef4dc31344038abac44a04ad89d327c29d872af
+  revision: b14b306857ab317f9dbd171b0b09830a6af4ba52
   specs:
-    mediainfo (1.3.3)
+    mediainfo (1.4.0)
 
 GIT
   remote: https://github.com/raphyduck/ruby-mp3info.git
-  revision: e9d46e1264abc571bd8b2b2397a24b191b36208b
+  revision: 9a718b1b4d93fef5a21365be2dffaf62eeb839ea
   specs:
     ruby-mp3info (0.8.10)
 
@@ -95,7 +95,7 @@ GEM
       public_suffix (>= 2.0.2, < 5.0)
     afm (0.2.2)
     bencode (0.8.2)
-    capybara (3.30.0)
+    capybara (3.31.0)
       addressable
       mini_mime (>= 0.1.3)
       nokogiri (~> 1.8)
@@ -106,36 +106,39 @@ GEM
     cliver (0.3.2)
     concurrent-ruby (1.0.5)
     connection_pool (2.2.2)
-    crass (1.0.5)
+    crass (1.0.6)
     domain_name (0.5.20190701)
       unf (>= 0.0.5, < 1.0.0)
     eventmachine (1.2.7)
-    feedjira (3.1.0)
+    feedjira (3.1.1)
       loofah (>= 2.3.1)
       sax-machine (>= 1.0)
+    ffi (1.12.2)
     flac2mp3 (0.4.2)
       flacinfo-rb (>= 0.4)
       ruby-mp3info (>= 0.5.1)
     flacinfo-rb (1.0)
     fuzzy-string-match (1.0.1)
       RubyInline (>= 3.8.6)
-    hanami-mailer (1.3.1)
+    get_process_mem (0.2.5)
+      ffi (~> 1.0)
+    hanami-mailer (1.3.2)
       hanami-utils (~> 1.3)
       mail (~> 2.6)
       tilt (~> 2.0, >= 2.0.1)
-    hanami-utils (1.3.5)
+    hanami-utils (1.3.6)
       concurrent-ruby (~> 1.0)
       transproc (~> 1.0)
     hashery (2.1.2)
     http-accept (1.7.0)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
-    httparty (0.17.3)
+    httparty (0.18.0)
       mime-types (~> 3.0)
       multi_xml (>= 0.5.2)
-    i18n (0.9.5)
+    i18n (1.8.2)
       concurrent-ruby (~> 1.0)
-    io-like (0.3.0)
+    io-like (0.3.1)
     json (2.3.0)
     loofah (2.4.0)
       crass (~> 1.0.2)
@@ -156,7 +159,7 @@ GEM
     mime-types-data (3.2019.1009)
     mini_mime (1.0.2)
     mini_portile2 (2.4.0)
-    minitest (5.13.0)
+    minitest (5.14.0)
     multi_json (1.14.1)
     multi_xml (0.6.0)
     net-http-digest_auth (1.4.1)
@@ -164,7 +167,7 @@ GEM
       connection_pool (~> 2.2)
     net-ssh (5.2.0)
     netrc (0.11.0)
-    nokogiri (1.10.7)
+    nokogiri (1.10.9)
       mini_portile2 (~> 2.4.0)
     ntlm-http (0.1.1)
     oauth (0.5.4)
@@ -178,11 +181,11 @@ GEM
       capybara (>= 2.1, < 4)
       cliver (~> 0.3.1)
       websocket-driver (>= 0.2.0)
-    public_suffix (4.0.2)
-    rack (2.0.8)
+    public_suffix (4.0.3)
+    rack (2.2.2)
     rack-test (1.1.0)
       rack (>= 1.0, < 3)
-    regexp_parser (1.6.0)
+    regexp_parser (1.7.0)
     rencoder (0.1.1)
     rest-client (2.1.0)
       http-accept (>= 1.7.0, < 2.0)
@@ -205,7 +208,7 @@ GEM
     tilt (2.0.10)
     titleize (1.4.1)
     transproc (1.1.1)
-    ttfunk (1.5.1)
+    ttfunk (1.6.2.1)
     tvdb_party (0.9.3)
       httparty (>= 0.6.1)
     tzinfo (1.2.6)
@@ -233,6 +236,7 @@ DEPENDENCIES
   feedjira
   flac2mp3
   fuzzy-string-match
+  get_process_mem
   goodreads!
   hanami-mailer
   httparty

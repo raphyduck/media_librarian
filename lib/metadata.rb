@@ -1,116 +1,42 @@
 require File.dirname(__FILE__) + '/vash'
 class Metadata
 
-  def self.clean_title(title, complete = 0)
-    t = title.clone
-    t.gsub!(/\(i+\) /i, '')
-    t.gsub!(/ \(video\)/i, '')
-    t.gsub!(/\(tv .+\)/i, '')
-    t.gsub!(/(&#x27;|&#039;)/, '')
-    if complete.to_i > 0
-      t.gsub!(/[\( _\.]us[ _\.\)]{0,2}$/i, '')
-    end
-    t
-  end
-
-  def self.clear_year(title, strict = 1)
-    reg = strict.to_i > 0 ? '[ \.]\(?\d{4}\)?[ \.]?' + BASIC_EP_MATCH + '?$' : '[\( \.]\d{4}\)?([ \.](.*))?$'
-    title.strip.gsub(Regexp.new(reg, Regexp::IGNORECASE), ' \1')
-  end
-
-  def self.detect_file_quality(file, fileinfo = nil, mv = 0, ensure_qualities = '')
-    qualities = []
-    return file, qualities unless file.match(Regexp.new(VALID_VIDEO_EXT))
-    fileinfo = FileInfo.new(file) if fileinfo.nil?
-    nfile = File.basename(file)
-    (Q_SORT + ['DIMENSIONS']).each do |qtitle|
-      q = fileinfo.quality(qtitle)
-      unless q.empty?
-        nfile = filename_quality_change(nfile, q, eval(qtitle) - q)
-        ensure_qualities = filename_quality_change(ensure_qualities, q, eval(qtitle) - q)
+  def self.detect_metadata(name, type)
+    title, metadata, ids = name, name, ''
+    case type
+    when 'books'
+      title = name.gsub(/.*\/([^\/]*)/, '\1')
+    when 'movies'
+      m = name.match(/(.*[#{SPACE_SUBSTITUTE}]\(?\d{4}\)?)([#{SPACE_SUBSTITUTE}](.*)|$)/i)
+      if m
+        title = m[1]
+        metadata = m[3]
       end
-      qualities += parse_qualities("#{nfile}.#{ensure_qualities}", eval(qtitle))
+    when 'shows'
+      title = name.gsub(/[#{SPACE_SUBSTITUTE}][Ss](eason|aison)[#{SPACE_SUBSTITUTE}](\d{1,4})[#{SPACE_SUBSTITUTE}]/) { " S#{'%02d' % $2} " }
+      ids = title.scan(Regexp.new(BASIC_EP_MATCH)).uniq
+      unless ids.empty?
+        metadata = title.gsub(/#{ids.first[0]}(.*)/, '\1')
+        title.gsub!(/#{ids.first[0]}.*/, ' ')
+      end
+      ids = ids.map { |i| i[0] if i[0] }.join
+      title.gsub!(/^(\[[^\]]+\])?(.*)/, '\2')
     end
-    nfile = File.dirname(file) + '/' + nfile
-    FileUtils.mv(file, nfile) if file != nfile && mv.to_i > 0
-    return nfile, qualities
+    return title, metadata, ids
   end
 
   def self.detect_real_title(name, type, id_info = 0, complete = 1)
-    name = I18n.transliterate(name.clone.to_s.encode("UTF-8")) #TODO: Fix encoding incompatibility errors
-    case type
-    when 'books'
-      name.gsub!(/.*\/([^\/]*)/, '\1')
-    when 'movies'
-      m = name.match(/^(\[[^\]])?(.*[#{SPACE_SUBSTITUTE}]\(?\d{4}\)?)([#{SPACE_SUBSTITUTE}]|$)/i)
-      name = m[2] if m
-    when 'shows'
-      ids = name.scan(Regexp.new(BASIC_EP_MATCH))
-      name.gsub!(/(.*)#{ids.first[0]}.*/, '\1') unless ids.empty?
-      ids = ids.map { |i| i[0] if i[0] }.join
-      name.gsub!(/^(\[[^\]]+\])?(.*)/, '\2')
-      name.gsub!(/[#{SPACE_SUBSTITUTE}]\(?US[\)#{SPACE_SUBSTITUTE}]{0,2}$/, '') if complete.to_i > 0
-      name << "#{ids}" if id_info.to_i > 0
+    name = name.clone.to_s.encode("UTF-8")
+    name.gsub!(Regexp.new(VALID_VIDEO_EXT), '\1')
+    name, _, ids = detect_metadata(name, type)
+    if complete.to_i == 0
+      name.gsub!(/[#{SPACE_SUBSTITUTE}]\((US|UK)\)[#{SPACE_SUBSTITUTE}]{0,2}$/, '')
+      name.gsub!(/(.*)[#{SPACE_SUBSTITUTE}]\(?(19|20)(\d{2})\)?([#{SPACE_SUBSTITUTE}]|$)/i, '\1')
     end
+    name.gsub!(/\((i+|video|tv#{SPACE_SUBSTITUTE}.+)\)/i, '')
+    name.gsub!(/(&#x27;|&#039;)/, '')
+    name << "#{ids}" if id_info.to_i > 0 && defined?(ids)
     name.to_s.gsub(/[#{SPACE_SUBSTITUTE}]+/, ' ')
-  end
-
-  def self.filename_quality_change(filename, new_qualities, replaced_qualities = [])
-    extension = FileUtils.get_extension(filename)
-    (Q_SORT + ['EXTRA_TAGS']).each do |t|
-      file_q = Metadata.parse_qualities(filename, eval(t))
-      t_q = Metadata.parse_qualities(".#{new_qualities.join('.')}.", eval(t))
-      r_q = Metadata.parse_qualities(".#{replaced_qualities.join('.')}.", eval(t))
-      r_q -= t_q
-      next if (r_q - t_q).empty? && (t_q - r_q).empty?
-      if (file_q - r_q) != file_q
-        $speaker.speak_up "Removing qualities information '#{r_q.join('.')}' from file '#{filename}'..." if Env.debug?
-        filename = qualities_replace(filename, r_q)
-      end
-      unless (t_q - file_q).empty?
-        old_filename = filename.dup
-        filename = qualities_replace(filename, file_q)
-        t_q.each { |q| filename = filename.gsub(/\.#{extension}$/, '').to_s + ".#{q}.#{extension}" }
-        $speaker.speak_up "File '#{old_filename}' does not contain the qualities information '#{t_q.join('.')}', should be '#{filename}'" if Env.debug?
-      end
-    end
-    filename
-  end
-
-  def self.filter_quality(filename, qualities, language = '', assume_quality = nil)
-    timeframe = ''
-    unless parse_qualities(filename, ['hc']).empty?
-      $speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
-      return timeframe, false
-    end
-    file_q = parse_qualities(filename, VALID_QUALITIES, language)
-    (qualities['illegal'].is_a?(Array) ? qualities['illegal'] : [qualities['illegal'].to_s]).each do |iq|
-      next if iq.to_s == ''
-      if (iq.split - file_q).empty?
-        $speaker.speak_up "'#{filename}' has an illegal combination of qualities, removing from list" if Env.debug?
-        return timeframe, false
-      end
-    end
-    if qualities['strict'].to_i > 0 && (file_q - qualities['min_quality'].split(' ')).empty?
-      $speaker.speak_up "Strict minimum quality is excluded and '#{filename}' has only the strict minimum, removing from list" if Env.debug?
-      return timeframe, false
-    end
-    return timeframe, true if qualities.nil? || qualities.empty?
-    Q_SORT.each do |t|
-      file_q = parse_qualities(filename, eval(t), language)[0].to_s
-      file_q = parse_qualities((assume_quality.to_s), eval(t), language)[0].to_s if file_q.empty?
-      if qualities_compare(qualities['min_quality'], t, file_q, '<', "'#{filename}' is of lower quality than the minimum required, removing from list")
-        return timeframe, false
-      end
-      if qualities_compare(qualities['max_quality'], t, file_q, '>', "'#{filename}' is of higher quality than the maximum allowed, removing from list")
-        return timeframe, false
-      end
-      if qualities_compare((qualities['target_quality'] || qualities['max_quality']), t, file_q, '<', "'#{filename}' is of lower quality than the target quality, setting timeframe '#{qualities['timeframe']}'") &&
-          timeframe == ''
-        timeframe = qualities['timeframe'].to_s
-      end
-    end
-    return timeframe, true
   end
 
   def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, qualities = [])
@@ -128,8 +54,8 @@ class Metadata
         file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
-    metadata['quality'] = parse_qualities(qualities.join('.') != '' ? ".#{qualities.join('.')}." : ep_filename, VALID_QUALITIES, info[:language]).join('.')
-    metadata['proper'], _ = identify_proper(ep_filename)
+    metadata['quality'] = Quality.parse_qualities(qualities.join('.') != '' ? ".#{qualities.join('.')}." : ep_filename, VALID_QUALITIES, info[:language], type).join('.')
+    metadata['proper'], _ = Quality.identify_proper(ep_filename)
     metadata['extension'] = FileUtils.get_extension(ep_filename)
     metadata['is_found'] = true
     metadata['part'] = file[:parts].map { |p| "part#{p}" }.join('.') unless file[:parts].nil?
@@ -149,11 +75,6 @@ class Metadata
     end
     metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select { |k, _| ![:show, :movie, :book].include?(k) }), 0))
     metadata
-  end
-
-  def self.identify_proper(filename)
-    p = File.basename(filename).downcase.match(/[\. ](proper|repack)[\. ]/).to_s.gsub(/[\. ]/, '').gsub(/(repack|real)/, 'proper')
-    return p, (p != '' ? 1 : 0)
   end
 
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = Dir.home, ids = {})
@@ -202,42 +123,25 @@ class Metadata
     y
   end
 
-  def self.match_titles(title, target_title, year, category)
+  def self.match_titles(title, target_title, year, target_year, category)
     ep_match = true
     if category.to_s == 'shows'
       _, _, title_ep_ids = TvSeries.identify_tv_episodes_numbering(title)
       _, _, target_title_ep_ids = TvSeries.identify_tv_episodes_numbering(target_title)
       target_title_ep_ids.each { |n| ep_match = title_ep_ids.include?(n) if ep_match }
     end
-    title = detect_real_title(title.strip, category, 0, 0)
-    target_title = detect_real_title(target_title.strip, category, 0, 0)
-    target_year = identify_release_year(target_title)
-    additional_year_cond = year.to_i > 0 ? "|#{year}" : ''
-    target_title.strip!
-    target_title.gsub!('?', '\?')
-    target_title.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
-    if target_title.match(/[ \.]\(?(\d{4})\)?([#{SPACE_SUBSTITUTE}]|$)/)
-      target_title.gsub!(/[ \.]\(?(\d{4})\)?([#{SPACE_SUBSTITUTE}]|$)/, '.\(?(\1' + additional_year_cond + '|US|UK)\)?\2')
-    elsif category.to_s == 'movies' && year.to_i > 0
-      target_title << '.\(?' << year.to_s << '\)?'
-    end
-    m = title.match(
+    t = detect_real_title(StringUtils.regularise_media_filename(title.strip), category, 0, 0)
+    tt = detect_real_title(target_title.strip, category, 0, 0)
+    tt = StringUtils.clean_search(tt)
+    t = StringUtils.clean_search(t)
+    tt.strip!
+    m = t.match(
         Regexp.new(
-            '^\[?.{0,2}[\] ]?' + StringUtils.regexify(target_title) + '([' + SPACE_SUBSTITUTE + ']|[\&-]?e\d{1,4})?$',
+            '^\[?.{0,2}[\] ]?' + StringUtils.regexify(tt) + '([' + SPACE_SUBSTITUTE + ']|[\&-]?e\d{1,4})?$',
             Regexp::IGNORECASE)
     ) && ep_match && Utils.match_release_year(target_year, year)
-    $speaker.speak_up "title '#{title}' ('#{year}')#{' does NOT' unless m} match#{'es' if m} target_title '#{target_title}'" if Env.debug?
+    $speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
     m
-  end
-
-  def self.media_qualities(filename, language = '', assume_qualities = '')
-    q = {}
-    Q_SORT.each do |t|
-      q[t.downcase] = parse_qualities(filename, eval(t), language).first.to_s
-      q[t.downcase] = parse_qualities(assume_qualities, eval(t), language).first.to_s if q[t.downcase].empty? && assume_qualities.to_s != ''
-    end
-    q['proper'] = identify_proper(filename)[1]
-    q
   end
 
   def self.media_add(item_name, type, full_name, identifiers, attrs = {}, file_attrs = {}, file = {}, data = {})
@@ -279,7 +183,7 @@ class Metadata
     identifiers = [identifiers.to_s] unless identifiers.is_a?(Array)
     identifiers.each do |i|
       eps.merge!(files.select do |id, f|
-        id.to_s.include?(i) && (f_type.nil? || f[:f_type].nil? || f_type.to_s == f[:f_type].to_s)
+        id.to_s.include?(i) && (f_type.to_s == '' || f[:f_type].to_s == '' || f_type.to_s == f[:f_type].to_s)
       end)
     end
     eps
@@ -288,29 +192,26 @@ class Metadata
   def self.media_chose(title, items, keys, category, no_prompt = 0)
     item = nil
     unless (items || []).empty?
-      if keys['year']
-        items.map! { |i| i[:release_year] = i[keys['year']].to_s.match(/\d{4}/).to_s.to_i; i }
-        items.sort_by! { |i| i[:release_year] > 0 ? i[:release_year].to_i : Time.now.year + 3 } if no_prompt.to_i == 0
-      end
-      results = items.map { |m| [clean_title(m[keys['name']]), m[keys['url']]] }
-      results += [['Edit title manually', '']]
+      year = identify_release_year(title)
+      items.sort_by! { |i| iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3); ((year.to_i > 0 ? year : iyear) - iyear).abs } if keys['year']
+      items.map! { |i| i[keys['titles']].map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
+      results = items.map { |m| {:title => m[keys['name']], :info => m[keys['url']]} }
+      results += [{:title => 'Edit title manually', :info => ''}]
       (0..results.count - 2).each do |i|
-        show_year = items[i][:release_year].to_i
-        if match_titles(clean_title(items[i][keys['name']], 1),
-                        clean_title(title, 1), show_year, category)
+        show_year = items[i][keys['year']].to_i
+        if match_titles(items[i][keys['name']], title, show_year, year, category)
           choice = i
         elsif no_prompt.to_i == 0
           $speaker.speak_up("Alternatives titles found for #{title}:")
           results.each_with_index do |m, idx|
-            $speaker.speak_up("#{idx + 1}: #{m[0]}#{' (info: ' + URI.escape(m[1]) + ')' if m[1].to_s != ''}")
+            $speaker.speak_up("#{idx + 1}: #{m[:title]}#{' (info: ' + URI.escape(m[:info]) + ')' if m[:info].to_s != ''}")
           end
           choice = $speaker.ask_if_needed("Enter the number of the chosen title (empty to skip): ", no_prompt, 1).to_i - 1
         else
           choice = -1
         end
         next if choice < 0 || choice >= results.count
-        t = results[choice]
-        if t[0] == 'Edit title manually'
+        if results[choice][:title] == 'Edit title manually'
           $speaker.speak_up('Enter the title to look for:')
           title = STDIN.gets.strip
           break
@@ -321,14 +222,6 @@ class Metadata
       end
     end
     return title, item
-  end
-
-  def self.media_list_qualities(file, type = 'file')
-    if file[:files]
-      file[:files].select { |f| f[:type] == type }.map { |f| parse_qualities(f[:name]) }.uniq.compact.flatten
-    else
-      []
-    end
   end
 
   def self.media_type_get(type)
@@ -353,42 +246,39 @@ class Metadata
   end
 
   def self.movie_lookup(title, no_prompt = 0, ids = {}, original_filename = nil)
-    title = StringUtils.prepare_str_search(title)
     exact_title, movie = title, nil
     cache_name = title.to_s + (ids['trakt'] || ids['imdb'] || ids['tmdb'] || ids['slug']).to_s + original_filename.to_s
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
       cached = Cache.cache_get('movie_lookup', cache_name)
       return cached if cached
-      if !ids.empty? &&
-          (ids['imdb'].to_s != '' || ids['trakt'].to_s != '' || ids['tmdb'].to_s != '' || ids['slug'].to_s != '')
-        exact_title, movie = Movie.movie_get(ids)
-        Cache.cache_add('movie_lookup', cache_name, [exact_title, movie], movie)
-        return exact_title, movie unless movie.nil?
-      end
-      [clear_year(title, no_prompt), title].uniq.each do |s|
-        movies = TraktAgent.search__movies(s) rescue []
-        movies = Tmdb::Movie.find(s) if !movies.is_a?(Array) || movies.empty?
-        movies = [movies] unless movies.is_a?(Array)
-        movies.map! do |m|
-          v = if m.is_a?(Tmdb::Movie) || m['title']
-                m
-              elsif m['movie']
-                m['movie']
-              else
-                nil
-              end
-          Cache.object_pack(Movie.new(Cache.object_pack(v, 1)), 1) if v
+      exact_title, movie = Movie.movie_get(ids) unless ids.empty?
+      [[Tmdb::Movie, :find], [TraktAgent, :search__movies]].each do |o, m|
+        break unless movie.nil?
+        begin
+          movies = o.method(m).call(detect_real_title(title, 'movies', 0, 0)) rescue o.method('method_missing').call(m, detect_real_title(title, 'movies', 0, 0))
+          movies = [movies] unless movies.is_a?(Array)
+          movies.map! do |m|
+            v = if m.is_a?(Tmdb::Movie) || m['title']
+                  Cache.object_pack(m, 1)
+                elsif m['movie']
+                  m['movie']
+                else
+                  nil
+                end
+            Cache.object_pack(Movie.movie_get(v['ids'] || {'tmdb' => v['id']})[1], 1) if v
+          end
+          movies.compact!
+          exact_title, movie = media_chose(
+              title,
+              movies,
+              {'name' => 'name', 'titles' => 'alt_titles', 'url' => 'url', 'year' => 'year'},
+              'movies',
+              no_prompt.to_i
+          )
+          exact_title, movie = Movie.movie_get(movie['ids']) unless movie.nil?
+        rescue => e
+          $speaker.tell_error e, "Metadata.movie_lookup block"
         end
-        movies.compact!
-        exact_title, movie = media_chose(
-            title,
-            movies,
-            {'name' => 'name', 'url' => 'url', 'year' => 'year'},
-            'movies',
-            no_prompt.to_i
-        )
-        exact_title, movie = Movie.movie_get(movie['ids']) unless movie.nil?
-        break if movie
       end
       if movie.nil? && original_filename.to_s != ''
         exact_title, movie = Kodi.kodi_lookup('movies', original_filename, exact_title)
@@ -400,17 +290,6 @@ class Metadata
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('movie_lookup', cache_name, [title, nil], nil)
     return title, nil
-  end
-
-  def self.parse_3d(filename, qs)
-    return qs unless qs.include?('3d')
-    qs.delete_if { |q| q.include?('3d') }
-    if filename.downcase.match(/#{SEP_CHARS}top.{0,3}bottom#{SEP_CHARS}/)
-      qs << '3d.tab'
-    else
-      qs << '3d.sbs'
-    end
-    qs
   end
 
   def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, file = {})
@@ -425,7 +304,8 @@ class Metadata
       info = {
           :movies_name => item_name,
           :movie => item,
-          :release_date => release
+          :release_date => release,
+          :titles => item.alt_titles
       }
       parts = Movie.identify_split_files(filename)
     when 'shows'
@@ -460,144 +340,26 @@ class Metadata
           :book_series => f_type == 'book' ? item.series : item
       }
     end
-    info[:language] = item.language if item&.language
+    info[:language] = item.language if item.class.method_defined?("language")
     file[:parts] = parts unless file.nil? || file.empty?
     return full_name, ids, info
   end
 
-  def self.parse_qualities(filename, qc = VALID_QUALITIES, language = '')
-    filename = qualities_replace(filename + '.ext', LANG_ADJUST[language.to_sym], '.vo.') if language.to_s != '' && LANG_ADJUST[language.to_sym].is_a?(Array) #Lets adjust language qualities first
-    pq = (filename + '.ext').downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map { |q| q.gsub('.', '[\. ]').gsub('+', '[+]') }.join('|') + ')' + SEP_CHARS + '))')).
-        map { |q| q[2] }.flatten.map do |q|
-      q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('avc', 'x264').gsub('h26', 'x26').gsub(' ', '.')
-    end.uniq.flatten.sort_by { |q| VALID_QUALITIES.index(q) }
-    pq = parse_3d(filename, pq)
-    pq << 'multi' if (pq & LANGUAGES).count > 1 && !pq.include?('multi')
-    pq
-  end
-
-  def self.qualities_compare(qualities, type, qt, comparison, message = '')
-    qualities.to_s.split(' ').each do |q|
-      if eval(type).include?(q) && ((qt.empty? && comparison == '<') || (!qt.empty? && eval(type).index(q).send(comparison, eval(type).index(qt))))
-        $speaker.speak_up "#{message} (target '#{q}')" if Env.debug? && message.to_s != ''
-        return true
-      end
-    end
-    return false
-  end
-
-  def self.qualities_array_compare(arr, comparison)
-    min = []
-    until arr.empty? do
-      cmin = arr.shift
-      arr.delete_if do |q|
-        delete = false
-        Q_SORT.each do |t|
-          if eval(t).include?(cmin) && eval(t).include?(q)
-            cmin = q if eval(t).index(q).send(comparison, eval(t).index(cmin))
-            delete = true
-          end
-        end
-        delete
-      end
-      min << cmin if cmin
-    end
-    min
-  end
-
-  def self.qualities_file_filter(file, qualities, language = '')
-    accept = true
-    if !qualities.nil? && !qualities.empty? && (qualities['target_quality'] || qualities['max_quality'])
-      existing_qualities, min_q = qualities_set_minimum(file, (qualities['target_quality'] || qualities['max_quality']))
-      _, accept = filter_quality(
-          '.' + existing_qualities.join('.') + '.',
-          {'min_quality' => min_q}, language
-      )
-      $speaker.speak_up "Ignoring file '#{file[:full_name]}' as it is lower than target quality '#{(qualities['target_quality'] || qualities['max_quality'])}'" if Env.debug? && !accept
-    end
-    accept
-  end
-
-  def self.qualities_max(arr)
-    qualities_array_compare(arr, '<')
-  end
-
-  def self.qualities_merge(oq, aq, lang = '')
-    quality = ''
-    Q_SORT.each do |t|
-      cq = parse_qualities(oq.to_s, eval(t), lang).join('.')
-      cq = parse_qualities((aq.to_s), eval(t), lang).join('.') if cq.to_s == ''
-      quality += ".#{cq}"
-    end
-    quality
-  end
-
-  def self.qualities_min(arr)
-    qualities_array_compare(arr, '>')
-  end
-
-  def self.qualities_replace(str, qualities = [], replace_with = nil)
-    replace_with = '\1' if replace_with.nil?
-    qualities.each do |q|
-      str = str.gsub(Regexp.new('(^|' + SEP_CHARS + ')(' + q + ')' + SEP_CHARS,Regexp::IGNORECASE), replace_with)
-    end
-    str
-  end
-
-  def self.qualities_set_minimum(file, reference_q)
-    existing_qualities = media_list_qualities(file, 'file')
-    unless existing_qualities.empty?
-      reference_q = qualities_max(reference_q.to_s.split(' ') + existing_qualities.dup).join(' ')
-      $speaker.speak_up "Already existing file '#{file}' with an existing quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
-    end
-    return existing_qualities, reference_q
-  end
-
-  def self.sort_media_files(files, qualities = {}, language = '')
-    sorted, r = [], []
-    files.each do |f|
-      qs = media_qualities(File.basename(f[:name]), language, f[:assume_quality].to_s)
-      q_timeframe, accept = filter_quality(f[:name], qualities, language, f[:assume_quality])
-      if accept
-        timeframe_waiting = Utils.timeperiod_to_sec(q_timeframe).to_i
-        sorted << [f[:name], qs['resolutions'], qs['sources'], qs['codecs'], qs['audio'], qs['proper'], qs['languages'], qs['cut'],
-                   (f[:timeframe_tracker].to_i + f[:timeframe_size].to_i + timeframe_waiting)]
-        r << f.merge({:timeframe_quality => Utils.timeperiod_to_sec(q_timeframe).to_i})
-      end
-    end
-    sorted.sort_by! { |x| (AUDIO.index(x[4]) || 999).to_i }
-    sorted.sort_by! { |x| -x[5].to_i }
-    sorted.sort_by! { |x| (CUT.index(x[7]) || 999).to_i }
-    sorted.sort_by! { |x| (CODECS.index(x[3]) || 999).to_i }
-    sorted.sort_by! { |x| (LANGUAGES.index(x[6]) || 999).to_i }
-    sorted.sort_by! { |x| (SOURCES.index(x[2]) || 999).to_i }
-    sorted.sort_by! { |x| (RESOLUTIONS.index(x[1]) || 999).to_i }
-    sorted.sort_by! { |x| x[8].to_i }
-    r.sort_by! { |f| sorted.map { |x| x[0] }.index(f[:name]) }
-  end
-
   def self.tv_show_search(title, no_prompt = 0, ids = {}, original_filename = '')
-    title = StringUtils.prepare_str_search(title)
     cache_name = title.to_s + ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join
     exact_title, show = title, nil
     Utils.lock_block("#{__method__}_#{title}#{ids}") {
       cached = Cache.cache_get('tv_show_search', cache_name)
       return cached if cached
-      if (ids['tvdb'] || ids['trakt'] || ids['imdb']).to_s != ''
-        exact_title, show = TvSeries.tv_show_get(ids)
-        Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
-        return exact_title, show unless show.nil?
+      exact_title, show = TvSeries.tv_show_get(TvSeries.formate_ids(ids)) unless ids.empty?
+      [TVMaze::Show, $tvdb].each do |o|
+        break if show
+        tvdb_shows = o.search(detect_real_title(title, 'shows', 0, 0)).map { |s| Cache.object_pack(s, 1) }
+        tvdb_shows.map! { |s| s = TvSeries.new(s); y = s.year; Cache.object_pack(s, 1).merge({'year' => y}) }
+        exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'year'}, 'shows', no_prompt)
+        exact_title, show = TvSeries.tv_show_get(show['ids']) if show
       end
-      tvdb_shows = $tvdb.search(title)
-      tvdb_shows = $tvdb.search(title.gsub(/ \(\d{4}\)$/, '')) if tvdb_shows.empty?
-      tvdb_shows = TVMaze::Show.search(title).map { |s| Cache.object_pack(s, 1) } if tvdb_shows.empty?
-      tvdb_shows = TVMaze::Show.search(title.gsub(/ \(\d{4}\)$/, '')).map { |s| Cache.object_pack(s, 1) } if tvdb_shows.empty?
-      tvdb_shows.map! { |s| s = Cache.object_pack(TvSeries.new(s), 1); s['first_aired'] = identify_release_year(s['name']).to_s; s }
-      exact_title, show = media_chose(title, tvdb_shows, {'name' => 'name', 'url' => 'url', 'year' => 'first_aired'}, 'shows', no_prompt)
-      exact_title, show = TvSeries.tv_show_get({'imdb' => show['imdb_id'], 'tvdb' => show['tvdb_id']}) if show
-      if show.nil? && original_filename.to_s != ''
-        exact_title, show = Kodi.kodi_lookup('episode', original_filename, exact_title)
-      end
+      exact_title, show = Kodi.kodi_lookup('episode', original_filename, exact_title) if show.nil? && original_filename.to_s != ''
       Cache.cache_add('tv_show_search', cache_name, [exact_title, show], show)
     }
     return exact_title, show

@@ -2,7 +2,7 @@ Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3)
 FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3
+active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem
 goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rsync shellwords socket streamio-ffmpeg timeout titleize themoviedb trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
@@ -26,6 +26,7 @@ class Librarian
           :stop => ['Daemon', 'stop', 1, 'priority'],
           :reload => ['Daemon', 'reload', 1, 'priority'],
           :dump_bus_variable => ['BusVariable', 'display_bus_variable'],
+          :dump_mem_stat => ['Memory', 'stat_dump'],
           :kill_job => ['Daemon', 'kill', 1, 'priority']
       },
       :books => {
@@ -241,11 +242,11 @@ class Librarian
     return unless thread[:base_thread].nil?
     return if Daemon.get_children_count(thread[:jid]).to_i > 0 || thread[:is_active] > 0
     LibraryBus.put_in_queue(thread_value)
-    if thread[:direct].to_i == 0 || Env.debug?
+    if thread[:direct].to_i == 0
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{TimeUtils.seconds_in_words(Time.now - thread[:start_time])},#{Utils.lock_time_get(thread)}", 0, thread)
     end
     if thread[:block].is_a?(Array) && !thread[:block].empty?
-      thread[:block].reverse.each { |b| b.call if b }
+      thread[:block].reverse.each { |b| b.call if b rescue nil}
     end
     Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i == 0
     if thread[:parent]

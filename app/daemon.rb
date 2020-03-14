@@ -20,7 +20,10 @@ class Daemon < EventMachine::Connection
 
   def self.clear_waiting_worker(worker, worker_value = nil, object = nil, clear_current = 0)
     return if worker[:queue_name].to_s == '' || worker[:jid].to_s == ''
-    @queues[worker[:queue_name]][:current_jobs].delete(worker[:jid]) if clear_current.to_i > 0
+    if clear_current.to_i > 0
+      @queues[worker[:queue_name]][:current_jobs].delete(worker[:jid])
+      queue_save(worker[:queue_name]) if @queues[worker[:queue_name]][:save_to_disk].to_i > 0
+    end
     @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
 
@@ -98,7 +101,8 @@ class Daemon < EventMachine::Connection
 
   def self.init_queue(qname, task = '', save_to_disk = 0)
     tries ||= 3
-    @queues[qname] = {} if @queues[qname].nil?
+    return unless @queues[qname].nil?
+    @queues[qname] = {}
     @queues[qname][:is_new] = 1
     @queues[qname][:task_name] = task != '' ? task : qname
     @queues[qname][:jobs] = [] if @queues[qname][:jobs].nil?
@@ -120,7 +124,7 @@ class Daemon < EventMachine::Connection
 
   def self.kill(jid:)
     @queues.each do |_, q|
-      q[:threads].each do |j, w|
+      (q[:threads] + q[:waiting_threads]).each do |j, w|
         next if jid.to_s != 'all' && j.to_s != jid.to_s
         next unless w
         kill_job(w)
@@ -131,18 +135,16 @@ class Daemon < EventMachine::Connection
   end
 
   def self.kill_job(w)
-    if w.alive?
-      @queues[w[:jid]][:clearing] = 1 if w[:jid].to_i > 0 && @queues[w[:jid]]
-      waiter = 0
-      while w[:jid].to_i > 0 && get_children_count(w[:jid]).to_i > 0 && waiter < 10
-        $speaker.speak_up "Waiting for child jobs to clear up..."
-        waiter += 1
-        sleep 1
-      end
-      $speaker.speak_up "Killing job '#{w[:object]}' from queue '#{w[:queue_name]}'"
-      Librarian.run_termination(w, nil, "Killed job #{w[:object]}")
-      w.kill
+    @queues[w[:jid]][:clearing] = 1 if w[:jid].to_i > 0 && @queues[w[:jid]]
+    waiter = 0
+    while w[:jid].to_i > 0 && get_children_count(w[:jid]).to_i > 0 && waiter < 10
+      $speaker.speak_up "Waiting for child jobs to clear up..."
+      waiter += 1
+      sleep 1
     end
+    $speaker.speak_up "Killing job '#{w[:object]}' from queue '#{w[:queue_name]}'"
+    Librarian.run_termination(w, nil, "Killed job #{w[:object]}")
+    w.kill if w.alive?
   end
 
   def self.launch_command
@@ -187,8 +189,8 @@ class Daemon < EventMachine::Connection
 
   def self.queue_clear(qname)
     $speaker.speak_up "Clearing queue '#{qname}'"
-    @queues[qname][:threads].each {|_, t| t.kill}
-    @queues[qname][:waiting_threads].each {|_, t| t.kill}
+    @queues[qname][:threads].each { |_, t| t.kill }
+    @queues[qname][:waiting_threads].each { |_, t| t.kill }
     @queues[qname][:jobs] = []
     @queues[qname].delete(:is_new)
     queue_remove(qname)
@@ -209,8 +211,12 @@ class Daemon < EventMachine::Connection
     end
   end
 
+  def self.queue_save(qname)
+    Cache.queue_state_add_or_update('daemon_queues', {qname => (@queues[qname][:jobs] + @queues[qname][:current_jobs].map { |_, j| j })}, 1, 1)
+  end
+
   def self.queues_save
-    Cache.queue_state_save('daemon_queues', Hash[@queues.map { |qname, q| [qname, (q[:jobs] + q[:current_jobs].map { |_, j| j })] if q[:save_to_disk].to_i > 0 }.compact])
+    @queues.keys.each { |qname| queue_save(qname) if @queues[qname][:save_to_disk].to_i > 0 }
   end
 
   def self.queues_slot_taken
@@ -239,9 +245,9 @@ class Daemon < EventMachine::Connection
   end
 
   def self.schedule(scheduler)
-    jobs = $args_dispatch.load_template(scheduler, $template_dir)
+    @jobs ||= $args_dispatch.load_template(scheduler, $template_dir)
     ['periodic', 'continuous'].each do |type|
-      (jobs[type] || {}).each do |task, params|
+      (@jobs[type] || {}).each do |task, params|
         args = params['command'].split('.')
         args += params['args'].map { |a, v| "--#{a}=#{v.to_s}" } if params['args'].is_a?(Hash)
         args += params['args'] if params['args'].is_a?(Array)
@@ -265,7 +271,6 @@ class Daemon < EventMachine::Connection
     end
     thread_cache_fetch
     launch_command
-    queues_save
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
@@ -346,8 +351,8 @@ class Daemon < EventMachine::Connection
   def self.status_worker(worker, warn = 0)
     childs = get_children_count(worker[:jid])
     warning = warn > 1 ? "#{" (WARNING: Worker is dead" unless worker.alive? || (Time.now - worker[:end_time]).to_i < 5}\
-#{"for " + TimeUtils.seconds_in_words(Time.now - worker[:end_time]) if worker[:end_time] && (Time.now - worker[:end_time]).to_i >= 5}\
-#{" !)" unless worker.alive? || (Time.now - worker[:end_time]).to_i < 5}" : ''
+    #{"for " + TimeUtils.seconds_in_words(Time.now - worker[:end_time]) if worker[:end_time] && (Time.now - worker[:end_time]).to_i >= 5}\
+    #{" !)" unless worker.alive? || (Time.now - worker[:end_time]).to_i < 5}" : ''
     $speaker.speak_up "#{SPACER * 2}-Job '#{worker[:object]}' (jid '#{worker[:jid]}' from queue '#{worker[:queue_name]}')\
 #{" working for " + TimeUtils.seconds_in_words(Time.now - worker[:start_time]) if worker[:start_time]}\
 #{" waiting for " + childs.to_s + ' childs' if childs.to_i > 0},#{Utils.lock_time_get(worker)}\
@@ -376,6 +381,7 @@ class Daemon < EventMachine::Connection
       @queues[queue][:jobs] << [jid, internal, task, env_flags, client, args, block, child, parent]
       @queues[queue].delete(:is_new)
       @last_execution[task] = Time.now
+      queue_save(queue) if @queues[queue][:save_to_disk].to_i > 0
     end
   end
 
