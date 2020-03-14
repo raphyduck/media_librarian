@@ -22,7 +22,7 @@ class Daemon < EventMachine::Connection
     return if worker[:queue_name].to_s == '' || worker[:jid].to_s == ''
     if clear_current.to_i > 0
       @queues[worker[:queue_name]][:current_jobs].delete(worker[:jid])
-      queue_save(worker[:queue_name]) if @queues[worker[:queue_name]][:save_to_disk].to_i > 0
+      queue_save(worker[:queue_name]) if @queues[worker[:queue_name]][:save_to_disk].to_i > 0 && !@is_quitting
     end
     @worker_clearance << [worker, worker_value, object, JOB_CLEAR_TRIES]
   end
@@ -212,6 +212,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.queue_save(qname)
+    $speaker.speak_up "Saving queue '#{qname}'"
     Cache.queue_state_add_or_update('daemon_queues', {qname => (@queues[qname][:jobs] + @queues[qname][:current_jobs].map { |_, j| j })}, 1, 1)
   end
 
