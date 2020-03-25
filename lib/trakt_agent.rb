@@ -3,7 +3,7 @@ class TraktAgent
   def self.add_to_list(items, list_name = '', type = 'movies')
     return if Env.pretend?
     items = [items] unless items.is_a?(Array)
-    items.map! {|i| i.merge({'collected_at' => Time.now})} if list_name == 'collection'
+    items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_name == 'collection'
     begin
       tries ||= 3
       $trakt.sync.add_or_remove_item('add', list_name, type, items)
@@ -61,7 +61,7 @@ class TraktAgent
       k = $trakt.list.collection(type, '?extended=noseasons')
       return [] if k.is_a?(Hash) && k['error']
       k.each do |i|
-        item = wk.select{|t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title']}.first
+        item = wk.select { |t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title'] }.first
         item = i if item.nil?
         _, info = ['shows', 'episodes'].include?(type) ? TvSeries.tv_show_get(item['show']['ids']) : nil
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
@@ -117,8 +117,7 @@ class TraktAgent
         end
       when 'ended', 'not_ended', 'canceled'
         break if cr_value.to_i > 1 && filter_type != 'not_ended'
-        ids = item[type[0...-1]]['ids'] || {}
-        _, show = Metadata.tv_show_search(title, 1, ids)
+        _, show = TvSeries.tv_show_search(title, 1, '', item[type[0...-1]]['ids'] || {})
         if Env.debug?
           $speaker.speak_up("Show '#{show.name}' status is '#{show.status}'#{' (' + show.formal_status + ')' if show.status != show.formal_status}")
         end
@@ -166,7 +165,7 @@ class TraktAgent
     case name
     when 'watchlist'
       list = $trakt.list.watchlist(type)
-      list.sort_by! {|i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now + 100.years).year}
+      list.sort_by! { |i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now + 100.years).year }
     when 'collection'
       list = $trakt.list.collection(type)
     when 'lists'
@@ -205,9 +204,9 @@ class TraktAgent
     end
     parsed.each do |k, cat|
       cat.each do |t, c|
-        parsed[k][t]['seasons'] = c['seasons'].map {|s, v| v} if c['seasons']
+        parsed[k][t]['seasons'] = c['seasons'].map { |s, v| v } if c['seasons']
       end
-      parsed[k] = cat.map {|s, i| i}
+      parsed[k] = cat.map { |s, i| i }
     end
     parsed
   end
@@ -234,7 +233,7 @@ class TraktAgent
   def self.search_list(type, item, list)
     title = item[type] && item[type]['title'] ? item[type]['title'] : nil
     return false unless title && list && !list.empty?
-    !list.select {|x| x['title'] && x['title'] == title}.empty?
+    !list.select { |x| x['title'] && x['title'] == title }.empty?
   end
 
   def self.method_missing(name, *args)

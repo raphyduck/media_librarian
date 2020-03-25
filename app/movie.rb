@@ -114,4 +114,9 @@ class Movie
     Cache.cache_add(type, cache_name, ['', nil], nil)
     return '', nil
   end
+
+  def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {})
+    Metadata.media_lookup('movies', title, 'movie_lookup', {'name' => 'name', 'titles' => 'alt_titles', 'url' => 'url', 'year' => 'year'}, Movie.method('movie_get'),
+                 [[Tmdb::Movie, :find], [TraktAgent, :search__movies]], no_prompt, original_filename, ids)
+  end
 end

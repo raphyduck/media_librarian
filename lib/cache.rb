@@ -11,7 +11,7 @@ class Cache
     end
     $speaker.speak_up "Cache '#{type}' for '#{keyword}' will not be saved to db" if full_save.nil? && Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
-    r = object_pack(result)
+    r = object_pack(result.select { |k, _| k != :result })
     $db.insert_row('metadata_search', {
         :keywords => keyword,
         :type => cache_get_enum(type),
@@ -211,7 +211,7 @@ class Cache
         $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
         next
       end
-      torrents << d[:tattributes].merge({:download_now => t, :in_db => 1})
+      torrents << d[:tattributes].merge({:download_now => t, :in_db => 1, :name => d[:name], :identifier => d[:identifier]})
     end
     torrents
   end

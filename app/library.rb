@@ -414,34 +414,31 @@ class Library
     return {} unless source['existing_folder'] && source['existing_folder'][category]
     search_list, existing_files, cache_name = {}, {}, "#{source_type}#{category}#{source['existing_folder'][category]}#{source['list_name']}"
     Utils.lock_block(__method__.to_s + cache_name) do
-      search_list = BusVariable.new("search_list", Vash)
-      if search_list[cache_name].nil?
-        case source_type
-        when 'filesystem'
-          search_list[cache_name, CACHING_TTL] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'], item_name: source['item_name'])
-          existing_files[category] = search_list[cache_name].dup
-        when 'trakt'
-          $speaker.speak_up("Parsing trakt list '#{source['list_name']}', can take a long time...", 0)
-          TraktAgent.list(source['list_name']).each do |item|
-            type = item['type'] rescue next
-            f = item[type]
-            type = Utils.regularise_media_type(type)
-            next if type != category
-            next if Time.now.year < (f['year'] || Time.now.year + 3)
-            search_list[cache_name, CACHING_TTL] = parse_media({:type => 'trakt', :name => "#{f['title']} (#{f['year']})".gsub('/', ' ')},
-                                                               type,
-                                                               no_prompt,
-                                                               search_list[cache_name] || {},
-                                                               {},
-                                                               {},
-                                                               {:trakt_obj => f, :trakt_list => source['list_name'], :trakt_type => type},
-                                                               '',
-                                                               f['ids']
-            )
-          end
-          existing_files[category] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, remove_duplicates: 0)
-          existing_files[category][:shows] = search_list[cache_name][:shows] if search_list[cache_name][:shows] && category.to_s == 'shows'
+      case source_type
+      when 'filesystem'
+        search_list[cache_name] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'], item_name: source['item_name'])
+        existing_files[category] = search_list[cache_name].dup
+      when 'trakt'
+        $speaker.speak_up("Parsing trakt list '#{source['list_name']}', can take a long time...", 0)
+        TraktAgent.list(source['list_name']).each do |item|
+          type = item['type'] rescue next
+          f = item[type]
+          type = Utils.regularise_media_type(type)
+          next if type != category
+          next if Time.now.year < (f['year'] || Time.now.year + 3)
+          search_list[cache_name] = parse_media({:type => 'trakt', :name => "#{f['title']} (#{f['year']})".gsub('/', ' ')},
+                                                type,
+                                                no_prompt,
+                                                search_list[cache_name] || {},
+                                                {},
+                                                {},
+                                                {:trakt_obj => f, :trakt_list => source['list_name'], :trakt_type => type},
+                                                '',
+                                                f['ids']
+          )
         end
+        existing_files[category] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, remove_duplicates: 0)
+        existing_files[category][:shows] = search_list[cache_name][:shows] if search_list[cache_name][:shows] && category.to_s == 'shows'
       end
     end
     return existing_files.deep_dup, (search_list[cache_name] || {}).deep_dup

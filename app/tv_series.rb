@@ -1,6 +1,6 @@
 class TvSeries
   attr_accessor :id, :ids, :name, :overview, :seasons, :first_aired, :genres, :network, :rating, :rating_count, :runtime,
-                :actors, :banners, :air_time, :content_rating, :status, :url, :language, :aired_episodes, :data_source
+                :actors, :banners, :air_time, :content_rating, :status, :url, :language, :aired_episodes, :data_source, :year
 
   def initialize(options = {})
     @ids = TvSeries.formate_ids(options['ids'] || {'thetvdb' => options['seriesid'], 'imdb' => options["imdb_id"] || options['IMDB_ID']})
@@ -22,6 +22,7 @@ class TvSeries
     @aired_episodes = options['aired_episodes']
     @data_source = options['data_source']
     @name = "#{Metadata.detect_real_title(@name, 'shows', 0, 0)} (#{year})"
+    @year = year
   end
 
   def anthology?
@@ -37,7 +38,8 @@ class TvSeries
   end
 
   def year
-    DateTime.parse(@first_aired).year rescue 0
+    return @year if @year
+    @year = DateTime.parse(@first_aired).year rescue 0
   end
 
   def self.ep_name_to_season(name)
@@ -156,12 +158,11 @@ class TvSeries
     Utils.lock_block("#{__method__}#{cache_name}") do
       cached = Cache.cache_get('tv_episodes_search', cache_name, 1)
       return cached if cached
-      title, show = Metadata.tv_show_search(title, no_prompt) unless show
-      unless show.nil?
-        $speaker.speak_up("Using #{title} as series name", 0)
-        episodes = $tvdb.get_all_episodes(show)
-        episodes.map! { |e| Episode.new(Cache.object_pack(e, 1)) }
-      end
+      title, show = tv_show_search(title, no_prompt) unless show
+      return show, episodes if show.nil?
+      $speaker.speak_up("Using #{title} as series name", 0)
+      episodes = $tvdb.get_all_episodes(show)
+      episodes.map! { |e| Episode.new(Cache.object_pack(e, 1)) }
       Cache.cache_add('tv_episodes_search', cache_name, [show, episodes], show)
     end
     return show, episodes
@@ -171,16 +172,20 @@ class TvSeries
     return nil, []
   end
 
-  def self.tv_show_get(ids, force_refresh = 0)
+  def self.tv_show_get(ids)
     cache_name = ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join
     return '', nil if cache_name == ''
-    cached = Cache.cache_get('tv_show_get', cache_name, nil, force_refresh)
+    cached = Cache.cache_get('tv_show_get', cache_name, nil)
     return cached if cached
     show, src = Cache.object_pack(TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full'), 1), 'trakt' if (ids['trakt'] || ids['imdb']).to_s != ''
-    show, src = Cache.object_pack((TVMaze::Show.lookup(ids) rescue nil), 1), 'tvmaze' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '')) && !ids.empty?
+    show, src = Cache.object_pack((TVMaze::Show.lookup(ids) rescue nil), 1), 'tvmaze' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '') || (show["first_aired"].to_s == '' || show['FirstAired'].to_s == '' || show['premiered'].to_s == '')) && !ids.empty?
     show, src = Cache.object_pack($tvdb.get_series_by_id(ids['thetvdb']), 1), 'thetvdb' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '')) && ids['thetvdb'].to_s != ''
     show = show && (show['title'].to_s != '' || show['SeriesName'].to_s != '' || show['name'].to_s != '') ? TvSeries.new(show.merge({'data_source' => src})) : nil
-    title = show ? show.name : ''
+    title = if show
+              ids['force_title'].to_s != '' ? ids['force_title'] : show.name #We need to bypass name given by some providers which doesn't match the real name of the show...
+            else
+              ''
+            end
     Cache.cache_add('tv_show_get', cache_name, [title, show], show)
     $speaker.speak_up "#{Utils.arguments_dump(binding)}= '', nil" if show.nil?
     return title, show
@@ -188,5 +193,10 @@ class TvSeries
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('tv_show_get', cache_name, ['', nil], nil)
     return '', nil
+  end
+
+  def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {})
+    Metadata.media_lookup('shows', title, 'tv_show_search', {'name' => 'name', 'url' => 'url', 'year' => 'year'}, TvSeries.method('tv_show_get'),
+                          [[TVMaze::Show, 'search'], [$tvdb, 'search']], no_prompt, original_filename, TvSeries.formate_ids(ids))
   end
 end

@@ -189,8 +189,8 @@ class Daemon < EventMachine::Connection
 
   def self.queue_clear(qname)
     $speaker.speak_up "Clearing queue '#{qname}'"
-    @queues[qname][:threads].each { |_, t| t.kill }
-    @queues[qname][:waiting_threads].each { |_, t| t.kill }
+    @queues[qname][:threads].each { |_, t| kill_job(t) }
+    @queues[qname][:waiting_threads].each { |_, t| kill_job(t) }
     @queues[qname][:jobs] = []
     @queues[qname].delete(:is_new)
     queue_remove(qname)

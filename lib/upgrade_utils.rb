@@ -6,9 +6,9 @@ class UpgradeUtils
       next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
       item_name, item = Metadata.identify_title(f[0], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), folder)
       if item.nil?
-        not_found << File.dirname(f[0])
+        not_found << File.dirname(f[0]).sub(/\/season \d+\/?/i, '')
       else
-        found << {:n => item_name, :p => File.dirname(f[0])}
+        found << {:n => item_name, :p => File.dirname(f[0]).sub(/\/season \d+\/?/i, '')}
       end
     end
     $speaker.speak_up "Identified folders:"

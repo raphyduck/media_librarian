@@ -24,7 +24,7 @@ class Kodi
     properties = case type
                    when 'movies'
                      ['title', 'year', 'file', 'imdbnumber', 'genre', 'premiered', 'country']
-                   when 'episode'
+                   when 'shows'
                      ['showtitle', 'file']
                  end
     get_media(type, properties).each do |i|
@@ -32,7 +32,7 @@ class Kodi
         case type
           when 'movies'
             exact_title, item = Movie.movie_get({'kodi'=>i['movieid']}, 'movie_get', i)
-          when 'episodes'
+          when 'shows'
             show = nil
             get_media('shows', ['title', 'imdbnumber']).each do |s|
               if s['title'] == i['showtitle']

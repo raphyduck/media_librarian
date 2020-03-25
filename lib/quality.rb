@@ -27,14 +27,14 @@ class Quality
       r_q -= t_q
       next if (r_q - t_q).empty? && (t_q - r_q).empty?
       if (file_q - r_q) != file_q
-        $speaker.speak_up "Removing qualities information '#{r_q.join('.')}' from file '#{filename}'..." if Env.debug?
+        $speaker.speak_up "Removing #{t} qualities information from file '#{filename}'..." if Env.debug?
         filename = qualities_replace(filename, r_q)
       end
       unless (t_q - file_q).empty?
         old_filename = filename.dup
         filename = qualities_replace(filename, file_q)
         t_q.each { |q| filename = filename.gsub(/\.#{extension}$/, '').to_s + ".#{q}.#{extension}" }
-        $speaker.speak_up "File '#{old_filename}' does not contain the qualities information '#{t_q.join('.')}', should be '#{filename}'" if Env.debug?
+        $speaker.speak_up "Adding qualities information '#{t_q.join('.')}' to '#{old_filename}'" if Env.debug?
       end
     end
     filename
@@ -54,7 +54,7 @@ class Quality
         return timeframe, false
       end
     end
-    if qualities['strict'].to_i > 0 && (file_q - qualities['min_quality'].split(' ')).empty?
+    if qualities['strict'].to_i > 0 && (file_q - qualities['min_quality'].to_s.split(' ')).empty?
       $speaker.speak_up "Strict minimum quality is excluded and '#{filename}' has only the strict minimum, removing from list" if Env.debug?
       return timeframe, false
     end

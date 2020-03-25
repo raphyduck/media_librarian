@@ -166,6 +166,7 @@ class FileInfo
       #q += ac unless ac.empty? #TODO: Better detection of audio codec
     when 'LANGUAGES'
       getaudiochannels.each do |ac|
+        next unless ac
         l = Languages.get_code(ac.language.to_s)
         cq = [LANG_ADJUST[l.to_sym].first] if l.to_s != '' && !LANG_ADJUST[l.to_sym].nil?
         cq = Quality.parse_qualities(ac.title.to_s, LANGUAGES) if !defined?(cq) || cq.nil? || cq.empty?

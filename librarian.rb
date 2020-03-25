@@ -49,6 +49,7 @@ class Librarian
       },
       :torrent => {
           :check_all_download => ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
+          :check_orphaned_torrent_folders => ['TorrentClient', 'check_orphaned_torrent_folders'],
           :search => ['TorrentSearch', 'search_from_torrents']
       },
       :usage => ['Librarian', 'help'],
@@ -222,7 +223,8 @@ class Librarian
       p = Object.const_get(m).method(a.to_sym)
       thread_value = cmd.nil? ? p.call : p.call(*cmd)
     else
-      $speaker.speak_up("Running command: #{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
+      $speaker.speak_up "Running command: ", 0
+      $speaker.speak_up("#{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
       thread_value = $args_dispatch.dispatch(APP_NAME, cmd, $available_actions, nil, $template_dir)
     end
     run_termination(Thread.current, thread_value)

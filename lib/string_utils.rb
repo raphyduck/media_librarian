@@ -19,8 +19,8 @@ class StringUtils
   end
 
   def self.clean_search(str)
-    accents_clear(str).gsub(/[,\'\:\&\-\?\!]/, '').gsub(/^the[#{SPACE_SUBSTITUTE}](\w+.*)/i, '\1').
-        gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/[#{SPACE_SUBSTITUTE}]\(?(US|UK)\)?$/, '')
+    regularise_media_filename(accents_clear(str)).gsub(/^the[#{SPACE_SUBSTITUTE}](\w+.*)/i, '\1').
+        gsub(/([Tt]he)?.T[Vv].[Ss]eries/, '').gsub(/[#{SPACE_SUBSTITUTE}]\(?(US|UK)\)?$/, '').gsub(/([#{SPACE_SUBSTITUTE}])+/, '\1')
   end
 
   def self.commatize(previous)
@@ -63,30 +63,22 @@ class StringUtils
 
   def self.regexify(str)
     str = str.dup
-    str.gsub!('?', '\?')
-    str.gsub!(/\(([^\(\)]{5,})\)/, '\(?\1\)?')
-    sep_chars = '[:,-_\. ]{1,2}'
-    trailing_sep = ''
-    d = str.match(/.*:([\. \w]+)(.+)?/)
-    if d
-      trailing_sep = sep_chars if d[2]
-      d = d[1]
-      str.gsub!(d, '<placeholder>') if d
-      d = d.scan(/(\w)(\w+)?/).map { |e| "#{e[0]}#{'(' + e[1].to_s + ')?' if e[1]}" if e[0] }.join('[\. ]?')
+    if str.match(/[#{SPACE_SUBSTITUTE}&]/)
+      str = str.scan(/[^#{SPACE_SUBSTITUTE}&]+/).map { |e| regexify(e) }.select { |s| s.to_s != '' }.join("([#{SPACE_SUBSTITUTE}&-]|and|et){1,3}")
+    elsif str.match(/^[A-Z][A-Z]+$/)
+      str = str.chars.map { |w| "#{w}([a-z]+[#{SPACE_SUBSTITUTE}]?)?" }.join
+    else
+      return '' if str.match(/^(&|and|et)$/i)
+      str.gsub!('?', '\?')
+      str = str.strip.gsub("'", "'?").gsub('+', '.').gsub('$', '.').gsub(/[:,-\/\[\]!\(\)]/, '.?').gsub(/(\w)s$/, '\1[\' \.]?s')
+      str = str.gsub(/(\w)re$/, '\1\'?re')
+      str.gsub!(/^l(\w)/i, 'l[\' _]?\1')
+      if str.match(/(l[ae]s?)/i)
+        str.gsub!(/(l[ae]s?)/i, '(\1)?')
+      else
+        str = "#{str[0]}(#{str.chars.drop(1).join})?" if str.chars.count > 1 && str.match(/^\w.+/)
+      end
     end
-    e = str.match(/.*[#{SPACE_SUBSTITUTE}]+([A-Z]+)[#{SPACE_SUBSTITUTE}]*$/)
-    if e
-      e = e[1]
-      str.gsub!(e, '<placeholder2>') if e
-      e = e.chars.map{|w| "#{w}([a-z]+[#{SPACE_SUBSTITUTE}]?)?"}.join
-    end
-    str = str.strip.gsub("'", "'?").gsub('+', '.').gsub('$', '.').gsub(/(\w)s([#{SPACE_SUBSTITUTE}])/, '\1\'?s\2')
-    str = str.gsub(/(\w)re([#{SPACE_SUBSTITUTE}])/, '\1\'?re\2')
-    str = str.gsub(/[:,-\/\[\]!]([^\?]|$)/, '.?\1').gsub(/[#{SPACE_SUBSTITUTE}]+([^\?]|$)/, sep_chars + '\1')
-    str.gsub!(/(&|and|et)/i, '(&|and|et)')
-    str.gsub!(/le\'\?s\[:,-_\\\. \]\{1,2\}/i, '(les )?')
-    str.gsub!('<placeholder>', "#{sep_chars}#{d}#{trailing_sep}") if d
-    str.gsub!('<placeholder2>', "#{e}#{trailing_sep}") if e
     str
   end
 

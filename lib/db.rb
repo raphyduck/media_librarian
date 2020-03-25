@@ -88,7 +88,7 @@ module Storage
       res = []
       r.each do |l|
         i = -1
-        res << Hash[table_columns(table).map {|k, _| i += 1; [k.to_sym, l[i]]}]
+        res << Hash[table_columns(table).map {|k, _| i += 1; [k.to_sym, l[i].is_a?(String) && l[i].match(/^[{\[].*[}\]]$/) ? eval(l[i]) : l[i] ]}]
       end
       res
     rescue

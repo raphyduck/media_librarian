@@ -113,10 +113,10 @@ class TorrentClient
       torrent = Cache.object_unpack(t[:tattributes])
       if Env.debug?
         $speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        torrent.each { |k, v| $speaker.speak_up "#{k} = #{v}" }
+        (torrent + t.select{|k,_| [:name, :identifiers].include?(k)}).each { |k, v| $speaker.speak_up "#{k} = #{v}" }
       end
       tdid = (Time.now.to_f * 1000).to_i.to_s
-      @tname = torrent[:name]
+      @tname = t[:name]
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
       opts = {
@@ -126,7 +126,7 @@ class TorrentClient
               :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
               :queue => torrent[:queue].to_s,
               :assume_quality => torrent[:assume_quality],
-              :entry_id => torrent[:identifiers].join,
+              :entry_id => t[:identifiers].join,
               :added_at => Time.now.to_i,
               :category => torrent[:category]
           }
@@ -137,7 +137,7 @@ class TorrentClient
       success = false
       tries = 5
       while (tries -= 1) >= 0 && !success
-        $speaker.speak_up("Will download torrent '#{torrent[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
+        $speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
         if url.to_s != ''
           path = TorrentSearch.get_torrent_file(torrent[:tracker], tdid, url)
         elsif magnet.to_s != ''
@@ -146,7 +146,7 @@ class TorrentClient
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
         if success
-          Cache.queue_state_add_or_update('file_handling', {torrent[:identifier] => torrent[:files]}) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
+          Cache.queue_state_add_or_update('file_handling', {t[:identifier] => torrent[:files]}) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
         else
           TorrentSearch.deauth(torrent[:tracker])
         end

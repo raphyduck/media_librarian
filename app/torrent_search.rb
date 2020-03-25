@@ -258,7 +258,7 @@ class TorrentSearch
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0)
-    $speaker.speak_up "Processing filter '#{f[:full_name]}' (id '#{f[:identifier]}') (category '#{f[:type]}')" if Env.debug?
+    $speaker.speak_up "TorrentSearch.processing_result(results, sources, #{limit}, #{f.select{|k,_| ![:files].include?(k)}}, '#{qualities}', #{no_prompt}, '#{download_criteria}', #{no_waiting})" if Env.debug?
     f_type, extra_files = f[:f_type] || '', []
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
@@ -269,7 +269,7 @@ class TorrentSearch
       end
       if f[:type] == 'shows' && f[:f_type] == 'episode'
         ks['season'] = [{:s => Metadata.detect_real_title(TvSeries.ep_name_to_season(f[:full_name]), f[:type], 1, 0), :extra_files => f[:existing_season_eps]},
-                        {:s => Metadata.detect_real_title(TvSeries.ep_name_to_season(f[:full_name]), f[:type],1, 1), :extra_files => f[:existing_season_eps]}]
+                        {:s => Metadata.detect_real_title(TvSeries.ep_name_to_season(f[:full_name]), f[:type], 1, 1), :extra_files => f[:existing_season_eps]}]
       end
       (['series', 'season'] + ks.keys).uniq.each do |ft|
         next unless ks[ft]
@@ -438,7 +438,6 @@ class TorrentSearch
   end
 
   def self.torrent_download(torrent, no_prompt = 0, no_waiting = 0, remove_others = [], category = '')
-    #TODO: Remove redudant keys from torrent tattributes before saving to memory
     waiting_until = waiting_time_set(torrent)
     torrent[:category] = category
     if no_waiting.to_i == 0 && download_now?(waiting_until).to_i == 1 && no_prompt.to_i > 0
@@ -455,7 +454,7 @@ class TorrentSearch
           :identifier => torrent[:identifier],
           :identifiers => torrent[:identifiers],
           :name => torrent[:name],
-          :tattributes => Cache.object_pack(torrent),
+          :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
           :waiting_until => waiting_until,
           :status => torrent[:download_now]
       })
