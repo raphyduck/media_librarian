@@ -4,6 +4,7 @@ class TorrentClient
     init
     @tname = ''
     @throttled = false
+    @already_listening = false
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     raise
@@ -92,10 +93,12 @@ class TorrentClient
   end
 
   def listen
+    return if @already_listening
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       $speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       Cache.queue_state_add_or_update('deluge_torrents_added', torrent_id) if torrent_id.to_s != ''
     end
+    @already_listening = true
   end
 
   def main_file_only(status, main_files)
