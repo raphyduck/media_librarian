@@ -35,8 +35,6 @@ class Librarian
       },
       :library => {
           :compare_remote_files => ['Library', 'compare_remote_files'],
-          :copy_media_from_list => ['Library', 'copy_media_from_list'],
-          :copy_trakt_list => ['Library', 'copy_trakt_list'],
           :create_custom_list => ['Library', 'create_custom_list'],
           :fetch_media_box => ['Library', 'fetch_media_box'],
           :get_media_list_size => ['Library', 'get_media_list_size'],

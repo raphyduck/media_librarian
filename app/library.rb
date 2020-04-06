@@ -118,111 +118,17 @@ class Library
     end
   end
 
-  def self.copy_media_from_list(source_list:, dest_folder:, source_folders: {}, bandwith_limit: 0, no_prompt: 0, continuous: 0)
-    source_folders = {} if source_folders.nil?
-    return $speaker.speak_up("Invalid destination folder") if dest_folder.nil? || dest_folder == '' || !File.exist?(dest_folder)
-    loop do
-      complete_list = TraktAgent.list(source_list, '')
-      if complete_list.empty?
-        sleep 3600
-        $speaker.speak_up("Empty list #{source_list}", 0)
-        next
-      end
-      abort = 0
-      list = TraktAgent.parse_custom_list(complete_list)
-      path_list = {}
-      list_size = 0
-      list.map { |n, _| n }.uniq.each do |type|
-        s, path_list[type] = get_media_list_size(list: complete_list, folder: source_folders, type_filter: type)
-        list_size += s
-      end
-      list.each do |type, _|
-        source_folders[type] = $speaker.ask_if_needed("What is the source folder for #{type} media?") if source_folders[type].nil? || source_folders[type] == ''
-        dest_type = "#{dest_folder}/#{type.titleize}/"
-        _, total_space = FileUtils.get_disk_space(dest_folder)
-        while total_space <= list_size
-          $speaker.speak_up "There is not enough space available on #{File.basename(dest_folder)}. You need an additional #{((list_size - total_space).to_d / 1024 / 1024 / 1024).round(2)} GB to copy the list"
-          if $speaker.ask_if_needed("Do you want to edit the list now (y/n)?", no_prompt, 'n') != 'y'
-            abort = 1
-            break
-          end
-          create_custom_list(name: source_list, description: '', origin: source_list)
-          list_size, _ = get_media_list_size(list: complete_list, folder: source_folders)
-        end
-        $speaker.speak_up("Not enough disk space, aborting...") if abort > 0
-        abort = 1 if abort == 0 && $speaker.ask_if_needed("WARNING: All your disk #{dest_folder} will be replaced by the media from your list #{source_list}! Are you sure you want to proceed? (y/n)", no_prompt, 'y') != 'y'
-        if abort == 0
-          $speaker.speak_up("Deleting extra media...", 0)
-          FileUtils.search_folder(dest_type).sort_by { |x| -x[0].length }.each do |p|
-            if File.exist?(p[0])
-              FileUtils.rm_r(p[0]) unless FileUtils.is_in_path(path_list[type].map { |i| StringUtils.clean_search(i).gsub(source_folders[type], dest_type) }, p[0])
-            elsif Env.debug?
-              $speaker.speak_up "'#{p[0]}' not found, can not delete, skipping"
-            end
-          end
-          FileUtils.mkdir(dest_type) unless File.exist?(dest_type)
-          $speaker.speak_up("Syncing new media...", 0)
-          path_list[type].each do |p|
-            final_path = StringUtils.clean_search(p).gsub("#{source_folders[type]}/", dest_type)
-            FileUtils.mkdir_p(File.dirname(final_path)) unless File.exist?(File.dirname(final_path))
-            $speaker.speak_up "Syncing '#{p}' to '#{final_path}'" if Env.debug?
-            next if Env.pretend?
-            args = ['--update', '--delete', '--recursive', '--partial', '--verbose', "--bwlimit=#{bandwith_limit}"]
-            args += ['--times'] unless File.exist?(final_path)
-            Rsync.run("#{p}/", final_path, args) do |result|
-              if result.success?
-                result.changes.each do |change|
-                  $speaker.speak_up "#{change.filename} (#{change.summary})"
-                end
-              else
-                $speaker.speak_up result.error
-              end
-            end
-          end
-          $speaker.speak_up("Finished copying media from #{source_list}!", 0)
-        end
-      end
-      break unless continuous.to_i > 0
-      sleep 86400
-    end
-  end
-
-  def self.copy_trakt_list(name:, description:, origin: 'collection', criteria: {})
-    $speaker.speak_up("Fetching items from #{origin}...")
-    new_list = {}
-    (criteria['types'] || []).each do |t|
-      new_list[t] = TraktAgent.list(origin, t)
-    end
-    existing_lists = TraktAgent.list('lists')
-    dest_list = existing_lists.select { |l| l['name'] == name }.first
-    to_delete = {}
-    if dest_list
-      $speaker.speak_up("List #{name} exists")
-      existing = TraktAgent.list(name)
-      to_delete = TraktAgent.parse_custom_list(existing)
-    else
-      $speaker.speak_up("List #{name} doesn't exist, creating it...")
-      TraktAgent.create_list(name, description)
-    end
-    ['movies', 'shows', 'episodes'].each do |type|
-      TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty?
-      TraktAgent.add_to_list(new_list[type], name, type) if new_list[type]
-    end
-  end
-
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {}, no_prompt: 0)
     $speaker.speak_up("Fetching items from #{origin}...", 0)
     new_list = {
         'movies' => TraktAgent.list(origin, 'movies'),
         'shows' => TraktAgent.list(origin, 'shows')
     }
-    existing_lists = TraktAgent.list('lists')
-    dest_list = existing_lists.select { |l| l['name'] == name }.first
+    dest_list = TraktAgent.list('lists').select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
       $speaker.speak_up("List #{name} exists", 0)
-      existing = TraktAgent.list(name)
-      to_delete = TraktAgent.parse_custom_list(existing)
+      to_delete = TraktAgent.parse_custom_list(TraktAgent.list(name))
     else
       $speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktAgent.create_list(name, description)
@@ -292,7 +198,6 @@ class Library
           sleep 30
           next
         end
-        exit_status = nil
         low_b = 0
         while Utils.check_if_active(active_hours) && `ps ax | grep '#{remote_user}@#{remote_server}:#{remote_folder}' | grep -v grep` == ''
           fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
@@ -704,16 +609,10 @@ class Library
       Cache.queue_state_get('file_handling').each do |i, fs|
         if i.to_s != '' && identifiers.join.include?(i) && !fs.empty? && !fs.map { |obj| obj[:name] if obj[:type] == 'file' }.compact.include?(file[:name])
           ok = false
-          fs.each do |f|
+          fs.uniq.each do |f|
             $speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." #if Env.debug?
             ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
-            if f[:type] == 'file'
-              ok = if File.exist?(f[:name])
-                     FileUtils.rm(f[:name])
-                   else
-                     true
-                   end
-            end
+            ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
           end
           Cache.queue_state_remove('file_handling', i) if ok
         end

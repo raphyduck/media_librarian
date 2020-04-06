@@ -149,7 +149,7 @@ class TorrentClient
         success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
         if success
-          Cache.queue_state_add_or_update('file_handling', {t[:identifier] => torrent[:files]}) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
+          Cache.queue_state_add_or_update('file_handling', {t[:identifier] => torrent[:files]}, 1, 1) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
         else
           TorrentSearch.deauth(torrent[:tracker])
         end

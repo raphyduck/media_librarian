@@ -119,7 +119,7 @@ class Quality
   def self.parse_qualities(filename, qc = VALID_QUALITIES, language = '', type = '')
     _, filename, _ = Metadata.detect_metadata(filename, type)
     filename = qualities_replace(filename + '.ext', LANG_ADJUST[language.to_sym], '.vo.') if language.to_s != '' && LANG_ADJUST[language.to_sym].is_a?(Array) #Lets adjust language qualities first
-    pq = (filename + '.ext').downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map { |q| q.gsub('.', '[\. ]').gsub('+', '[+]') }.join('|') + ')' + SEP_CHARS + '))')).
+    pq = (StringUtils.fix_encoding(filename) + '.ext').downcase.gsub(/([\. ](h|x))[\. ]?(\d{3})/, '\1\3').scan(Regexp.new('(?=((^|' + SEP_CHARS + ')(' + qc.map { |q| q.gsub('.', '[\. ]').gsub('+', '[+]') }.join('|') + ')' + SEP_CHARS + '))')).
         map { |q| q[2] }.flatten.map do |q|
       q.gsub(/^[ \.\(\)\-](.*)[ \.\(\)\-]$/, '\1').gsub('-', '').gsub('hevc', 'x265').gsub('avc', 'x264').gsub('h26', 'x26').gsub(' ', '.')
     end.uniq.flatten.sort_by { |q| VALID_QUALITIES.index(q) }
