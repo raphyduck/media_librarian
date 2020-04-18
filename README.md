@@ -7,7 +7,7 @@ This program is made to answer my various needs for automation in the management
 
 Requirements:
 * Linux
-* phantomjs
+* chromium
 * flac
 * lame
 * mediainfo
@@ -20,7 +20,7 @@ TODO:
     * Rename all command line function arguments to append suffix indicating type (like "no_prompt_int") to allow dynamic configuration. Arguments should be suffixed on the fly in args dispatch gem
     * Web UI/GUI with assisted configuration
     * Automatically check for new commits on master and auto-update (as a task)
-    * Install external requirements like phantomjs from inside the application
+    * Install external requirements like chromium from inside the application
     * Restart daemon
     * Make it cross-platform
     * Trackers as templates

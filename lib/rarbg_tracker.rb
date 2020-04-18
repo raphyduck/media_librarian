@@ -4,14 +4,14 @@ module RarbgTracker
 
     attr_accessor :url
 
-    def initialize(search, cid = '', quit_only = 0)
+    def initialize(search, cid = '')
       @base_url = TORRENT_TRACKERS['rarbg']
       @query = search
       @cat = cid
       @cat = [] if cid.to_s == ''
       @url = @base_url + "/torrents.php?search=#{search}#{([''] + @cat).join('&category[]=') unless @cat.empty?}" #/torrents.php?search=batman
       @css_path = 'table.lista2t tr.lista2'
-      post_init(quit_only)
+      post_init
     end
 
     private

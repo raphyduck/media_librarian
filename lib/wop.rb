@@ -4,20 +4,20 @@ module Wop
 
     attr_accessor :url
 
-    def initialize(search, url = nil, cid = '', quit_only = 0)
+    def initialize(search, url = nil, cid = '')
       @base_url = TORRENT_TRACKERS['wop'] #'https://worldofp2p.net'
       # Order by seeds desc
       #@url = "#{@base_url}/engine/search?q=the+circle+2017"
       @query = search
       @url = url || "#{@base_url}/browse.php?#{cid}search=#{URI.escape(search)}&searchin=title&incldead=0" #/browse.php?search=test&searchin=title&incldead=0
+      @login_url = @base_url + '/login.php?returnto=%2Findex.php'
       @css_path = 'table.yenitorrenttable tr.browse_color'
-      post_init(quit_only)
+      post_init
     end
 
     private
 
     def auth
-      $tracker_client[@base_url].get_url(@base_url + '/login.php?returnto=%2Findex.php')
       $tracker_client[@base_url].fill_in('username', with: $config[tracker]['username'], wait: 30)
       $tracker_client[@base_url].fill_in('password', with: $config[tracker]['password'], wait: 30)
       $tracker_client[@base_url].click_button('Log in!')

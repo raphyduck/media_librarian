@@ -22,7 +22,7 @@ class Utils
     class_name = caller[0].match(/\/(\w*)\.rb:/)[1].gsub('_', ' ').titleize.gsub(' ', '') if class_name.to_s == ''
     calling_name = caller[0][/`.*'/][1..-2].gsub('rescue in ', '') if calling_name.to_s == ''
     args_params, hash_params = arguments_get(binding, class_name, calling_name, max_depth)
-    "#{class_name}.#{calling_name}(#{args_params.map{|_, v| v}.join(', ') unless args_params.nil? || args_params.empty?}#{', ' unless args_params.nil? || args_params.empty? || hash_params.nil? || hash_params.empty?}#{Hash[hash_params] unless hash_params.nil? || hash_params.empty?})"
+    "#{class_name}.#{calling_name}(#{args_params.map { |_, v| v }.join(', ') unless args_params.nil? || args_params.empty?}#{', ' unless args_params.nil? || args_params.empty? || hash_params.nil? || hash_params.empty?}#{Hash[hash_params] unless hash_params.nil? || hash_params.empty?})"
   end
 
   def self.arguments_get(binding, cname, mname, max_depth = 1)
@@ -170,6 +170,15 @@ class Utils
       h.map { |v| recursive_typify_keys(v, symbolize) }
     else
       h
+    end
+  end
+
+  def self.recursive_stringify_values(h)
+    case h
+    when Hash
+      Hash[h.map { |k, v| [k, recursive_stringify_values(v)] }]
+    else
+      h.to_s
     end
   end
 

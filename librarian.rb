@@ -1,9 +1,9 @@
 Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 MIN_REQ = %w(bundler/setup eventmachine fuzzystringmatch hanami/mailer logger simple_args_dispatch simple_config_man simple_speaker sqlite3)
-FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb
-active_support/inflector archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem
-goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rsync shellwords socket streamio-ffmpeg timeout titleize themoviedb trakt tvdb_party tvmaze unrar xbmc-client yaml)
+FULL_REQ = %w(active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb active_support/inflector archive/zip base64 bencode deluge
+digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader
+rsync shellwords socket streamio-ffmpeg timeout titleize themoviedb trakt tvdb_party tvmaze unrar xbmc-client yaml)
 
 MIN_REQ.each do |r|
   begin
@@ -13,6 +13,7 @@ MIN_REQ.each do |r|
     raise
   end
 end
+Dir[File.dirname(__FILE__) + '/min_lib/*.rb'].each { |file| require file }
 
 class Librarian
   attr_accessor :args, :quit, :reload
@@ -62,11 +63,9 @@ class Librarian
 
   def initialize
     @args = ARGV
-    @loaded = false
-    #Require libraries
-    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
     #Require app file
     require File.dirname(__FILE__) + '/init.rb'
+    @loaded = false
   end
 
   def daemonize
@@ -135,6 +134,8 @@ class Librarian
         raise
       end
     end
+    #Require libraries
+    Dir[File.dirname(__FILE__) + '/lib/*.rb'].each { |file| require file }
     Dir[File.dirname(__FILE__) + '/init/*.rb'].each { |file| require file }
     @loaded = true
   end

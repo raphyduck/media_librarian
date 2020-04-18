@@ -3,7 +3,7 @@ require File.dirname(__FILE__) + '/languages_translation'
 $str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
 #Set global variables
 $tracker_client = {}
-$tracker_client_logged = {}
+$tracker_client_last_login = {}
 #Some constants
 CACHING_TTL = 108000
 USER_INPUT_TIMEOUT = 600
@@ -58,7 +58,7 @@ VALID_MUSIC_EXT="(.*)\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
 SPACE_SUBSTITUTE='\. _'
-BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})(\.(\d))?([\&\-exEX]{1,2}(\d{1,2})(\.(\d))?)?([\&\-exEX]{1,2}(\d{1,2})(\.(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
+BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})(\.(part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})(\.(part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})(\.(part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. -]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/

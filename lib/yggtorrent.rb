@@ -4,19 +4,19 @@ module Yggtorrent
 
     attr_accessor :url
 
-    def initialize(search, url = nil, cid = '', quit_only = 0)
+    def initialize(search, url = nil, cid = '')
       @base_url = TORRENT_TRACKERS['yggtorrent'] #'https://ygg.to/'
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/engine/search?#{cid}name=#{URI.escape(search)}&do=search#{'&order=desc&sort=seed' if search.to_s != ''}"
       @css_path = 'table.table tbody tr'
-      post_init(quit_only)
+      @logged_in_css = 'a#panel-btn'
+      post_init
     end
 
     private
 
     def auth
-      $tracker_client[@base_url].get_url(@base_url + '/')
       $tracker_client[@base_url].find('a#register').click
       $tracker_client[@base_url].fill_in('id', with: $config[tracker]['username'], wait: 30)
       $tracker_client[@base_url].fill_in('pass', with: $config[tracker]['password'], wait: 30)

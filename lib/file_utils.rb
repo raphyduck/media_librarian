@@ -116,7 +116,7 @@ module FileUtils
       $speaker.speak_up("File '#{original}' doesn't exist!") unless File.exist?(original)
       begin
         ln_orig(original, destination)
-      rescue Errno::ENOSYS => e
+      rescue => e
         $speaker.speak_up "Hard linking failed with error '#{e}', trying to copy instead" if Env.debug?
         cp(original, destination)
       end

@@ -56,42 +56,48 @@ class TvSeries
 
   def self.identify_tv_episodes_numbering(filename)
     identifiers = File.basename(filename).scan(Regexp.new("(?=(#{REGEX_TV_EP_NB}))"))
-    season, seasonp, ep_nb, ep_nb_single = [], [], [], []
+    ep_nb, ep_nb_single = {}, {}
     identifiers.each do |m|
       s = ''
-      s = m[17] if m[17]
-      if m[20]
-        case m[20].to_s.length
+      s = m[20].to_i if m[20]
+      if m[23]
+        case m[23].to_s.length
         when 3
           m_s = /^(\d)(\d+)/
         when 4
           m_s = /^(\d{2})(\d+)/
         end
-        sp = m[20].to_s.gsub(m_s, '\1')
-        ep_nb_single << {:s => sp, :ep => m[20].gsub(m_s, '\2').to_i, :part => 0}
-        seasonp << sp unless seasonp.include?(sp)
+        sp = m[23].to_s.gsub(m_s, '\1').to_i
+        ep_nb_single[sp] = [] if ep_nb_single[sp].nil?
+        ep_nb_single[sp] << {:s => sp, :ep => m[23].gsub(m_s, '\2').to_i, :part => 0}
       else
-        s = m[4] if s == '' && m[4]
+        s = m[4].to_i if s == '' && m[4]
+        ep_nb[s] = [] if ep_nb[s].nil? && s.to_s != ''
         (0..2).each do |i|
-          ep_nb << {:s => s, :ep => m[5 + i * 4].to_i, :part => m[7 + i * 4].to_i} if m[5 + i * 4]
+          ep_nb[s] << {:s => s, :ep => m[5 + i * 5].to_i, :part => m[8 + i * 5].to_i} if m[5 + i * 5] && s.to_s != ''
         end
       end
-      season << s unless season.include?(s) || s == ''
+      ep_nb[s] = [] if ep_nb[s].nil? && s.to_s != ''
     end
-    ep_nb = ep_nb_single.uniq if ep_nb.empty?
-    season = seasonp if season.empty?
-    season = (season[0]..season[1]).to_a if ep_nb.empty? && season.count == 2
-    ep_ids = (ep_nb.empty? ? season.map { |s| {:s => s} } : ep_nb.uniq).map { |e| "S#{format('%02d', e[:s].to_i)}#{'E' + format('%02d', e[:ep].to_i) if e[:ep].to_s != ''}" }
-    return season, ep_nb.uniq, ep_ids
+    ep_nb = ep_nb_single if ep_nb.empty?
+    ep_nb = Hash[(ep_nb.keys[0]..ep_nb.keys[1]).to_a.map { |k| [k, []] }] if ep_nb.values.flatten.empty? && ep_nb.keys.count == 2
+    ep_ids = if ep_nb.values.flatten.empty?
+               ep_nb.keys.map { |s| "S#{format('%02d', s.to_i)}" }.flatten
+             else
+               ep_nb.map { |s, e| e.map { |ee| "S#{format('%02d', s.to_i)}#{'E' + format('%02d', ee[:ep].to_i)}" } }.flatten
+             end
+    return ep_nb, ep_ids
   end
 
-  def self.identify_file_type(filename, nbs = nil, seasons = nil)
-    f_type = 'episode'
-    seasons, nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs && seasons
+  def self.identify_file_type(filename, nbs = nil)
+    nbs, _ = TvSeries.identify_tv_episodes_numbering(filename) unless nbs
     if nbs.empty?
-      f_type = seasons.empty? ? 'series' : 'season'
+      'series'
+    elsif nbs.values.flatten.empty?
+      'season'
+    else
+      'episode'
     end
-    f_type
   end
 
   def self.list_missing_episodes(episodes_in_files, qualifying_files, no_prompt = 0, delta = 10, include_specials = 0, qualities = {})

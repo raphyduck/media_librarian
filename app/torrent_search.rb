@@ -39,10 +39,6 @@ class TorrentSearch
     end
   end
 
-  def self.deauth(site)
-    launch_search(site, '', nil, '', 1).quit
-  end
-
   def self.download_now?(waiting_until)
     if Time.parse(waiting_until.to_s) > Time.now
       1
@@ -204,20 +200,20 @@ class TorrentSearch
     {}
   end
 
-  def self.launch_search(site, keyword, url = nil, cid = '', quit_only = 0)
+  def self.launch_search(site, keyword, url = nil, cid = '')
     case site
     when 'rarbg'
-      RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid, quit_only)
+      RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid)
     when 'thepiratebay'
-      Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid, quit_only)
+      Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid)
     when 'torrentleech'
-      TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
+      TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid)
     when 'yggtorrent'
-      Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
+      Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid)
     when 'wop'
-      Wop::Search.new(StringUtils.clean_search(keyword), url, cid, quit_only)
+      Wop::Search.new(StringUtils.clean_search(keyword), url, cid)
     else
-      TorrentRss.new(site, quit_only)
+      TorrentRss.new(site)
     end
   end
 
@@ -391,12 +387,6 @@ class TorrentSearch
     end
   end
 
-  def self.quit_all(sources = TORRENT_TRACKERS.keys)
-    get_trackers(sources).each do |t|
-      launch_search(t, '', nil, '', 1).quit
-    end
-  end
-
   def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0)
     search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
@@ -434,7 +424,6 @@ class TorrentSearch
         download_criteria: download_criteria,
         no_waiting: no_waiting
     )
-    Thread.current[:block] << lambda { quit_all(torrent_sources['trackers']) }
   end
 
   def self.torrent_download(torrent, no_prompt = 0, no_waiting = 0, remove_others = [], category = '')

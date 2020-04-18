@@ -66,7 +66,7 @@ class Movie
 
   def year
     return @year if @year
-    real_year = ids['imdb'].to_s != '' ? TraktAgent.movie__releases(ids['imdb'], '').map {|r| Time.parse(r['release_date']).year}.min : nil rescue nil #We need the year to be the same as IMDB, the authority on movies naming
+    real_year = (ids['imdb'] || ids['trakt']).to_s != '' ? TraktAgent.movie__releases((ids['imdb'] || ids['trakt']), '').map {|r| Time.parse(r['release_date']).year}.min : nil rescue nil #We need the year to be the same as IMDB, the authority on movies naming
     title_year = name && Metadata.identify_release_year(name) > 0 ? Metadata.identify_release_year(name) : nil
     $speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'" if (real_year || title_year || release_date).nil? #REMOVEME
     @year ||= (real_year || title_year || (release_date || Time.now + 3.years).year).to_i

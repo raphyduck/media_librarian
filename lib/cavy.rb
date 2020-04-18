@@ -1,16 +1,17 @@
 class Cavy
   def initialize(opts = {})
     init_capybara
-    @mechanize.user_agent_alias = opts['user_agent'] || 'Mac Firefox'
+    @mechanize.user_agent_alias = opts['user_agent'] || "Linux Firefox"
     @mechanize.history.max_size = opts['max_history_size'] || 0
     @mechanize.history_added = Proc.new {sleep 1}
     @mechanize.pluggable_parser['application/x-bittorrent'] = Mechanize::Download
   end
 
   def init_capybara
-    @capybara = Capybara::Session.new(:poltergeist)
+    @capybara = Capybara::Session.new(:selenium_chrome_headless)
+    @capybara.current_window.resize_to(1900, 1000)
     @mechanize = Mechanize.new
-    @capybara.driver.headers = {'User-Agent' => @mechanize.user_agent}
+    #TODO: Same user agent for capybara and mechanize. How to get capybara user agent?
   end
 
   def download(url, destination)
@@ -35,8 +36,6 @@ class Cavy
       retry
     else
       $speaker.tell_error(e, Utils.arguments_dump(binding))
-      quit
-      init_capybara
       false
     end
   end
@@ -51,28 +50,13 @@ class Cavy
     end
   end
 
-  def quit
-    return unless defined?(@capybara) && @capybara
-    @capybara.driver.quit
-    @capybara = nil
-  end
-
   private
-
-  def get_cookies
-    @capybara.driver.browser.cookies.map {|_, v| (Cache.object_pack(v, 1) || {})['attributes']}
-  end
 
   def sync_cookies
     @mechanize.cookie_jar.clear!
-    get_cookies.each do |c|
-      @mechanize.cookie_jar << Mechanize::Cookie.new(
-          :domain => c['domain'],
-          :name => c['name'],
-          :value => c['value'],
-          :path => c['path'],
-          :expires => c['expires']
-      )
+    @capybara.driver.browser.manage.all_cookies.each do |c|
+      c[:expires] = DateTime.now + 1.year
+      @mechanize.cookie_jar << Mechanize::Cookie.new(Utils.recursive_stringify_values(c))
     end
   end
 

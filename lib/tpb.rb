@@ -4,12 +4,12 @@ module Tpb
 
     attr_accessor :url
 
-    def initialize(search, cid = '', quit_only = 0)
+    def initialize(search, cid = '')
       @base_url = TORRENT_TRACKERS['thepiratebay'] #'https://thepiratebay.org'
       @query = search
       @url = "#{@base_url}/search/#{URI.escape(search)}/0/7/#{cid}"
       @css_path = 'table#searchResult tr'
-      post_init(quit_only)
+      post_init
     end
 
     def download(url, destination, name)

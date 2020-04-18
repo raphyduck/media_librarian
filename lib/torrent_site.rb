@@ -10,8 +10,7 @@ module TorrentSite
     attr_accessor :url
 
     def download(url, destination, name)
-      post_init
-      return '' if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
+      return '' unless ensure_logged_in(@base_url)
       path = "#{destination}/#{name}.torrent"
       FileUtils.rm(path) if File.exist?(path)
       url = @base_url + '/' + url if url.start_with?('/')
@@ -21,41 +20,41 @@ module TorrentSite
       path
     end
 
+    def ensure_logged_in(vurl = nil)
+      Utils.lock_block("torrentsite-#{@base_url}") do
+        $tracker_client[@base_url].get_url(vurl) if vurl
+        if $config[tracker]
+          begin
+            if defined?(@logged_in_css) && @logged_in_css.to_s != '' && !($tracker_client[@base_url].all(:css, @logged_in_css) rescue []).empty?
+              $speaker.speak_up "Already logged in, no need to authenticate again", 0
+            elsif $tracker_client_last_login[@base_url].is_a?(Time) && $tracker_client_last_login[@base_url] >= Time.now - 1.hour
+              $speaker.speak_up "Tried to log in less than an hour ago, skipping..."
+              return false
+            else
+              $speaker.speak_up("Authenticating on #{tracker}.", 0)
+              $tracker_client_last_login[@base_url] = Time.now
+              $tracker_client[@base_url].get_url(@login_url) if defined?(@login_url) && @login_url
+              auth
+            end
+          rescue => e
+            $speaker.tell_error(e, "#{tracker}.ensure_logged_in('#{vurl}')")
+            return false
+          end
+          $tracker_client[@base_url].get_url(vurl) if vurl && $tracker_client[@base_url].current_url != vurl
+        else
+          $speaker.speak_up("'#{tracker}' not configured, cannot authenticate")
+          return false
+        end
+      end
+      true
+    end
+
     def links(limit = NUMBER_OF_LINKS)
       generate_links(limit)
     end
 
-    def post_init(quit_only = 0)
-      return if quit_only.to_i > 0
-      Utils.lock_block("torrentsite-#{@base_url}") do
-        if $tracker_client[@base_url].nil?
-          $tracker_client[@base_url] = Cavy.new
-          $tracker_client_logged[@base_url] = false if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url)
-        end
-        if PRIVATE_TRACKERS.map {|_, u| u}.include?(@base_url) && !$tracker_client_logged[@base_url]
-          if $config[tracker]
-            $speaker.speak_up("Authenticating on #{tracker}.", 0)
-            begin
-              auth
-              $tracker_client_logged[@base_url] = true
-            rescue => e
-              $speaker.tell_error(e, "#{tracker}.post_init!")
-            end
-          else
-            $speaker.speak_up("'#{tracker}' not configured, cannot authenticate")
-          end
-        end
-      end
-    end
-
-    def quit
-      Utils.lock_block("torrentsite-#{@base_url}") do
-        $speaker.speak_up("Quitting tracker parser for '#{@base_url}'", 0) if Env.debug?
-        unless $tracker_client[@base_url].nil?
-          $tracker_client[@base_url].quit
-          $tracker_client[@base_url] = nil
-        end
-      end
+    def post_init
+      $tracker_client[@base_url] = Cavy.new if $tracker_client[@base_url].nil?
     end
 
     def size_unit_convert(size, s_unit)
@@ -77,10 +76,10 @@ module TorrentSite
     def generate_links(limit = NUMBER_OF_LINKS)
       links = []
       Utils.lock_block("torrentsite-#{@base_url}") {
-        get_rows.each {|link| l = crawl_link(link); links << l unless l.nil?}
+        get_rows.each { |link| l = crawl_link(link); links << l unless l.nil? }
       }
       links.first(limit)
-    rescue Net::OpenTimeout, SocketError, Capybara::Poltergeist::TimeoutError, Errno::EPIPE
+    rescue Net::OpenTimeout, SocketError, Errno::EPIPE
       []
     rescue => e
       $speaker.tell_error(e, "TorrentSite[#{@base_url}].generate_links", 0)
@@ -88,10 +87,9 @@ module TorrentSite
     end
 
     def get_rows
-      post_init
       $speaker.speak_up "Fetching url '#{@url}'" if Env.debug?
-      $tracker_client[@base_url].get_url(@url)
-      $tracker_client[@base_url].all(@css_path, {wait: 30})[0..50] || []
+      return [] unless !defined?(@force_login) || @force_login.to_i == 0 || ensure_logged_in(@url)
+      $tracker_client[@base_url].all(@css_path, {wait: 30})[0..50] || [] rescue []
     end
 
     def tracker

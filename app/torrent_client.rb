@@ -150,8 +150,6 @@ class TorrentClient
         $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
         if success
           Cache.queue_state_add_or_update('file_handling', {t[:identifier] => torrent[:files]}, 1, 1) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
-        else
-          TorrentSearch.deauth(torrent[:tracker])
         end
         FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
@@ -221,11 +219,11 @@ class TorrentClient
           torrent = Cache.object_unpack(t[:tattributes])
           $speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...",0) if Env.debug?
           target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
-          seed_time = $t_client.get_torrent_status(tid, ['seeding_time'])['seeding_time']
+          seed_time = $t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
           if seed_time.nil?
             $speaker.speak_up "Torrent no longer exists, will remove now..." if Env.debug?
             remove_it = 1
-          elsif target_seed_time < seed_time.to_i / 3600
+          elsif target_seed_time <= seed_time.to_i / 3600
             $speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
             $t_client.remove_torrent(tid, false) if $remove_torrent_on_completion && t[:status].to_i < 5
             $db.update_rows('torrents', {:status => [t[:status], 4].max}, {:name => t[:name]})
@@ -336,7 +334,6 @@ class TorrentClient
       $t_client.process_added_torrents
       $t_client.process_completed_torrents
       $t_client.disconnect
-      TorrentSearch.quit_all
     end
   end
 

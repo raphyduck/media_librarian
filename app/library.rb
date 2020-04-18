@@ -260,6 +260,7 @@ class Library
   end
 
   def self.get_duplicates(medium, threshold = 2)
+    #TODO: Better detection of duplicates media (in case of multi episodes file). But how to tackle it?
     return [] if medium.nil? || medium[:files].nil?
     dup_files = medium[:files].select { |x| x[:type].to_s == 'file' }.group_by { |a| a[:parts].join }.select { |_, v| v.count >= threshold }.map { |_, v| v }.flatten
     dup_files.select! do |x|
@@ -514,7 +515,10 @@ class Library
       process_folder_list.uniq.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
       end
-      Cache.queue_state_add_or_update('deluge_torrents_completed', {torrent_id => {:path => opath}}) if torrent_id.to_s != ""
+      if torrent_id.to_s != ""
+        active_time = ($t_client.get_torrent_status(torrent_id, ['name', 'active_time']) rescue {})['active_time'].to_i
+        Cache.queue_state_add_or_update('deluge_torrents_completed', {torrent_id => {:path => opath, :active_time => active_time}})
+      end
     end
     return handled, process_folder_list, error
   rescue => e

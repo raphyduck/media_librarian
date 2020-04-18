@@ -163,7 +163,8 @@ class FileInfo
       q += ['hdr'] if isHDR?
     when 'AUDIO'
       ac = AUDIO.select { |a| getaudiochannels.map { |c| c.format.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase }.include?(a.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase) }.compact.uniq
-      #q += ac unless ac.empty? #TODO: Better detection of audio codec
+      return nil if ac.empty? #TODO: Better detection of audio codec
+      q += ac
     when 'LANGUAGES'
       getaudiochannels.each do |ac|
         next unless ac

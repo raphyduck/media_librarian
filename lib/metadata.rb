@@ -114,7 +114,7 @@ class Metadata
     end
     cache_name = base_folder.to_s + filename.gsub(r_folder, '')
     media_folders[type][cache_name, CACHING_TTL] = [title, item] unless cache_name.to_s == ''
-    $speaker.speak_up "#{Utils.arguments_dump(binding)}= '#{title}', nil" if item.nil?
+    $speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{title}', nil", 0) if item.nil?
     return title, item
   end
 
@@ -128,9 +128,9 @@ class Metadata
   def self.match_titles(title, target_title, year, target_year, category)
     ep_match = true
     if category.to_s == 'shows'
-      _, _, title_ep_ids = TvSeries.identify_tv_episodes_numbering(title)
-      _, _, target_title_ep_ids = TvSeries.identify_tv_episodes_numbering(target_title)
-      target_title_ep_ids.each { |n| ep_match = title_ep_ids.include?(n) if ep_match }
+      _, title_ep_ids = TvSeries.identify_tv_episodes_numbering(title)
+      _, target_title_ep_ids = TvSeries.identify_tv_episodes_numbering(target_title)
+      ep_match = ((title_ep_ids - target_title_ep_ids) | (target_title_ep_ids - title_ep_ids)).empty?
     end
     t = detect_real_title(title.strip, category, 0, 0)
     tt = detect_real_title(target_title.strip, category, 0, 0)
@@ -282,7 +282,7 @@ class Metadata
       exact_title, item = Kodi.kodi_lookup(type, original_filename, exact_title) if item.nil? && original_filename.to_s != ''
       Cache.cache_add(cache_category, cache_name, [exact_title, item], item)
     end
-    $speaker.speak_up "#{Utils.arguments_dump(binding)}= '#{exact_title}', nil" if item.nil?
+    $speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0) if item.nil?
     return exact_title, item
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
@@ -307,21 +307,21 @@ class Metadata
       }
       parts = Movie.identify_split_files(filename)
     when 'shows'
-      s, e, _ = TvSeries.identify_tv_episodes_numbering(filename)
-      ids = e.map { |n| TvSeries.identifier(item_name, n[:s], n[:ep]) }
-      ids = s.map { |i| TvSeries.identifier(item_name, i, '') } if ids.empty?
+      e, _ = TvSeries.identify_tv_episodes_numbering(detect_real_title(filename, type, 1, 1))
+      ids = e.map { |s, e| e.map { |n| TvSeries.identifier(item_name, n[:s], n[:ep]) } }.flatten
+      ids = e.keys.map { |s| TvSeries.identifier(item_name, s, '') } if ids.empty?
       ids = [TvSeries.identifier(item_name, '', '')] if ids.empty?
-      episode_numbering = e.map { |n| "S#{format('%02d', n[:s].to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}" }.join(' ')
-      f_type = TvSeries.identify_file_type(filename, e, s)
+      episode_numbering = e.map { |s, e| e.map { |n| "S#{format('%02d', s.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}" } }.flatten.join(' ')
+      f_type = TvSeries.identify_file_type(filename, e)
       full_name = "#{item_name}"
       if f_type != 'series' && full_name != ''
-        full_name << " #{e.empty? ? s.map { |i| 'S' + format('%02d', i.to_i) }.join : episode_numbering}"
+        full_name << " #{f_type == 'season' ? e.keys.map { |s| 'S' + format('%02d', s.to_i) }.join : episode_numbering}"
       end
-      parts = e.map { |ep| ep[:part].to_i }
+      parts = e.values.flatten.map { |ep| ep[:part].to_i }
       info = {
           :series_name => item_name,
-          :episode_season => s.map { |i| i.to_i }.join(' '),
-          :episode => e,
+          :episode_season => e.keys.map { |s| s.to_i }.join(' '),
+          :episode => e.values.flatten,
           :episode_numbering => episode_numbering,
           :show => item,
           :f_type => f_type
