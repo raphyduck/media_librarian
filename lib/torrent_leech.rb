@@ -5,7 +5,7 @@ module TorrentLeech
     attr_accessor :url
 
     def initialize(search, url = nil, cid = '')
-      @base_url = TORRENT_TRACKERS['torrentleech'] #'https://www.torrentleech.org'
+      @base_url = TORRENT_TRACKERS['torrentleech'][0] #'https://www.torrentleech.org'
       # Order by seeds desc
       @query = search
       @url = url || "#{@base_url}/torrents/browse/index#{'/categories/' + cid.to_s if cid.to_s != ''}/query/#{URI.escape(search.gsub(/\ \ +/, ' '))}#{'/orderby/seeders/order/desc' if search.to_s != ''}" #/torrents/browse/index/categories/11,37,43,14,12,13,26,32,27/query/batman/orderby/seeders/order/desc

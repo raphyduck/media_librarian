@@ -5,7 +5,7 @@ module RarbgTracker
     attr_accessor :url
 
     def initialize(search, cid = '')
-      @base_url = TORRENT_TRACKERS['rarbg']
+      @base_url = TORRENT_TRACKERS['rarbg'][0]
       @query = search
       @cat = cid
       @cat = [] if cid.to_s == ''

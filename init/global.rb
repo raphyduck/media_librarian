@@ -57,16 +57,16 @@ VALID_VIDEO_EXT="(.*)\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
 VALID_MUSIC_EXT="(.*)\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
-SPACE_SUBSTITUTE='\. _'
-BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})(\.(part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})(\.(part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})(\.(part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
+SPACE_SUBSTITUTE='\. _\-'
+BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. -]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
-PRIVATE_TRACKERS = {'yggtorrent' => 'https://www2.yggtorrent.se',
-                    'torrentleech' => 'https://www.torrentleech.org',
-                    'wop' => 'https://worldofp2p.net'}
-TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => 'https://rarbgto.org',
-                                           'thepiratebay' => 'https://thepiratebay.org'})
+PRIVATE_TRACKERS = {'yggtorrent' => ['https://www2.yggtorrent.se','http://ygg.peer2peer.cc'],
+                    'torrentleech' => ['https://www.torrentleech.org','https://tracker.tleechreload.org','https://tracker.torrentleech.org/'],
+                    'wop' => ['https://worldofp2p.net']}
+TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => ['https://rarbgto.org'],
+                                           'thepiratebay' => ['https://thepiratebay.org']})
 FOLDER_HIERARCHY = {
     'shows' => 3,
     'movies' => 0

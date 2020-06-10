@@ -7,6 +7,9 @@ class VideoUtils
       mkvmuxer = MkvMuxer.new path, destination
       mkvmuxer.prepare
       mkvmuxer.merge!
+    elsif output_format == 'mkv' && input_format == 'iso'
+      #TODO: Use makemkv to convert video from iso to mkv
+      # makemkvcon iso:source_file all File.dirname(destination)
     else
       skipping = 1
     end

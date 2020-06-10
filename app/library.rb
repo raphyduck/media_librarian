@@ -357,8 +357,7 @@ class Library
       opath = torrent_path.dup
       if move_completed_torrent['torrent_completed_path'].to_s != '' && torrent_id.to_s != ''
         t = $db.get_rows('torrents', {:torrent_id => torrent_id}).first
-        torrent = t.nil? ? nil : Cache.object_unpack(t[:tattributes])
-        if torrent && t[:status].to_i < 5
+        if t.nil? || t[:status].to_i < 5
           if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exists?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
             FileUtils.mkdir_p(torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
             FileUtils.mv(torrent_path + '/' + torrent_name, torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
@@ -703,7 +702,7 @@ class Library
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL)
     $speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
     files, raw_filtered, cache_name, media_list = nil, [], folder.to_s + type.to_s, {}
-    file_criteria = {'regex' => '.*' + StringUtils.regexify(item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.')) + '.*'}
+    file_criteria = {'regex' => '.*' + item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*'}
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
     Utils.lock_block(__method__.to_s + cache_name) {
       media_list = BusVariable.new('media_list', Vash)

@@ -14,7 +14,7 @@ class Metadata
       end
     when 'shows'
       title = name.gsub(/[#{SPACE_SUBSTITUTE}][Ss](eason|aison)[#{SPACE_SUBSTITUTE}](\d{1,4})[#{SPACE_SUBSTITUTE}]/) { " S#{'%02d' % $2} " }
-      ids = title.scan(Regexp.new(BASIC_EP_MATCH)).uniq
+      ids = File.basename(title).scan(Regexp.new(BASIC_EP_MATCH)).uniq
       unless ids.empty?
         metadata = title.gsub(/#{ids.first[0]}(.*)/, '\1')
         title.gsub!(/#{ids.first[0]}.*/, ' ')
@@ -32,6 +32,7 @@ class Metadata
     if complete.to_i == 0
       name.gsub!(/[#{SPACE_SUBSTITUTE}]\((US|UK)\)[#{SPACE_SUBSTITUTE}]{0,2}$/, '')
       name.gsub!(/(.*)[#{SPACE_SUBSTITUTE}]\(?(19|20)(\d{2})\)?([#{SPACE_SUBSTITUTE}]|$)/i, '\1')
+      name.gsub!(/[\(\)\[\]]/, '')
     end
     name.gsub!(/\((i+|video|tv#{SPACE_SUBSTITUTE}.+)\)/i, '')
     name.gsub!(/(&#x27;|&#039;)/, '')

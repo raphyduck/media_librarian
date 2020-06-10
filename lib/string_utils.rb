@@ -84,7 +84,7 @@ class StringUtils
 
   def self.regularise_media_filename(filename, formatting = '')
     filename = filename.join if filename.is_a?(Array)
-    r = filename.to_s.gsub(/[\'\"\;\,]/, '').gsub(/[\/·\:]/, ' ')
+    r = filename.to_s.gsub(/[\'\"\;\,]/, '').gsub(/[\/·\:]/, ' ').gsub(/([#{SPACE_SUBSTITUTE}])+/, '\1')
     r = r.downcase.titleize if formatting.to_s.gsub(/[\(\)]/, '').match(/.*titleize.*/)
     r = r.downcase if formatting.to_s.match(/.*downcase.*/)
     r = r.gsub(/[\ \(\)]/, '.') if formatting.to_s.match(/.*nospace.*/)

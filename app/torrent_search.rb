@@ -107,10 +107,9 @@ class TorrentSearch
     timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
     trackers.each do |t|
       $speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
-      cid = get_cid(t, search_category)
-      keyword_s = keyword + self.get_site_keywords(t, search_category)
-      cr = launch_search(t, keyword_s, url, cid).links
-      cr = launch_search(t, keyword, url, cid).links if cr.nil? || cr.empty?
+      keyword_s = (keyword + self.get_site_keywords(t, search_category)).strip
+      cr = launch_search(t, keyword_s, url, get_cid(t, search_category)).links
+      cr = launch_search(t, keyword, url, get_cid(t, search_category)).links if keyword_s != keyword && (cr.nil? || cr.empty?)
       get_results += cr
     end
     filter_out.each do |fout|
@@ -190,9 +189,10 @@ class TorrentSearch
   end
 
   def self.get_tracker_config(tracker)
-    tracker = TORRENT_TRACKERS.select { |t, _| tracker.include?(t) }.first[0] if tracker.to_s != ''
-    if $template_dir && File.exist?($template_dir + '/' + "#{tracker}.yml")
-      return YAML.load_file($template_dir + '/' + "#{tracker}.yml")
+    ntracker = TORRENT_TRACKERS.select { |t, _| tracker.include?(t) }.first[0] rescue '' if tracker.to_s != ''
+    ntracker = TORRENT_TRACKERS.select { |_, ts| !ts.select {|t| tracker.include?(t)}.empty? }.first[0] rescue '' if ntracker.to_s == ''
+    if $template_dir && File.exist?($template_dir + '/' + "#{ntracker}.yml")
+      return YAML.load_file($template_dir + '/' + "#{ntracker}.yml")
     end
     {}
   rescue => e

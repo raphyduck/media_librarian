@@ -171,9 +171,7 @@ class TorrentClient
         $speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
         (opts || {}).each do |tname, o|
           torrent_cache = $db.get_rows('torrents', {:name => tname}).first
-          if torrent_cache && torrent_cache[:torrent_id].nil?
-            $db.update_rows('torrents', {:torrent_id => tid}, {:name => tname})
-          end
+          $db.update_rows('torrents', {:torrent_id => tid, :status => 3}, {:name => tname}) if torrent_cache && torrent_cache[:torrent_id].nil?
           set_options = {}
           main_file = find_main_file(status, o[:whitelisted_extensions] || [])
           if main_file.empty? && o[:expect_main_file].to_i > 0
@@ -210,7 +208,7 @@ class TorrentClient
   def process_completed_torrents
     $speaker.speak_up("Will process completed torrents", 0) if Env.debug?
     Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
-      t = $db.get_rows('torrents', {:torrent_id => tid}).first
+      t = $db.get_rows('torrents', {}, {"torrent_id like " => tid}).first
       remove_it = 0
       begin
         if t.nil?

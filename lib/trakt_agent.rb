@@ -64,6 +64,10 @@ class TraktAgent
         item = wk.select { |t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title'] }.first
         item = i if item.nil?
         _, info = ['shows', 'episodes'].include?(type) ? TvSeries.tv_show_get(item['show']['ids']) : nil
+        if info.nil?
+          $speaker.speak_up "Missing information for show '#{item}'"
+          next
+        end
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
         next if type == 'movies' && item['plays'].to_i == 0

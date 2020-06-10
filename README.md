@@ -7,7 +7,7 @@ This program is made to answer my various needs for automation in the management
 
 Requirements:
 * Linux
-* chromium
+* phantomjs
 * flac
 * lame
 * mediainfo
