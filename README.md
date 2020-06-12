@@ -13,6 +13,7 @@ Requirements:
 * mediainfo
 * ffmpeg
 * mkvmerge
+* MakeMKV
 
 TODO:
 * General

@@ -8,8 +8,13 @@ class VideoUtils
       mkvmuxer.prepare
       mkvmuxer.merge!
     elsif output_format == 'mkv' && input_format == 'iso'
-      #TODO: Use makemkv to convert video from iso to mkv
-      # makemkvcon iso:source_file all File.dirname(destination)
+      cd = $temp_dir + '/' + File.basename(dest_file)
+      FileUtils.mkdir_p(cd) unless File.exist?(cd)
+      makemkv = MakeMkv.new(path, cd)
+      makemkv.iso_to_mkv!
+      FileUtils.mv(Dir["#{cd}/*.mkv"].sort_by { |f| -File.size(f) }.first, dest_file) #We will use the biggest file. This assumes the ISO is only holding 1 file of interest. But how to discern otherwise?
+      FileUtils.rm(Dir["#{cd}/*.mkv"]) rescue nil
+      FileUtils.rmdir(cd) if File.exists?(cd) rescue nil
     else
       skipping = 1
     end

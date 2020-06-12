@@ -46,6 +46,7 @@ class MkvMuxer
 
   def merge!(mkvmerge = '/usr/bin/mkvmerge')
     $speaker.speak_up "Will run the following command: '#{mkvmerge} #{@command}'" if Env.debug?
+    return $speaker.speak_up "Would run the following command: '#{mkvmerge} #{@command}'" if Env.pretend?
     Open3.popen3(mkvmerge, *@command) do |stdin, stdout, stderr, wait_thr|
       exit_code = wait_thr.value
 
@@ -59,7 +60,7 @@ class MkvMuxer
 
   def apply_crc32!
     crc32 = MkvMuxer.crc32_of @output
-    FileUtils.move(@output, @output.gsub(/CRC32/, crc32)[0..-2])
+    FileUtils.mv(@output, @output.gsub(/CRC32/, crc32)[0..-2])
   end
 
   class << self

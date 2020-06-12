@@ -499,7 +499,7 @@ class Library
           _, moved = FileUtils.move_file(full_p, destination, 1)
           error += 1 unless moved
         end
-        if defined?(destination) && destination != ''
+        if defined?(destination) && destination.to_s != ''
           process_folder_list << [ttype, File.dirname(destination)]
           handled = 1
         end
