@@ -56,7 +56,8 @@ module FileUtils
     end
 
     def get_extension(filename)
-      filename.gsub(/.*\.(\w{2,4}$)/, '\1').downcase
+      ext = filename.gsub(/.*\.(\w{2,4}$)/, '\1').downcase
+      ext.size != filename.size ? ext : ''
     end
 
     def get_only_folder_levels(path, level = 1)

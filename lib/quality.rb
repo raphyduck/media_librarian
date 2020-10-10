@@ -74,6 +74,9 @@ class Quality
       end
     end
     return timeframe, true
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    return '', false
   end
 
   def self.identify_proper(filename)

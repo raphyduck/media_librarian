@@ -7,7 +7,7 @@ This program is made to answer my various needs for automation in the management
 
 Requirements:
 * Linux
-* phantomjs
+* jackett: https://github.com/Jackett/Jackett
 * flac
 * lame
 * mediainfo

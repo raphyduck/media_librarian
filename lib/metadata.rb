@@ -5,7 +5,7 @@ class Metadata
     title, metadata, ids = name, name, ''
     case type
     when 'books'
-      title = name.gsub(/.*\/([^\/]*)/, '\1')
+      title = name.gsub(/^(.+)[#{SPACE_SUBSTITUTE}]-[#{SPACE_SUBSTITUTE}].*/, '\1').gsub(/.*\/([^\/]*)/, '\1')
     when 'movies'
       m = name.match(/(.*[#{SPACE_SUBSTITUTE}]\(?\d{4}\)?)([#{SPACE_SUBSTITUTE}](.*)|$)/i)
       if m
@@ -312,7 +312,7 @@ class Metadata
       ids = e.map { |s, e| e.map { |n| TvSeries.identifier(item_name, n[:s], n[:ep]) } }.flatten
       ids = e.keys.map { |s| TvSeries.identifier(item_name, s, '') } if ids.empty?
       ids = [TvSeries.identifier(item_name, '', '')] if ids.empty?
-      episode_numbering = e.map { |s, e| e.map { |n| "S#{format('%02d', s.to_i)}E#{format('%02d', n[:ep])}#{'.' + n[:part].to_s if n[:part].to_i > 0}" } }.flatten.join(' ')
+      episode_numbering = e.map { |s, e| e.map { |n| "S#{format('%02d', s.to_i)}E#{format('%02d', n[:ep])}#{'.part' + n[:part].to_s if n[:part].to_i > 0}" } }.flatten.join(' ')
       f_type = TvSeries.identify_file_type(filename, e)
       full_name = "#{item_name}"
       if f_type != 'series' && full_name != ''

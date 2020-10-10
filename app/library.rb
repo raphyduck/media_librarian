@@ -53,7 +53,7 @@ class Library
           end
         end
         $speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
-        FileUtils.mkdir(name) unless File.exist?(name)
+        FileUtils.mkdir(File.dirname(name)) unless File.directory?(File.dirname(name))
         skipping = case type
                    when :books
                      Book.convert_comics(path, name, input_format, output_format, dest_file, no_warning)

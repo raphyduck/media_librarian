@@ -1,16 +1,12 @@
-require File.dirname(__FILE__) + '/torrent_site'
-class TorrentRss < TorrentSite::Search
-  attr_accessor :url
+class TorrentRss
 
-  def initialize(url)
-    @url = url
-    @base_url = url
-    post_init
+  def self.links(url, limit = NUMBER_OF_LINKS)
+    generate_links(url, limit)
   end
 
   private
 
-  def crawl_link(link)
+  def self.crawl_link(link, url = '')
     desc = link.summary
     raw_size = desc.match(/Size: (\d+(\.\d+)? ?\w{2})/i)[1] rescue "0"
     size = raw_size.match(/[\d\.]+/).to_s.to_d
@@ -27,11 +23,11 @@ class TorrentRss < TorrentSite::Search
         :leechers => (desc.match(/Leechers: (\d+)?/)[1] rescue 0),
         :id => link.title,
         :added => link.published,
-        :tracker => tracker
+        :tracker => url
     }
   end
 
-  def detect_link(tlink)
+  def self.detect_link(tlink)
     if tlink.match(/^magnet\:.*/)
       "m"
     else
@@ -39,12 +35,35 @@ class TorrentRss < TorrentSite::Search
     end
   end
 
-  def get_rows
-    xml = HTTParty.get(url).body
-    (Feedjira.parse(xml)).entries || []
+  def self.generate_links(url, limit = NUMBER_OF_LINKS)
+    links = []
+    get_rows(url).each { |link| l = crawl_link(link, url); links << l unless l.nil? }
+    links.first(limit)
+  rescue Net::OpenTimeout, SocketError, Errno::EPIPE
+    []
+  rescue => e
+    $speaker.tell_error(e, "TorrentRss.generate_links", 0)
+    []
+  end
+
+  def self.get_rows(url)
+    (Feedjira.parse($mechanizer.get(url).body)).entries || []
   rescue => e
     $speaker.tell_error(e, "TorrentRss.new('#{url}').get_rows")
   end
 
+  def self.size_unit_convert(size, s_unit)
+    case s_unit
+    when 'KB', 'KiB', 'kB', 'Ko', 'KO'
+      size *= 1024
+    when 'MB', 'MiB', 'Mo', 'MO'
+      size *= 1024 * 1024
+    when 'GB', 'GiB', 'Go', 'GO'
+      size *= 1024 * 1024 * 1024
+    when 'TB', 'TiB', 'To', 'TO'
+      size *= 1024 * 1024 * 1024 * 1024
+    end
+    size
+  end
 
 end

@@ -44,16 +44,15 @@ class MkvMuxer
     }
   end
 
-  def merge!(mkvmerge = '/usr/bin/mkvmerge')
+  def merge!(ignore_errors = 0, mkvmerge = '/usr/bin/mkvmerge')
     $speaker.speak_up "Will run the following command: '#{mkvmerge} #{@command}'" if Env.debug?
     return $speaker.speak_up "Would run the following command: '#{mkvmerge} #{@command}'" if Env.pretend?
-    Open3.popen3(mkvmerge, *@command) do |stdin, stdout, stderr, wait_thr|
+    Open3.popen2(mkvmerge, *@command) do |stdin, stdout, wait_thr|
       exit_code = wait_thr.value
-
-      if exit_code != 0
-        err = stderr.read.chomp
-        err = stdout.read.chomp if err.strip.empty?
-        raise Exception, err
+      stdout_str = stdout.read.chomp
+      $speaker.speak_up "Process finished with status #{exit_code}, output is #{stdout_str}" if Env.debug?
+      if exit_code != 0 && ignore_errors.to_i == 0
+        raise Exception, stdout_str
       end
     end
   end

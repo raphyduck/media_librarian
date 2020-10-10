@@ -2,7 +2,7 @@ class FileInfo
   attr_accessor :media_info, :path
 
   def initialize(path)
-    @media_info = MediaInfo.from(path)
+    @media_info = Env.pretend? ? nil : MediaInfo.from(path)
     @path = path
   end
 
@@ -14,6 +14,8 @@ class FileInfo
       tr_nb += 1
     end
     ac
+  rescue
+    []
   end
 
   def getcolor
@@ -25,7 +27,7 @@ class FileInfo
   end
 
   def getvcodec(format = 0)
-    c = media_info.video.format rescue nil
+    c = media_info.video.format
     if format.to_i > 0
       if c.downcase.gsub("-", "") == "mpeg4" || c.downcase.gsub("-", "") == "msmpeg4" or c.downcase.gsub("-", "") == "msmpeg4v1" or c.downcase.gsub("-", "") == "msmpeg4v2" or c.downcase.gsub("-", "") == "msmpeg4v3"
         'xvid'
@@ -47,6 +49,8 @@ class FileInfo
     else
       c
     end
+  rescue
+    nil
   end
 
   def getoptivcodec(codec, hq = false)
@@ -121,6 +125,8 @@ class FileInfo
           2160
         end
     "#{r}#{st[0].downcase}"
+  rescue
+    nil
   end
 
   def getscantype
@@ -132,6 +138,8 @@ class FileInfo
     else
       'progressive'
     end
+  rescue
+    'progressive'
   end
 
   def isHDR?
@@ -147,7 +155,7 @@ class FileInfo
       movie = FFMPEG::Movie.new(path)
       $speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
       FileUtils.rm(output) if File.exists?(output) #Remove exists file if already exists
-      movie.transcode(output, options) { |progress| printf("\rProgress: %d%", (progress * 100).round(4)) }
+      movie.transcode(output, options) { |progress| printf("\rProgress: %d%%", (progress * 100).round(4)) }
     end
   end
 

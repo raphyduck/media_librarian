@@ -63,3 +63,4 @@ download_criteria:
   destination:
     shows: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}'
     movies: '/home/user/Movie/'
+grab_all: 0 #If set to 1, will grab all torrents results for a given search, not just the first

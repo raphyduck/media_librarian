@@ -16,7 +16,7 @@ SOURCES = %w(bluray blu-ray bdrip brrip remux dvdrip webdl web-dl web hdtv webri
 CODECS = %w(10bits 10bit hevc h265 x265 avc h264 x264 xvid divx vc1 wmv mpeg2)
 AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5.1', 'dd+5 1', 'ac3', 'ddp5.1', 'dd5.1', 'aac2.0', 'aac', 'mp3']
 TONES = ['hdr', 'sdr']
-CUT = ['director.s.cut', 'uncut', 'unrated']
+CUT = ['director.s.cut', 'directors.cut', 'uncut', 'unrated', 'extended']
 LANGUAGES = ['multi', 'vo', "vof", "vostfr"] + Languages.sort_languages($config['preferred_languages'])
 EXTRA_TAGS = ['nodup']
 Q_SORT = ['RESOLUTIONS', 'SOURCES', 'LANGUAGES', 'CODECS', 'AUDIO', 'TONES', 'CUT']
@@ -36,7 +36,7 @@ FILENAME_NAMING_TEMPLATE=%w(
 VALID_CONVERSION_INPUTS = {
     :books => ['cbz', 'pdf', 'cbr', 'epub'],
     :music => ['flac'],
-    :video => ['iso', 'ts']
+    :video => ['iso', 'ts', 'm2ts']
 }
 VALID_CONVERSION_OUTPUT = {
     :books => ['cbz'],
@@ -51,22 +51,17 @@ VALID_MEDIA_TYPES = {
 EXTENSIONS_TYPE= {
     :books => %w(cbz cbr pdf),
     :music => %w(flac mp3),
-    :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts)
+    :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts m2ts)
 }
-VALID_VIDEO_EXT="(.*)\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
-VALID_MUSIC_EXT="(.*)\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
+VALID_VIDEO_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
+VALID_MUSIC_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
 SPACE_SUBSTITUTE='\. _\-'
 BASIC_EP_MATCH='((([\. ]|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
-REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([\. -]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
+REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([#{SPACE_SUBSTITUTE}]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
 REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
-PRIVATE_TRACKERS = {'yggtorrent' => ['https://www2.yggtorrent.se','http://ygg.peer2peer.cc'],
-                    'torrentleech' => ['https://www.torrentleech.org','https://tracker.tleechreload.org','https://tracker.torrentleech.org/'],
-                    'wop' => ['https://worldofp2p.net']}
-TORRENT_TRACKERS = PRIVATE_TRACKERS.merge({'rarbg' => ['https://rarbgto.org'],
-                                           'thepiratebay' => ['https://thepiratebay.org']})
 FOLDER_HIERARCHY = {
     'shows' => 3,
     'movies' => 0

@@ -1,11 +1,5 @@
 class TorrentSearch
 
-  def self.authenticate_all(sources)
-    get_trackers(sources).each do |t|
-      launch_search(t, '')
-    end
-  end
-
   def self.check_status(identifier, timeout = 10, download = nil)
     download = $db.get_rows('torrents', {:status => 3, :identifiers => identifier}).first if download.nil?
     return if download.nil?
@@ -27,7 +21,7 @@ class TorrentSearch
       $t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
     elsif state == 'none'
       $speaker.speak_up("Download #{identifier} no longer exists, removing it from download entries")
-      $t_client.delete_torrent(download[:name])
+      $t_client.delete_torrent(download[:name], '', 1)
     end
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
@@ -56,47 +50,6 @@ class TorrentSearch
     end
   end
 
-  def self.get_cid(type, category)
-    return nil if category.nil? || category == ''
-    category = 'books' if category == 'book_series'
-    case type
-    when 'rarbg'
-      {
-          :movies => [14, 48, 17, 44, 45, 47, 50, 51, 52, 42, 46],
-          :shows => [18, 41, 49],
-          :music => [23, 25]
-      }.fetch(category.to_sym, nil)
-    when 'thepiratebay'
-      {
-          :movies => 200,
-          :shows => 200,
-          :music => 100,
-          :books => 601
-      }.fetch(category.to_sym, nil)
-    when 'torrentleech'
-      {
-          :movies => '8,9,11,37,43,14,12,13,41,47,15,29',
-          :shows => '26,32,27',
-          :books => '45,46',
-          :music => '31,16'
-      }.fetch(category.to_sym, nil)
-    when 'yggtorrent'
-      {
-          :movies => 'category=2145&sub_category=all&',
-          :shows => 'category=2145&sub_category=all&',
-          :music => 'category=2139&sub_category=2148&',
-          :books => 'category=2140&sub_category=all&',
-          :comics => 'category=2140&sub_category=2152&'
-      }.fetch(category.to_sym, nil)
-    when 'wop'
-      {
-          :movies => 'cats1[]=30&cats1[]=24&cats1[]=53&cats1[]=56&cats1[]=52&cats1[]=25&cats1[]=11&cats1[]=26&cats1[]=27&cats1[]=10&cats1[]=28&cats1[]=31&cats1[]=57&cats1[]=33&cats1[]=29&cats1[]=67&cats1[]=3&',
-          :shows => 'cats2[]=37&cats2[]=55&cats2[]=54&cats2[]=39&cats2[]=38&cats2[]=35&cats2[]=41&cats2[]=42&cats2[]=58&cats2[]=36&cats2[]=5&',
-          :music => 'cats4[]=13&cats4[]=4&cats4[]=18&cats4[]=19&'
-      }.fetch(category.to_sym, nil)
-    end
-  end
-
   def self.get_results(sources:, keyword:, limit: 50, category:, qualities: {}, filter_dead: 1, url: nil, sort_by: [:tracker, :seeders], filter_out: [], strict: 0, download_criteria: {}, post_actions: {}, search_category: nil)
     tries ||= 3
     get_results = []
@@ -108,8 +61,8 @@ class TorrentSearch
     trackers.each do |t|
       $speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
       keyword_s = (keyword + self.get_site_keywords(t, search_category)).strip
-      cr = launch_search(t, keyword_s, url, get_cid(t, search_category)).links
-      cr = launch_search(t, keyword, url, get_cid(t, search_category)).links if keyword_s != keyword && (cr.nil? || cr.empty?)
+      cr = launch_search(t, search_category, keyword_s)
+      cr = launch_search(t, search_category, keyword) if keyword_s != keyword && (cr.nil? || cr.empty?)
       get_results += cr
     end
     filter_out.each do |fout|
@@ -174,46 +127,45 @@ class TorrentSearch
     category && category != '' && $config[type] && $config[type]['site_specific_kw'] && $config[type]['site_specific_kw'][category] ? " #{$config[type]['site_specific_kw'][category]}" : ''
   end
 
-  def self.get_torrent_file(site, did, url = '', destination_folder = $temp_dir)
+  def self.get_torrent_file(did, url, destination_folder = $temp_dir)
     return did if Env.pretend?
-    launch_search(site, '').download(url, destination_folder, did)
+    path = "#{destination_folder}/#{did}.torrent"
+    FileUtils.rm(path) if File.exist?(path)
+    url = @base_url + '/' + url if url.start_with?('/')
+    begin
+      tries ||= 3
+      $mechanizer.get(url).save(path)
+    rescue => e
+      if (tries -= 1) >= 0
+        sleep 1
+        retry
+      else
+        raise e
+      end
+    end
+    path
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     nil
   end
 
   def self.get_trackers(sources)
-    trackers = parse_tracker_sources(sources || {})
-    trackers = TORRENT_TRACKERS.map { |t, _| t } if trackers.empty?
+    trackers = parse_tracker_sources(sources || [])
+    trackers = $trackers.map { |t, _| t } if trackers.empty?
     trackers
   end
 
   def self.get_tracker_config(tracker)
-    ntracker = TORRENT_TRACKERS.select { |t, _| tracker.include?(t) }.first[0] rescue '' if tracker.to_s != ''
-    ntracker = TORRENT_TRACKERS.select { |_, ts| !ts.select {|t| tracker.include?(t)}.empty? }.first[0] rescue '' if ntracker.to_s == ''
-    if $template_dir && File.exist?($template_dir + '/' + "#{ntracker}.yml")
-      return YAML.load_file($template_dir + '/' + "#{ntracker}.yml")
-    end
-    {}
-  rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    $trackers[tracker].config
+  rescue
     {}
   end
 
-  def self.launch_search(site, keyword, url = nil, cid = '')
-    case site
-    when 'rarbg'
-      RarbgTracker::Search.new(StringUtils.clean_search(keyword), cid)
-    when 'thepiratebay'
-      Tpb::Search.new(StringUtils.clean_search(keyword).gsub(/\'\w/, ''), cid)
-    when 'torrentleech'
-      TorrentLeech::Search.new(StringUtils.clean_search(keyword), url, cid)
-    when 'yggtorrent'
-      Yggtorrent::Search.new(StringUtils.clean_search(keyword), url, cid)
-    when 'wop'
-      Wop::Search.new(StringUtils.clean_search(keyword), url, cid)
+  def self.launch_search(tracker, search_category, keyword)
+    if $trackers[tracker]
+      $trackers[tracker].search(search_category, keyword)
     else
-      TorrentRss.new(site)
+      TorrentRss.links(tracker)
     end
   end
 
@@ -253,8 +205,8 @@ class TorrentSearch
     timeframe_trackers
   end
 
-  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0)
-    $speaker.speak_up "TorrentSearch.processing_result(results, sources, #{limit}, #{f.select{|k,_| ![:files].include?(k)}}, '#{qualities}', #{no_prompt}, '#{download_criteria}', #{no_waiting})" if Env.debug?
+  def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0, grab_all = 0, search_category = nil)
+    $speaker.speak_up "TorrentSearch.processing_result(results, sources, #{limit}, #{f.select { |k, _| ![:files].include?(k) }}, '#{qualities}', #{no_prompt}, '#{download_criteria}', #{no_waiting})" if Env.debug?
     f_type, extra_files = f[:f_type] || '', []
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
@@ -292,6 +244,7 @@ class TorrentSearch
               strict: no_prompt,
               download_criteria: dc,
               post_actions: f.select { |key, _| ![:full_name, :identifier, :identifiers, :type, :name, :existing_season_eps].include?(key) }.deep_dup + {:expect_main_file => expect_main_file},
+              search_category: search_category
           )
         end
         break unless results.empty? #&& Cache.torrent_get(f[:identifier], f_type).empty?
@@ -320,10 +273,11 @@ class TorrentSearch
       $speaker.speak_up("No torrent found for #{f[:full_name]}!", 0) if Env.debug?
       return
     end
-    if no_prompt.to_i == 0 || Env.debug?
-      $speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
-      i = 1
-      subset.each do |torrent|
+    i = 1
+    subset.each do |torrent|
+      break unless (grab_all.to_i > 0 && i < 6) || no_prompt.to_i == 0 || i == 1
+      if no_prompt.to_i == 0 || Env.debug?
+        $speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
         $speaker.speak_up(LINE_SEPARATOR)
         $speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
         torrent.select { |k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :in_db].include?(k) }.each do |k, v|
@@ -337,18 +291,20 @@ class TorrentSearch
                 end
           $speaker.speak_up "#{k.to_s.titleize}: #{val}"
         end
-        i += 1
       end
+      download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, i).to_i
+      i += 1
+      next unless subset[download_id.to_i - 1]
+      Utils.lock_block(__method__.to_s) {
+        next if subset[download_id.to_i - 1][:in_db].to_i > 0 && subset[download_id.to_i - 1][:download_now].to_i > 2
+        torrent_download(subset[download_id.to_i - 1], no_prompt, no_waiting, existing_torrents.select { |t| t[:in_db].to_i > 0 }.map { |t| t[:name] }, f[:type])
+      }
     end
-    download_id = $speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, 1).to_i
-    return unless subset[download_id.to_i - 1]
-    Utils.lock_block(__method__.to_s) {
-      return if subset[download_id.to_i - 1][:in_db].to_i > 0 && subset[download_id.to_i - 1][:download_now].to_i > 2
-      torrent_download(subset[download_id.to_i - 1], no_prompt, no_waiting, existing_torrents.select { |t| t[:in_db].to_i > 0 }.map { |t| t[:name] }, f[:type])
-    }
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
-  def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {}, no_waiting: 0)
+  def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {}, no_waiting: 0, grab_all: 0, search_category: nil)
     filter = filter.map { |_, a| a }.flatten if filter.is_a?(Hash)
     filter = [] if filter.nil?
     filter.select! do |f|
@@ -379,7 +335,7 @@ class TorrentSearch
       break if Library.break_processing(no_prompt)
       next if Library.skip_loop_item("Do you want to look for #{f[:type]} #{f[:full_name]} #{'(released on ' + f[:release_date].strftime('%A, %B %d, %Y') + ')' if f[:release_date]}? (y/n)", no_prompt) > 0
       Librarian.route_cmd(
-          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria, no_waiting],
+          ['TorrentSearch', 'processing_result', results, sources, limit, f, qualities.deep_dup, no_prompt, download_criteria, no_waiting, grab_all, search_category],
           1,
           "#{Thread.current[:object]}torrent",
           4
@@ -387,7 +343,7 @@ class TorrentSearch
     end
   end
 
-  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0)
+  def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0, grab_all: 0)
     search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
       slist, elist = Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination, qualities: qualities)
@@ -397,7 +353,6 @@ class TorrentSearch
     $speaker.speak_up "Empty searchlist" if search_list.empty?
     $speaker.speak_up "No trackers source configured!" if (torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?)
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
-    authenticate_all(torrent_sources['trackers'])
     results = case torrent_sources['type'].to_s
               when 'sub'
                 get_results(
@@ -422,7 +377,9 @@ class TorrentSearch
         qualities: qualities,
         limit: 0,
         download_criteria: download_criteria,
-        no_waiting: no_waiting
+        no_waiting: no_waiting,
+        grab_all: grab_all,
+        search_category: search_category
     )
   end
 

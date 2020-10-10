@@ -1,6 +1,8 @@
 class BookSeries
   attr_accessor :name, :goodread_id, :description
 
+  @book_series = {}
+
   def initialize(opts)
     @name = (opts['name'] || opts['title'] || opts[:name] || opts[:title]).to_s.strip
     @goodread_id = opts['goodread_id'] || opts['id']
@@ -37,6 +39,12 @@ class BookSeries
     return '', nil
   end
 
+  def self.existing_series
+    return @book_series if $calibre.nil?
+    @book_series = $calibre.get_rows('series').map { |s| s[:name] }
+    @book_series
+  end
+
   def self.get_series(goodread_series_id)
     cached = Cache.cache_get('books_series_get', goodread_series_id.to_s)
     return cached if cached
@@ -58,10 +66,9 @@ class BookSeries
     return book_series[cache_name] if book_series[cache_name] && !book_series[cache_name].empty?
     book_series[cache_name, CACHING_TTL] = {}
     Utils.lock_block("#{__method__}_#{cache_name}") {
-      series = Book.existing_books(no_prompt)
-      (series[:book_series] || {}).each do |series_name, s|
+      existing_series.each do |series_name|
         series_name = series_name.dup
-        full_name, identifiers, info = Metadata.parse_media_filename(series_name, 'books', s, series_name.dup, no_prompt)
+        full_name, identifiers, info = Metadata.parse_media_filename(series_name, 'books', new({'name' => series_name}), series_name.dup, no_prompt)
         book_series[cache_name, CACHING_TTL] = Metadata.media_add(series_name,
                                                                   'books',
                                                                   full_name,

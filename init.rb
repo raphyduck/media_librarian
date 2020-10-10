@@ -11,6 +11,7 @@ $config_example = File.dirname(__FILE__) + '/config/conf.yml.example'
 $temp_dir = $config_dir + '/tmp'
 log_dir = $config_dir + '/log'
 $template_dir = $config_dir + '/templates'
+$tracker_dir = $config_dir + '/trackers'
 $pid_dir = $config_dir + '/pids'
 $pidfile = $pid_dir + '/pid.file'
 #Create default folders if doesn't exist

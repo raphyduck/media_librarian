@@ -184,7 +184,7 @@ class TvSeries
     cached = Cache.cache_get('tv_show_get', cache_name, nil)
     return cached if cached
     show, src = Cache.object_pack(TraktAgent.show__summary(ids['trakt'] || ids['imdb'], '?extended=full'), 1), 'trakt' if (ids['trakt'] || ids['imdb']).to_s != ''
-    show, src = Cache.object_pack((TVMaze::Show.lookup(ids) rescue nil), 1), 'tvmaze' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '') || (show["first_aired"].to_s == '' || show['FirstAired'].to_s == '' || show['premiered'].to_s == '')) && !ids.empty?
+    show, src = Cache.object_pack((TVMaze::Show.lookup(ids) rescue nil), 1), 'tvmaze' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '') || (show["first_aired"].to_s == '' && show['FirstAired'].to_s == '' && show['premiered'].to_s == '')) && !ids.empty?
     show, src = Cache.object_pack($tvdb.get_series_by_id(ids['thetvdb']), 1), 'thetvdb' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '')) && ids['thetvdb'].to_s != ''
     show = show && (show['title'].to_s != '' || show['SeriesName'].to_s != '' || show['name'].to_s != '') ? TvSeries.new(show.merge({'data_source' => src})) : nil
     title = if show

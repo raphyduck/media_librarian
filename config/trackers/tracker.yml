@@ -1,0 +1,7 @@
+api_url: torznab_api_url (not set if not a torznab tracker)
+api_key: torznab_api_key
+assume_quality: "vf" #Takes precedence on search qualities
+seed_time: 24
+site_specific_kw:
+  movies: multi
+#This config is tracker specific

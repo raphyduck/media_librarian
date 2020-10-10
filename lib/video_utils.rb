@@ -3,10 +3,10 @@ class VideoUtils
     $speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     destination = dest_file.gsub(/(.*)\.[\w\d]{1,4}/, '\1' + ".#{output_format}")
     skipping = 0
-    if output_format == 'mkv' && input_format == 'ts'
+    if output_format == 'mkv' && ['m2ts', 'ts'].include?(input_format)
       mkvmuxer = MkvMuxer.new path, destination
       mkvmuxer.prepare
-      mkvmuxer.merge!
+      mkvmuxer.merge!(1)
     elsif output_format == 'mkv' && input_format == 'iso'
       cd = $temp_dir + '/' + File.basename(dest_file)
       FileUtils.mkdir_p(cd) unless File.exist?(cd)

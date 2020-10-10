@@ -1,0 +1,1 @@
+$mechanizer = Mechanize.new

@@ -2,9 +2,7 @@ class TorrentClient
 
   def initialize
     init
-    @tname = ''
     @throttled = false
-    @already_listening = false
   rescue => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
     raise
@@ -21,7 +19,7 @@ class TorrentClient
   end
 
   def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
-    $t_client.remove_torrent(tid, true) if tid.to_s != '' rescue nil
+    $t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
     $db.update_rows('torrents', {:status => delete_status}, {:name => tname})
     Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
@@ -93,12 +91,10 @@ class TorrentClient
   end
 
   def listen
-    return if @already_listening
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
       $speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       Cache.queue_state_add_or_update('deluge_torrents_added', torrent_id) if torrent_id.to_s != ''
     end
-    @already_listening = true
   end
 
   def main_file_only(status, main_files)
@@ -116,14 +112,13 @@ class TorrentClient
       torrent = Cache.object_unpack(t[:tattributes])
       if Env.debug?
         $speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        (torrent + t.select{|k,_| [:name, :identifiers].include?(k)}).each { |k, v| $speaker.speak_up "#{k} = #{v}" }
+        (torrent + t.select { |k, _| [:name, :identifiers].include?(k) }).each { |k, v| $speaker.speak_up "#{k} = #{v}" }
       end
       tdid = (Time.now.to_f * 1000).to_i.to_s
-      @tname = t[:name]
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
       opts = {
-          @tname => {
+          t[:name] => {
               :tdid => tdid,
               :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
               :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
@@ -134,27 +129,31 @@ class TorrentClient
               :category => torrent[:category]
           }
       }
-      opts[@tname].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
+      opts[t[:name]].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
       Cache.queue_state_add_or_update('deluge_options', opts)
       path, ttype = nil, 1
       success = false
       tries = 5
+      nodl = TorrentSearch.get_tracker_config(torrent[:tracker])['no_download'].to_i
       while (tries -= 1) >= 0 && !success
         $speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
-        if url.to_s != ''
-          path = TorrentSearch.get_torrent_file(torrent[:tracker], tdid, url)
-        elsif magnet.to_s != ''
+        if url.to_s != '' && nodl == 0
+          path = TorrentSearch.get_torrent_file(tdid, url)
+        elsif magnet.to_s != '' && nodl == 0
           path, ttype = magnet, 2
+        else
+          $speaker.speak_up "no_download setting is activated for this tracker, please download manually."
+          path = "nodl"
         end
-        success = process_download_torrent(ttype, path, opts[@tname], torrent[:tracker]) if path.to_s != ''
-        $speaker.speak_up "Download of torrent '#{@tname}' #{success ? 'succeeded' : 'failed'}" if Env.debug? || !success
-        if success
-          Cache.queue_state_add_or_update('file_handling', {t[:identifier] => torrent[:files]}, 1, 1) if torrent[:files].is_a?(Array) && !torrent[:files].empty?
+        path = $temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?($temp_dir + "/#{t[:name]}.torrent")
+        if path.to_s != ''
+          success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? {t[:identifier] => torrent[:files]} : {}))
         end
+        $speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
         FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
+      delete_torrent(t[:name], 0, 1) unless success
     end
-    @tname = ''
   end
 
   def process_added_torrents
@@ -215,7 +214,7 @@ class TorrentClient
           $t_client.remove_torrent(tid, true) if $remove_torrent_on_completion
         else
           torrent = Cache.object_unpack(t[:tattributes])
-          $speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...",0) if Env.debug?
+          $speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...", 0) if Env.debug?
           target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
           seed_time = $t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
           if seed_time.nil?
@@ -245,26 +244,36 @@ class TorrentClient
     end
   end
 
-  def process_download_torrent(torrent_type, path, opts, tracker = '')
-    if torrent_type == 1
+  def process_download_torrent(torrent_name, torrent_type, path, opts, tracker = '', nodl = 0, queue_file_handling = {})
+    if torrent_type == 1 && nodl == 0
       file = File.open(path, "r")
       torrent = file.read
       file.close
       meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
-      Cache.queue_state_add_or_update('deluge_options', {@tname => opts.merge({:info_hash => meta_id})})
+      Cache.queue_state_add_or_update('deluge_options', {torrent_name => opts.merge({:info_hash => meta_id})})
       download = {:type => 1, :type_str => 'file', :file => torrent, :filename => File.basename(path)}
-    else
+    elsif nodl == 0
       meta_id = opts[:tdid]
       download = {:type => 2, :type_str => 'magnet', :url => path}
+    else
+      meta_id = Time.now.to_f
     end
-    $speaker.speak_up "Adding #{download[:type_str]} torrent #{@tname}"
-    download_file(download, opts.deep_dup, meta_id)
-    Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
-    $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => @tname})
+    if nodl == 0
+      if !$db.get_rows('torrents', {:torrent_id => meta_id}).empty? && meta_id.to_s != '' #It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
+        $speaker.speak_up "Torrent with TID '#{meta_id}' already exists, nothing to do" if Env.debug?
+        delete_torrent(torrent_name, 0, 1)
+        return true
+      end
+      $speaker.speak_up "Adding #{download[:type_str]} torrent #{torrent_name}"
+      download_file(download, opts.deep_dup, meta_id)
+      Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
+    end
+    $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => torrent_name})
+    Cache.queue_state_add_or_update('file_handling', queue_file_handling, 1, 1) unless queue_file_handling.empty?
     true
   rescue => e
-    Cache.queue_state_remove('deluge_options', @tname)
+    Cache.queue_state_remove('deluge_options', torrent_name)
     $speaker.tell_error(
         e,
         "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
@@ -331,7 +340,7 @@ class TorrentClient
       sleep 15
       $t_client.process_added_torrents
       $t_client.process_completed_torrents
-      $t_client.disconnect
+      #$t_client.disconnect
     end
   end
 

@@ -1,5 +1,6 @@
 require File.dirname(__FILE__) + '/vash'
 require File.dirname(__FILE__) + '/bus_variable'
+
 class Cache
   @tqueues = {}
   @cache_metadata = BusVariable.new('cache_metadata', Vash)
@@ -23,7 +24,7 @@ class Cache
   end
 
   def self.cache_expire(row)
-    $db.delete_rows('metadata_search', row)
+    $db.delete_rows('metadata_search', row.select { |k, _| k != :result })
   end
 
   def self.cache_get(type, keyword, expiration = 120, force_refresh = 0)
@@ -89,26 +90,26 @@ class Cache
 
   def self.object_unpack(object)
     object = begin
-      object.is_a?(String) && object.match(/^[{\[].*[}\]]$/) ? eval(object.clone) : object.clone
-    rescue Exception
-      object.clone
-    end
+               object.is_a?(String) && object.match(/^[{\[].*[}\]]$/) ? eval(object.clone) : object.clone
+             rescue Exception
+               object.clone
+             end
     return object unless object.is_a?(Array) || object.is_a?(Hash)
     #TODO: Fix retore "Class" metadata
     if object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
       if object[0] == 'Hash'
         object = begin
-          eval(object[1])
-        rescue Exception
-          object[1]
-        end
+                   eval(object[1])
+                 rescue Exception
+                   object[1]
+                 end
         object.keys.each { |k| object[k] = object_unpack(object[k]) }
       elsif Object.const_get(object[0]).respond_to?('strptime')
         object = begin
-          Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%dT%H:%M:%S%z')
-        rescue
-          Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%d %H:%M:%S %z')
-        end
+                   Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%dT%H:%M:%S%z')
+                 rescue
+                   Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%d %H:%M:%S %z')
+                 end
       elsif Object.const_get(object[0]).respond_to?('new')
         object = Object.const_get(object[0]).new(object_unpack(object[1]))
       else
@@ -201,7 +202,7 @@ class Cache
         t = 1
       elsif d[:status].to_i >= 0 && d[:status].to_i < 2
         t = 2
-      elsif d[:status].to_i > 2
+      elsif d[:status].to_i >= 2
         t = 3
       elsif Env.debug?
         $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")

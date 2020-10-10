@@ -96,7 +96,7 @@ class Daemon < EventMachine::Connection
 
   def self.get_workers_count(qname, only_busy = 0)
     return 0 if qname.nil? || @queues[qname].nil?
-    @queues[qname][:threads].select { |_, t| (only_busy.to_i == 0 || t[:nonex_lock].to_i == 0) }.count + @queues[qname][:is_new].to_i
+    @queues[qname][:threads].select { |_, t| (only_busy.to_i == 0 || t[:nonex_lock].to_i == 0) }.count + (@queues[qname][:waiting_threads].count rescue 0) + @queues[qname][:is_new].to_i
   end
 
   def self.init_queue(qname, task = '', save_to_disk = 0)

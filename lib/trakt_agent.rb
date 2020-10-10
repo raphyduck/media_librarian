@@ -48,12 +48,9 @@ class TraktAgent
       next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i < m['episode'].to_i
       next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && m['watchedepisodes'].to_i >= m['episode'].to_i
       next if type == 'movies' && m['playcount'].to_i == 0
-      c = {}
-      c[type[0...-1]] = m
-      c[type[0...-1]]['ids'] = {'imdb' => m['imdbnumber']}
-      c[type[0...-1]]['title'].gsub!(/ \(\d+\)$/, '').to_s
-      c['plays'] = m['playcount']
-      c['last_watched_at'] = m['lastplayed']
+      c = m
+      c['ids'] = {'imdb' => m['imdbnumber']}
+      c['title'].gsub!(/ \(\d+\)$/, '').to_s
       h << c
     end
     if h.nil? || h.empty?
@@ -68,10 +65,11 @@ class TraktAgent
           $speaker.speak_up "Missing information for show '#{item}'"
           next
         end
+        $speaker.speak_up("Show '#{info.name}' has already #{info.aired_episodes} aired episodes, of which #{item['plays']} have been played!") if Env.debug?
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
         next if type == 'movies' && item['plays'].to_i == 0
-        h << item
+        h << item[type[0...-1]]
       end
     end
     get_watched[cache_name, CACHING_TTL] = h
@@ -105,16 +103,12 @@ class TraktAgent
         break if cr_value.to_i != 0
         watched_videos = get_watched(type, complete) if watched_videos.nil?
         watched_videos.each do |h|
-          if h[type[0...-1]] && h[type[0...-1]]['ids']
-            h[type[0...-1]]['ids'].each do |k, id|
-              if item[type[0...-1]]['ids'][k].to_s != '' && item[type[0...-1]]['ids'][k].to_s == id.to_s
-                delete_it = 1
-                break
-              end
-            end
+          unless h['ids'].to_s == '' || (h['ids'].map { |k, v| k.to_s + v.to_s } & item[type[0...-1]]['ids'].map { |k, v| k.to_s + v.to_s }).empty?
+            delete_it = 1
+            break
           end
-          if item[type[0...-1]]['title'] == h[type[0...-1]]['title'] &&
-              Utils.match_release_year(item[type[0...-1]]['year'].to_i, h[type[0...-1]]['year'].to_i)
+          if item[type[0...-1]]['title'] == h['title'] &&
+              Utils.match_release_year(item[type[0...-1]]['year'].to_i, h['year'].to_i)
             delete_it = 1
             break
           end
