@@ -73,6 +73,8 @@ class Metadata
       metadata['is_found'] = (info[:episode_numbering].to_s != '')
     when 'movies'
       metadata['movies_name'] = full_name
+    when 'books'
+      full_name = filename
     end
     metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select { |k, _| ![:show, :movie, :book].include?(k) }), 0))
     metadata

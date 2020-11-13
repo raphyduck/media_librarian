@@ -388,6 +388,7 @@ class Library
       ['rar', 'zip']
     end).flatten
     if FileTest.directory?(full_p)
+      ensure_qualities = Quality.qualities_merge(ensure_qualities, full_p)
       FileUtils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s, 'exclude' => '.tmp.', 'exclude_path' => exclude_path}).each do |f|
         hcd = handle_completed_download(
             torrent_path: File.dirname(f[0]),
@@ -408,7 +409,7 @@ class Library
         process_folder_list += hcd[1]
       end
     else
-      $speaker.speak_up "Handling downloaded file '#{full_p}'" if Env.debug?
+      $speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
       otype = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
       type = otype.downcase

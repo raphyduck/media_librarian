@@ -49,6 +49,7 @@ class Librarian
       :torrent => {
           :check_all_download => ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
           :check_orphaned_torrent_folders => ['TorrentClient', 'check_orphaned_torrent_folders'],
+          :prevent_delete => ['TorrentClient', 'no_delete_torrent'],
           :search => ['TorrentSearch', 'search_from_torrents']
       },
       :usage => ['Librarian', 'help'],

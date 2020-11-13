@@ -131,24 +131,23 @@ class TorrentClient
       }
       opts[t[:name]].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
       Cache.queue_state_add_or_update('deluge_options', opts)
-      path, ttype = nil, 1
+      ttype = 1
       success = false
       tries = 5
       nodl = TorrentSearch.get_tracker_config(torrent[:tracker])['no_download'].to_i
+      $speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
+      if url.to_s != '' && nodl == 0
+        path = TorrentSearch.get_torrent_file(tdid, url)
+      elsif magnet.to_s != '' && nodl == 0
+        path, ttype = magnet, 2
+      else
+        $speaker.speak_up "no_download setting is activated for this tracker, please download manually."
+        path = "nodl"
+      end
+      path = $temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?($temp_dir + "/#{t[:name]}.torrent")
+      next if path.nil?
       while (tries -= 1) >= 0 && !success
-        $speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
-        if url.to_s != '' && nodl == 0
-          path = TorrentSearch.get_torrent_file(tdid, url)
-        elsif magnet.to_s != '' && nodl == 0
-          path, ttype = magnet, 2
-        else
-          $speaker.speak_up "no_download setting is activated for this tracker, please download manually."
-          path = "nodl"
-        end
-        path = $temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?($temp_dir + "/#{t[:name]}.torrent")
-        if path.to_s != ''
-          success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? {t[:identifier] => torrent[:files]} : {}))
-        end
+        success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? {t[:identifier] => torrent[:files]} : {}))
         $speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
         FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
@@ -178,7 +177,7 @@ class TorrentClient
             delete_torrent(tname, tid)
             next
           end
-          torrent_qualities = Quality.qualities_merge(tname, o[:assume_quality], o[:category]).split('.')
+          torrent_qualities = Quality.qualities_merge(tname, o[:assume_quality], '', o[:category]).split('.')
           set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
           rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities, o[:category])
           unless set_options.empty?
@@ -361,6 +360,13 @@ class TorrentClient
       $t_client.set_config({'config' => {'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000}})
       @throttled = false
     end
+  end
+
+  def self.no_delete_torrent(name: '', tid: '')
+    return $speaker.speak_up "No torrent name or id provided!" if name.to_s == '' && tid.to_s == ''
+    $speaker.speak_up "Torrent identified by #{{'name' => name, 'tid' => tid}.map { |k, v| k.to_s + ' = ' + v.to_s }.join(' and ')} will not be deleted"
+    $db.update_rows('torrents', {:status => 5}, {:name => name.to_s}) if name.to_s != ''
+    $db.update_rows('torrents', {:status => 5}, {:torrent_id => tid.to_s})
   end
 
 end
