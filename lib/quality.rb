@@ -112,9 +112,9 @@ class Quality
     return qs unless qs.include?('3d')
     qs.delete_if { |q| q.include?('3d') }
     if filename.downcase.match(/#{SEP_CHARS}top.{0,3}bottom#{SEP_CHARS}/)
-      qs << '3d.tab'
+      qs << '3d.h-ou'
     else
-      qs << '3d.sbs'
+      qs << '3d.h-sbs'
     end
     qs
   end
@@ -178,12 +178,14 @@ class Quality
   end
 
   def self.qualities_merge(oq, aq, lang = '', category = '')
+    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug? #REMOVEME
     quality = ''
     Q_SORT.each do |t|
       cq = parse_qualities(oq.to_s, eval(t), lang, category).join('.')
       cq = parse_qualities((aq.to_s), eval(t), lang, category).join('.') if cq.to_s == ''
       quality += ".#{cq}"
     end
+    $speaker.speak_up "Qualities_merge = #{quality}" #REMOVEME
     quality
   end
 

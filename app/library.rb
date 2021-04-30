@@ -365,7 +365,7 @@ class Library
           opath = torrent_path.gsub!(completed_folder, move_completed_torrent['torrent_completed_path'].to_s + '/').to_s
           $t_client.move_storage([torrent_id], opath) rescue nil
           $speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
-          while FileUtils.is_in_path([($t_client.get_torrent_status(torrent_id, ['name', 'save_path']) rescue {})['save_path'].to_s], opath).nil?
+          while FileUtils.is_in_path([$t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s], StringUtils.accents_clear(opath)).nil?
             break if Time.now - completion_time > 3600
             sleep 60
           end
@@ -389,7 +389,7 @@ class Library
     end).flatten
     if FileTest.directory?(full_p)
       ensure_qualities = Quality.qualities_merge(ensure_qualities, full_p)
-      FileUtils.search_folder(full_p, {'regex' => Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s, 'exclude' => '.tmp.', 'exclude_path' => exclude_path}).each do |f|
+      FileUtils.search_folder(full_p, {'exclude' => '.tmp.', 'exclude_path' => exclude_path, 'includedir' => 1, 'maxdepth' => 1}).each do |f|
         hcd = handle_completed_download(
             torrent_path: File.dirname(f[0]),
             torrent_name: File.basename(f[0]),
@@ -408,7 +408,7 @@ class Library
         error += hcd[2]
         process_folder_list += hcd[1]
       end
-    else
+    elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
       $speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
       otype = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
@@ -535,13 +535,16 @@ class Library
       dup_files = get_duplicates(f)
       next unless dup_files.count > 0
       $speaker.speak_up("Duplicate files found for #{f[:full_name]}")
-      dup_files.each do |d|
+      langs = []
+      dup_files.select! do |d|
         $speaker.speak_up("'#{d[:name]}'")
+        to_rm = no_prompt.to_i == 0 || (dup_files.index(d) > 0 && (Quality.parse_qualities(d[:name], LANGUAGES) - langs).empty?)
+        langs += Quality.parse_qualities(d[:name], LANGUAGES)
+        to_rm
       end
-      if remove_duplicates.to_i > 0
+      unless remove_duplicates.to_i <= 0 || dup_files.count == 0
         $speaker.speak_up('Will now remove duplicates')
         dup_files.each do |d|
-          next if dup_files.index(d) == 0 && no_prompt.to_i > 0
           if $speaker.ask_if_needed("Remove file #{d[:name]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
             FileUtils.rm(d[:name])
             files[id][:files].select! { |x| x[:name].to_s != d[:name] }
@@ -612,13 +615,15 @@ class Library
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|
         if i.to_s != '' && identifiers.join.include?(i) && !fs.empty? && !fs.map { |obj| obj[:name] if obj[:type] == 'file' }.compact.include?(file[:name])
-          ok = false
-          fs.uniq.each do |f|
-            $speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." #if Env.debug?
-            ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
-            ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
+          Utils.lock_block("file_handling_found_#{i}") do
+            ok = false
+            fs.uniq.each do |f|
+              $speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." #if Env.debug?
+              ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
+              ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
+            end
+            Cache.queue_state_remove('file_handling', i) if ok
           end
-          Cache.queue_state_remove('file_handling', i) if ok
         end
       end
     end
