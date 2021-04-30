@@ -99,13 +99,10 @@ module FileUtils
       folder = folder.clone.gsub(/\/\/+/, '/').gsub(/^\//, '').gsub(/\/$/, '')
       path_list.each do |p|
         p = p.clone.gsub(/\/\/+/, '/').gsub(/^\//, '').gsub(/\/$/, '')
-        $speaker.speak_up "folder(#{folder}) = p(#{p})"
         if folder.match(/(\/|^)#{Regexp.escape(p)}(\/|$)/) || p.match(/(\/|^)#{Regexp.escape(folder)}(\/|$)/)
-          $speaker.speak_up "match!!!"
           return p
         end
       end
-      $speaker.speak_up "match not!!"
       return nil
     rescue => e
       $speaker.tell_error(e, Utils.arguments_dump(binding))
