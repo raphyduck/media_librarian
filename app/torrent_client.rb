@@ -316,7 +316,7 @@ class TorrentClient
       retry
     else
       $speaker.tell_error(e, "$t_client.#{debug_str}")
-      raise YAML.load(e.to_s)[0]
+      raise e
     end
   end
 
