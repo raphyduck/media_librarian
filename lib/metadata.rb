@@ -31,7 +31,7 @@ class Metadata
     name, _, ids = detect_metadata(name, type)
     if complete.to_i == 0
       name.gsub!(/[#{SPACE_SUBSTITUTE}]\((US|UK)\)[#{SPACE_SUBSTITUTE}]{0,2}$/, '')
-      name.gsub!(/(.*)[#{SPACE_SUBSTITUTE}]\(?(19|20)(\d{2})\)?([#{SPACE_SUBSTITUTE}]|$)/i, '\1')
+      name.gsub!(/(.*)[#{SPACE_SUBSTITUTE}]\(?((19|20)(\d{2})|0)\)?([#{SPACE_SUBSTITUTE}]|$)/i, '\1')
       name.gsub!(/[\(\)\[\]]/, '')
     end
     name.gsub!(/\((i+|video|tv#{SPACE_SUBSTITUTE}.+)\)/i, '')

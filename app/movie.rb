@@ -77,7 +77,7 @@ class Movie
   end
 
   def self.identify_split_files(filename)
-    filename.to_s.scan(/(^|\/|[#{SPACE_SUBSTITUTE}\(])((cd|disc)[#{SPACE_SUBSTITUTE}]?(\d{1,2}[#{SPACE_SUBSTITUTE}\)]?)|part[#{SPACE_SUBSTITUTE}]?(\d{1,2})[#{SPACE_SUBSTITUTE}\)]?.{0,2}\.\w{2,4}$)/i).map {|a| (a[4] || a[3]).to_i if (a[4] || a[3]).to_i > 0}
+    filename.to_s.scan(/(^|\/|[#{SPACE_SUBSTITUTE}\(])((cd|disc)[#{SPACE_SUBSTITUTE}]?(\d{1,2}[#{SPACE_SUBSTITUTE}\)]?)|part[#{SPACE_SUBSTITUTE}]?(\d{1,2})[#{SPACE_SUBSTITUTE}\)]?.{0,2}[\.\w{2,4}]?$)/i).map {|a| (a[4] || a[3]).to_i if (a[4] || a[3]).to_i > 0}
   end
 
   def self.movie_get(ids, type = 'movie_get', movie = nil)

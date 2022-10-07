@@ -751,6 +751,7 @@ class Library
       return ''
     end
     if !metadata.empty? && metadata['is_found']
+      destination += ".#{metadata['part']}" if metadata['part'].to_i != 0
       destination += ".#{metadata['extension'].downcase}"
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
       raise "Error moving file" if destination.to_s == ''

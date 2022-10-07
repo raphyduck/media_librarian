@@ -170,7 +170,7 @@ class FileInfo
     when 'TONES'
       q += ['hdr'] if isHDR?
     when 'AUDIO'
-      ac = AUDIO.select { |a| getaudiochannels.map { |c| c.format.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase }.include?(a.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase) }.compact.uniq
+      ac = AUDIO.select { |a| getaudiochannels.map { |c| c ? c.format.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase : nil }.include?(a.gsub(/[#{SPACE_SUBSTITUTE}-]/, '').downcase) }.compact.uniq
       return nil if ac.empty? #TODO: Better detection of audio codec
       q += ac
     when 'LANGUAGES'
@@ -181,7 +181,7 @@ class FileInfo
         cq = Quality.parse_qualities(ac.title.to_s, LANGUAGES) if !defined?(cq) || cq.nil? || cq.empty?
         q += cq
       end
-      q += ['multi'] if getaudiochannels.map { |a| Languages.get_code(a.language.to_s) }.compact.uniq.count > 1
+      q += ['multi'] if getaudiochannels.map { |a| a ? Languages.get_code(a.language.to_s) : nil }.compact.uniq.count > 1
     else
       return nil
     end
