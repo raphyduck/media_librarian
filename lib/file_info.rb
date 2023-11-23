@@ -144,6 +144,7 @@ class FileInfo
 
   def isHDR?
     return true if getcolor.include?("BT.2020")
+    return true if media_info.video.hdr_format.to_s != ''
     false
   end
 

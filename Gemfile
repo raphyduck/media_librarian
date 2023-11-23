@@ -1,5 +1,5 @@
 source 'http://rubygems.org'
-ruby '2.6.0'
+ruby '2.6.10'
 
 gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :require => false
 gem 'activesupport', :require => false
@@ -25,7 +25,7 @@ gem 'simple_args_dispatch', '~>0.4.0', :require => false
 gem 'simple_config_man', '~>0.3.8', :require => false
 gem 'simple_speaker', '~>0.3.0', :require => false
 #gem "selenium-webdriver", :require => false
-gem 'sqlite3', :require => false
+gem 'sqlite3', '1.5.3', :require => false
 gem 'streamio-ffmpeg', :require => false
 gem 'titleize', :require => false
 gem 'themoviedb', :require => false

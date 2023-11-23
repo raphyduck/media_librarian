@@ -353,11 +353,11 @@ class TorrentClient
     $speaker.speak_up("Free space remaining: #{free_space}GB", 0)
     if free_space <= get_config('deluge', 'min_torrent_free_space').to_i && !@throttled
       $speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
-      $t_client.set_config({'config' => {'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max}})
+      $t_client.set_config([{'config' => {'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max}}])
       @throttled = true
     elsif @throttled && free_space > get_config('deluge', 'min_torrent_free_space').to_i
       $speaker.speak_up "There is now enoough free space on torrent server, restoring full download speed!"
-      $t_client.set_config({'config' => {'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000}})
+      $t_client.set_config([{'config' => {'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000}}]) #todo: better fix than putting in brackets
       @throttled = false
     end
   end

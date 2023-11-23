@@ -320,7 +320,7 @@ class Metadata
       if f_type != 'series' && full_name != ''
         full_name << " #{f_type == 'season' ? e.keys.map { |s| 'S' + format('%02d', s.to_i) }.join : episode_numbering}"
       end
-      parts = e.values.flatten.map { |ep| ep[:part].to_i }
+      parts = e.values.flatten.map { |ep| ep[:part].to_i }.select{|ep| ep > 0}
       info = {
           :series_name => item_name,
           :episode_season => e.keys.map { |s| s.to_i }.join(' '),
