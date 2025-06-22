@@ -1,11 +1,14 @@
 $trackers = {}
 return unless File.directory?($tracker_dir)
+
 Dir.each_child($tracker_dir) do |tracker|
+  file_path = File.join($tracker_dir, tracker)
   begin
-    opts = YAML.load_file($tracker_dir + '/' + tracker)
+    opts = YAML.load_file(file_path)
     next unless opts['api_url'] && opts['api_key']
-    $trackers[tracker.sub(/\.yml$/, '')] = TorznabTracker.new(YAML.load_file($tracker_dir + '/' + tracker), tracker.sub(/\.yml$/, ''))
-  rescue => e
+    tracker_name = tracker.sub(/\.yml$/, '')
+    $trackers[tracker_name] = TorznabTracker.new(opts, tracker_name)
+  rescue StandardError => e
     $speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 end

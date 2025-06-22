@@ -8,6 +8,7 @@ $tracker_client_last_login = {}
 CACHING_TTL = 108000
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
+NUMBER_OF_LINKS = 100
 LINE_SEPARATOR = '---------------------------------------------------------'
 SPACER= '   '
 RESOLUTIONS = %w(2160p 2160i 1080p 1080i 720p 720i 576p 576i 480p 480i 368p 360p 360i 240p 240i)

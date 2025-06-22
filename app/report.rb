@@ -1,36 +1,39 @@
 class Report
   include Hanami::Mailer
-
   from :from
   to :to
   cc :cc
   bcc :bcc
-  subject :object
+  subject :email_subject
 
   def action
-    object
+    email_subject
   end
 
   def body
-    if defined? body_s
-      body_s.nil? ? Thread.current[:email_msg] : body_s
+    current_msg = Thread.current[:email_msg]
+    if defined?(body_s)
+      body_s.nil? ? current_msg : body_s
     else
-      Thread.current[:email_msg]
+      current_msg
     end
   end
 
-  def self.push_email(object, ebody, trials = 10)
-    return if (trials -= 1) <= 0
-    deliver(object_s: '[' + Socket.gethostname.to_s + ']' + object.to_s + ' - ' + Time.now.strftime("%a %d %b %Y").to_s, body_s: StringUtils.fix_encoding(ebody.to_s))
+  def self.push_email(email_subject, ebody, trials = 10)
+    return if trials <= 0
+    deliver(
+      object_s: formatted_subject(email_subject),
+      body_s: StringUtils.fix_encoding(ebody.to_s)
+    )
   rescue => e
     $speaker.tell_error(e, 'Report.push_email', 0)
-    push_email(object, ebody, trials)
+    push_email(email_subject, ebody, trials - 1)
   end
 
-  def self.sent_out(object, t = Thread.current, content = '')
-    content = (t || Thread.current)[:email_msg].to_s if content.to_s == ''
-    if $email && content.to_s != '' && (t.nil? || t[:send_email].to_i > 0)
-      Librarian.route_cmd(['Report', 'push_email', object, content], 1, 'email', 1, 'priority')
+  def self.sent_out(email_subject, t = Thread.current, content = '')
+    email_content = content.to_s.empty? ? (t || Thread.current)[:email_msg].to_s : content.to_s
+    if $email && !email_content.empty? && (t.nil? || t[:send_email].to_i > 0)
+      Librarian.route_cmd(['Report', 'push_email', email_subject, email_content], 1, 'email', 1, 'priority')
       Librarian.reset_notifications(t) if t
       Thread.current[:parent] = nil
     end
@@ -38,23 +41,34 @@ class Report
 
   private
 
+  def email_notification(key)
+    $email ? $email[key] : nil
+  end
+
   def bcc
-    $email ? $email['notification_bcc'] : nil
+    email_notification('notification_bcc')
   end
 
   def cc
-    $email ? $email['notification_cc'] : nil
+    email_notification('notification_cc')
   end
 
   def from
-    $email ? $email['notification_from'] : nil
-  end
-
-  def object
-    object_s
+    email_notification('notification_from')
   end
 
   def to
-    $email ? $email['notification_to'] : nil
+    email_notification('notification_to')
+  end
+
+  # Renamed from "object" to "email_subject" to better reflect its usage.
+  def email_subject
+    object_s
+  end
+
+  def self.formatted_subject(subject)
+    hostname = Socket.gethostname.to_s
+    timestamp = Time.now.strftime("%a %d %b %Y")
+    "[#{hostname}]#{subject} - #{timestamp}"
   end
 end

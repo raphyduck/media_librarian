@@ -1,5 +1,5 @@
 source 'http://rubygems.org'
-ruby '2.6.10'
+ruby '3.0.0'
 
 gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :require => false
 gem 'activesupport', :require => false

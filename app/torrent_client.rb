@@ -1,92 +1,28 @@
 class TorrentClient
+  # Constants
+  DEFAULT_SEED_TIME = 1 # hours
+
+  # Class variables for shared state
+  @@queues = { added: [], completed: [] }
+
+  # Instance variables
+  attr_reader :connected
 
   def initialize
-    init
+    @deluge = nil
+    @connected = false
     @throttled = false
-  rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
-    raise
-  end
-
-  def authenticate
-    Utils.lock_block("deluge_daemon_init") do
-      return if @deluge_connected
-      @deluge.close rescue nil
-      @deluge.connect
-      @deluge_connected = 1
-      listen
-    end
-  end
-
-  def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
-    $t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
-    $db.update_rows('torrents', {:status => delete_status}, {:name => tname})
-    Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
-  end
-
-  def disconnect
-    @deluge.close
-    @deluge_connected = nil
-  end
-
-  def download_file(download, options = {}, meta_id = '')
-    options.select! { |key, _| [:move_completed, :main_only].include?(key) }
-    options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
-    if options['move_completed'].to_s != ''
-      options['move_completed_path'] = options['move_completed']
-      options['move_completed'] = true
-    end
-    options['add_paused'] = true unless download[:type] > 1
-    case download[:type]
-    when 1
-      $t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
-      if meta_id.to_s != ''
-        status = $t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
-        raise 'Download failed' if status.nil? || status.empty?
-        $t_client.queue_top(meta_id) if status['queue'].to_i > 1
-      end
-    when 2
-      $t_client.add_torrent_magnet(download[:url], options)
-    when 3
-      $t_client.add_torrent_url(download[:url], options)
-    end
-  rescue => e
-    if meta_id.to_s != '' && download.is_a?(Hash) && download[:type].to_i == 1
-      status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
-      raise e if status.nil? || status.empty?
-    else
-      raise e
-    end
-  end
-
-  def find_main_file(status, whitelisted_exts = [])
-    files = {}
-    status['files'].each do |file|
-      if FileUtils.get_extension(file['path']).match(/r(ar|\d{2})/)
-        fname = file['path'].gsub(FileUtils.get_extension(file['path']), '')
-      elsif whitelisted_exts.empty? || whitelisted_exts.include?(FileUtils.get_extension(file['path']))
-        fname = file['path']
-      else
-        $speaker.speak_up "The file '#{file['path']}' is not on the allowed extension list (#{whitelisted_exts.join(', ')}), will not be included" if Env.debug?
-        fname = 'illegalext'
-      end
-      files[fname] = {:s => 0, :f => []} unless files[fname]
-      files[fname][:s] += file['size'].to_i
-      files[fname][:f] << file['path']
-    end
-    files.select { |k, f| k != 'illegalext' && f[:s] > 0.8 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
-  rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
-    []
   end
 
   def init
     Utils.lock_block("deluge_daemon_init") do
       @deluge = Deluge::Rpc::Client.new(
-          host: $config['deluge']['host'], port: 58846,
-          login: $config['deluge']['username'], password: $config['deluge']['password']
+        host: $config['deluge']['host'],
+        port: 58846,
+        login: $config['deluge']['username'],
+        password: $config['deluge']['password']
       )
-      @deluge_connected = nil
+      @connected = false
     end
   end
 
