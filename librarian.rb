@@ -108,7 +108,7 @@ class Librarian
       File.open($pidfile, ::File::CREAT | ::File::EXCL | ::File::WRONLY) do |f|
         f.write("#{Process.pid}")
       end
-      at_exit { File.delete($pidfile) if File.exists?($pidfile) }
+      at_exit { File.delete($pidfile) if File.exist?($pidfile) }
     rescue Errno::EEXIST
       check_pid
       retry
@@ -130,7 +130,7 @@ class Librarian
   end
 
   def pid_status(pidfile)
-    return :exited unless File.exists?(pidfile)
+    return :exited unless File.exist?(pidfile)
     pid = ::File.read(pidfile).to_i
     return :dead if pid.zero?
     Process.kill(0, pid) # Checks process status

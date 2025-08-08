@@ -265,7 +265,7 @@ class Library
     dup_files = medium[:files].select { |x| x[:type].to_s == 'file' }.group_by { |a| a[:parts].join }.select { |_, v| v.count >= threshold }.map { |_, v| v }.flatten
     dup_files.select! do |x|
       x[:type].to_s == 'file' &&
-          File.exists?(x[:name]) && #You never know...
+          File.exist?(x[:name]) && #You never know...
           !Quality.parse_qualities(x[:name], EXTRA_TAGS, medium[:language], medium[:type]).include?('nodup') #We might want to keep several copies of a medium
     end
     return [] unless dup_files.count >= threshold
@@ -358,7 +358,7 @@ class Library
       if move_completed_torrent['torrent_completed_path'].to_s != '' && torrent_id.to_s != ''
         t = $db.get_rows('torrents', {:torrent_id => torrent_id}).first
         if t.nil? || t[:status].to_i < 5
-          if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exists?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
+          if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exist?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
             FileUtils.mkdir_p(torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
             FileUtils.mv(torrent_path + '/' + torrent_name, torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
           end
@@ -416,7 +416,7 @@ class Library
       ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : type
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
-        FileUtils.rm_r(torrent_path + '/extfls') if File.exists?(torrent_path + '/extfls')
+        FileUtils.rm_r(torrent_path + '/extfls') if File.exist?(torrent_path + '/extfls')
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
         ensure_qualities = Quality.parse_qualities(torrent_name, VALID_QUALITIES, '', ttype).join('.') if ensure_qualities.to_s == ''
         hcd = handle_completed_download(
@@ -610,7 +610,7 @@ class Library
         file
     )
     return files if identifiers.empty? || full_name == ''
-    return files if file[:type].to_s == 'file' && !File.exists?(file[:name])
+    return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
     $speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|

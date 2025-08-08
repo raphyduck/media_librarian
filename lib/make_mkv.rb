@@ -9,7 +9,7 @@ class MakeMkv
       @input = input
       @output = output || input
       @output = File.directory?(@output) ? @output : File.dirname(@output)
-      raise Exception, 'No iso file found' if !@input || !File.exists?(@input)
+      raise Exception, 'No iso file found' if !@input || !File.exist?(@input)
       @command = ['-r', "iso:#{@input}", 'all', @output]
       # makemkvcon iso:source_file all File.dirname(destination)
     end

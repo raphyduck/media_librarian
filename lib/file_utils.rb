@@ -166,7 +166,7 @@ module FileUtils
 
     def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
       destination = destination.gsub(/\.\.+/, '.').gsub(/[\'\"\;\:]/, '')
-      if File.exists?(destination)
+      if File.exist?(destination)
         _, proper = Quality.identify_proper(original)
         if remove_outdated.to_i > 0 && proper.to_i > 0
           $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")

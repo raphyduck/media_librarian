@@ -16,7 +16,7 @@ class MkvMuxer
     }.flatten.compact.uniq
 
     raise Exception, 'No mkv or ass found' if (!@mkv || !@ass) && !@files
-    raise Exception, 'Target mkv already exists' if !force && File.exists?(@output)
+    raise Exception, 'Target mkv already exists' if !force && File.exist?(@output)
   end
 
   def prepare(language = '', fonts = true, chapters = true)

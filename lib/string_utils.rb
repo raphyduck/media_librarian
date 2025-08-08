@@ -15,7 +15,7 @@ class StringUtils
   end
 
   def self.fix_encoding(str)
-    str.encode(Encoding.find('UTF-8'), {invalid: :replace, undef: :replace, replace: ''})
+    str.encode(Encoding.find('UTF-8'), invalid: :replace, undef: :replace, replace: '')
   end
 
   def self.clean_search(str)

@@ -14,7 +14,7 @@ class VideoUtils
       makemkv.iso_to_mkv!
       FileUtils.mv(Dir["#{cd}/*.mkv"].sort_by { |f| -File.size(f) }.first, dest_file) #We will use the biggest file. This assumes the ISO is only holding 1 file of interest. But how to discern otherwise?
       FileUtils.rm(Dir["#{cd}/*.mkv"]) rescue nil
-      FileUtils.rmdir(cd) if File.exists?(cd) rescue nil
+      FileUtils.rmdir(cd) if File.exist?(cd) rescue nil
     else
       skipping = 1
     end

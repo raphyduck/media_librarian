@@ -174,7 +174,7 @@ class TorrentClient
       end
       if remove_it > 0
         Cache.queue_state_remove('deluge_torrents_completed', tid)
-        FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exists?(data[:path].to_s)
+        FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exist?(data[:path].to_s)
       end
     end
   end

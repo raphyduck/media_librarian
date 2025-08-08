@@ -155,7 +155,7 @@ class FileInfo
     Utils.lock_block("ffmpeg", 1) do
       movie = FFMPEG::Movie.new(path)
       $speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
-      FileUtils.rm(output) if File.exists?(output) #Remove exists file if already exists
+      FileUtils.rm(output) if File.exist?(output) #Remove exists file if already exists
       movie.transcode(output, options) { |progress| printf("\rProgress: %d%%", (progress * 100).round(4)) }
     end
   end
