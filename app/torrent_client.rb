@@ -33,6 +33,53 @@ class TorrentClient
     end
   end
 
+  # Authenticate against the Deluge daemon.
+  #
+  # Deluge RPC expects clients to perform a login handshake before any
+  # other RPC calls can be issued. In the original implementation
+  # method_missing would invoke `authenticate` on $t_client but this method
+  # did not exist, resulting in method_missing calling itself recursively
+  # and hanging.  This method establishes the connection to the Deluge
+  # daemon on the first call and registers event listeners.  Subsequent
+  # calls are no-ops if the client is already connected.
+  def authenticate
+    # If we're already connected there's nothing to do.
+    return true if @connected
+
+    # Ensure the Deluge client is initialized.  The init method will
+    # instantiate the @deluge RPC client using the values from the
+    # application configuration.  If @deluge is nil we call init to
+    # populate it.  Because init uses a lock this is safe to call
+    # multiple times across threads.
+    init if @deluge.nil?
+
+    begin
+      # Establish the RPC connection.  The deluge-rpc gem exposes a
+      # connect method which starts the underlying TCP/SSL connection,
+      # performs the authentication handshake using the provided
+      # credentials and dynamically defines namespace accessors such
+      # as @deluge.core.  Without calling connect the first RPC
+      # invocation would block waiting for authentication to occur.
+      @deluge.connect
+
+      # Mark the client as connected so subsequent calls bypass the
+      # connection handshake.  Also install event handlers; Deluge
+      # requires events to be registered after a successful login.
+      @connected = true
+      listen
+
+      true
+    rescue => e
+      # If anything goes wrong during connection attempt we reset the
+      # connection state so that a subsequent call will retry.  We
+      # delegate error reporting to the speaker for consistency with
+      # the rest of the application.
+      @connected = false
+      $speaker.tell_error(e, '$t_client.authenticate') if defined?($speaker)
+      false
+    end
+  end
+
   def main_file_only(status, main_files)
     priorities = []
     main_files = [main_files] unless main_files.is_a?(Array)
@@ -54,16 +101,16 @@ class TorrentClient
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
       magnet = torrent[:magnet_link]
       opts = {
-          t[:name] => {
-              :tdid => tdid,
-              :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
-              :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
-              :queue => torrent[:queue].to_s,
-              :assume_quality => torrent[:assume_quality],
-              :entry_id => t[:identifiers].join,
-              :added_at => Time.now.to_i,
-              :category => torrent[:category]
-          }
+        t[:name] => {
+          :tdid => tdid,
+          :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
+          :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
+          :queue => torrent[:queue].to_s,
+          :assume_quality => torrent[:assume_quality],
+          :entry_id => t[:identifiers].join,
+          :added_at => Time.now.to_i,
+          :category => torrent[:category]
+        }
       }
       opts[t[:name]].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
       Cache.queue_state_add_or_update('deluge_options', opts)
@@ -210,8 +257,8 @@ class TorrentClient
   rescue => e
     Cache.queue_state_remove('deluge_options', torrent_name)
     $speaker.tell_error(
-        e,
-        "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
+      e,
+      "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
     )
     false
   end
@@ -244,7 +291,10 @@ class TorrentClient
     end
     result
   rescue => e
-    @deluge_connected = nil
+    # Reset connection state on failure.  Using the @connected flag here
+    # instead of a non-existent @deluge_connected ensures the client
+    # will attempt to reconnect on the next invocation.
+    @connected = false
     @deluge = nil #Nuke it, start over
     init
     if !(tries -= 1).zero?

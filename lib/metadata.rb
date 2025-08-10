@@ -1,4 +1,10 @@
 require File.dirname(__FILE__) + '/vash'
+
+# Ruby 3 removed the obsolete URI.escape method.  To properly percent‑encode
+# strings for display or inclusion in URLs we use
+# URI.encode_www_form_component instead.  Require the `uri` library so the
+# URI module is available.
+require 'uri'
 class Metadata
 
   def self.detect_metadata(name, type)
@@ -208,7 +214,11 @@ class Metadata
         elsif no_prompt.to_i == 0
           $speaker.speak_up("Alternatives titles found for #{title}:")
           results.each_with_index do |m, idx|
-            $speaker.speak_up("#{idx + 1}: #{m[:title]}#{' (info: ' + URI.escape(m[:info]) + ')' if m[:info].to_s != ''}")
+            # Use URI.encode_www_form_component instead of the removed
+            # URI.escape.  Convert nil values to strings to avoid errors.
+            info_str = m[:info].to_s
+            encoded_info = URI.encode_www_form_component(info_str)
+            $speaker.speak_up("#{idx + 1}: #{m[:title]}#{' (info: ' + encoded_info + ')' if info_str != ''}")
           end
           choice = $speaker.ask_if_needed("Enter the number of the chosen title (empty to skip): ", no_prompt, 1).to_i - 1
         else

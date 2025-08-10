@@ -1,3 +1,4 @@
+require 'uri'
 class TorrentSearch
 
   def self.check_status(identifier, timeout = 10, download = nil)
@@ -285,7 +286,8 @@ class TorrentSearch
                 when :size
                   "#{(v.to_f / 1024 / 1024 / 1024).round(2)} GB"
                 when :link
-                  URI.escape(v.to_s)
+                  # URI.escape was removed in Ruby 3; use URI.encode_www_form_component instead.
+                  URI.encode_www_form_component(v.to_s)
                 else
                   v
                 end
