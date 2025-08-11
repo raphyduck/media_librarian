@@ -9,7 +9,7 @@ MIN_REQ = %w(
 FULL_REQ = %w(
   active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb active_support/inflector
   archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem
-  goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rsync shellwords socket
+  goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rexml/document rsync shellwords socket
   streamio-ffmpeg timeout titleize themoviedb torznab trakt tvdb_party tvmaze unrar xbmc-client yaml
 ).freeze
 

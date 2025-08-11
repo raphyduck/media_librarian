@@ -5,6 +5,7 @@ require File.dirname(__FILE__) + '/vash'
 # URI.encode_www_form_component instead.  Require the `uri` library so the
 # URI module is available.
 require 'uri'
+require 'timeout'
 class Metadata
 
   def self.detect_metadata(name, type)
@@ -269,7 +270,16 @@ class Metadata
       search_providers.each do |o, m|
         break unless item.nil?
         begin
-          items = o.method(m).call(detect_real_title(title, type, 0, 0)) rescue o.method('method_missing').call(m, detect_real_title(title, type, 0, 0))
+          
+title_norm = detect_real_title(title, type, 0, 0)
+              items = nil
+              Timeout.timeout(15) do
+                begin
+                  items = o.method(m).call(title_norm)
+                rescue NoMethodError
+                  items = o.method('method_missing').call(m, title_norm)
+                end
+              end
           items = [items] unless items.is_a?(Array)
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']

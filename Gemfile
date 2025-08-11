@@ -19,6 +19,7 @@ gem 'net-ssh', :require => false
 gem 'nokogiri', :require => false
 gem 'pdf-reader', :require => false
 gem 'poltergeist', :require => false
+gem 'rexml', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
 gem 'ruby-mp3info', :git => 'https://github.com/raphyduck/ruby-mp3info.git', :require => false
 gem 'simple_args_dispatch', '~>0.4.0', :require => false
