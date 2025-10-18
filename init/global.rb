@@ -1,9 +1,9 @@
 require_relative 'languages_translation'
 
 app = MediaLibrarian.app
-app.str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
-app.tracker_client = {}
-app.tracker_client_last_login = {}
+app.str_closeness
+app.tracker_client
+app.tracker_client_last_login
 
 CACHING_TTL = 108_000
 USER_INPUT_TIMEOUT = 600
