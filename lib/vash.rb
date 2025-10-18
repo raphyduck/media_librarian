@@ -2,7 +2,7 @@
 # Class: Vash (Ruby Volatile Hash)
 # Hash that returns values only for a short time.  This is useful as a cache
 # where I/O is involved.  The primary goal of this object is to reduce I/O
-# access and due to the nature of I/O being slower then memory, you should also
+# access and due to the nature of I/O being slower than memory, you should also
 # see a gain in quicker response times.
 #
 # For example, if Person.first found the first person from the database & cache
@@ -25,13 +25,13 @@
 #
 # The Vash object will forget any answer that is requested after the specified
 # TTL.  It is a good idea to manually clean things up from time to time because
-# it is possible that you'll cache data but never again access it and therefor
+# it is possible that you'll cache data but never again access it and therefore
 # it will stay in memory after the TTL has expired.  To clean up the Vash object,
 # call the method: cleanup!
 #
 # > sleep 11        # At this point the prior person ttl will be expired
 #                   #  but the person key and value will still exist.
-# > cache           # This will still show the the entire set of keys
+# > cache           # This will still show the entire set of keys
 #                   #  regardless of the TTL, the :person will still exist
 # > cache.cleanup!  # All of the TTL's will be inspected and the expired
 #                   #  :person key will be deleted.
@@ -63,7 +63,7 @@ class Vash < Hash
 
   def []=(key, *args)
     # a little bit o variable hacking to support (h[key, ttl] = value), which will come
-    # accross as (key, [ttl, value]) whereas (h[key]=value) comes accross as (key, [value])
+    # across as (key, [ttl, value]) whereas (h[key]=value) comes across as (key, [value])
     if args.length == 2
       value, ttl = args[1], args[0]
     elsif args.length == 1

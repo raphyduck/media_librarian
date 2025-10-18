@@ -25,7 +25,7 @@ class Memory
     return unless Daemon.ensure_daemon
     $speaker.speak_up "Current total memory taken is #{@mem.mb.round(2)}MB"
     @stats.each do |step, v|
-      $speaker.speak_up "For step #{step}, average increase accross #{v[:cnt]} counts is #{v[:avg].round(2)}KB (total accrued is #{(v[:sum] / 1024).round(2)}MB"
+      $speaker.speak_up "For step #{step}, average increase across #{v[:cnt]} counts is #{v[:avg].round(2)}KB (total accrued is #{(v[:sum] / 1024).round(2)}MB"
     end
   end
 end
