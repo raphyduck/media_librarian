@@ -1,6 +1,7 @@
 require 'bundler/setup'
 require 'zeitwerk'
 require 'fileutils'
+require_relative 'container'
 
 module MediaLibrarian
   APP_NAME = 'librarian'.freeze
@@ -16,17 +17,10 @@ module MediaLibrarian
                 :tracker_dir,
                 :pid_dir,
                 :pidfile,
-                :speaker,
-                :args_dispatch,
-                :config,
-                :api_option,
-                :workers_pool_size,
-                :queue_slots,
-                :loader
+                :loader,
+                :container
 
     attr_accessor :daemon_client,
-                  :db,
-                  :calibre,
                   :email,
                   :email_templates,
                   :ffmpeg_crf,
@@ -40,11 +34,7 @@ module MediaLibrarian
                   :remove_torrent_on_completion,
                   :trakt_account,
                   :trakt,
-                  :trackers,
-                  :librarian,
-                  :str_closeness,
-                  :tracker_client,
-                  :tracker_client_last_login
+                  :librarian
 
     def initialize(root: File.expand_path('../..', __dir__))
       @root = root
@@ -52,7 +42,83 @@ module MediaLibrarian
       setup_dependencies
       setup_loader
       setup_environment
-      setup_configuration
+      @container = Container.new(self)
+    end
+
+    def config
+      container.config
+    end
+
+    def speaker
+      container.speaker
+    end
+
+    def speaker=(value)
+      container.speaker = value
+    end
+
+    def args_dispatch
+      container.args_dispatch
+    end
+
+    def api_option
+      container.api_option
+    end
+
+    def workers_pool_size
+      container.workers_pool_size
+    end
+
+    def queue_slots
+      container.queue_slots
+    end
+
+    def db
+      container.db
+    end
+
+    def db=(value)
+      container.db = value
+    end
+
+    def calibre
+      container.calibre
+    end
+
+    def calibre=(value)
+      container.calibre = value
+    end
+
+    def trackers
+      container.trackers
+    end
+
+    def trackers=(value)
+      container.trackers = value
+    end
+
+    def str_closeness
+      container.str_closeness
+    end
+
+    def str_closeness=(value)
+      container.str_closeness = value
+    end
+
+    def tracker_client
+      container.tracker_client
+    end
+
+    def tracker_client=(value)
+      container.tracker_client = value
+    end
+
+    def tracker_client_last_login
+      container.tracker_client_last_login
+    end
+
+    def tracker_client_last_login=(value)
+      container.tracker_client_last_login = value
     end
 
     private
@@ -96,19 +162,6 @@ module MediaLibrarian
       end
 
       FileUtils.mkdir_p(File.join(@config_dir, 'log'))
-
-      @speaker = SimpleSpeaker::Speaker.new
-      @args_dispatch = SimpleArgsDispatch::Agent.new(@speaker, @env_flags)
-    end
-
-    def setup_configuration
-      @config = SimpleConfigMan.load_settings(@config_dir, @config_file, @config_example)
-      @api_option = {
-        'bind_address' => '127.0.0.1',
-        'listen_port' => '8888'
-      }
-      @workers_pool_size = (@config['daemon'] && @config['daemon']['workers_pool_size']) || 4
-      @queue_slots = (@config['daemon'] && @config['daemon']['queue_slots']) || 4
     end
   end
 
