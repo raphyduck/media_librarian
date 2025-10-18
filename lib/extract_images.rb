@@ -52,7 +52,7 @@ module ExtractImages
       end
       count
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       count
     end
 
@@ -71,7 +71,7 @@ module ExtractImages
         when :DeviceGray then save_gray(filename)
         when :DeviceRGB  then save_rgb(filename)
         else
-          $speaker.speak_up "unsupport color depth #{@stream.hash[:ColorSpace]} #{filename}"
+          MediaLibrarian.app.speaker.speak_up "unsupport color depth #{@stream.hash[:ColorSpace]} #{filename}"
       end
     end
 
@@ -82,7 +82,7 @@ module ExtractImages
       w    = stream.hash[:Width]
       bpc  = stream.hash[:BitsPerComponent]
       len  = stream.hash[:Length]
-      $speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
+      MediaLibrarian.app.speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
 
       # Synthesize a TIFF header
       long_tag  = lambda {|tag, count, value| [ tag, 4, count, value ].pack( "ssII" ) }
@@ -113,7 +113,7 @@ module ExtractImages
       w    = stream.hash[:Width]
       bpc  = stream.hash[:BitsPerComponent]
       len  = stream.hash[:Length]
-      $speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
+      MediaLibrarian.app.speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
 
       # Synthesize a TIFF header
       long_tag  = lambda {|tag, count, value| [ tag, 4, count, value ].pack( "ssII" ) }
@@ -143,7 +143,7 @@ module ExtractImages
       w    = stream.hash[:Width]
       bpc  = stream.hash[:BitsPerComponent]
       len  = stream.hash[:Length]
-      $speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
+      MediaLibrarian.app.speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, len=#{len}"
 
       # Synthesize a TIFF header
       long_tag  = lambda {|tag, count, value| [ tag, 4, count, value ].pack( "ssII" ) }
@@ -178,7 +178,7 @@ module ExtractImages
     def save(filename)
       w = stream.hash[:Width]
       h = stream.hash[:Height]
-      $speaker.speak_up "#{filename}: h=#{h}, w=#{w}"
+      MediaLibrarian.app.speaker.speak_up "#{filename}: h=#{h}, w=#{w}"
       File.open(filename, "wb") { |file| file.write stream.data }
     end
   end
@@ -194,7 +194,7 @@ module ExtractImages
       if stream.hash[:DecodeParms][:K] <= 0
         save_group_four(filename)
       else
-        $speaker.speak_up "#{filename}: CCITT non-group 4/2D image."
+        MediaLibrarian.app.speaker.speak_up "#{filename}: CCITT non-group 4/2D image."
       end
     end
 
@@ -209,7 +209,7 @@ module ExtractImages
       mask = stream.hash[:ImageMask]
       len  = stream.hash[:Length]
       cols = stream.hash[:DecodeParms][:Columns]
-      $speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, mask=#{mask}, len=#{len}, cols=#{cols}, k=#{k}"
+      MediaLibrarian.app.speaker.speak_up "#{filename}: h=#{h}, w=#{w}, bpc=#{bpc}, mask=#{mask}, len=#{len}, cols=#{cols}, k=#{k}"
 
       # Synthesize a TIFF header
       long_tag  = lambda {|tag, value| [ tag, 4, 1, value ].pack( "ssII" ) }

@@ -1,24 +1,25 @@
-require File.dirname(__FILE__) + '/languages_translation'
-#String comparator
-$str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
-#Set global variables
-$tracker_client = {}
-$tracker_client_last_login = {}
-#Some constants
-CACHING_TTL = 108000
+require_relative 'languages_translation'
+
+app = MediaLibrarian.app
+app.str_closeness = FuzzyStringMatch::JaroWinkler.create(:pure)
+app.tracker_client = {}
+app.tracker_client_last_login = {}
+
+CACHING_TTL = 108_000
 USER_INPUT_TIMEOUT = 600
 NEW_LINE = "\n"
 NUMBER_OF_LINKS = 100
 LINE_SEPARATOR = '---------------------------------------------------------'
-SPACER= '   '
-RESOLUTIONS = %w(2160p 2160i 1080p 1080i 720p 720i 576p 576i 480p 480i 368p 360p 360i 240p 240i)
-DIMENSIONS = %w(3d)
-SOURCES = %w(bluray blu-ray bdrip brrip remux dvdrip webdl web-dl web hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint)
-CODECS = %w(10bits 10bit hevc h265 x265 avc h264 x264 xvid divx vc1 wmv mpeg2)
+SPACER = '   '
+RESOLUTIONS = %w[2160p 2160i 1080p 1080i 720p 720i 576p 576i 480p 480i 368p 360p 360i 240p 240i]
+DIMENSIONS = %w[3d]
+SOURCES = %w[bluray blu-ray bdrip brrip remux dvdrip webdl web-dl web hdtv webrip bdscr dvdscr sdtv dsr tvrip preair ppvrip hdrip r5 workprint]
+CODECS = %w[10bits 10bit hevc h265 x265 avc h264 x264 xvid divx vc1 wmv mpeg2]
 AUDIO = ['truehd', 'dts', 'dtshd', 'flac', 'dd+5.1', 'dd+5 1', 'ac3', 'ddp5.1', 'dd5.1', 'aac2.0', 'aac', 'mp3']
 TONES = ['hdr', 'sdr']
 CUT = ['director.s.cut', 'directors.cut', 'uncut', 'unrated', 'extended']
-LANGUAGES = ['multi', 'vo', "vof", "vostfr"] + Languages.sort_languages($config['preferred_languages'])
+preferred_languages = app.config['preferred_languages']
+LANGUAGES = ['multi', 'vo', 'vof', 'vostfr'] + Languages.sort_languages(preferred_languages)
 EXTRA_TAGS = ['nodup']
 Q_SORT = ['RESOLUTIONS', 'SOURCES', 'LANGUAGES', 'CODECS', 'AUDIO', 'TONES', 'CUT']
 VALID_QUALITIES = DIMENSIONS + RESOLUTIONS + SOURCES + CODECS + AUDIO + LANGUAGES + TONES + CUT + EXTRA_TAGS

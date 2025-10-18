@@ -125,7 +125,7 @@ class Metadata
     end
     cache_name = base_folder.to_s + filename.gsub(r_folder, '')
     media_folders[type][cache_name, CACHING_TTL] = [title, item] unless cache_name.to_s == ''
-    $speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{title}', nil", 0) if item.nil?
+    MediaLibrarian.app.speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{title}', nil", 0) if item.nil?
     return title, item
   end
 
@@ -152,7 +152,7 @@ class Metadata
         "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
         Regexp::IGNORECASE)
     ) && ep_match && Utils.match_release_year(target_year, year)
-    $speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
+    MediaLibrarian.app.speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
     m
   end
 
@@ -214,21 +214,21 @@ class Metadata
         if match_titles(items[i][keys['name']], title, show_year, year, category)
           choice = i
         elsif no_prompt.to_i == 0
-          $speaker.speak_up("Alternatives titles found for #{title}:")
+          MediaLibrarian.app.speaker.speak_up("Alternatives titles found for #{title}:")
           results.each_with_index do |m, idx|
             # Use URI.encode_www_form_component instead of the removed
             # URI.escape.  Convert nil values to strings to avoid errors.
             info_str = m[:info].to_s
             encoded_info = URI.encode_www_form_component(info_str)
-            $speaker.speak_up("#{idx + 1}: #{m[:title]}#{' (info: ' + encoded_info + ')' if info_str != ''}")
+            MediaLibrarian.app.speaker.speak_up("#{idx + 1}: #{m[:title]}#{' (info: ' + encoded_info + ')' if info_str != ''}")
           end
-          choice = $speaker.ask_if_needed("Enter the number of the chosen title (empty to skip): ", no_prompt, 1).to_i - 1
+          choice = MediaLibrarian.app.speaker.ask_if_needed("Enter the number of the chosen title (empty to skip): ", no_prompt, 1).to_i - 1
         else
           choice = -1
         end
         next if choice < 0 || choice >= results.count
         if results[choice][:title] == 'Edit title manually'
-          $speaker.speak_up('Enter the title to look for:')
+          MediaLibrarian.app.speaker.speak_up('Enter the title to look for:')
           title = STDIN.gets.strip
           break
         end
@@ -243,12 +243,12 @@ class Metadata
   def self.media_type_get(type)
     VALID_MEDIA_TYPES.select { |_, v| v.include?(Utils.regularise_media_type(type)) }.first[0]
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.missing_media_add(missing_eps, type, full_name, release_date, item_name, identifiers, info, display_name = nil)
     return missing_eps if full_name == ''
-    $speaker.speak_up("Missing #{display_name || full_name} (ids '#{identifiers}') (released on #{release_date})", 0)
+    MediaLibrarian.app.speaker.speak_up("Missing #{display_name || full_name} (ids '#{identifiers}') (released on #{release_date})", 0)
     missing_eps = Metadata.media_add(item_name,
                                      type,
                                      full_name,
@@ -302,16 +302,16 @@ class Metadata
           exact_title, item = media_chose(title, items, keys, type, no_prompt.to_i)
           exact_title, item = item_fetch_method.call(item['ids'].merge({ 'force_title' => exact_title })) unless item.nil?
         rescue => e
-          $speaker.tell_error e, "Metadata.media_lookup block"
+          MediaLibrarian.app.speaker.tell_error e, "Metadata.media_lookup block"
         end
       end
       exact_title, item = Kodi.kodi_lookup(type, original_filename, exact_title) if item.nil? && original_filename.to_s != ''
       Cache.cache_add(cache_category, cache_name, [exact_title, item], item)
     end
-    $speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0) if item.nil?
+    MediaLibrarian.app.speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0) if item.nil?
     return exact_title, item
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add(cache_category, cache_name, [title, nil], nil)
     return title, nil
   end

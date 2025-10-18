@@ -21,7 +21,7 @@ class Hash
         result = Nokogiri::XML(xml_io)
         return {result.root.name.to_sym => xml_node_to_hash(result.root)}
       rescue Exception => e
-        $speaker.tell_error(e, Utils.arguments_dump(binding))
+        MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       end
     end
 

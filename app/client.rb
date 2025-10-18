@@ -2,7 +2,7 @@ class Client < EventMachine::Connection
 
   def initialize(args)
     @args = args
-    $daemon_client = self
+    MediaLibrarian.app.daemon_client = self
   end
 
   def post_init

@@ -1,8 +1,12 @@
-#start Kodi client
-$kodi = nil
-if $config['kodi']
-  $kodi = 1
-  Xbmc.base_uri $config['kodi']['host']
-  Xbmc.basic_auth $config['kodi']['username'], $config['kodi']['password']
-  Xbmc.load_api! rescue $kodi = nil # This will call JSONRPC.Introspect and create all subclasses and methods dynamically
+# start Kodi client
+app = MediaLibrarian.app
+app.kodi = nil
+
+if app.config['kodi']
+  app.kodi = 1
+  Xbmc.base_uri app.config['kodi']['host']
+  Xbmc.basic_auth app.config['kodi']['username'], app.config['kodi']['password']
+  Xbmc.load_api!
+rescue StandardError
+  app.kodi = nil
 end

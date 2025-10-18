@@ -42,14 +42,14 @@ class TorrentRss
   rescue Net::OpenTimeout, SocketError, Errno::EPIPE
     []
   rescue => e
-    $speaker.tell_error(e, "TorrentRss.generate_links", 0)
+    MediaLibrarian.app.speaker.tell_error(e, "TorrentRss.generate_links", 0)
     []
   end
 
   def self.get_rows(url)
-    (Feedjira.parse($mechanizer.get(url).body)).entries || []
+    (Feedjira.parse(MediaLibrarian.app.mechanizer.get(url).body)).entries || []
   rescue => e
-    $speaker.tell_error(e, "TorrentRss.new('#{url}').get_rows")
+    MediaLibrarian.app.speaker.tell_error(e, "TorrentRss.new('#{url}').get_rows")
   end
 
   def self.size_unit_convert(size, s_unit)

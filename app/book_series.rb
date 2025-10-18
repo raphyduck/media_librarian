@@ -22,7 +22,7 @@ class BookSeries
       exact_title, series = get_series(goodread_id)
     end
     if series.nil? && ids && ids['goodreads'].to_s != ''
-      book = $goodreads.book(ids['goodreads'])
+      book = MediaLibrarian.app.goodreads.book(ids['goodreads'])
       series_id = if book['series_works']['series_work'].is_a?(Array)
                     book['series_works']['series_work'][0]
                   else
@@ -34,28 +34,28 @@ class BookSeries
     Cache.cache_add('book_series_search', cache_name, [exact_title, series], series)
     return exact_title, series
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('book_series_search', cache_name, ['', nil], nil)
     return '', nil
   end
 
   def self.existing_series
-    return @book_series if $calibre.nil?
-    @book_series = $calibre.get_rows('series').map { |s| s[:name] }
+    return @book_series if MediaLibrarian.app.calibre.nil?
+    @book_series = MediaLibrarian.app.calibre.get_rows('series').map { |s| s[:name] }
     @book_series
   end
 
   def self.get_series(goodread_series_id)
     cached = Cache.cache_get('books_series_get', goodread_series_id.to_s)
     return cached if cached
-    series = $goodreads.series(goodread_series_id)
+    series = MediaLibrarian.app.goodreads.series(goodread_series_id)
     return '', nil if series.nil?
     series = BookSeries.new(series)
     title = series.name
     Cache.cache_add('books_series_get', goodread_series_id.to_s, [title, series], series)
     return title, series
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('books_series_get', goodread_series_id.to_s, ['', nil], nil)
     return '', nil
   end

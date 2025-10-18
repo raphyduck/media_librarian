@@ -83,7 +83,7 @@ class FileInfo
     end
   end
 
-  def getoptivcodecparams(codec, crf = $ffmpeg_crf, preset = $ffmpeg_preset)
+  def getoptivcodecparams(codec, crf = MediaLibrarian.app.ffmpeg_crf, preset = MediaLibrarian.app.ffmpeg_preset)
     if codec.to_s == ''
       return []
     elsif codec.downcase.gsub("-", "") == "vc1"
@@ -156,7 +156,7 @@ class FileInfo
     }
     Utils.lock_block("ffmpeg", 1) do
       movie = FFMPEG::Movie.new(path)
-      $speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("Running FFMpeg conversion with the following parameters: #{options[:custom]}", 0) if Env.debug?
       FileUtils.rm(output) if File.exist?(output) #Remove exists file if already exists
       movie.transcode(output, options) { |progress| printf("\rProgress: %d%%", (progress * 100).round(4)) }
     end
@@ -188,7 +188,7 @@ class FileInfo
     else
       return nil
     end
-    $speaker.speak_up "#{type} quality of file #{File.basename(path)} is #{q.join('.')}" if Env.debug? && !q.empty?
+    MediaLibrarian.app.speaker.speak_up "#{type} quality of file #{File.basename(path)} is #{q.join('.')}" if Env.debug? && !q.empty?
     q
   end
 

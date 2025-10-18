@@ -69,19 +69,19 @@ class Utils
     end
     return in_s / 1024, out_s / 1024
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     return nil, nil
   end
 
   def self.list_db(table:, entry: '')
     return [] unless DB_SCHEMA.map { |k, _| k.to_s }.include?(table)
-    column = $db.get_main_column(table)
+    column = MediaLibrarian.app.db.get_main_column(table)
     r = if entry.to_s == ''
-          $db.get_rows(table)
+          MediaLibrarian.app.db.get_rows(table)
         else
-          $db.get_rows(table, {column => entry.to_s})
+          MediaLibrarian.app.db.get_rows(table, {column => entry.to_s})
         end
-    r.each { |row| $speaker.speak_up row.to_s }
+    r.each { |row| MediaLibrarian.app.speaker.speak_up row.to_s }
   end
 
   def self.lock_block(process_name, nonex = 0, &block)

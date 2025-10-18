@@ -43,14 +43,14 @@ class LibraryBus
     end
     result
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     nil
   end
 
   def self.put_in_queue(value, thread = Thread.current)
     return if value.nil?
     if @buses[bus_id(thread)].nil?
-      $speaker.speak_up "Queue '#{bus_id(thread)}' is not initialized" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "Queue '#{bus_id(thread)}' is not initialized" if Env.debug?
       return
     end
     @buses[bus_id(thread)] << value

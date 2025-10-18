@@ -7,31 +7,31 @@ class Cache
 
   def self.cache_add(type, keyword, result, full_save = nil)
     if keyword.to_s == ''
-      $speaker.speak_up("Empty keyword, not saving cache") if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("Empty keyword, not saving cache") if Env.debug?
       return
     end
-    $speaker.speak_up "Cache '#{type}' for '#{keyword}' will not be saved to db" if full_save.nil? && Env.debug?
+    MediaLibrarian.app.speaker.speak_up "Cache '#{type}' for '#{keyword}' will not be saved to db" if full_save.nil? && Env.debug?
     @cache_metadata[type.to_s + keyword.to_s, CACHING_TTL] = result.clone
     r = object_pack(result.select { |k, _| k != :result })
-    $db.insert_row('metadata_search', {
+    MediaLibrarian.app.db.insert_row('metadata_search', {
         :keywords => keyword,
         :type => cache_get_enum(type),
         :result => r,
     }, 1) if cache_get_enum(type) && full_save && r
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     raise e
   end
 
   def self.cache_expire(row)
-    $db.delete_rows('metadata_search', row.select { |k, _| k != :result })
+    MediaLibrarian.app.db.delete_rows('metadata_search', row.select { |k, _| k != :result })
   end
 
   def self.cache_get(type, keyword, expiration = 120, force_refresh = 0)
     return nil unless cache_get_enum(type)
     return nil if Env.pretend?
     return @cache_metadata[type.to_s + keyword.to_s] if force_refresh.to_i == 0 && @cache_metadata[type.to_s + keyword.to_s]
-    res = $db.get_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
+    res = MediaLibrarian.app.db.get_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
     res.each do |r|
       if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days
         cache_expire(r)
@@ -43,9 +43,9 @@ class Cache
     end
     nil
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
-    $speaker.speak_up "An error occured loading cache for type '#{type}' and keyword '#{keyword}', removing entry"
-    $db.delete_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.speak_up "An error occured loading cache for type '#{type}' and keyword '#{keyword}', removing entry"
+    MediaLibrarian.app.db.delete_rows('metadata_search', {:type => cache_get_enum(type), :keywords => keyword})
     nil
   end
 
@@ -59,7 +59,7 @@ class Cache
 
   def self.cache_reset(type:)
     return nil unless cache_get_enum(type)
-    $db.delete_rows('metadata_search', {:type => cache_get_enum(type)})
+    MediaLibrarian.app.db.delete_rows('metadata_search', {:type => cache_get_enum(type)})
     @cache_metadata.delete_if { |c, _| c.start_with?(type) }
   end
 
@@ -124,7 +124,7 @@ class Cache
   end
 
   def self.queue_state_add_or_update(qname, el, unique = 1, replace = 0)
-    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
+    MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     el = [el] unless el.is_a?(Hash) || el.is_a?(Array)
     h = queue_state_get(qname, el.is_a?(Hash) ? Hash : Array)
     return if unique.to_i > 0 && h.is_a?(Array) && h.include?(el[0])
@@ -135,13 +135,13 @@ class Cache
 
   def self.queue_state_get(qname, type = Hash)
     return @tqueues[qname] if @tqueues[qname]
-    res = $db.get_rows('queues_state', {:queue_name => qname}).first
+    res = MediaLibrarian.app.db.get_rows('queues_state', {:queue_name => qname}).first
     @tqueues[qname] = object_unpack(res[:value]) rescue type.new
     @tqueues[qname]
   end
 
   def self.queue_state_remove(qname, key)
-    $speaker.speak_up "Will remove key '#{key}' from queue '#{qname}'" if Env.debug?
+    MediaLibrarian.app.speaker.speak_up "Will remove key '#{key}' from queue '#{qname}'" if Env.debug?
     h = queue_state_get(qname)
     h.delete(key)
     queue_state_save(qname, h)
@@ -152,7 +152,7 @@ class Cache
       @tqueues[qname] = value
       return @tqueues[qname] if Env.pretend?
       r = object_pack(value, 0, [Thread])
-      $db.insert_row('queues_state', {
+      MediaLibrarian.app.db.insert_row('queues_state', {
           :queue_name => qname,
           :value => r,
       }, 1) if r
@@ -167,7 +167,7 @@ class Cache
   end
 
   def self.queue_state_shift(qname)
-    $speaker.speak_up("Will shift from queue '#{qname}'", 0) if Env.debug?
+    MediaLibrarian.app.speaker.speak_up("Will shift from queue '#{qname}'", 0) if Env.debug?
     h = queue_state_get(qname)
     el = h.shift
     queue_state_save(qname, h)
@@ -182,34 +182,34 @@ class Cache
       next unless t[:in_db].to_i > 0 && t[:download_now].to_i >= 3
       timeframe, accept = Quality.filter_quality(t[:name], qualities, language, category)
       if timeframe.to_s == '' && accept
-        $speaker.speak_up "Torrent for identifier '#{identifier}' already existing at correct quality (#{qualities})" if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "Torrent for identifier '#{identifier}' already existing at correct quality (#{qualities})" if Env.debug?
         return true
       end
     end
-    $speaker.speak_up "No downloaded torrent found for identifier '#{identifier}' at quality (#{qualities})" if Env.debug?
+    MediaLibrarian.app.speaker.speak_up "No downloaded torrent found for identifier '#{identifier}' at quality (#{qualities})" if Env.debug?
     false
   end
 
   def self.torrent_get(identifier, f_type = nil)
     torrents = []
-    $db.get_rows('torrents', {}, {'identifier like' => "%#{identifier}%"}).each do |d|
+    MediaLibrarian.app.db.get_rows('torrents', {}, {'identifier like' => "%#{identifier}%"}).each do |d|
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
       d[:waiting_until] = TorrentSearch.waiting_time_set(d[:tattributes]).to_s
       next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
       t = -1
       if TorrentSearch.download_now?(d[:waiting_until]) == 1 && d[:status].to_i >= 0 && d[:status].to_i < 2
-        $speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
+        MediaLibrarian.app.speaker.speak_up("Timeframe set for '#{d[:name]}' on #{d[:created_at]}, waiting until #{d[:waiting_until]}", 0)
         t = 1
       elsif d[:status].to_i >= 0 && d[:status].to_i < 2
         t = 2
       elsif d[:status].to_i >= 2
         t = 3
       elsif Env.debug?
-        $speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
+        MediaLibrarian.app.speaker.speak_up("Torrent '#{d[:name]}' corrupted, skipping")
       end
       if Time.parse(d[:waiting_until]) < Time.now - 180.days && d[:status].to_i == 1
-        $speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
-        $db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
+        MediaLibrarian.app.speaker.speak_up "Removing stalled torrent '#{d[:name]}' (id '#{d[:identifier]}')" if Env.debug?
+        MediaLibrarian.app.db.delete_rows('torrents', {:name => d[:name], :identifier => d[:identifier]})
         next
       end
       torrents << d[:tattributes].merge({:download_now => t, :in_db => 1, :name => d[:name], :identifier => d[:identifier]})

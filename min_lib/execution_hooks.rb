@@ -10,7 +10,7 @@ module ExecutionHooks
         Class.send(:include, ExecutionHooks)
         class << self
           before_hook do |bds, class_name, method_name|
-            $speaker.speak_up Utils.arguments_dump(bds, 1, class_name, method_name) if Env.debug?
+            MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(bds, 1, class_name, method_name) if Env.debug?
           end
         end
       end

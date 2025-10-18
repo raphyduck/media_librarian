@@ -10,7 +10,7 @@ class MoviesSet
       send("#{destination}=", opts[source.to_s] || opts[source.to_sym] || fetch_val(source.to_s, opts))
     end
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     raise e
   end
 
@@ -29,17 +29,17 @@ class MoviesSet
   end
 
   def self.list_missing_movie(movies_files, qualifying_files, no_prompt = 0, delta = 30)
-    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
+    MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     collections, missing_movies = [], {}
     movies_files.each do |id, movie|
       next if id.is_a?(Symbol)
       collec_title, collection = Movie.movie_get(movie[:movie].ids, 'movie_set_get')
       next if !collection.is_a?(MoviesSet) || collections.include?(collec_title) || !collection.movies.is_a?(Array)
-      $speaker.speak_up("Checking movies set '#{collec_title}' for missing part") if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("Checking movies set '#{collec_title}' for missing part") if Env.debug?
       collections << collec_title
       collection.movies.each do |m|
         begin ##REMOVEME
-          $speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
+          MediaLibrarian.app.speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
           next if (m.release_date.to_s == '' && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
           next if Metadata.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))
           full_name, identifiers, info = Metadata.parse_media_filename(m.name, 'movies', m, m.name, no_prompt)
@@ -57,7 +57,7 @@ class MoviesSet
               info
           )
         rescue => e ##REMOVEME
-          $speaker.tell_error(e, "Block in MovieSet.list_missing_movie() m='#{Cache.object_pack(m,1)}'") ##REMOVEME
+          MediaLibrarian.app.speaker.tell_error(e, "Block in MovieSet.list_missing_movie() m='#{Cache.object_pack(m,1)}'") ##REMOVEME
         end ##REMOVEME
       end
     end
