@@ -85,4 +85,4 @@ install_ruby_deps
 echo
 echo "✅  Tout est prêt !"
 echo "Pour lancer :"
-echo "  bundle exec ruby bin/media_librarian.rb --config ~/.medialibrarian/settings.yml"
+echo "  bundle exec ruby librarian.rb --config ~/.medialibrarian/settings.yml"
