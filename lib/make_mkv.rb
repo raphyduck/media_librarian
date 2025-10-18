@@ -15,8 +15,8 @@ class MakeMkv
     end
 
     def iso_to_mkv!
-      $speaker.speak_up "Will run the following command: '#{makemkvcon} #{@command}'" if Env.debug?
-      return $speaker.speak_up "Would run the following command: '#{makemkvcon} #{@command}'" if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up "Will run the following command: '#{makemkvcon} #{@command}'" if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up "Would run the following command: '#{makemkvcon} #{@command}'" if Env.pretend?
       Open3.popen3(makemkvcon, *(['mkv'] + @command)) do |_, stdout, stderr, wait_thr|
         exit_code = wait_thr.value
         if exit_code != 0

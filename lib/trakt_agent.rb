@@ -6,7 +6,7 @@ class TraktAgent
     items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_name == 'collection'
     begin
       tries ||= 3
-      with_rate_limit { $trakt.sync.add_or_remove_item('add', list_name, type, items) }
+      with_rate_limit { MediaLibrarian.app.trakt.sync.add_or_remove_item('add', list_name, type, items) }
     rescue
       retry unless (tries -= 1).to_i <= 0
     end
@@ -14,7 +14,7 @@ class TraktAgent
 
   def self.create_list(name, description, privacy = 'private', display_numbers = false, allow_comments = true)
     return if Env.pretend?
-    $trakt.list.create_list({
+    MediaLibrarian.app.trakt.list.create_list({
                                 'name' => name,
                                 'description' => description,
                                 'privacy' => privacy,
@@ -24,16 +24,16 @@ class TraktAgent
   end
 
   def self.get_history(type, trakt_id = '')
-    h = with_rate_limit { $trakt.list.get_history(type, trakt_id) }
+    h = with_rate_limit { MediaLibrarian.app.trakt.list.get_history(type, trakt_id) }
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
   def self.get_watched(type, complete = 0)
-    $speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
+    MediaLibrarian.app.speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     get_watched = BusVariable.new('get_watched', Vash)
     cache_name = "#{type}#{complete}"
     return get_watched[cache_name] if get_watched[cache_name]
@@ -54,18 +54,18 @@ class TraktAgent
       h << c
     end
     if h.nil? || h.empty?
-      wk = with_rate_limit { $trakt.list.get_watched(type, '?extended=noseasons') }
-      k = with_rate_limit { $trakt.list.collection(type, '?extended=noseasons') }
+      wk = with_rate_limit { MediaLibrarian.app.trakt.list.get_watched(type, '?extended=noseasons') }
+      k = with_rate_limit { MediaLibrarian.app.trakt.list.collection(type, '?extended=noseasons') }
       return [] if k.is_a?(Hash) && k['error']
       k.each do |i|
         item = wk.select { |t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title'] }.first
         item = i if item.nil?
         _, info = ['shows', 'episodes'].include?(type) ? TvSeries.tv_show_get(item['show']['ids']) : nil
         if info.nil?
-          $speaker.speak_up "Missing information for show '#{item}'"
+          MediaLibrarian.app.speaker.speak_up "Missing information for show '#{item}'"
           next
         end
-        $speaker.speak_up("Show '#{info.name}' has already #{info.aired_episodes} aired episodes, of which #{item['plays']} have been played!") if Env.debug?
+        MediaLibrarian.app.speaker.speak_up("Show '#{info.name}' has already #{info.aired_episodes} aired episodes, of which #{item['plays']} have been played!") if Env.debug?
         next if complete.to_i > 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i < info.aired_episodes.to_i
         next if complete.to_i < 0 && ['shows', 'episodes'].include?(type) && item['plays'].to_i >= info.aired_episodes.to_i
         next if type == 'movies' && item['plays'].to_i == 0
@@ -75,12 +75,12 @@ class TraktAgent
     get_watched[cache_name, CACHING_TTL] = h
     h
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
   def self.filter_trakt_list(list, type, filter_type, exception = nil, add_only = 0, old_list = [], cr_value = 0, folder = '')
-    $speaker.speak_up("Ok, will filter all #{filter_type.gsub('_', ' ')} items, it can take a long time...", 0)
+    MediaLibrarian.app.speaker.speak_up("Ok, will filter all #{filter_type.gsub('_', ' ')} items, it can take a long time...", 0)
     complete = if filter_type.include?('entirely')
                  1
                elsif filter_type.include?('partially')
@@ -93,9 +93,9 @@ class TraktAgent
       delete_it = 0
       next if add_only.to_i > 0 && search_list(type[0...-1], item, old_list)
       title = item[type[0...-1]]['title']
-      $speaker.speak_up "Will filter item titled '#{title}' for #{filter_type} = '#{cr_value}'" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "Will filter item titled '#{title}' for #{filter_type} = '#{cr_value}'" if Env.debug?
       if exception && exception.include?(title)
-        $speaker.speak_up "Skipping because '#{title}' is included in exceptions" if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "Skipping because '#{title}' is included in exceptions" if Env.debug?
         next
       end
       case filter_type
@@ -117,7 +117,7 @@ class TraktAgent
         break if cr_value.to_i > 1 && filter_type != 'not_ended'
         _, show = TvSeries.tv_show_search(title, 1, '', item[type[0...-1]]['ids'] || {})
         if Env.debug?
-          $speaker.speak_up("Show '#{show.name}' status is '#{show.status}'#{' (' + show.formal_status + ')' if show.status != show.formal_status}")
+          MediaLibrarian.app.speaker.speak_up("Show '#{show.name}' status is '#{show.status}'#{' (' + show.formal_status + ')' if show.status != show.formal_status}")
         end
         if show &&
             ((cr_value.to_i == 0 && (show.status.downcase == filter_type || (filter_type == 'not_ended' && show.formal_status.downcase != 'ended'))) ||
@@ -137,15 +137,15 @@ class TraktAgent
         delete_it = 1 unless folders.first
       end
       if delete_it > 0
-        $speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'='#{cr_value}'") if Env.debug?
+        MediaLibrarian.app.speaker.speak_up("Removing #{type} '#{title}' from list because of criteria '#{filter_type}'='#{cr_value}'") if Env.debug?
         list.delete(item)
       end
       print '.'
     end
-    $speaker.speak_up('done!', 0)
+    MediaLibrarian.app.speaker.speak_up('done!', 0)
     list
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     list
   end
 
@@ -162,14 +162,14 @@ class TraktAgent
     tries ||= 3
     case name
     when 'watchlist'
-      list = $trakt.list.watchlist(type)
+      list = MediaLibrarian.app.trakt.list.watchlist(type)
       list.sort_by! { |i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now + 100.years).year }
     when 'collection'
-      list = with_rate_limit { $trakt.list.collection(type) }
+      list = with_rate_limit { MediaLibrarian.app.trakt.list.collection(type) }
     when 'lists'
-      list = $trakt.list.get_user_lists
+      list = MediaLibrarian.app.trakt.list.get_user_lists
     else
-      list = $trakt.list.list(name)
+      list = MediaLibrarian.app.trakt.list.list(name)
     end
     list
   rescue => e
@@ -177,7 +177,7 @@ class TraktAgent
       sleep 120
       retry
     else
-      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       []
     end
   end
@@ -210,17 +210,17 @@ class TraktAgent
   end
 
   def self.get_trakt_token
-    return unless $trakt && $trakt_account
-    token = $trakt.access_token
-    $db.insert_row('trakt_auth', token.merge({:account => $trakt_account}), 1) if token
+    return unless MediaLibrarian.app.trakt && MediaLibrarian.app.trakt_account
+    token = MediaLibrarian.app.trakt.access_token
+    MediaLibrarian.app.db.insert_row('trakt_auth', token.merge({:account => MediaLibrarian.app.trakt_account}), 1) if token
   end
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
-    $speaker.speak_up "Cleaning trakt list '#{list}' (type #{type}, #{items.count} elements)" if Env.debug?
+    MediaLibrarian.app.speaker.speak_up "Cleaning trakt list '#{list}' (type #{type}, #{items.count} elements)" if Env.debug?
     tries, result = 3, false
     return result if Env.pretend?
     begin
-      with_rate_limit { $trakt.sync.add_or_remove_item('remove', list, type, items) }
+      with_rate_limit { MediaLibrarian.app.trakt.sync.add_or_remove_item('remove', list, type, items) }
       result = true
     rescue
       retry unless (tries -= 1).to_i <= 0
@@ -237,13 +237,13 @@ class TraktAgent
   def self.method_missing(name, *args)
     m = name.to_s.split('__')
     return unless m[0] && m[1]
-    $speaker.speak_up("Running TraktAgent.#{m[0]}__#{m[1]}(#{DataUtils.format_string(args).join(', ')})", 0) if Env.debug?
+    MediaLibrarian.app.speaker.speak_up("Running TraktAgent.#{m[0]}__#{m[1]}(#{DataUtils.format_string(args).join(', ')})", 0) if Env.debug?
     if args.empty?
-      eval("$trakt.#{m[0]}").method(m[1]).call
+      eval("MediaLibrarian.app.trakt.#{m[0]}").method(m[1]).call
     else
-      eval("$trakt.#{m[0]}").method(m[1]).call(*args)
+      eval("MediaLibrarian.app.trakt.#{m[0]}").method(m[1]).call(*args)
     end
   rescue => e
-    $speaker.tell_error(e, "TraktAgent.#{name}")
+    MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.#{name}")
   end
 end

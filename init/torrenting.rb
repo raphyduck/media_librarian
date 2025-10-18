@@ -1,6 +1,7 @@
-$deluge_connected = nil
-#Start torrent_client
-if $config['deluge'] && !$config['deluge'].empty?
-  $t_client = TorrentClient.new
-  $remove_torrent_on_completion = $config['deluge']['remove_on_completion']
+app = MediaLibrarian.app
+app.deluge_connected = nil
+
+if app.config['deluge'] && !app.config['deluge'].empty?
+  app.t_client = TorrentClient.new
+  app.remove_torrent_on_completion = app.config['deluge']['remove_on_completion']
 end

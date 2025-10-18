@@ -17,12 +17,12 @@ class Book
 
   def detect_series(opts)
     if @series_id.nil?
-      series_link = calibre_id.to_i != 0 ? $calibre.get_rows('books_series_link', {:book => calibre_id}).first : nil
+      series_link = calibre_id.to_i != 0 ? MediaLibrarian.app.calibre.get_rows('books_series_link', {:book => calibre_id}).first : nil
       @series_id = series_link ? series_link[:series] : nil
     end
     @series_name, @name, _ = Book.detect_book_title(filename) unless @series_name.to_s != ''
     if @series.nil? && @series_id.to_s != '' && @series_name.to_s != ''
-      @series = BookSeries.new($calibre.get_rows('series', {:id => @series_id}).first)
+      @series = BookSeries.new(MediaLibrarian.app.calibre.get_rows('series', {:id => @series_id}).first)
     elsif @series.nil? && Book.books_library[:book_series]
       s = if Book.books_library[:book_series]
             Book.books_library[:book_series].select do |ss, _|
@@ -54,7 +54,7 @@ class Book
         (opts[:name] || opts[:title]).strip
       when 'ids'
         if calibre_id
-          is = Hash[$calibre.get_rows('identifiers', {:book => calibre_id}).map { |i| [i[:type].to_s, i[:val].to_s] }]
+          is = Hash[MediaLibrarian.app.calibre.get_rows('identifiers', {:book => calibre_id}).map { |i| [i[:type].to_s, i[:val].to_s] }]
         elsif opts[:isbn13] || opts[:gr_ids]
           is = {'isbn' => opts[:isbn13] || opts[:gr_ids]}
         else
@@ -78,14 +78,14 @@ class Book
       cached = Cache.cache_get('book_search', cache_name)
       return cached if cached
       if ids['isbn'].to_s != ''
-        book = ($goodreads.book_by_isbn(ids['isbn']) rescue nil)
+        book = (MediaLibrarian.app.goodreads.book_by_isbn(ids['isbn']) rescue nil)
         if book
           book = new(book)
           exact_title = book.name
         end
       end
       if book.nil?
-        books = $goodreads.search_books(title)
+        books = MediaLibrarian.app.goodreads.search_books(title)
         if books['results'] && books['results']['work']
           bs = books['results']['work'].is_a?(Array) ? books['results']['work'] : [books['results']['work']]
           rs = bs.map do |b|
@@ -114,7 +114,7 @@ class Book
     }
     return exact_title, book
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('book_search', cache_name, [title, nil], nil)
     return title, nil
   end
@@ -129,11 +129,11 @@ class Book
       when 'cbz', 'zip'
         FileUtils.compress_archive(path, destination) if skip_compress.to_i == 0
       else
-        $speaker.speak_up('Nothing to do, skipping')
+        MediaLibrarian.app.speaker.speak_up('Nothing to do, skipping')
         skip_compress = 1
     end
     FileUtils.rm_r(path) if remove_original.to_i > 0
-    $speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic") if skip_compress.to_i == 0
+    MediaLibrarian.app.speaker.speak_up("Folder #{File.basename(path)} compressed to #{output_format} comic") if skip_compress.to_i == 0
     return skip_compress
   end
 
@@ -144,7 +144,7 @@ class Book
       case input_format
         when 'pdf'
           if Env.pretend?
-            $speaker.speak_up "Would extract images from pdf"
+            MediaLibrarian.app.speaker.speak_up "Would extract images from pdf"
           else
             extractor = ExtractImages::Extractor.new
             extracted = 0
@@ -154,14 +154,14 @@ class Book
               end
             end
             unless extracted > 0
-              $speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
+              MediaLibrarian.app.speaker.ask_if_needed("WARNING: Error extracting images, skipping #{name}! Press any key to continue!", no_warning)
               skipping = 1
             end
           end
         when 'cbr', 'cbz'
           FileUtils.extract_archive(input_format, '../' + File.basename(path), '.')
         else
-          $speaker.speak_up('Nothing to do, skipping')
+          MediaLibrarian.app.speaker.speak_up('Nothing to do, skipping')
           skipping = 1
       end
       FileUtils.search_folder('.').each do |f|
@@ -182,7 +182,7 @@ class Book
       end
     end
     skipping = if Env.pretend?
-                 $speaker.speak_up "Would compress '#{name}' to '#{dest_file}' (#{output_format})"
+                 MediaLibrarian.app.speaker.speak_up "Would compress '#{name}' to '#{dest_file}' (#{output_format})"
                  1
                else
                  compress_comics(path: name, destination: dest_file, output_format: output_format, remove_original: 1, skip_compress: skipping)
@@ -227,9 +227,9 @@ class Book
   end
 
   def self.existing_books(no_prompt = 0)
-    return @books_library if $calibre.nil?
+    return @books_library if MediaLibrarian.app.calibre.nil?
     bl = {}
-    $calibre.get_rows('books').each do |b|
+    MediaLibrarian.app.calibre.get_rows('books').each do |b|
       book = new(b.merge({:from_calibre => 1}))
       bl = Library.parse_media(
           {:type => 'books', :name => book.filename},

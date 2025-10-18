@@ -21,7 +21,7 @@ class Movie
     assign_attributes(opts)
     year
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     raise e
   end
 
@@ -98,7 +98,7 @@ class Movie
     extracted_year = (name && Metadata.identify_release_year(name) > 0) ? Metadata.identify_release_year(name) : nil
 
     if (real_year || extracted_year || release_date).nil?
-      $speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'"
+      MediaLibrarian.app.speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'"
     end
 
     @year ||= (real_year || extracted_year || (release_date || Time.now + 3.years).year).to_i
@@ -152,10 +152,10 @@ class Movie
       full_save = movie || {}
     end
     Cache.cache_add(type, cache_name, [title, movie], full_save)
-    $speaker.speak_up "#{Utils.arguments_dump(binding)}= '', nil" if movie.nil?
+    MediaLibrarian.app.speaker.speak_up "#{Utils.arguments_dump(binding)}= '', nil" if movie.nil?
     return title, movie
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add(type, cache_name, ['', nil], nil)
     return '', nil
   end

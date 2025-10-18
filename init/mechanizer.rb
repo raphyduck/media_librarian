@@ -1,1 +1,1 @@
-$mechanizer = Mechanize.new
+MediaLibrarian.app.mechanizer = Mechanize.new

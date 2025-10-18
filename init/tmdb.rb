@@ -1,1 +1,2 @@
-Tmdb::Api.key($config['tmdb']['api_key']) if $config['tmdb'] && $config['tmdb']['api_key']
+app = MediaLibrarian.app
+Tmdb::Api.key(app.config['tmdb']['api_key']) if app.config['tmdb'] && app.config['tmdb']['api_key']

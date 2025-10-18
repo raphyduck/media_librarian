@@ -27,14 +27,14 @@ class Quality
       r_q -= t_q
       next if (r_q - t_q).empty? && (t_q - r_q).empty?
       if (file_q - r_q) != file_q
-        $speaker.speak_up "Removing #{t} qualities information from file '#{filename}'..." if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "Removing #{t} qualities information from file '#{filename}'..." if Env.debug?
         filename = qualities_replace(filename, r_q)
       end
       unless (t_q - file_q).empty?
         old_filename = filename.dup
         filename = qualities_replace(filename, file_q)
         t_q.each { |q| filename = filename.gsub(/\.#{extension}$/, '').to_s + ".#{q}.#{extension}" }
-        $speaker.speak_up "Adding qualities information '#{t_q.join('.')}' to '#{old_filename}'" if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "Adding qualities information '#{t_q.join('.')}' to '#{old_filename}'" if Env.debug?
       end
     end
     filename
@@ -43,19 +43,19 @@ class Quality
   def self.filter_quality(filename, qualities, language = '', assume_quality = nil, category = '')
     timeframe = ''
     unless parse_qualities(filename, ['hc']).empty?
-      $speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
       return timeframe, false
     end
     file_q = parse_qualities(filename, VALID_QUALITIES, language, category)
     (qualities['illegal'].is_a?(Array) ? qualities['illegal'] : [qualities['illegal'].to_s]).each do |iq|
       next if iq.to_s == ''
       if (iq.split - file_q).empty?
-        $speaker.speak_up "'#{filename}' has an illegal combination of qualities, removing from list" if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "'#{filename}' has an illegal combination of qualities, removing from list" if Env.debug?
         return timeframe, false
       end
     end
     if qualities['strict'].to_i > 0 && (file_q - qualities['min_quality'].to_s.split(' ')).empty?
-      $speaker.speak_up "Strict minimum quality is excluded and '#{filename}' has only the strict minimum, removing from list" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "Strict minimum quality is excluded and '#{filename}' has only the strict minimum, removing from list" if Env.debug?
       return timeframe, false
     end
     return timeframe, true if qualities.nil? || qualities.empty?
@@ -75,7 +75,7 @@ class Quality
     end
     return timeframe, true
   rescue => e
-    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     return '', false
   end
 
@@ -153,7 +153,7 @@ class Quality
   def self.qualities_compare(qualities, type, qt, comparison, message = '')
     qualities.to_s.split(' ').each do |q|
       if eval(type).include?(q) && ((qt.empty? && comparison == '<') || (!qt.empty? && eval(type).index(q).send(comparison, eval(type).index(qt))))
-        $speaker.speak_up "#{message} (target '#{q}')" if Env.debug? && message.to_s != ''
+        MediaLibrarian.app.speaker.speak_up "#{message} (target '#{q}')" if Env.debug? && message.to_s != ''
         return true
       end
     end
@@ -168,7 +168,7 @@ class Quality
           '.' + existing_qualities.join('.') + '.',
           {'min_quality' => min_q}, file[:language], nil, file[:type]
       )
-      $speaker.speak_up "Ignoring file '#{file[:full_name]}' as it is lower than minimum quality '#{(qualities['target_quality'] || qualities['max_quality'])}'" if Env.debug? && !accept
+      MediaLibrarian.app.speaker.speak_up "Ignoring file '#{file[:full_name]}' as it is lower than minimum quality '#{(qualities['target_quality'] || qualities['max_quality'])}'" if Env.debug? && !accept
     end
     accept
   end
@@ -178,14 +178,14 @@ class Quality
   end
 
   def self.qualities_merge(oq, aq, lang = '', category = '')
-    $speaker.speak_up Utils.arguments_dump(binding) if Env.debug? #REMOVEME
+    MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug? #REMOVEME
     quality = ''
     Q_SORT.each do |t|
       cq = parse_qualities(oq.to_s, eval(t), lang, category).join('.')
       cq = parse_qualities((aq.to_s), eval(t), lang, category).join('.') if cq.to_s == ''
       quality += ".#{cq}"
     end
-    $speaker.speak_up "Qualities_merge = #{quality}" #REMOVEME
+    MediaLibrarian.app.speaker.speak_up "Qualities_merge = #{quality}" #REMOVEME
     quality
   end
 
@@ -205,7 +205,7 @@ class Quality
     existing_qualities = incomplete.to_i == 0 ? media_list_qualities(file, 'file') : ''
     unless existing_qualities.empty?
       reference_q = qualities_max(reference_q.to_s.split(' ') + existing_qualities.dup).join(' ')
-      $speaker.speak_up "File(s) of '#{file[:full_name]}' already existing with a quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "File(s) of '#{file[:full_name]}' already existing with a quality of '#{existing_qualities}', setting minimum quality to '#{reference_q}'" if Env.debug?
     end
     return existing_qualities, reference_q
   end

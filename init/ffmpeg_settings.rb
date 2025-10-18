@@ -1,2 +1,4 @@
-$ffmpeg_crf = $config['ffmpeg_settings']['crf'] || 22 rescue 22
-$ffmpeg_preset = $config['ffmpeg_settings']['preset'] || 'medium' rescue 'medium'
+app = MediaLibrarian.app
+settings = app.config['ffmpeg_settings'] || {}
+app.ffmpeg_crf = settings['crf'] || 22
+app.ffmpeg_preset = settings['preset'] || 'medium'

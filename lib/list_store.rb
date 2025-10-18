@@ -15,17 +15,17 @@ module ListStore
       rows << [list_name.to_s.strip, type, title, year_i, alts, url, row['imdb_id'], row['tmdb_id'], Time.now.to_i]
     end
     return 0 if rows.empty?
-    $db.insert_rows('media_lists', rows, replace)
+    MediaLibrarian.app.db.insert_rows('media_lists', rows, replace)
   rescue => e
-    $speaker.tell_error(e, "ListStore.import_csv") rescue nil
+    MediaLibrarian.app.speaker.tell_error(e, "ListStore.import_csv") rescue nil
     0
   ensure
   end
 
   def self.fetch_list(list_name)
-    $db.get_rows('media_lists', {:list_name => list_name})
+    MediaLibrarian.app.db.get_rows('media_lists', {:list_name => list_name})
   rescue => e
-    $speaker.tell_error(e, "ListStore.fetch_list(#{list_name})") rescue nil
+    MediaLibrarian.app.speaker.tell_error(e, "ListStore.fetch_list(#{list_name})") rescue nil
     []
   end
 end

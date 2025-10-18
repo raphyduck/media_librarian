@@ -7,6 +7,6 @@ class ClientInput < EM::Connection
   end
 
   def receive_line(data)
-    $daemon_client.send_data("user_input #{data}") if $daemon_client
+    MediaLibrarian.app.daemon_client.send_data("user_input #{data}") if MediaLibrarian.app.daemon_client
   end
 end

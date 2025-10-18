@@ -239,7 +239,7 @@ module Storage
     end
 
     def recreate_table(table_name, schema, db_columns)
-      $speaker.speak_up("Definition of one or more columns of table '#{table_name}' has changed, will modify the schema")
+      MediaLibrarian.app.speaker.speak_up("Definition of one or more columns of table '#{table_name}' has changed, will modify the schema")
 
       temp_table = "tmp_#{table_name}"
       table_create(temp_table, schema[:columns])
@@ -262,7 +262,7 @@ module Storage
         !(unique_columns - idx_list[:unique]).empty? ||
         !(idx_list[:unique] - unique_columns).empty?
 
-        $speaker.speak_up("Missing index on '#{table_name}(#{unique_columns.join(', ')})', adding index now")
+        MediaLibrarian.app.speaker.speak_up("Missing index on '#{table_name}(#{unique_columns.join(', ')})', adding index now")
         index_name = "idx_#{table_name}_#{unique_columns.join('_')}"
         columns_list = unique_columns.join(', ')
         @s_db.execute("CREATE UNIQUE INDEX #{index_name} ON #{table_name}(#{columns_list})")
@@ -280,10 +280,10 @@ module Storage
       end
 
       if Env.pretend? && write > 0
-        return $speaker.speak_up("Would #{query_log}")
+        return MediaLibrarian.app.speaker.speak_up("Would #{query_log}")
       end
 
-      $speaker.speak_up("Executing SQL query: '#{query_log}'", 0) if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("Executing SQL query: '#{query_log}'", 0) if Env.debug?
       raise 'ReadOnly Db' if write > 0 && @readonly > 0
 
       Utils.lock_block("db_#{table}") do
@@ -302,7 +302,7 @@ module Storage
 
     def log_error(error, query = nil)
       context = query ? { query: query } : {}
-      $speaker.tell_error(error, Utils.arguments_dump(binding, 2, "Storage::Db", context))
+      MediaLibrarian.app.speaker.tell_error(error, Utils.arguments_dump(binding, 2, "Storage::Db", context))
     end
 
     def index_list(table)
@@ -376,7 +376,7 @@ module Storage
 
       result
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       values
     end
 

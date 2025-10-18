@@ -14,8 +14,8 @@ module FileUtils
     def compress_archive(folder, name)
       Dir.chdir(File.dirname(folder)) do
         if Env.pretend?
-          $speaker.speak_up "Would compress the following files:"
-          Dir.foreach('.') { |f| $speaker.speak_up f }
+          MediaLibrarian.app.speaker.speak_up "Would compress the following files:"
+          Dir.foreach('.') { |f| MediaLibrarian.app.speaker.speak_up f }
         else
           Archive::Zip.archive(name, File.basename(folder))
         end
@@ -23,22 +23,22 @@ module FileUtils
     end
 
     def cp(source, target)
-      return $speaker.speak_up("Would cp #{source} to #{target}") if Env.pretend?
-      $speaker.speak_up("cp #{source} #{target}") if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up("Would cp #{source} to #{target}") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("cp #{source} #{target}") if Env.debug?
       rm(target) if File.exist?(target)
       mkdir_p(File.dirname(target)) unless File.exist?(File.dirname(target))
-      $speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
+      MediaLibrarian.app.speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
       cp_orig(source, target)
     end
 
     def extract_archive(type, archive, destination)
       FileUtils.mkdir(destination) unless Dir.exist?(destination)
-      return $speaker.speak_up "Would extract archive #{type} '#{archive}' to '#{destination}'" if Env.pretend?
+      return MediaLibrarian.app.speaker.speak_up "Would extract archive #{type} '#{archive}' to '#{destination}'" if Env.pretend?
       case type
       when 'cbr', 'rar'
-        $unrar = Unrar::Archive.new(archive, destination)
-        extracted = $unrar.extract
-        $speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
+        unrar = Unrar::Archive.new(archive, destination)
+        extracted = unrar.extract
+        MediaLibrarian.app.speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
       when 'cbz', 'zip'
         Archive::Zip.extract(archive, destination, {:ignore_check_flags => 1})
       end
@@ -53,7 +53,7 @@ module FileUtils
     def get_disk_space(path)
       return `df --output=avail -k #{path} | tail -1`.to_i * 1024, `df --output=size -k #{path} | tail -1`.to_i * 1024
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding), 0)
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding), 0)
       return 0, 0
     end
 
@@ -107,26 +107,26 @@ module FileUtils
       end
       return nil
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       nil
     end
 
     def ln(original, destination)
-      return $speaker.speak_up("Would ln #{original} to #{destination}") if Env.pretend?
-      $speaker.speak_up("ln #{original} #{destination}") if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up("Would ln #{original} to #{destination}") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("ln #{original} #{destination}") if Env.debug?
       rm(destination) if File.exist?(destination)
       mkdir_p(File.dirname(destination)) unless File.exist?(File.dirname(destination))
-      $speaker.speak_up("File '#{original}' doesn't exist!") unless File.exist?(original)
+      MediaLibrarian.app.speaker.speak_up("File '#{original}' doesn't exist!") unless File.exist?(original)
       begin
         ln_orig(original, destination)
       rescue => e
-        $speaker.speak_up "Hard linking failed with error '#{e}', trying to copy instead" if Env.debug?
+        MediaLibrarian.app.speaker.speak_up "Hard linking failed with error '#{e}', trying to copy instead" if Env.debug?
         cp(original, destination)
       end
     end
 
     def ln_r(source, target)
-      $speaker.speak_up "ln_r copying and hard linking from #{source} to #{target}" if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "ln_r copying and hard linking from #{source} to #{target}" if Env.debug?
       return ln(source, target) unless File.directory?(source)
       source = File.join(source, "")
       target = File.join(target, "")
@@ -141,7 +141,7 @@ module FileUtils
           mkdir_p target_path
         end
       end
-      $speaker.speak_up "Done copying/linking." if Env.debug?
+      MediaLibrarian.app.speaker.speak_up "Done copying/linking." if Env.debug?
     end
 
     def md5sum(file)
@@ -155,14 +155,14 @@ module FileUtils
     end
 
     def mkdir(dirs)
-      return $speaker.speak_up("Would mkdir #{dirs}") if Env.pretend?
-      $speaker.speak_up("mkdir #{dirs}") if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up("Would mkdir #{dirs}") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("mkdir #{dirs}") if Env.debug?
       mkdir_orig(dirs)
     end
 
     def mkdir_p(dirs)
-      return $speaker.speak_up("Would mkdir_p #{dirs}") if Env.pretend?
-      $speaker.speak_up("mkdir_p #{dirs}") if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up("Would mkdir_p #{dirs}") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("mkdir_p #{dirs}") if Env.debug?
       mkdir_p_orig(dirs)
     end
 
@@ -171,15 +171,15 @@ module FileUtils
       if File.exist?(destination)
         _, proper = Quality.identify_proper(original)
         if remove_outdated.to_i > 0 && proper.to_i > 0
-          $speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
+          MediaLibrarian.app.speaker.speak_up("File #{File.basename(original)} is an upgrade release, replacing existing file #{File.basename(destination)}.")
           rm(destination)
         else
-          $speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...", 0)
+          MediaLibrarian.app.speaker.speak_up("File #{File.basename(destination)} is correctly named, skipping...", 0)
           return false, destination
         end
       end
-      return if $speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s != 'y'
-      $speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'", 0)
+      return if MediaLibrarian.app.speaker.ask_if_needed("Move '#{original}' to '#{destination}'? (y/n)", no_prompt, 'y').to_s != 'y'
+      MediaLibrarian.app.speaker.speak_up("#{hard_link.to_i > 0 ? 'Linking' : 'Moving'} '#{original}' to '#{destination}'", 0)
       mkdir_p(File.dirname(destination)) unless Dir.exist?(File.dirname(destination))
       if hard_link.to_i > 0
         ln(original, destination)
@@ -188,7 +188,7 @@ module FileUtils
       end
       return true, destination
     rescue => e
-      $speaker.tell_error(e, 'FileUtils.move_file')
+      MediaLibrarian.app.speaker.tell_error(e, 'FileUtils.move_file')
       return false, ''
     end
 
@@ -200,16 +200,16 @@ module FileUtils
     end
 
     def mv(original, destination)
-      return $speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
-      $speaker.speak_up("mv #{original} #{destination}") if Env.debug?
+      return MediaLibrarian.app.speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("mv #{original} #{destination}") if Env.debug?
       mv_orig(original, destination)
       file_remove_parents(original)
     end
 
     def rm(files, force: nil, noop: nil, verbose: nil)
-      return $speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != '' if Env.pretend?
+      return MediaLibrarian.app.speaker.speak_up("Would rm #{files}") if files.is_a?(Array) || files.to_s != '' if Env.pretend?
       Utils.lock_block("file_utils_rm") do
-        $speaker.speak_up("Removing file '#{files}'")
+        MediaLibrarian.app.speaker.speak_up("Removing file '#{files}'")
         rm_orig(files, force: force, noop: noop, verbose: verbose) if files.is_a?(Array) || files.to_s != ''
       end
       file_remove_parents(files)
@@ -218,9 +218,9 @@ module FileUtils
 
     def rm_r(files, force: nil, noop: nil, verbose: nil, secure: nil)
       Utils.lock_block("file_utils_rm") do
-        $speaker.speak_up("Removing file or directory '#{files}'")
+        MediaLibrarian.app.speaker.speak_up("Removing file or directory '#{files}'")
         if Env.pretend?
-          $speaker.speak_up("Would rm_r #{files}")
+          MediaLibrarian.app.speaker.speak_up("Would rm_r #{files}")
         else
           rm_r_orig(files, force: force, noop: noop, verbose: verbose, secure: secure)
         end
@@ -229,9 +229,9 @@ module FileUtils
     end
 
     def rmdir(dirs)
-      $speaker.speak_up("rmdir #{dirs}") if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("rmdir #{dirs}") if Env.debug?
       if Env.pretend?
-        $speaker.speak_up("Would rmdir #{dirs}")
+        MediaLibrarian.app.speaker.speak_up("Would rmdir #{dirs}")
       else
         rmdir_orig(dirs)
       end
@@ -239,7 +239,7 @@ module FileUtils
     end
 
     def search_folder(folder, filter_criteria = {})
-      $speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
+      MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
       filter_criteria = {} if filter_criteria.nil?
       search_folder = []
       Find.find(folder).each do |path|
@@ -260,8 +260,8 @@ module FileUtils
         breakflag = 1 if breakflag == 0 && filter_criteria['days_newer'].to_i > 0 && File.mtime(path) < Time.now - filter_criteria['days_newer'].to_i.days
         breakflag = 1 if breakflag == 0 && (filter_criteria['exclude_path'] && filter_criteria['exclude_path'].is_a?(Array) && is_in_path(filter_criteria['exclude_path'], path)) || path.include?('@eaDir')
         breakflag = 1 if breakflag == 0 && filter_criteria['str_closeness'].to_i > 0 && filter_criteria['str_closeness_comp'] &&
-            $str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&
-            $str_closeness.getDistance(parent, filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i
+            MediaLibrarian.app.str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&
+            MediaLibrarian.app.str_closeness.getDistance(parent, filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i
         search_folder << [path, parent] if breakflag == 0
         if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
           Find.prune if FileTest.directory?(path)
@@ -270,7 +270,7 @@ module FileUtils
       end
       search_folder
     rescue => e
-      $speaker.tell_error(e, Utils.arguments_dump(binding))
+      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
       []
     end
   end

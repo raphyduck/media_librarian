@@ -11,15 +11,15 @@ class UpgradeUtils
         found << {:n => item_name, :p => File.dirname(f[0]).sub(/\/season \d+\/?/i, '')}
       end
     end
-    $speaker.speak_up "Identified folders:"
-    found.uniq.each { |f| $speaker.speak_up "File(s) in folder '#{f[:p]}' identified as '#{f[:n]}'" }
-    $speaker.speak_up "Unidentified folders:"
-    not_found.uniq.each { |f| $speaker.speak_up("File(s) in folder '#{f}' not identified!") }
+    MediaLibrarian.app.speaker.speak_up "Identified folders:"
+    found.uniq.each { |f| MediaLibrarian.app.speaker.speak_up "File(s) in folder '#{f[:p]}' identified as '#{f[:n]}'" }
+    MediaLibrarian.app.speaker.speak_up "Unidentified folders:"
+    not_found.uniq.each { |f| MediaLibrarian.app.speaker.speak_up("File(s) in folder '#{f}' not identified!") }
     return 0
   end
 
   def self.update_torrents_identifiers(type:)
-    $db.get_rows('torrents').each do |t|
+    MediaLibrarian.app.db.get_rows('torrents').each do |t|
       next unless (type == 'shows' && t[:identifier].match(/^tv.*/)) || (type == 'movies' && t[:identifier].match(/^movie.*/))
       torrent = Cache.object_unpack(t[:tattributes])
       full_name, ids, _ = Metadata.parse_media_filename(torrent[:name], type, nil, '', 1)
@@ -27,13 +27,13 @@ class UpgradeUtils
       id = ids.join
       torrent[:identifier] = id
       torrent[:identifiers] = ids
-      $db.update_rows('torrents', {:identifier => id, :identifiers => ids, :tattributes => Cache.object_pack(torrent)}, {:name => torrent[:name]})
+      MediaLibrarian.app.db.update_rows('torrents', {:identifier => id, :identifiers => ids, :tattributes => Cache.object_pack(torrent)}, {:name => torrent[:name]})
     end
     0
   end
 
   def self.update_torrents
-    $db.get_rows('torrents').each do |t|
+    MediaLibrarian.app.db.get_rows('torrents').each do |t|
       next unless [1, 2].include?(t[:status])
       category = case t[:identifier]
                  when /^tv.*/
@@ -46,8 +46,8 @@ class UpgradeUtils
       torrent = Cache.object_unpack(t[:tattributes])
       torrent[:category] = category
       next if category.nil?
-      $speaker.speak_up "Updating torrent '#{torrent[:name]}' with category '#{torrent[:category]}'"
-      $db.update_rows('torrents', {:tattributes => Cache.object_pack(torrent)}, {:name => torrent[:name]})
+      MediaLibrarian.app.speaker.speak_up "Updating torrent '#{torrent[:name]}' with category '#{torrent[:category]}'"
+      MediaLibrarian.app.db.update_rows('torrents', {:tattributes => Cache.object_pack(torrent)}, {:name => torrent[:name]})
     end
     0
   end

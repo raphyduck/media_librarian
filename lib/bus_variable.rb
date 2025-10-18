@@ -42,8 +42,8 @@ class BusVariable
   end
 
   def self.display_bus_variable(variable_name:, max_depth: 2)
-    $speaker.speak_up("Dump of bus variable '#{variable_name}'")
-    $speaker.speak_up DataUtils.dump_variable(BusVariable.new(variable_name).value, max_depth.to_i)
+    MediaLibrarian.app.speaker.speak_up("Dump of bus variable '#{variable_name}'")
+    MediaLibrarian.app.speaker.speak_up DataUtils.dump_variable(BusVariable.new(variable_name).value, max_depth.to_i)
   end
 
   def self.list_bus_variables
