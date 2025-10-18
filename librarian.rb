@@ -208,15 +208,15 @@ class Librarian
 
   def self.route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, queue = Thread.current[:jid], &block)
     if Daemon.is_daemon?
-      Daemon.thread_cache_add(queue, args, Daemon.job_id, task, internal, max_pool_size, 0,
-                              Daemon.fetch_function_config(args)[2] || 0,
-                              Thread.current[:current_daemon], 43200, 1, &block)
-    elsif $librarian.pid_status($pidfile) == :running && internal.to_i.zero?
-      return if args.nil? || args.empty?
-      $speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
-      EventMachine.run do
-        EventMachine.connect '127.0.0.1', $api_option['listen_port'], Client, args
-        EM.open_keyboard(ClientInput)
+      config = Daemon.fetch_function_config(args)
+      queue_name = Daemon.normalize_queue(config[1] || queue, task)
+      concurrency = config[0] || max_pool_size
+      jid = Daemon.thread_cache_add(queue_name, args, Daemon.job_id, task, internal, concurrency,
+                                    0, config[2] || 0, Thread.current[:current_daemon], 43200, 1, &block)
+      if jid
+        $speaker.speak_up("Enqueued '#{task}' on '#{queue_name}' queue (jid '#{jid}')")
+      else
+        $speaker.speak_up("Enqueued '#{task}' on '#{queue_name}' queue")
       end
     else
       $librarian.load_requirements unless $librarian.loaded?
@@ -298,16 +298,18 @@ class Librarian
   end
 end
 
-# Create and run the Librarian instance
-$librarian = Librarian.new
-arguments = $librarian.args.dup
-first_time = true
+if __FILE__ == $PROGRAM_NAME
+  # Create and run the Librarian instance
+  $librarian = Librarian.new
+  arguments = $librarian.args.dup
+  first_time = true
 
-while ($librarian.reload && !Daemon.is_daemon?) || first_time
-  first_time = false
-  $librarian.args = arguments.dup
-  $librarian.reload = false
-  $librarian.run!
+  while ($librarian.reload && !Daemon.is_daemon?) || first_time
+    first_time = false
+    $librarian.args = arguments.dup
+    $librarian.reload = false
+    $librarian.run!
+  end
+
+  $librarian.leave
 end
-
-$librarian.leave

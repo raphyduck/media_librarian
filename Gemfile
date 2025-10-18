@@ -21,6 +21,7 @@ gem 'pdf-reader', :require => false
 gem 'poltergeist', :require => false
 gem 'rexml', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
+gem 'sidekiq', '~> 7.2', :require => false
 gem 'ruby-mp3info', :git => 'https://github.com/raphyduck/ruby-mp3info.git', :require => false
 gem 'simple_args_dispatch', '~>0.4.0', :require => false
 gem 'simple_config_man', '~>0.3.8', :require => false

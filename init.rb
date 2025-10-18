@@ -26,8 +26,10 @@ FileUtils.mkdir($config_dir + '/log') unless File.exist?($config_dir + '/log')
 $speaker = SimpleSpeaker::Speaker.new
 $args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags)
 #Load app and settings
-Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
+Dir[File.join(File.dirname(__FILE__), 'app', '*.rb')].sort.each { |file| require file }
+Dir[File.join(File.dirname(__FILE__), 'app', 'jobs', '**', '*.rb')].sort.each { |file| require file }
 $config = SimpleConfigMan.load_settings($config_dir, $config_file, $config_example)
+Dir[File.join(File.dirname(__FILE__), 'config', 'initializers', '*.rb')].sort.each { |file| require file }
 #Daemon options
 $api_option = {
     'bind_address' => '127.0.0.1',

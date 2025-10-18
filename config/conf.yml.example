@@ -5,6 +5,10 @@ calibre_library:
 daemon:
   workers_pool_size: 4
   queue_slots: 4
+  scheduler_poll_interval: 60
+redis:
+  url: redis://127.0.0.1:6379/0
+  namespace: media_librarian
 deluge:
   host: host
   username: username
