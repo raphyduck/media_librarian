@@ -1,6 +1,6 @@
 # media_librarian
 
-WARNING: This is a beta software. It might not works as intended
+WARNING: This is beta software. It might not work as intended.
 
 What is it?
 This program is made to answer my various needs for automation in the management of various media collections.
