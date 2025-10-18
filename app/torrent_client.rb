@@ -33,51 +33,76 @@ class TorrentClient
     end
   end
 
-  # Authenticate against the Deluge daemon.
-  #
-  # Deluge RPC expects clients to perform a login handshake before any
-  # other RPC calls can be issued. In the original implementation
-  # method_missing would invoke `authenticate` on $t_client but this method
-  # did not exist, resulting in method_missing calling itself recursively
-  # and hanging.  This method establishes the connection to the Deluge
-  # daemon on the first call and registers event listeners.  Subsequent
-  # calls are no-ops if the client is already connected.
   def authenticate
-    # If we're already connected there's nothing to do.
-    return true if @connected
-
-    # Ensure the Deluge client is initialized.  The init method will
-    # instantiate the @deluge RPC client using the values from the
-    # application configuration.  If @deluge is nil we call init to
-    # populate it.  Because init uses a lock this is safe to call
-    # multiple times across threads.
-    init if @deluge.nil?
-
-    begin
-      # Establish the RPC connection.  The deluge-rpc gem exposes a
-      # connect method which starts the underlying TCP/SSL connection,
-      # performs the authentication handshake using the provided
-      # credentials and dynamically defines namespace accessors such
-      # as @deluge.core.  Without calling connect the first RPC
-      # invocation would block waiting for authentication to occur.
+    Utils.lock_block("deluge_daemon_init") do
+      return if @connected
+      @deluge.close rescue nil
       @deluge.connect
-
-      # Mark the client as connected so subsequent calls bypass the
-      # connection handshake.  Also install event handlers; Deluge
-      # requires events to be registered after a successful login.
-      @connected = true
+      @connected = 1
       listen
-
-      true
-    rescue => e
-      # If anything goes wrong during connection attempt we reset the
-      # connection state so that a subsequent call will retry.  We
-      # delegate error reporting to the speaker for consistency with
-      # the rest of the application.
-      @connected = false
-      $speaker.tell_error(e, '$t_client.authenticate') if defined?($speaker)
-      false
     end
+  end
+
+  def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
+    $t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
+    $db.update_rows('torrents', { :status => delete_status }, { :name => tname })
+    Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
+  end
+
+  def disconnect
+    @deluge.close
+    @deluge_connected = nil
+  end
+
+  def download_file(download, options = {}, meta_id = '')
+    options.select! { |key, _| [:move_completed, :main_only].include?(key) }
+    options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
+    if options['move_completed'].to_s != ''
+      options['move_completed_path'] = options['move_completed']
+      options['move_completed'] = true
+    end
+    options['add_paused'] = true unless download[:type] > 1
+    case download[:type]
+    when 1
+      $t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
+      if meta_id.to_s != ''
+        status = $t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
+        raise 'Download failed' if status.nil? || status.empty?
+        $t_client.queue_top(meta_id) if status['queue'].to_i > 1
+      end
+    when 2
+      $t_client.add_torrent_magnet(download[:url], options)
+    when 3
+      $t_client.add_torrent_url(download[:url], options)
+    end
+  rescue => e
+    if meta_id.to_s != '' && download.is_a?(Hash) && download[:type].to_i == 1
+      status = $t_client.get_torrent_status(meta_id, ['name', 'progress'])
+      raise e if status.nil? || status.empty?
+    else
+      raise e
+    end
+  end
+
+  def find_main_file(status, whitelisted_exts = [])
+    files = {}
+    status['files'].each do |file|
+      if FileUtils.get_extension(file['path']).match(/r(ar|\d{2})/)
+        fname = file['path'].gsub(FileUtils.get_extension(file['path']), '')
+      elsif whitelisted_exts.empty? || whitelisted_exts.include?(FileUtils.get_extension(file['path']))
+        fname = file['path']
+      else
+        $speaker.speak_up "The file '#{file['path']}' is not on the allowed extension list (#{whitelisted_exts.join(', ')}), will not be included" if Env.debug?
+        fname = 'illegalext'
+      end
+      files[fname] = { :s => 0, :f => [] } unless files[fname]
+      files[fname][:s] += file['size'].to_i
+      files[fname][:f] << file['path']
+    end
+    files.select { |k, f| k != 'illegalext' && f[:s] > 0.8 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
+  rescue => e
+    $speaker.tell_error(e, Utils.arguments_dump(binding))
+    []
   end
 
   def main_file_only(status, main_files)
@@ -86,12 +111,12 @@ class TorrentClient
     status['files'].map { |f| f['path'] }.each do |f|
       priorities << (main_files.include?(f) ? 1 : 0)
     end
-    {'file_priorities' => priorities}
+    { 'file_priorities' => priorities }
   end
 
   def parse_torrents_to_download
     $speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
-    $db.get_rows('torrents', {:status => 2}).each do |t|
+    $db.get_rows('torrents', { :status => 2 }).each do |t|
       torrent = Cache.object_unpack(t[:tattributes])
       if Env.debug?
         $speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
@@ -130,7 +155,7 @@ class TorrentClient
       path = $temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?($temp_dir + "/#{t[:name]}.torrent")
       next if path.nil?
       while (tries -= 1) >= 0 && !success
-        success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? {t[:identifier] => torrent[:files]} : {}))
+        success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? { t[:identifier] => torrent[:files] } : {}))
         $speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
         FileUtils.rm($temp_dir + "/#{tdid}.torrent") rescue nil
       end
@@ -151,8 +176,8 @@ class TorrentClient
         end
         $speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
         (opts || {}).each do |tname, o|
-          torrent_cache = $db.get_rows('torrents', {:name => tname}).first
-          $db.update_rows('torrents', {:torrent_id => tid, :status => 3}, {:name => tname}) if torrent_cache && torrent_cache[:torrent_id].nil?
+          torrent_cache = $db.get_rows('torrents', { :name => tname }).first
+          $db.update_rows('torrents', { :torrent_id => tid, :status => 3 }, { :name => tname }) if torrent_cache && torrent_cache[:torrent_id].nil?
           set_options = {}
           main_file = find_main_file(status, o[:whitelisted_extensions] || [])
           if main_file.empty? && o[:expect_main_file].to_i > 0
@@ -167,7 +192,7 @@ class TorrentClient
             $speaker.speak_up("Will set options: #{set_options}")
             $t_client.set_torrent_options([tid], set_options)
           end
-          $t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' #Queue to bottom once all processed unless option to keep on top
+          $t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' # Queue to bottom once all processed unless option to keep on top
           if o[:add_paused].to_i > 0
             $t_client.pause_torrent([tid])
           else
@@ -189,7 +214,7 @@ class TorrentClient
   def process_completed_torrents
     $speaker.speak_up("Will process completed torrents", 0) if Env.debug?
     Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
-      t = $db.get_rows('torrents', {}, {"torrent_id like " => tid}).first
+      t = $db.get_rows('torrents', {}, { "torrent_id like " => tid }).first
       remove_it = 0
       begin
         if t.nil?
@@ -205,7 +230,7 @@ class TorrentClient
           elsif target_seed_time <= seed_time.to_i / 3600
             $speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
             $t_client.remove_torrent(tid, false) if $remove_torrent_on_completion && t[:status].to_i < 5
-            $db.update_rows('torrents', {:status => [t[:status], 4].max}, {:name => t[:name]})
+            $db.update_rows('torrents', { :status => [t[:status], 4].max }, { :name => t[:name] })
             remove_it = 1
           elsif Env.debug?
             $speaker.speak_up("Torrent has been seeding for #{seed_time.to_i / 3600} hours, less than the seed time set at #{target_seed_time} hour(s) for this tracker. Skipping...", 0)
@@ -231,18 +256,18 @@ class TorrentClient
       file = File.open(path, "r")
       torrent = file.read
       file.close
-      meta = BEncode.load(torrent, {:ignore_trailing_junk => 1})
+      meta = BEncode.load(torrent, { :ignore_trailing_junk => 1 })
       meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
-      Cache.queue_state_add_or_update('deluge_options', {torrent_name => opts.merge({:info_hash => meta_id})})
-      download = {:type => 1, :type_str => 'file', :file => torrent, :filename => File.basename(path)}
+      Cache.queue_state_add_or_update('deluge_options', { torrent_name => opts.merge({ :info_hash => meta_id }) })
+      download = { :type => 1, :type_str => 'file', :file => torrent, :filename => File.basename(path) }
     elsif nodl == 0
       meta_id = opts[:tdid]
-      download = {:type => 2, :type_str => 'magnet', :url => path}
+      download = { :type => 2, :type_str => 'magnet', :url => path }
     else
       meta_id = Time.now.to_f
     end
     if nodl == 0
-      if !$db.get_rows('torrents', {:torrent_id => meta_id}).empty? && meta_id.to_s != '' #It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
+      if !$db.get_rows('torrents', { :torrent_id => meta_id }).empty? && meta_id.to_s != '' # It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
         $speaker.speak_up "Torrent with TID '#{meta_id}' already exists, nothing to do" if Env.debug?
         delete_torrent(torrent_name, 0, 1)
         return true
@@ -251,7 +276,7 @@ class TorrentClient
       download_file(download, opts.deep_dup, meta_id)
       Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
     end
-    $db.update_rows('torrents', {:status => 3, :torrent_id => meta_id}, {:name => torrent_name})
+    $db.update_rows('torrents', { :status => 3, :torrent_id => meta_id }, { :name => torrent_name })
     Cache.queue_state_add_or_update('file_handling', queue_file_handling, 1, 1) unless queue_file_handling.empty?
     true
   rescue => e
@@ -274,40 +299,8 @@ class TorrentClient
     $t_client.rename_files(tid, paths)
   end
 
-  def method_missing(name, *args)
-    tries ||= 3
-    args = StringUtils.accents_clear(args)
-    debug_str = "#{name}#{'(' + args.map { |a| DataUtils.format_string(a.to_s[0..100]) }.join(',') + ')' if args}"
-    $speaker.speak_up("Running $t_client.#{debug_str}", 0) if Env.debug?
-    return if Env.pretend? && !['get_torrent_status'].include?(name)
-    result = nil
-    Timeout.timeout(60) do
-      authenticate
-      if args.empty?
-        result = eval("@deluge.core").method(name).call
-      else
-        result = eval("@deluge.core").method(name).call(*args)
-      end
-    end
-    result
-  rescue => e
-    # Reset connection state on failure.  Using the @connected flag here
-    # instead of a non-existent @deluge_connected ensures the client
-    # will attempt to reconnect on the next invocation.
-    @connected = false
-    @deluge = nil #Nuke it, start over
-    init
-    if !(tries -= 1).zero?
-      sleep 5
-      retry
-    else
-      $speaker.tell_error(e, "$t_client.#{debug_str}")
-      raise e
-    end
-  end
-
   def self.check_orphaned_torrent_folders(completed_folder:)
-    ff = FileUtils.search_folder(completed_folder, {'maxdepth' => 1, 'dironly' => 1}).map { |f| File.basename(f[0]) }
+    ff = FileUtils.search_folder(completed_folder, { 'maxdepth' => 1, 'dironly' => 1 }).map { |f| File.basename(f[0]) }
     tids = $t_client.get_session_state
     tids.each do |tid|
       status = $t_client.get_torrent_status(tid, ['name', 'state'])
@@ -339,20 +332,80 @@ class TorrentClient
     $speaker.speak_up("Free space remaining: #{free_space}GB", 0)
     if free_space <= get_config('deluge', 'min_torrent_free_space').to_i && !@throttled
       $speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
-      $t_client.set_config([{'config' => {'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max}}])
+      $t_client.set_config([{ 'config' => { 'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max } }])
       @throttled = true
     elsif @throttled && free_space > get_config('deluge', 'min_torrent_free_space').to_i
       $speaker.speak_up "There is now enoough free space on torrent server, restoring full download speed!"
-      $t_client.set_config([{'config' => {'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000}}]) #todo: better fix than putting in brackets
+      $t_client.set_config([{ 'config' => { 'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000 } }]) # todo: better fix than putting in brackets
       @throttled = false
     end
   end
 
   def self.no_delete_torrent(name: '', tid: '')
     return $speaker.speak_up "No torrent name or id provided!" if name.to_s == '' && tid.to_s == ''
-    $speaker.speak_up "Torrent identified by #{{'name' => name, 'tid' => tid}.map { |k, v| k.to_s + ' = ' + v.to_s }.join(' and ')} will not be deleted"
-    $db.update_rows('torrents', {:status => 5}, {:name => name.to_s}) if name.to_s != ''
-    $db.update_rows('torrents', {:status => 5}, {:torrent_id => tid.to_s})
+    $speaker.speak_up "Torrent identified by #{{ 'name' => name, 'tid' => tid }.map { |k, v| k.to_s + ' = ' + v.to_s }.join(' and ')} will not be deleted"
+    $db.update_rows('torrents', { :status => 5 }, { :name => name.to_s }) if name.to_s != ''
+    $db.update_rows('torrents', { :status => 5 }, { :torrent_id => tid.to_s })
+  end
+
+  def method_missing(name, *args)
+    tries = 3
+    sanitized_args = StringUtils.accents_clear(args)
+    debug_message = build_debug_message(name, sanitized_args)
+
+    log_operation(debug_message)
+    return if skip_operation?(name)
+
+    safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
+  rescue => e
+    $speaker.tell_error(e, "$t_client.#{debug_message}")
+  end
+
+  private
+
+  def build_debug_message(name, args)
+    args_display = args.empty? ? "" : "(" + args.map { |a| DataUtils.format_string(a.to_s[0..100]) }.join(',') + ")"
+    "#{name}#{args_display}"
+  end
+
+  def log_operation(debug_message)
+    $speaker.speak_up("Running $t_client.#{debug_message}", 0) if Env.debug?
+  end
+
+  def skip_operation?(name)
+    Env.pretend? && !['get_torrent_status'].include?(name)
+  end
+
+  def safely_execute_deluge_operation(name, args, debug_message, tries_remaining)
+    Timeout.timeout(60) do
+      authenticate
+
+      # Check if the method exists on the Deluge core before calling it
+      core = eval("@deluge.core")
+
+      # Make sure the method exists before trying to call it
+      # unless core.respond_to?(name)
+      #   raise NoMethodError, "Method '#{name}' is not available on the connected torrent client"
+      # end
+
+      # Use send instead of method().call for more direct method invocation
+      args.empty? ? core.send(name) : core.send(name, *args)
+    end
+  rescue => e
+    reset_connection
+    if tries_remaining > 1
+      sleep 5
+      safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
+    else
+      $speaker.tell_error(e, "$t_client.#{debug_message}")
+      raise e
+    end
+  end
+
+  def reset_connection
+    @connected = false
+    @deluge = nil
+    init
   end
 
 end

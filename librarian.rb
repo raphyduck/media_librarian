@@ -8,7 +8,7 @@ MIN_REQ = %w(
 
 FULL_REQ = %w(
   active_support active_support/core_ext/object/deep_dup.rb active_support/core_ext/integer/time.rb active_support/inflector
-  archive/zip base64 bencode deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem
+  archive/zip base64 bencode csv deluge digest/md5 digest/sha1 eventmachine feedjira find flac2mp3 get_process_mem
   goodreads io/console imdb_party mechanize mediainfo mp3info net/ssh pdf/reader rexml/document rsync shellwords socket
   streamio-ffmpeg timeout titleize themoviedb torznab trakt tvdb_party tvmaze unrar xbmc-client yaml
 ).freeze
@@ -34,45 +34,46 @@ class Librarian
 
   # Global available actions used by the dispatching
   $available_actions = {
-    help:             ['Librarian', 'help'],
-    reconfigure:      ['Librarian', 'reconfigure'],
+    help: ['Librarian', 'help'],
+    reconfigure: ['Librarian', 'reconfigure'],
     daemon: {
-      start:             ['Daemon', 'start'],
-      status:            ['Daemon', 'status', 1, 'priority'],
-      stop:              ['Daemon', 'stop', 1, 'priority'],
-      reload:            ['Daemon', 'reload', 1, 'priority'],
+      start: ['Daemon', 'start'],
+      status: ['Daemon', 'status', 1, 'priority'],
+      stop: ['Daemon', 'stop', 1, 'priority'],
+      reload: ['Daemon', 'reload', 1, 'priority'],
       dump_bus_variable: ['BusVariable', 'display_bus_variable'],
-      dump_mem_stat:     ['Memory', 'stat_dump'],
-      kill_job:          ['Daemon', 'kill', 1, 'priority']
+      dump_mem_stat: ['Memory', 'stat_dump'],
+      kill_job: ['Daemon', 'kill', 1, 'priority']
     },
     books: {
       compress_comics: ['Book', 'compress_comics'],
-      convert_comics:  ['Library', 'convert_media']
+      convert_comics: ['Library', 'convert_media']
     },
     library: {
-      compare_remote_files:    ['Library', 'compare_remote_files'],
-      create_custom_list:      ['Library', 'create_custom_list'],
-      fetch_media_box:         ['Library', 'fetch_media_box'],
-      get_media_list_size:     ['Library', 'get_media_list_size'],
+      compare_remote_files: ['Library', 'compare_remote_files'],
+      create_custom_list: ['Library', 'create_custom_list'],
+      fetch_media_box: ['Library', 'fetch_media_box'],
+      get_media_list_size: ['Library', 'get_media_list_size'],
       handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
-      process_folder:          ['Library', 'process_folder']
+      import_csv: ['ListStore', 'import_csv'],
+      process_folder: ['Library', 'process_folder']
     },
     music: {
       create_playlists: ['Music', 'create_playlists'],
-      convert_songs:    ['Library', 'convert_media']
+      convert_songs: ['Library', 'convert_media']
     },
     torrent: {
-      check_all_download:                  ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
-      check_orphaned_torrent_folders:        ['TorrentClient', 'check_orphaned_torrent_folders'],
-      prevent_delete:                        ['TorrentClient', 'no_delete_torrent'],
-      search:                                ['TorrentSearch', 'search_from_torrents']
+      check_all_download: ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
+      check_orphaned_torrent_folders: ['TorrentClient', 'check_orphaned_torrent_folders'],
+      prevent_delete: ['TorrentClient', 'no_delete_torrent'],
+      search: ['TorrentSearch', 'search_from_torrents']
     },
-    usage:       ['Librarian', 'help'],
-    list_db:     ['Utils', 'list_db'],
+    usage: ['Librarian', 'help'],
+    list_db: ['Utils', 'list_db'],
     flush_queues: ['TorrentClient', 'flush_queues', 1, 'torrenting'],
     monitor_torrent_client: ['TorrentClient', 'monitor_torrent_client', 1, 'torrenting'],
     cache_reset: ['Cache', 'cache_reset'],
-    send_email:  ['Report', 'push_email'],
+    send_email: ['Report', 'push_email'],
     test_childs: ['Librarian', 'test_childs', 1, 'test_childs', 1]
   }
   $debug_classes = []
@@ -166,7 +167,7 @@ class Librarian
   end
 
   def trap_signals
-    trap('QUIT') { @quit = true }  # graceful shutdown
+    trap('QUIT') { @quit = true } # graceful shutdown
   end
 
   # Class methods
@@ -175,11 +176,11 @@ class Librarian
     Thread.new do
       $args_dispatch.set_env_variables($env_flags, envf)
       reset_notifications(Thread.current)
-      Thread.current[:log_msg]   = '' if child.to_i > 0
+      Thread.current[:log_msg] = '' if child.to_i > 0
       Thread.current[:current_daemon] = client || Thread.current[:current_daemon]
-      Thread.current[:parent]    = parent
-      Thread.current[:jid]       = tid
-      Thread.current[:queue_name]= queue_name
+      Thread.current[:parent] = parent
+      Thread.current[:jid] = tid
+      Thread.current[:queue_name] = queue_name
       LibraryBus.initialize_queue(Thread.current)
       block.call
     end
@@ -191,11 +192,11 @@ class Librarian
 
   def self.init_thread(thread, object = '', direct = 0, &block)
     reset_notifications(thread)
-    thread[:object]     = object
+    thread[:object] = object
     thread[:start_time] = Time.now
-    thread[:direct]     = direct
-    thread[:block]      = [block]
-    thread[:is_active]  = 1
+    thread[:direct] = direct
+    thread[:block] = [block]
+    thread[:is_active] = 1
   end
 
   def self.reconfigure
@@ -225,7 +226,7 @@ class Librarian
   end
 
   def self.reset_notifications(thread)
-    thread[:email_msg]  = ''
+    thread[:email_msg] = ''
     thread[:send_email] = 0
   end
 
@@ -266,7 +267,7 @@ class Librarian
     if thread[:direct].to_i.zero?
       elapsed_time = Time.now - thread[:start_time]
       time_info = TimeUtils.seconds_in_words(elapsed_time)
-      lock_time   = Utils.lock_time_get(thread)
+      lock_time = Utils.lock_time_get(thread)
       $speaker.speak_up("Command '#{thread[:object]}' executed in #{time_info},#{lock_time}", 0, thread)
     end
     if thread[:block].is_a?(Array) && !thread[:block].empty?
@@ -299,12 +300,12 @@ end
 
 # Create and run the Librarian instance
 $librarian = Librarian.new
-arguments  = $librarian.args.dup
+arguments = $librarian.args.dup
 first_time = true
 
 while ($librarian.reload && !Daemon.is_daemon?) || first_time
   first_time = false
-  $librarian.args   = arguments.dup
+  $librarian.args = arguments.dup
   $librarian.reload = false
   $librarian.run!
 end

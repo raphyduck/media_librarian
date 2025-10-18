@@ -6,7 +6,7 @@ class TraktAgent
     items.map! { |i| i.merge({'collected_at' => Time.now}) } if list_name == 'collection'
     begin
       tries ||= 3
-      $trakt.sync.add_or_remove_item('add', list_name, type, items)
+      with_rate_limit { $trakt.sync.add_or_remove_item('add', list_name, type, items) }
     rescue
       retry unless (tries -= 1).to_i <= 0
     end
@@ -24,7 +24,7 @@ class TraktAgent
   end
 
   def self.get_history(type, trakt_id = '')
-    h = $trakt.list.get_history(type, trakt_id)
+    h = with_rate_limit { $trakt.list.get_history(type, trakt_id) }
     return [] if h.is_a?(Hash) && h['error']
     h
   rescue => e
@@ -54,8 +54,8 @@ class TraktAgent
       h << c
     end
     if h.nil? || h.empty?
-      wk = $trakt.list.get_watched(type, '?extended=noseasons')
-      k = $trakt.list.collection(type, '?extended=noseasons')
+      wk = with_rate_limit { $trakt.list.get_watched(type, '?extended=noseasons') }
+      k = with_rate_limit { $trakt.list.collection(type, '?extended=noseasons') }
       return [] if k.is_a?(Hash) && k['error']
       k.each do |i|
         item = wk.select { |t| t[type[0...-1]] && i[type[0...-1]] && t[type[0...-1]]['title'] == i[type[0...-1]]['title'] }.first
@@ -165,7 +165,7 @@ class TraktAgent
       list = $trakt.list.watchlist(type)
       list.sort_by! { |i| i[type[0...-1]]['year'] ? i[type[0...-1]]['year'] : (Time.now + 100.years).year }
     when 'collection'
-      list = $trakt.list.collection(type)
+      list = with_rate_limit { $trakt.list.collection(type) }
     when 'lists'
       list = $trakt.list.get_user_lists
     else
@@ -220,7 +220,7 @@ class TraktAgent
     tries, result = 3, false
     return result if Env.pretend?
     begin
-      $trakt.sync.add_or_remove_item('remove', list, type, items)
+      with_rate_limit { $trakt.sync.add_or_remove_item('remove', list, type, items) }
       result = true
     rescue
       retry unless (tries -= 1).to_i <= 0

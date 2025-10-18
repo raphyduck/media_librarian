@@ -6,6 +6,7 @@ require File.dirname(__FILE__) + '/vash'
 # URI module is available.
 require 'uri'
 require 'timeout'
+
 class Metadata
 
   def self.detect_metadata(name, type)
@@ -50,16 +51,16 @@ class Metadata
   def self.identify_metadata(filename, type, item_name = '', item = nil, no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, qualities = [])
     metadata = {}
     ep_filename = File.basename(filename)
-    file = {:name => filename}
+    file = { :name => filename }
     full_name, identifiers, info = parse_media_filename(
-        filename,
-        type,
-        item,
-        item_name,
-        no_prompt,
-        folder_hierarchy,
-        base_folder,
-        file
+      filename,
+      type,
+      item,
+      item_name,
+      no_prompt,
+      folder_hierarchy,
+      base_folder,
+      file
     )
     return metadata if ['shows', 'movies'].include?(type) && (identifiers.empty? || full_name == '')
     metadata['quality'] = Quality.parse_qualities(qualities.join('.') != '' ? ".#{qualities.join('.')}." : ep_filename, VALID_QUALITIES, info[:language], type).join('.')
@@ -83,7 +84,7 @@ class Metadata
     when 'books'
       full_name = filename
     end
-    metadata.merge!(Utils.recursive_typify_keys({:full_name => full_name, :identifiers => identifiers}.merge(info.select { |k, _| ![:show, :movie, :book].include?(k) }), 0))
+    metadata.merge!(Utils.recursive_typify_keys({ :full_name => full_name, :identifiers => identifiers }.merge(info.select { |k, _| ![:show, :movie, :book].include?(k) }), 0))
     metadata
   end
 
@@ -147,9 +148,9 @@ class Metadata
     tt = StringUtils.clean_search(tt)
     t = StringUtils.clean_search(t)
     m = t.match(
-        Regexp.new(
-            "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
-            Regexp::IGNORECASE)
+      Regexp.new(
+        "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
+        Regexp::IGNORECASE)
     ) && ep_match && Utils.match_release_year(target_year, year)
     $speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
     m
@@ -159,13 +160,13 @@ class Metadata
     identifiers = [identifiers] unless identifiers.is_a?(Array)
     id = identifiers.join
     obj = {
-        :full_name => full_name,
-        :identifier => id,
-        :identifiers => identifiers
+      :full_name => full_name,
+      :identifier => id,
+      :identifiers => identifiers
     }
     data[id] = {
-        :type => type,
-        :name => item_name
+      :type => type,
+      :name => item_name
     }.merge(obj).merge(attrs.deep_dup) if data[id].nil?
     data[id][:files] = [] if data[id][:files].nil?
     data[id][:files] << file.merge(obj).merge(file_attrs) unless file.nil? || file.empty? || !data[id][:files].select { |f| f[:name].to_s == file[:name].to_s }.empty?
@@ -206,8 +207,8 @@ class Metadata
       year = identify_release_year(title)
       items.sort_by! { |i| iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3); ((year.to_i > 0 ? year : iyear) - iyear).abs } if keys['year']
       items.map! { |i| i[keys['titles']].map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
-      results = items.map { |m| {:title => m[keys['name']], :info => m[keys['url']]} }
-      results += [{:title => 'Edit title manually', :info => ''}]
+      results = items.map { |m| { :title => m[keys['name']], :info => m[keys['url']] } }
+      results += [{ :title => 'Edit title manually', :info => '' }]
       (0..results.count - 2).each do |i|
         show_year = items[i][keys['year']].to_i
         if match_titles(items[i][keys['name']], title, show_year, year, category)
@@ -270,16 +271,18 @@ class Metadata
       search_providers.each do |o, m|
         break unless item.nil?
         begin
-          
-title_norm = detect_real_title(title, type, 0, 0)
-              items = nil
-              Timeout.timeout(15) do
-                begin
-                  items = o.method(m).call(title_norm)
-                rescue NoMethodError
-                  items = o.method('method_missing').call(m, title_norm)
-                end
-              end
+
+          title_norm = detect_real_title(title, type, 0, 0)
+          items = nil
+          Timeout.timeout(15) do
+            meth = m.to_s.gsub(/_{2,}/, '_') # "search__movies" -> "search_movies"
+            begin
+              items = o.public_send(meth, title_norm)
+            rescue NameError, NoMethodError
+              # dernier recours: déléguer à method_missing si le provider l’implémente
+              items = o.send(:method_missing, m, title_norm)
+            end
+          end
           items = [items] unless items.is_a?(Array)
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']
@@ -289,15 +292,15 @@ title_norm = detect_real_title(title, type, 0, 0)
                 end
             v = case type
                 when 'movies'
-                  item_fetch_method.call(v['ids'] || {'tmdb' => v['id']})[1]
+                  item_fetch_method.call(v['ids'] || { 'tmdb' => v['id'] })[1]
                 when 'shows'
-                  TvSeries.new(v.merge({'ids' => v['ids'] || {'thetvdb' => v['seriesid'], 'imdb' => v["imdb_id"] || v['IMDB_ID']}}))
+                  TvSeries.new(v.merge({ 'ids' => v['ids'] || { 'thetvdb' => v['seriesid'], 'imdb' => v["imdb_id"] || v['IMDB_ID'] } }))
                 end
             Cache.object_pack(v, 1) if v
           end
           items.compact!
           exact_title, item = media_chose(title, items, keys, type, no_prompt.to_i)
-          exact_title, item = item_fetch_method.call(item['ids'].merge({'force_title' => exact_title})) unless item.nil?
+          exact_title, item = item_fetch_method.call(item['ids'].merge({ 'force_title' => exact_title })) unless item.nil?
         rescue => e
           $speaker.tell_error e, "Metadata.media_lookup block"
         end
@@ -323,10 +326,10 @@ title_norm = detect_real_title(title, type, 0, 0)
       ids = [Movie.identifier(item_name, item.year)]
       full_name = item_name
       info = {
-          :movies_name => item_name,
-          :movie => item,
-          :release_date => release,
-          :titles => item.alt_titles
+        :movies_name => item_name,
+        :movie => item,
+        :release_date => release,
+        :titles => item.alt_titles
       }
       parts = Movie.identify_split_files(filename)
     when 'shows'
@@ -340,14 +343,14 @@ title_norm = detect_real_title(title, type, 0, 0)
       if f_type != 'series' && full_name != ''
         full_name << " #{f_type == 'season' ? e.keys.map { |s| 'S' + format('%02d', s.to_i) }.join : episode_numbering}"
       end
-      parts = e.values.flatten.map { |ep| ep[:part].to_i }.select{|ep| ep > 0}
+      parts = e.values.flatten.map { |ep| ep[:part].to_i }.select { |ep| ep > 0 }
       info = {
-          :series_name => item_name,
-          :episode_season => e.keys.map { |s| s.to_i }.join(' '),
-          :episode => e.values.flatten,
-          :episode_numbering => episode_numbering,
-          :show => item,
-          :f_type => f_type
+        :series_name => item_name,
+        :episode_season => e.keys.map { |s| s.to_i }.join(' '),
+        :episode => e.values.flatten,
+        :episode_numbering => episode_numbering,
+        :show => item,
+        :f_type => f_type
       }
     when 'books'
       nb = Book.identify_episodes_numbering(filename)
@@ -355,10 +358,10 @@ title_norm = detect_real_title(title, type, 0, 0)
       f_type = item.instance_variables.map { |a| a.to_s.gsub(/@/, '') }.include?('series') ? 'book' : 'series'
       full_name = f_type == 'book' ? item.full_name : item_name
       info = {
-          :series_name => nb.to_i > 0 || f_type == 'series' ? item_name : '',
-          :episode_id => nb.to_i > 0 ? nb.to_f : nil,
-          :book => f_type == 'book' ? item : nil,
-          :book_series => f_type == 'book' ? item.series : item
+        :series_name => nb.to_i > 0 || f_type == 'series' ? item_name : '',
+        :episode_id => nb.to_i > 0 ? nb.to_f : nil,
+        :book => f_type == 'book' ? item : nil,
+        :book_series => f_type == 'book' ? item.series : item
       }
     end
     info[:language] = item.language if item.class.method_defined?("language")
