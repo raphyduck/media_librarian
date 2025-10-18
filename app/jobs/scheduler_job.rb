@@ -50,9 +50,11 @@ class SchedulerJob < ApplicationJob
 
   def process_continuous(tasks)
     tasks.each do |task, params|
-      next if Daemon.queue_busy?(task)
-      args = build_args(params) + ['--continuous=1']
-      enqueue_command(task, args, params, continuous: true)
+      args = build_args(params)
+      queue_name, concurrency, _expiration = command_config(args, params, task)
+      next if Daemon.queue_busy?(queue_name, concurrency)
+
+      enqueue_command(task, args + ['--continuous=1'], params, continuous: true)
     end
   end
 
@@ -69,12 +71,19 @@ class SchedulerJob < ApplicationJob
   end
 
   def enqueue_command(task, args, params, continuous: false)
+    queue_name, concurrency, expiration = command_config(args, params, task)
+
+    Daemon.thread_cache_add(queue_name, args, Daemon.job_id, task, 0, concurrency, continuous ? 1 : 0, 0, Thread.current[:current_daemon], expiration)
+  end
+
+  def command_config(args, params, task)
     config = Daemon.fetch_function_config(args)
     concurrency = (config[0] || params['max_concurrency'] || 1).to_i
+    concurrency = 1 if concurrency <= 0
     queue_name = config[1] || task
     expiration = params['expiration'] || 43_200
 
-    Daemon.thread_cache_add(queue_name, args, Daemon.job_id, task, 0, concurrency, continuous ? 1 : 0, 0, Thread.current[:current_daemon], expiration)
+    [Daemon.normalize_queue(queue_name, task), concurrency, expiration]
   end
 
   def last_execution(task)

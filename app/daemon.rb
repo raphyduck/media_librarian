@@ -176,8 +176,16 @@ class Daemon
       0
     end
 
-    def queue_busy?(queue_name)
-      active_jobs_for_queue(queue_name).any?
+    def queue_busy?(queue_name, limit_override = nil)
+      active_jobs = active_jobs_for_queue(queue_name)
+      limit = limit_override || queue_limit(queue_name)
+      limit = limit.to_i if limit
+
+      if limit && limit.positive?
+        active_jobs.size >= limit
+      else
+        active_jobs.any?
+      end
     end
 
     def merge_notifications(t, parent = Thread.current)
@@ -209,6 +217,7 @@ class Daemon
         $speaker.speak_up("Killed job '#{requested}'")
         1
       else
+        remove_job_mapping(requested)
         $speaker.speak_up("No job found with ID '#{requested}'!")
         0
       end

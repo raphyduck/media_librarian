@@ -27,8 +27,17 @@ module MediaLibrarian
     end
 
     def scheduler_enqueued?(template_name)
-      Sidekiq::Queue.new('scheduler').any? do |job|
+      return true if Sidekiq::Queue.new('scheduler').any? do |job|
         job.klass == SchedulerJob.name && job.args.first == template_name
+      end
+
+      return true if Sidekiq::ScheduledSet.new.any? do |job|
+        job.klass == SchedulerJob.name && job.args.first == template_name
+      end
+
+      Sidekiq::Workers.new.any? do |_, _, work|
+        payload = work['payload'] || {}
+        payload['class'] == SchedulerJob.name && Array(payload['args']).first == template_name
       end
     end
   end
