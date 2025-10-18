@@ -24,10 +24,10 @@
 # > cache[:person, 10] = Person.first
 #
 # The Vash object will forget any answer that is requested after the specified
-# TTL.  It is a good idea to manually clean things up from time to time because
-# it is possible that you'll cache data but never again access it and therefor
-# it will stay in memory after the TTL has expired.  To clean up the Vash object,
-# call the method: cleanup!
+# TTL.  Expired entries are removed automatically once an hour whenever the hash
+# is touched, and you can also run the cleanup manually as needed so data that
+# is no longer requested does not linger in memory.  To clean up the Vash object
+# immediately, call the method: cleanup!
 #
 # > sleep 11        # At this point the prior person ttl will be expired
 #                   #  but the person key and value will still exist.
