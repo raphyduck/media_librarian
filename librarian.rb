@@ -47,12 +47,12 @@ class Librarian
     },
     books: {
       compress_comics: ['Book', 'compress_comics'],
-      convert_comics: ['Library', 'convert_media']
+      convert_comics: ['Services::MediaConversionService', 'convert']
     },
     library: {
-      compare_remote_files: ['Library', 'compare_remote_files'],
-      create_custom_list: ['Library', 'create_custom_list'],
-      fetch_media_box: ['Library', 'fetch_media_box'],
+      compare_remote_files: ['Services::RemoteComparisonService', 'compare'],
+      create_custom_list: ['Services::CustomListService', 'create'],
+      fetch_media_box: ['Services::MediaBoxSyncService', 'sync'],
       get_media_list_size: ['Library', 'get_media_list_size'],
       handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
       import_csv: ['ListStore', 'import_csv'],
@@ -60,7 +60,7 @@ class Librarian
     },
     music: {
       create_playlists: ['Music', 'create_playlists'],
-      convert_songs: ['Library', 'convert_media']
+      convert_songs: ['Services::MediaConversionService', 'convert']
     },
     torrent: {
       check_all_download: ['TorrentSearch', 'check_all_download', 1, 'torrenting'],

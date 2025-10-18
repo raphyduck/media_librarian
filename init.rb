@@ -26,6 +26,7 @@ FileUtils.mkdir($config_dir + '/log') unless File.exist?($config_dir + '/log')
 $speaker = SimpleSpeaker::Speaker.new
 $args_dispatch = SimpleArgsDispatch::Agent.new($speaker, $env_flags)
 #Load app and settings
+Dir[File.dirname(__FILE__) + '/app/services/*.rb'].sort.each { |file| require file }
 Dir[File.dirname(__FILE__) + '/app/*.rb'].each { |file| require file }
 $config = SimpleConfigMan.load_settings($config_dir, $config_file, $config_example)
 #Daemon options
