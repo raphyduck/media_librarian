@@ -1,3 +1,5 @@
+require 'find'
+
 module FileUtils
   class << self
     alias_method :mkdir_orig, :mkdir
