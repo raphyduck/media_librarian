@@ -44,8 +44,8 @@ class Daemon < EventMachine::Connection
         elsif tries.to_i > 0
           @worker_clearance << [worker, worker_value, object, (tries - 1)]
         else
-          clear_queue(@queue[qname][:waiting_threads])
-          clear_queue(@queue[qname][:threads], @queue[qname][:waiting_threads])
+          clear_queue(@queues[qname][:waiting_threads])
+          clear_queue(@queues[qname][:threads], @queues[qname][:waiting_threads])
         end
       rescue => e
         $speaker.tell_error(e, "Daemon.clear_workers block worker('#{DataUtils.dump_variable(worker)}')")
@@ -135,7 +135,8 @@ class Daemon < EventMachine::Connection
   end
 
   def self.kill_job(w)
-    @queues[w[:jid]][:clearing] = 1 if w[:jid].to_i > 0 && @queues[w[:jid]]
+    queue_name = w[:queue_name]
+    @queues[queue_name][:clearing] = 1 if queue_name && @queues[queue_name]
     waiter = 0
     while w[:jid].to_i > 0 && get_children_count(w[:jid]).to_i > 0 && waiter < 10
       $speaker.speak_up "Waiting for child jobs to clear up..."
