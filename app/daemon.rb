@@ -27,6 +27,7 @@ class Daemon
     :result,
     :error,
     :future,
+    :worker_thread,
     :block,
     keyword_init: true
   ) do
@@ -329,6 +330,7 @@ class Daemon
 
     def execute_job(job)
       thread = Thread.current
+      job.worker_thread = thread
       thread[:current_daemon] = job.client || thread[:current_daemon]
       thread[:parent] = job.parent_thread
       thread[:jid] = job.id
@@ -341,6 +343,7 @@ class Daemon
       Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
     ensure
       thread[:jid] = nil
+      job.worker_thread = nil
     end
 
     def finalize_job(job, value, error)
@@ -348,11 +351,14 @@ class Daemon
 
       job.result = value
       job.finished_at = Time.now
-      if error
+      future = job.future
+      cancelled_future = future&.respond_to?(:cancelled?) && future.cancelled?
+      if job.status == :cancelled || cancelled_future
+        job[:status] = :cancelled
+        job[:error] = job.error || error
+      elsif error
         job[:status] = :failed
         job[:error] = error
-      elsif job.future&.cancelled?
-        job[:status] = :cancelled
       else
         job[:status] = :finished
         job[:error] = job.error || error
@@ -369,8 +375,13 @@ class Daemon
     end
 
     def cancel_job(job)
-      job.future&.cancel
-      finalize_job(job, nil, 'Cancelled')
+      future = job.future
+      future.cancel if future&.respond_to?(:cancel)
+      worker_thread = job.worker_thread
+      worker_thread.kill if worker_thread&.alive? && worker_thread != Thread.current
+      job[:status] = :cancelled
+      job[:error] = 'Cancelled'
+      finalize_job(job, nil, nil)
     end
 
     def start_scheduler(_scheduler)
