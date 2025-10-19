@@ -109,11 +109,11 @@ module MediaLibrarian
           speaker.speak_up("Will convert #{name} to #{request.output_format.to_s.upcase} format #{dest_file}")
           ensure_destination_directory(name)
 
-          skipping = case type
-                     when :music
-                       Music.convert_songs(request.path, dest_file, request.input_format, request.output_format, request.qualities)
-                     when :video
+          skipping = if type == :video
                        VideoUtils.convert_videos(request.path, dest_file, request.input_format, request.output_format)
+                     else
+                       speaker.speak_up("Unsupported media type: #{type}")
+                       1
                      end
           return [results, name] if skipping.to_i.positive?
 

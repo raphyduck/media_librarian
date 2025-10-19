@@ -3,13 +3,11 @@
 WARNING: This is beta software. It might not work as intended.
 
 What is it?
-This program is made to answer my various needs for automation in the management of various media collections.
+This program is made to answer my various needs for automation in the management of video media collections.
 
 Requirements:
 * Linux
 * jackett: https://github.com/Jackett/Jackett
-* flac
-* lame
 * mediainfo
 * ffmpeg
 * mkvmerge
@@ -25,9 +23,6 @@ TODO:
     * Restart daemon
     * Make it cross-platform
     * Trackers as templates
-    
-* Music:
-    * Subscribe to artists automatically and download and process new albums
     
 * Movies
     * Automatically watch future movies releases and add them to watchlist based on criteria (genres,?)
