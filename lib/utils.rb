@@ -74,7 +74,7 @@ class Utils
   end
 
   def self.list_db(table:, entry: '')
-    return [] unless DB_SCHEMA.map { |k, _| k.to_s }.include?(table)
+    return [] unless MediaLibrarian.app.db.table_exists?(table)
     column = MediaLibrarian.app.db.get_main_column(table)
     r = if entry.to_s == ''
           MediaLibrarian.app.db.get_rows(table)

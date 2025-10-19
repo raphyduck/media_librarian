@@ -37,3 +37,4 @@ gem 'tvmaze', :git => 'https://github.com/raphyduck/tvmaze.git', :require => fal
 gem 'unrar', :git => 'https://github.com/raphyduck/unrar.git', :require => false
 gem 'xbmc-client', :git => 'https://github.com/raphyduck/xbmc-client.git', :require => false
 gem 'zeitwerk'
+gem 'sequel', :require => false
