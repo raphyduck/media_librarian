@@ -101,6 +101,18 @@ if defined?(Utils)
       def arguments_dump(*)
         'arguments'
       end
+
+      def recursive_typify_keys(value)
+        value
+      end
+
+      def check_if_active(*)
+        true
+      end
+
+      def timeperiod_to_sec(*)
+        0
+      end
     end
   end
 else
@@ -120,6 +132,18 @@ else
 
       def arguments_dump(*)
         'arguments'
+      end
+
+      def recursive_typify_keys(value)
+        value
+      end
+
+      def check_if_active(*)
+        true
+      end
+
+      def timeperiod_to_sec(*)
+        0
       end
     end
   end
@@ -149,6 +173,10 @@ unless defined?(Env)
       def debug?(*_args)
         false
       end
+
+      def pretend?(*_args)
+        false
+      end
     end
   end
 end
@@ -163,6 +191,82 @@ unless defined?(ExecutionHooks)
 
     def alias_hook(sym)
       "__#{sym}__hooked__"
+    end
+  end
+end
+
+module SimpleConfigMan
+  module_function
+
+  def load_settings(*_args)
+    {
+      'preferred_languages' => ['en'],
+      'daemon' => {
+        'workers_pool_size' => 2,
+        'queue_slots' => 2
+      }
+    }
+  end
+
+  def reconfigure(*_args)
+    # no-op in tests
+  end
+end
+
+module Storage
+  class Db
+    def initialize(*); end
+
+    def method_missing(*)
+      nil
+    end
+
+    def respond_to_missing?(*_args)
+      true
+    end
+  end
+end
+
+module FuzzyStringMatch
+  class JaroWinkler
+    def self.create(*)
+      new
+    end
+
+    def distance(*)
+      1.0
+    end
+  end
+end
+
+module Cache
+  class << self
+    def queue_state_add_or_update(*)
+      # no-op in tests
+    end
+
+    def queue_state_remove(*)
+      # no-op in tests
+    end
+
+    def queue_state_get(*)
+      []
+    end
+  end
+end
+
+unless {}.respond_to?(:deep_dup)
+  class Hash
+    def deep_dup
+      each_with_object({}) do |(key, value), memo|
+        memo[key] = value.respond_to?(:deep_dup) ? value.deep_dup : value.dup rescue value
+      end
+    end
+  end
+
+  class Array
+    def deep_dup
+      map { |value| value.respond_to?(:deep_dup) ? value.deep_dup : value.dup rescue value }
     end
   end
 end

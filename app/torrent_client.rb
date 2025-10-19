@@ -120,177 +120,28 @@ class TorrentClient
   end
 
   def parse_torrents_to_download
-    app.speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
-    app.db.get_rows('torrents', { :status => 2 }).each do |t|
-      torrent = Cache.object_unpack(t[:tattributes])
-      if Env.debug?
-        app.speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        (torrent + t.select { |k, _| [:name, :identifiers].include?(k) }).each { |k, v| app.speaker.speak_up "#{k} = #{v}" }
-      end
-      tdid = (Time.now.to_f * 1000).to_i.to_s
-      url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
-      magnet = torrent[:magnet_link]
-      opts = {
-        t[:name] => {
-          :tdid => tdid,
-          :move_completed => Utils.parse_filename_template(torrent[:move_completed].to_s, torrent),
-          :rename_main => Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
-          :queue => torrent[:queue].to_s,
-          :assume_quality => torrent[:assume_quality],
-          :entry_id => t[:identifiers].join,
-          :added_at => Time.now.to_i,
-          :category => torrent[:category]
-        }
-      }
-      opts[t[:name]].merge!(torrent.select { |k, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(k) })
-      Cache.queue_state_add_or_update('deluge_options', opts)
-      ttype = 1
-      success = false
-      tries = 5
-      nodl = TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['no_download'].to_i
-      app.speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
-      if url.to_s != '' && nodl == 0
-        path = TorrentSearch.get_torrent_file(tdid, url)
-      elsif magnet.to_s != '' && nodl == 0
-        path, ttype = magnet, 2
-      else
-        app.speaker.speak_up "no_download setting is activated for this tracker, please download manually."
-        path = "nodl"
-      end
-      path = app.temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?(app.temp_dir + "/#{t[:name]}.torrent")
-      next if path.nil?
-      while (tries -= 1) >= 0 && !success
-        success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? { t[:identifier] => torrent[:files] } : {}))
-        app.speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
-        FileUtils.rm(app.temp_dir + "/#{tdid}.torrent") rescue nil
-      end
-      delete_torrent(t[:name], 0, 1) unless success
-    end
+    queue_service.parse_pending_downloads
   end
 
   def process_added_torrents
-    while Cache.queue_state_get('deluge_torrents_added').length != 0
-      tid = Cache.queue_state_shift('deluge_torrents_added')
-      tries = 10
-      begin
-        status = app.t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
-        opts = Cache.queue_state_select('deluge_options') { |_, v| v && v[:info_hash] == tid }
-        opts = Cache.queue_state_select('deluge_options') { |tn, _| tn == status['name'] } if opts.nil? || opts.empty?
-        if opts.nil? || opts.empty?
-          opts = Cache.queue_state_select('deluge_options') { |tn, _| app.str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9 }
-        end
-        app.speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
-        (opts || {}).each do |tname, o|
-          torrent_cache = app.db.get_rows('torrents', { :name => tname }).first
-          app.db.update_rows('torrents', { :torrent_id => tid, :status => 3 }, { :name => tname }) if torrent_cache && torrent_cache[:torrent_id].nil?
-          set_options = {}
-          main_file = find_main_file(status, o[:whitelisted_extensions] || [])
-          if main_file.empty? && o[:expect_main_file].to_i > 0
-            app.speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
-            delete_torrent(tname, tid)
-            next
-          end
-          torrent_qualities = Quality.qualities_merge(tname, o[:assume_quality], '', o[:category]).split('.')
-          set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
-          rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities, o[:category])
-          unless set_options.empty?
-            app.speaker.speak_up("Will set options: #{set_options}")
-            app.t_client.set_torrent_options([tid], set_options)
-          end
-          app.t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' # Queue to bottom once all processed unless option to keep on top
-          if o[:add_paused].to_i > 0
-            app.t_client.pause_torrent([tid])
-          else
-            app.t_client.resume_torrent([tid])
-          end
-          Cache.queue_state_remove('deluge_options', tname)
-        end
-      rescue => e
-        if !(tries -= 1).zero?
-          sleep 30
-          retry
-        else
-          app.speaker.tell_error(e, Utils.arguments_dump(binding))
-        end
-      end
-    end
+    queue_service.process_added_torrents
   end
 
   def process_completed_torrents
-    app.speaker.speak_up("Will process completed torrents", 0) if Env.debug?
-    Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
-      t = app.db.get_rows('torrents', {}, { "torrent_id like " => tid }).first
-      remove_it = 0
-      begin
-        if t.nil?
-          app.t_client.remove_torrent(tid, true) if app.remove_torrent_on_completion
-        else
-          torrent = Cache.object_unpack(t[:tattributes])
-          app.speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...", 0) if Env.debug?
-          target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
-          seed_time = app.t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
-          if seed_time.nil?
-            app.speaker.speak_up "Torrent no longer exists, will remove now..." if Env.debug?
-            remove_it = 1
-          elsif target_seed_time <= seed_time.to_i / 3600
-            app.speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
-            app.t_client.remove_torrent(tid, false) if app.remove_torrent_on_completion && t[:status].to_i < 5
-            app.db.update_rows('torrents', { :status => [t[:status], 4].max }, { :name => t[:name] })
-            remove_it = 1
-          elsif Env.debug?
-            app.speaker.speak_up("Torrent has been seeding for #{seed_time.to_i / 3600} hours, less than the seed time set at #{target_seed_time} hour(s) for this tracker. Skipping...", 0)
-          end
-        end
-      rescue => e
-        if e.to_s == "InvalidTorrentError"
-          app.speaker.speak_up "Torrent no longer exists, removing from database..." if Env.debug?
-          remove_it = 1
-        else
-          app.speaker.tell_error(e, Utils.arguments_dump(binding))
-        end
-      end
-      if remove_it > 0
-        Cache.queue_state_remove('deluge_torrents_completed', tid)
-        FileUtils.rm_r(data[:path]) if data[:path].to_s != '' && File.exist?(data[:path].to_s)
-      end
-    end
+    queue_service.process_completed_torrents
   end
 
   def process_download_torrent(torrent_name, torrent_type, path, opts, tracker = '', nodl = 0, queue_file_handling = {})
-    if torrent_type == 1 && nodl == 0
-      file = File.open(path, "r")
-      torrent = file.read
-      file.close
-      meta = BEncode.load(torrent, { :ignore_trailing_junk => 1 })
-      meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
-      Cache.queue_state_add_or_update('deluge_options', { torrent_name => opts.merge({ :info_hash => meta_id }) })
-      download = { :type => 1, :type_str => 'file', :file => torrent, :filename => File.basename(path) }
-    elsif nodl == 0
-      meta_id = opts[:tdid]
-      download = { :type => 2, :type_str => 'magnet', :url => path }
-    else
-      meta_id = Time.now.to_f
-    end
-    if nodl == 0
-      if !app.db.get_rows('torrents', { :torrent_id => meta_id }).empty? && meta_id.to_s != '' # It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
-        app.speaker.speak_up "Torrent with TID '#{meta_id}' already exists, nothing to do" if Env.debug?
-        delete_torrent(torrent_name, 0, 1)
-        return true
-      end
-      app.speaker.speak_up "Adding #{download[:type_str]} torrent #{torrent_name}"
-      download_file(download, opts.deep_dup, meta_id)
-      Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
-    end
-    app.db.update_rows('torrents', { :status => 3, :torrent_id => meta_id }, { :name => torrent_name })
-    Cache.queue_state_add_or_update('file_handling', queue_file_handling, 1, 1) unless queue_file_handling.empty?
-    true
-  rescue => e
-    Cache.queue_state_remove('deluge_options', torrent_name)
-    app.speaker.tell_error(
-      e,
-      "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
+    request = MediaLibrarian::Services::TorrentDownloadRequest.new(
+      torrent_name: torrent_name,
+      torrent_type: torrent_type,
+      path: path,
+      options: opts,
+      tracker: tracker,
+      nodl: nodl,
+      queue_file_handling: queue_file_handling
     )
-    false
+    queue_service.process_download_request(request)
   end
 
   def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '', category = '')
@@ -302,6 +153,10 @@ class TorrentClient
       paths << [file['index'], new_path]
     end
     app.t_client.rename_files(tid, paths)
+  end
+
+  def queue_service
+    @queue_service ||= MediaLibrarian::Services::TorrentQueueService.new(app: app, client: self)
   end
 
   def self.check_orphaned_torrent_folders(completed_folder:)

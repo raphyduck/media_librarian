@@ -53,108 +53,34 @@ class TorrentSearch
   end
 
   def self.get_results(sources:, keyword:, limit: 50, category:, qualities: {}, filter_dead: 1, url: nil, sort_by: [:tracker, :seeders], filter_out: [], strict: 0, download_criteria: {}, post_actions: {}, search_category: nil)
-    tries ||= 3
-    get_results = []
-    r = {}
-    search_category = category if search_category.to_s == ''
-    keyword.gsub!(/[\(\)\:]/, '')
-    trackers = get_trackers(sources)
-    timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
-    trackers.each do |t|
-      app.speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
-      keyword_s = (keyword + self.get_site_keywords(t, search_category)).strip
-      cr = launch_search(t, search_category, keyword_s)
-      cr = launch_search(t, search_category, keyword) if keyword_s != keyword && (cr.nil? || cr.empty?)
-      get_results += cr
-    end
-    filter_out.each do |fout|
-      filter_results(get_results, fout, 1) { |t| t[fout.to_sym].to_i != 0 }
-    end
-    if filter_dead.to_i > 0
-      filter_results(get_results, 'seeders', filter_dead) { |t| t[:seeders].to_i >= filter_dead.to_i }
-    end
-    get_results.sort_by! { |t| sort_by.map { |s| s == :tracker ? trackers.index(t[sort_by]) : -t[sort_by].to_i } }
-    if !qualities.nil? && !qualities.empty?
-      filter_results(get_results, 'size', "between #{qualities['min_size']}MB and #{qualities['max_size']}MB") do |t|
-        f_type = TvSeries.identify_file_type(t[:name])
-        (category == 'shows' && (f_type == 'season' || f_type == 'series')) ||
-            ((t[:size].to_f == 0 || qualities['min_size'].to_f == 0 || t[:size].to_f >= qualities['min_size'].to_f * 1024 * 1024) &&
-                (t[:size].to_f == 0 || qualities['max_size'].to_f == 0 || t[:size].to_f <= qualities['max_size'].to_f * 1024 * 1024))
-      end
-      if qualities['timeframe_size'].to_s != '' && (qualities['max_size'].to_s != '' || qualities['target_size'].to_s != '')
-        get_results.map! do |t|
-          if t[:size].to_f < (qualities['target_size'] || qualities['max_size']).to_f * 1024 * 1024
-            t[:timeframe_size] = Utils.timeperiod_to_sec(qualities['timeframe_size'].to_s).to_i
-          end
-          t
-        end
-      end
-    end
-    unless timeframe_trackers.nil?
-      get_results.map! do |t|
-        t[:timeframe_tracker] = Utils.timeperiod_to_sec(timeframe_trackers[t[:tracker]].to_s).to_i
-        t
-      end
-    end
-    get_results = get_results.first(limit.to_i) if limit.to_i > 0
-    if download_criteria && !download_criteria.empty?
-      download_criteria = Utils.recursive_typify_keys(download_criteria)
-      download_criteria[:move_completed] = download_criteria[:destination][category.to_sym] if download_criteria[:destination]
-      download_criteria.delete(:destination)
-      download_criteria[:whitelisted_extensions] = download_criteria[:whitelisted_extensions][Metadata.media_type_get(category)] rescue nil
-    end
-    download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
-    download_criteria.merge!(post_actions)
-    get_results.each do |t|
-      t[:assume_quality] = get_tracker_config(t[:tracker])['assume_quality'].to_s + ' ' + qualities['assume_quality'].to_s
-      _, accept = Quality.filter_quality(t[:name], qualities, post_actions[:language], t[:assume_quality], category)
-      r = Library.parse_media(
-          {:type => 'torrent'}.merge(t),
-          category,
-          strict,
-          r,
-          {},
-          {},
-          download_criteria
-      ) if accept
-    end
-    r
-  rescue => e
-    app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    retry unless (tries -= 1) <= 0
-    {}
+    request = MediaLibrarian::Services::TrackerSearchRequest.new(
+      sources: sources,
+      keyword: keyword,
+      limit: limit,
+      category: category,
+      qualities: qualities,
+      filter_dead: filter_dead,
+      url: url,
+      sort_by: sort_by,
+      filter_out: filter_out,
+      strict: strict,
+      download_criteria: download_criteria,
+      post_actions: post_actions,
+      search_category: search_category
+    )
+    tracker_query_service.get_results(request)
   end
 
   def self.get_site_keywords(type, category = '')
-    category && category != '' && app.config[type] && app.config[type]['site_specific_kw'] && app.config[type]['site_specific_kw'][category] ? " #{app.config[type]['site_specific_kw'][category]}" : ''
+    tracker_query_service.get_site_keywords(type, category)
   end
 
   def self.get_torrent_file(did, url, destination_folder = app.temp_dir)
-    return did if Env.pretend?
-    path = "#{destination_folder}/#{did}.torrent"
-    FileUtils.rm(path) if File.exist?(path)
-    url = @base_url + '/' + url if url.start_with?('/')
-    begin
-      tries ||= 3
-      app.mechanizer.get(url).save(path)
-    rescue => e
-      if (tries -= 1) >= 0
-        sleep 1
-        retry
-      else
-        raise e
-      end
-    end
-    path
-  rescue => e
-    app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    nil
+    tracker_query_service.get_torrent_file(did, url, destination_folder)
   end
 
   def self.get_trackers(sources)
-    trackers = parse_tracker_sources(sources || [])
-    trackers = app.trackers.map { |t, _| t } if trackers.empty?
-    trackers
+    tracker_query_service.get_trackers(sources)
   end
 
   def self.get_tracker_config(tracker, app: self.app)
@@ -164,47 +90,15 @@ class TorrentSearch
   end
 
   def self.launch_search(tracker, search_category, keyword)
-    if app.trackers[tracker]
-      app.trackers[tracker].search(search_category, keyword)
-    else
-      TorrentRss.links(tracker)
-    end
+    tracker_query_service.launch_search(tracker, search_category, keyword)
   end
 
   def self.parse_tracker_sources(sources)
-    case sources
-    when String
-      [sources]
-    when Hash
-      sources.map do |t, r|
-        if t == 'rss'
-          parse_tracker_sources(r)
-        else
-          t
-        end
-      end
-    when Array
-      sources.map do |s|
-        parse_tracker_sources(s)
-      end
-    end.flatten
+    tracker_query_service.parse_tracker_sources(sources)
   end
 
   def self.parse_tracker_timeframes(sources, timeframe_trackers = {}, tck = '')
-    if sources.is_a?(Hash)
-      sources.each do |k, v|
-        if k == 'timeframe' && tck.to_s != ''
-          timeframe_trackers.merge!({tck => v})
-        elsif v.is_a?(Hash) || v.is_a?(Array)
-          timeframe_trackers = parse_tracker_timeframes(v, timeframe_trackers, k)
-        end
-      end
-    elsif sources.is_a?(Array)
-      sources.each do |s|
-        timeframe_trackers = parse_tracker_timeframes(s, timeframe_trackers)
-      end
-    end
-    timeframe_trackers
+    tracker_query_service.parse_tracker_timeframes(sources, timeframe_trackers, tck)
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0, grab_all = 0, search_category = nil)
@@ -422,6 +316,10 @@ class TorrentSearch
 
   def self.waiting_time_set(torrent)
     (Time.parse(torrent[:added].to_s) rescue Time.now) + torrent[:timeframe_quality].to_i + torrent[:timeframe_tracker].to_i + torrent[:timeframe_size].to_i
+  end
+
+  def self.tracker_query_service
+    MediaLibrarian::Services::TrackerQueryService.new(app: app)
   end
 
 end
