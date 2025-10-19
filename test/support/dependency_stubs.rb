@@ -10,6 +10,10 @@ unless defined?(Daemon)
         false
       end
 
+      def running?
+        false
+      end
+
       def thread_cache_add(*)
         # no-op in tests
       end

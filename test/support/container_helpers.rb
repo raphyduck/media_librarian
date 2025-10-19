@@ -36,7 +36,8 @@ module TestSupport
     end
 
     class StubApplication
-      attr_accessor :librarian, :speaker, :args_dispatch
+      attr_accessor :librarian, :speaker, :args_dispatch,
+                    :api_option, :workers_pool_size, :queue_slots
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example
 
@@ -53,6 +54,9 @@ module TestSupport
         pid_dir = File.join(root, 'tmp')
         FileUtils.mkdir_p(pid_dir)
         @pidfile = File.join(pid_dir, 'librarian.pid')
+        @api_option = { 'bind_address' => '127.0.0.1', 'listen_port' => 8888 }
+        @workers_pool_size = 2
+        @queue_slots = 2
         @speaker = speaker
         @args_dispatch = args_dispatch
       end

@@ -5,7 +5,7 @@ gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :requ
 gem 'activesupport', :require => false
 gem 'bencode', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
-gem 'eventmachine', :require => false
+gem 'concurrent-ruby', :require => false
 gem 'feedjira', :require => false
 gem 'flac2mp3', :require => false
 gem 'fuzzy-string-match', :require => false
