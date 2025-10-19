@@ -3,6 +3,7 @@
 # Minimal dependency stubs that allow the CLI to execute inside the test
 # environment without booting the full application stack. Only the methods used
 # by the integration tests are implemented.
+require 'yaml'
 unless defined?(Daemon)
   class Daemon
     class << self
@@ -198,19 +199,39 @@ end
 module SimpleConfigMan
   module_function
 
-  def load_settings(*_args)
-    {
-      'preferred_languages' => ['en'],
-      'daemon' => {
-        'workers_pool_size' => 2,
-        'queue_slots' => 2
-      }
+  DEFAULT_SETTINGS = {
+    'preferred_languages' => ['en'],
+    'daemon' => {
+      'workers_pool_size' => 2,
+      'queue_slots' => 2
     }
+  }.freeze
+
+  def load_settings(_config_dir = nil, config_file = nil, _config_example = nil)
+    return DEFAULT_SETTINGS unless config_file && File.exist?(config_file)
+
+    loaded = YAML.safe_load(File.read(config_file), aliases: true)
+    merge_defaults(loaded)
+  rescue StandardError
+    DEFAULT_SETTINGS
   end
 
   def reconfigure(*_args)
     # no-op in tests
   end
+
+  def merge_defaults(loaded)
+    return DEFAULT_SETTINGS unless loaded.is_a?(Hash)
+
+    DEFAULT_SETTINGS.merge(loaded) do |key, default_value, loaded_value|
+      if default_value.is_a?(Hash) && loaded_value.is_a?(Hash)
+        default_value.merge(loaded_value)
+      else
+        loaded_value || default_value
+      end
+    end
+  end
+  private_class_method :merge_defaults
 end
 
 module Storage

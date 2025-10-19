@@ -74,6 +74,7 @@ class Daemon
 
       boot_framework_state
       @is_daemon = true
+      @scheduler_name = scheduler
 
       start_scheduler(scheduler) if scheduler
       start_quit_timer
@@ -97,6 +98,32 @@ class Daemon
       app.speaker.speak_up('Will shutdown after pending operations')
       app.librarian.quit = true
       shutdown
+    end
+
+    def reload
+      return unless ensure_daemon
+
+      scheduler_name = @scheduler_name
+
+      if @scheduler
+        @scheduler.shutdown
+        @scheduler.wait_for_termination
+      end
+      @scheduler = nil
+
+      settings = SimpleConfigMan.load_settings(app.config_dir, app.config_file, app.config_example)
+      app.container.reload_config!(settings)
+
+      @template_cache = nil
+      @queue_limits = Concurrent::Hash.new
+      @last_execution = {}
+
+      start_scheduler(scheduler_name) if scheduler_name
+      true
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      start_scheduler(scheduler_name) if scheduler_name && @scheduler.nil?
+      false
     end
 
     def status
@@ -389,9 +416,10 @@ class Daemon
       finalize_job(job, nil, nil)
     end
 
-    def start_scheduler(_scheduler)
+    def start_scheduler(scheduler_name)
+      @scheduler_name = scheduler_name
       @scheduler = Concurrent::TimerTask.new(execution_interval: 0.2) do
-        schedule(_scheduler)
+        schedule(scheduler_name)
       end
       @scheduler.execute
     end
@@ -613,6 +641,7 @@ class Daemon
       @running = nil
       @stop_event = nil
       @is_daemon = false
+      @scheduler_name = nil
     end
 
     def job_registry

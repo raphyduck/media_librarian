@@ -2,6 +2,7 @@
 
 require 'tmpdir'
 require 'fileutils'
+require 'yaml'
 
 module TestSupport
   module ContainerHelpers
@@ -20,6 +21,7 @@ module TestSupport
                                            speaker: speaker,
                                            args_dispatch: args_dispatch)
         @container = StubContainer.new(application: @application)
+        @application.container = @container
       end
 
       def cleanup
@@ -27,19 +29,12 @@ module TestSupport
       end
     end
 
-    class StubContainer
-      attr_reader :application
-
-      def initialize(application:)
-        @application = application
-      end
-    end
-
     class StubApplication
       attr_accessor :librarian, :speaker, :args_dispatch,
-                    :api_option, :workers_pool_size, :queue_slots
+                    :api_option, :workers_pool_size, :queue_slots, :container
       attr_reader :root, :loader, :template_dir, :pidfile,
-                  :env_flags, :config_dir, :config_file, :config_example
+                  :env_flags, :config_dir, :config_file, :config_example,
+                  :tracker_dir
 
       def initialize(root:, speaker:, args_dispatch:)
         @root = root
@@ -51,6 +46,8 @@ module TestSupport
         @config_example = File.join(@config_dir, 'conf.example.yml')
         @template_dir = File.join(root, 'templates')
         FileUtils.mkdir_p(@template_dir)
+        @tracker_dir = File.join(root, 'trackers')
+        FileUtils.mkdir_p(@tracker_dir)
         pid_dir = File.join(root, 'tmp')
         FileUtils.mkdir_p(pid_dir)
         @pidfile = File.join(pid_dir, 'librarian.pid')
@@ -59,10 +56,43 @@ module TestSupport
         @queue_slots = 2
         @speaker = speaker
         @args_dispatch = args_dispatch
+        persist_default_configuration
       end
 
       class NullLoader
         def eager_load; end
+      end
+
+      private
+
+      def persist_default_configuration
+        return if File.exist?(@config_file)
+
+        File.write(@config_file, { 'daemon' => { 'workers_pool_size' => @workers_pool_size,
+                                                 'queue_slots' => @queue_slots } }.to_yaml)
+      end
+    end
+
+    class StubContainer
+      attr_reader :application
+      attr_accessor :config, :workers_pool_size, :queue_slots
+
+      def initialize(application:)
+        @application = application
+        @config = SimpleConfigMan.load_settings(nil, application.config_file, nil)
+        daemon_config = @config.fetch('daemon', {})
+        @workers_pool_size = daemon_config['workers_pool_size'] || application.workers_pool_size
+        @queue_slots = daemon_config['queue_slots'] || application.queue_slots
+      end
+
+      def reload_config!(new_settings)
+        @config = new_settings
+        daemon_config = new_settings.fetch('daemon', {})
+        @workers_pool_size = daemon_config['workers_pool_size'] || @workers_pool_size
+        @queue_slots = daemon_config['queue_slots'] || @queue_slots
+        application.workers_pool_size = @workers_pool_size
+        application.queue_slots = @queue_slots
+        self
       end
     end
   end
@@ -104,6 +134,13 @@ module TestSupport
 
       def set_env_variables(*)
         # no-op in tests
+      end
+
+      def load_template(name, template_dir)
+        path = File.join(template_dir, "#{name}.yml")
+        return {} unless File.exist?(path)
+
+        YAML.safe_load(File.read(path), aliases: true) || {}
       end
     end
   end
