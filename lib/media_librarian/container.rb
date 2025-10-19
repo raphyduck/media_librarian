@@ -99,6 +99,10 @@ module MediaLibrarian
       services.fetch(:queue_slots)
     end
 
+    def reload_api_option!
+      update_api_option(load_api_option_from_config)
+    end
+
     def reload_config!(new_settings)
       store(:config, new_settings)
 
@@ -107,6 +111,8 @@ module MediaLibrarian
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
 
       store(:trackers, build_trackers)
+
+      reload_api_option!
     end
 
     private
@@ -129,7 +135,7 @@ module MediaLibrarian
       store(:tracker_client, {}, freeze: false)
       store(:tracker_client_last_login, {}, freeze: false)
 
-      update_api_option(default_api_option)
+      reload_api_option!
 
       daemon_config = config.fetch('daemon', {})
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
@@ -169,7 +175,21 @@ module MediaLibrarian
       deep_dup(DEFAULT_API_OPTION)
     end
 
+    def load_api_option_from_config
+      config_path = application.api_config_file
+      return {} unless config_path && File.exist?(config_path)
+
+      loaded = YAML.safe_load(File.read(config_path), aliases: true)
+      return {} unless loaded.is_a?(Hash)
+
+      stringify_keys(loaded)
+    rescue StandardError => e
+      speaker.tell_error(e, Utils.arguments_dump(binding)) if speaker.respond_to?(:tell_error)
+      {}
+    end
+
     def update_api_option(overrides)
+      overrides = stringify_keys(overrides) if overrides.is_a?(Hash)
       merged = merge_api_options(default_api_option, overrides)
       store(:api_option, merged)
     end
@@ -216,6 +236,19 @@ module MediaLibrarian
         end
       when Array
         value.map { |entry| deep_dup(entry) }
+      else
+        value
+      end
+    end
+
+    def stringify_keys(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, val), memo|
+          memo[key.to_s] = stringify_keys(val)
+        end
+      when Array
+        value.map { |entry| stringify_keys(entry) }
       else
         value
       end

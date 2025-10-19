@@ -12,6 +12,8 @@ module MediaLibrarian
                 :config_dir,
                 :config_file,
                 :config_example,
+                :api_config_file,
+                :api_config_example,
                 :temp_dir,
                 :template_dir,
                 :tracker_dir,
@@ -143,6 +145,8 @@ module MediaLibrarian
       @config_dir = File.join(Dir.home, '.medialibrarian')
       @config_file = File.join(@config_dir, 'conf.yml')
       @config_example = File.join(root, 'config', 'conf.yml.example')
+      @api_config_file = File.join(@config_dir, 'api.yml')
+      @api_config_example = File.join(root, 'config', 'api.yml.example')
       @temp_dir = File.join(@config_dir, 'tmp')
       @template_dir = File.join(@config_dir, 'templates')
       @tracker_dir = File.join(@config_dir, 'trackers')
