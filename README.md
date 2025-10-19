@@ -45,11 +45,14 @@ MediaLibrarian.application.api_option = {
   'ssl_private_key_path' => '/chemin/vers/cle.pem',
   # Optionnel : chaîne de confiance et vérification côté client
   'ssl_ca_path' => '/chemin/vers/ca.pem',
-  'ssl_verify_mode' => 'peer'
+  'ssl_verify_mode' => 'peer',
+  'ssl_client_verify_mode' => 'none'
 }
 ```
 
 Si aucune paire clé/certificat n'est fournie, le démon génère un certificat auto-signé éphémère : le navigateur et le client CLI devront alors explicitement faire confiance au certificat (accepter l'exception de sécurité en développement ou installer la CA). Le client CLI détecte automatiquement la configuration HTTPS (`ssl_enabled`) et ajuste la vérification selon `ssl_verify_mode`. Les valeurs acceptées pour `ssl_verify_mode` sont `none`, `peer`, `fail_if_no_peer_cert` / `force_peer` / `require`.
+
+Le serveur d'administration continue d'autoriser les connexions sans certificat client (`ssl_client_verify_mode` = `none` par défaut). Pour activer l'authentification mutuelle TLS, fournissez une valeur explicite (`peer`, `require`, etc.) pour `ssl_client_verify_mode`; dans ce cas, WEBrick exigera un certificat client valide.
 
 Depuis l'interface web, un formulaire de connexion envoie les identifiants à `POST /session` et un cookie sécurisé (`Secure`, `HttpOnly`) est retourné lorsque l'authentification réussit. La déconnexion s'effectue via `DELETE /session`.
 

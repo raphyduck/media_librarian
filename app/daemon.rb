@@ -916,14 +916,14 @@ class Daemon
     def build_ssl_server_options(opts, address)
       certificate, private_key = load_tls_credentials(opts, address)
       ca_options = resolve_ssl_ca_options(opts)
-      verify_mode = resolve_ssl_verify_mode(opts && (opts['ssl_verify_mode'] || opts[:ssl_verify_mode]))
+      client_verify_mode = resolve_ssl_client_verify_mode(opts)
       options_mask = default_ssl_options_mask
 
       ssl_options = {
         SSLEnable: true,
         SSLPrivateKey: private_key,
         SSLCertificate: certificate,
-        SSLVerifyClient: verify_mode,
+        SSLVerifyClient: client_verify_mode,
         SSLStartImmediately: true
       }
 
@@ -945,6 +945,15 @@ class Daemon
       else
         raise ArgumentError, "Invalid ssl_ca_path: #{ca_path}"
       end
+    end
+
+    def resolve_ssl_client_verify_mode(opts)
+      return OpenSSL::SSL::VERIFY_NONE unless opts
+
+      mode = opts['ssl_client_verify_mode'] || opts[:ssl_client_verify_mode]
+      return OpenSSL::SSL::VERIFY_NONE if mode.nil? || mode.to_s.empty?
+
+      resolve_ssl_verify_mode(mode)
     end
 
     def resolve_ssl_verify_mode(mode)

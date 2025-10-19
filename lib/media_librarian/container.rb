@@ -161,7 +161,8 @@ module MediaLibrarian
       'ssl_certificate_path' => nil,
       'ssl_private_key_path' => nil,
       'ssl_ca_path' => nil,
-      'ssl_verify_mode' => 'none'
+      'ssl_verify_mode' => 'none',
+      'ssl_client_verify_mode' => 'none'
     }.freeze
 
     def default_api_option
