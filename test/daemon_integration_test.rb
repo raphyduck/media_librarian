@@ -2,6 +2,7 @@
 
 require 'socket'
 require 'timeout'
+require 'yaml'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../app/client'
@@ -52,9 +53,28 @@ class DaemonIntegrationTest < Minitest::Test
     refute Daemon.running?
   end
 
+  def test_reload_refreshes_configuration_and_scheduler
+    scheduler_name = 'reload_scheduler'
+
+    boot_daemon_environment(scheduler: scheduler_name) do
+      write_scheduler_template(scheduler_name, message: 'initial')
+    end
+
+    wait_for_recorded_command('--message=initial')
+
+    write_config(queue_slots: 5, workers_pool_size: 3)
+    write_scheduler_template(scheduler_name, message: 'updated')
+    clear_recorded_commands
+
+    assert Daemon.reload
+
+    assert_equal 5, MediaLibrarian.application.queue_slots
+    wait_for_recorded_command('--message=updated')
+  end
+
   private
 
-  def boot_daemon_environment
+  def boot_daemon_environment(scheduler: nil)
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
     Daemon.configure(app: @environment.application)
@@ -62,10 +82,12 @@ class DaemonIntegrationTest < Minitest::Test
 
     override_port
 
+    yield if block_given?
+
     Librarian.new(container: @environment.container, args: [])
 
     @daemon_thread = Thread.new do
-      Daemon.start(scheduler: nil, daemonize: false)
+      Daemon.start(scheduler: scheduler, daemonize: false)
     end
 
     wait_for_http_ready
@@ -78,6 +100,10 @@ class DaemonIntegrationTest < Minitest::Test
 
   def recorded_commands
     @environment.application.args_dispatch.dispatched_commands
+  end
+
+  def clear_recorded_commands
+    recorded_commands.clear
   end
 
   def wait_for_http_ready
@@ -103,6 +129,43 @@ class DaemonIntegrationTest < Minitest::Test
         sleep 0.05
       end
     end
+  end
+
+  def wait_for_recorded_command(argument)
+    Timeout.timeout(10) do
+      loop do
+        break if recorded_commands.any? { |entry| Array(entry[:command]).include?(argument) }
+
+        sleep 0.05
+      end
+    end
+  end
+
+  def write_config(queue_slots:, workers_pool_size:)
+    config = SimpleConfigMan::DEFAULT_SETTINGS.merge(
+      'daemon' => {
+        'workers_pool_size' => workers_pool_size,
+        'queue_slots' => queue_slots
+      }
+    )
+    File.write(@environment.application.config_file, config.to_yaml)
+  end
+
+  def write_scheduler_template(name, message:)
+    template = {
+      'periodic' => {
+        'reload_task' => {
+          'command' => 'Library.noop',
+          'every' => '1 minutes',
+          'args' => {
+            'message' => message
+          }
+        }
+      }
+    }
+
+    path = File.join(@environment.application.template_dir, "#{name}.yml")
+    File.write(path, template.to_yaml)
   end
 
   def free_port
