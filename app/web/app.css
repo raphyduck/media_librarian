@@ -1,0 +1,242 @@
+:root {
+  color-scheme: light dark;
+  --bg: #111827;
+  --panel-bg: rgba(255, 255, 255, 0.04);
+  --text: #f9fafb;
+  --muted: #9ca3af;
+  --accent: #2563eb;
+  --danger: #f87171;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0 1.5rem 4rem;
+  background: radial-gradient(circle at top, rgba(37, 99, 235, 0.25), transparent 45%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+header {
+  padding: 2rem 0 1rem;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 2.5rem;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.token {
+  max-width: 640px;
+  margin: 0 auto 2rem;
+  padding: 1rem 1.5rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.token label {
+  font-weight: 600;
+}
+
+.token input {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(17, 24, 39, 0.6);
+  color: inherit;
+}
+
+.token button {
+  justify-self: start;
+}
+
+main {
+  display: grid;
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.panel {
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background: var(--panel-bg);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel-header h2 {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+button {
+  padding: 0.55rem 1.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(37, 99, 235, 0.12);
+  color: inherit;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  background: rgba(37, 99, 235, 0.24);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #f8fafc;
+}
+
+button.primary:hover {
+  background: #1d4ed8;
+}
+
+.jobs-columns {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .jobs-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.job-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.job-item {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.job-item header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.logs {
+  display: grid;
+  gap: 1rem;
+}
+
+.log-entry {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.log-entry header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.log-content {
+  margin: 0;
+  max-height: 18rem;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  font-family: "SFMono-Regular", ui-monospace, SFMono, "Fira Code", monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+textarea {
+  width: 100%;
+  min-height: 16rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.65);
+  color: inherit;
+  padding: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  resize: vertical;
+  font-family: "SFMono-Regular", ui-monospace, SFMono, "Fira Code", monospace;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+#notification {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+#notification.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.error {
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

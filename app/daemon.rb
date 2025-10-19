@@ -467,12 +467,20 @@ class Daemon
 
     def start_control_server
       opts = app.api_option
+      @control_token = opts['control_token'] || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+
       @control_server = WEBrick::HTTPServer.new(
         Port: opts['listen_port'],
         BindAddress: opts['bind_address'],
         Logger: WEBrick::Log.new(File::NULL),
         AccessLog: []
       )
+
+      web_root = File.expand_path('web', __dir__)
+      if Dir.exist?(web_root)
+        @control_server.mount('/', WEBrick::HTTPServlet::FileHandler, web_root,
+                               FancyIndexing: false, DirectoryIndex: ['index.html'])
+      end
 
       @control_server.mount_proc('/jobs') do |req, res|
         handle_jobs_request(req, res)
@@ -513,6 +521,7 @@ class Daemon
     def handle_jobs_request(req, res)
       case req.request_method
       when 'POST'
+        return unless require_control_token(req, res)
         return handle_job_not_found(res) unless req.path == '/jobs'
 
         payload = parse_payload(req)
@@ -597,6 +606,7 @@ class Daemon
         content = mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
         json_response(res, body: { 'content' => content })
       when 'PUT'
+        return unless require_control_token(req, res)
         begin
           payload = parse_payload(req)
         rescue JSON::ParserError => e
@@ -631,6 +641,7 @@ class Daemon
 
     def handle_config_reload_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+      return unless require_control_token(req, res)
 
       process_reload_request(res) { reload }
     end
@@ -638,6 +649,7 @@ class Daemon
     def handle_scheduler_reload_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
       return error_response(res, status: 404, message: 'scheduler_not_configured') unless @scheduler_name
+      return unless require_control_token(req, res)
 
       process_reload_request(res) { reload_scheduler }
     end
@@ -689,6 +701,30 @@ class Daemon
       return unless @scheduler_name
 
       File.join(app.template_dir, "#{@scheduler_name}.yml")
+    end
+
+    def control_token
+      @control_token
+    end
+
+    def require_control_token(req, res)
+      return true unless control_token
+
+      provided = req['X-Control-Token']
+      provided = req.query['token'] if (!provided || provided.empty?) && req.respond_to?(:query)
+      if (!provided || provided.empty?) && req.body && !req.body.empty?
+        begin
+          parsed = JSON.parse(req.body)
+          provided = parsed['token'] if parsed.is_a?(Hash)
+        rescue JSON::ParserError
+          provided = nil
+        end
+      end
+
+      return true if provided == control_token
+
+      error_response(res, status: 403, message: 'forbidden')
+      false
     end
 
     def log_paths

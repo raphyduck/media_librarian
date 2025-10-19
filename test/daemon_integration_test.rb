@@ -148,6 +148,17 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal new_template, fetched[:body].fetch('content')
   end
 
+  def test_dashboard_interface_is_served_at_root
+    boot_daemon_environment
+
+    response = control_get_raw('/')
+    assert_equal '200', response.code
+    content_type = response['content-type'].to_s
+    assert_includes content_type, 'text/html'
+    assert_includes response.body, '<!DOCTYPE html>'
+    assert_includes response.body, 'Media Librarian'
+  end
+
   private
 
   def boot_daemon_environment(scheduler: nil)
@@ -272,6 +283,14 @@ class DaemonIntegrationTest < Minitest::Test
 
   def control_post(path, body: nil)
     perform_control_request(Net::HTTP::Post, path, body: body)
+  end
+
+  def control_get_raw(path)
+    uri = control_uri(path)
+    request = Net::HTTP::Get.new(uri)
+    Net::HTTP.start(uri.hostname, uri.port) do |http|
+      http.request(request)
+    end
   end
 
   def perform_control_request(klass, path, body: nil)
