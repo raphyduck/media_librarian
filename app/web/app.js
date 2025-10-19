@@ -72,6 +72,23 @@ function setAuthenticated(authenticated, username = '') {
   }
 }
 
+function updateConnectionHint() {
+  const hint = document.querySelector('#session-panel .hint');
+  if (!hint) {
+    return;
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
+  const host = window.location.host || '127.0.0.1:8888';
+  const base = "Les identifiants sont définis dans la configuration du démon (`api_option.auth`).";
+  const urlMessage = ` Interface disponible sur ${protocol}://${host}/.`;
+  const tlsReminder = protocol === 'https'
+    ? ' En développement, pensez à accepter le certificat TLS auto-signé si nécessaire.'
+    : '';
+
+  hint.textContent = `${base}${urlMessage}${tlsReminder}`;
+}
+
 function handleUnauthorized() {
   const wasAuthenticated = state.authenticated;
   stopAutoRefresh();
@@ -358,5 +375,6 @@ function setupEventListeners() {
 
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  updateConnectionHint();
   bootstrapSession();
 });

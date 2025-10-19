@@ -7,6 +7,7 @@ require 'json'
 require 'net/http'
 require 'fileutils'
 require 'bcrypt'
+require 'openssl'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../app/client'
@@ -221,9 +222,17 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 403, forbidden[:status_code]
   end
 
+  def test_https_control_server_serves_requests
+    boot_daemon_environment(api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
+
+    response = control_get('/status')
+    assert_equal 200, response[:status_code]
+    assert_equal 'https', control_uri('/status').scheme
+  end
+
   private
 
-  def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials)
+  def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials, api_overrides: {})
     credentials = credentials.dup
     @auth_credentials = credentials
     @session_cookie = nil
@@ -233,7 +242,7 @@ class DaemonIntegrationTest < Minitest::Test
     Daemon.configure(app: @environment.application)
     Client.configure(app: @environment.application)
 
-    override_port(control_token: control_token, credentials: credentials)
+    override_port(control_token: control_token, credentials: credentials, api_overrides: api_overrides)
 
     yield if block_given?
 
@@ -247,7 +256,7 @@ class DaemonIntegrationTest < Minitest::Test
     authenticate_session if authenticate
   end
 
-  def override_port(control_token: nil, credentials: default_credentials)
+  def override_port(control_token: nil, credentials: default_credentials, api_overrides: {})
     port = free_port
     token = control_token || 'integration-token'
     hashed_password = BCrypt::Password.create(credentials.fetch(:password)).to_s
@@ -261,6 +270,13 @@ class DaemonIntegrationTest < Minitest::Test
       'api_token' => token,
       'control_token' => token
     }
+    options.merge!(api_overrides) do |key, base_value, override_value|
+      if base_value.is_a?(Hash) && override_value.is_a?(Hash)
+        base_value.merge(override_value)
+      else
+        override_value
+      end
+    end
     @api_token = token
     @environment.application.api_option = options
   end
@@ -280,7 +296,7 @@ class DaemonIntegrationTest < Minitest::Test
         break if response['status_code'] == 200
 
         sleep 0.05
-      rescue Errno::ECONNREFUSED
+      rescue Errno::ECONNREFUSED, OpenSSL::SSL::SSLError
         sleep 0.05
       end
     end
@@ -376,7 +392,7 @@ class DaemonIntegrationTest < Minitest::Test
   def control_get_raw(path)
     uri = control_uri(path)
     request = Net::HTTP::Get.new(uri)
-    Net::HTTP.start(uri.hostname, uri.port) do |http|
+    Net::HTTP.start(uri.hostname, uri.port, **control_http_options) do |http|
       http.request(request)
     end
   end
@@ -394,7 +410,7 @@ class DaemonIntegrationTest < Minitest::Test
       request.body = JSON.dump(body)
     end
 
-    Net::HTTP.start(uri.hostname, uri.port) do |http|
+    Net::HTTP.start(uri.hostname, uri.port, **control_http_options) do |http|
       response = http.request(request)
       store_session_cookie(response)
       parse_control_response(response)
@@ -440,10 +456,57 @@ class DaemonIntegrationTest < Minitest::Test
   end
 
   def control_uri(path)
-    URI::HTTP.build(
+    builder = control_ssl_enabled? ? URI::HTTPS : URI::HTTP
+    builder.build(
       host: @environment.application.api_option['bind_address'],
       port: @environment.application.api_option['listen_port'],
       path: path
     )
+  end
+
+  def control_ssl_enabled?
+    value = @environment.application.api_option['ssl_enabled']
+    case value
+    when true then true
+    when false, nil then false
+    when String then value.match?(/\A(true|1|yes|on)\z/i)
+    when Numeric then !value.zero?
+    else
+      !!value
+    end
+  end
+
+  def control_http_options
+    return {} unless control_ssl_enabled?
+
+    options = { use_ssl: true }
+    verify_mode = resolve_control_verify_mode(@environment.application.api_option['ssl_verify_mode'])
+    options[:verify_mode] = verify_mode unless verify_mode.nil?
+
+    ca_path = @environment.application.api_option['ssl_ca_path']
+    if ca_path && !ca_path.to_s.empty?
+      if File.directory?(ca_path)
+        options[:ca_path] = ca_path
+      elsif File.file?(ca_path)
+        options[:ca_file] = ca_path
+      end
+    end
+
+    options
+  end
+
+  def resolve_control_verify_mode(mode)
+    return mode if mode.is_a?(Integer)
+
+    case mode.to_s.downcase
+    when '', 'none', 'off', 'false'
+      OpenSSL::SSL::VERIFY_NONE
+    when 'peer'
+      OpenSSL::SSL::VERIFY_PEER
+    when 'fail_if_no_peer_cert', 'force_peer', 'require'
+      OpenSSL::SSL::VERIFY_PEER | OpenSSL::SSL::VERIFY_FAIL_IF_NO_PEER_CERT
+    else
+      OpenSSL::SSL::VERIFY_NONE
+    end
   end
 end

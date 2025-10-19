@@ -87,6 +87,10 @@ module MediaLibrarian
       services.fetch(:api_option)
     end
 
+    def api_option=(value)
+      update_api_option(value)
+    end
+
     def workers_pool_size
       services.fetch(:workers_pool_size)
     end
@@ -125,10 +129,7 @@ module MediaLibrarian
       store(:tracker_client, {}, freeze: false)
       store(:tracker_client_last_login, {}, freeze: false)
 
-      store(:api_option,
-            'bind_address' => '127.0.0.1',
-            'listen_port' => '8888',
-            'auth' => {})
+      update_api_option(default_api_option)
 
       daemon_config = config.fetch('daemon', {})
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
@@ -152,6 +153,38 @@ module MediaLibrarian
       end
     end
 
+    DEFAULT_API_OPTION = {
+      'bind_address' => '127.0.0.1',
+      'listen_port' => 8888,
+      'auth' => {},
+      'ssl_enabled' => false,
+      'ssl_certificate_path' => nil,
+      'ssl_private_key_path' => nil,
+      'ssl_ca_path' => nil,
+      'ssl_verify_mode' => 'none'
+    }.freeze
+
+    def default_api_option
+      deep_dup(DEFAULT_API_OPTION)
+    end
+
+    def update_api_option(overrides)
+      merged = merge_api_options(default_api_option, overrides)
+      store(:api_option, merged)
+    end
+
+    def merge_api_options(defaults, overrides)
+      return defaults if overrides.nil?
+
+      overrides.each_with_object(deep_dup(defaults)) do |(key, value), memo|
+        if memo[key].is_a?(Hash) && value.is_a?(Hash)
+          memo[key] = memo[key].merge(value)
+        else
+          memo[key] = value
+        end
+      end
+    end
+
     def store(name, value, freeze: true)
       services[name] = freeze ? deep_freeze(value) : value
     end
@@ -169,6 +202,19 @@ module MediaLibrarian
         value.freeze
       when String
         value.freeze
+      else
+        value
+      end
+    end
+
+    def deep_dup(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, val), memo|
+          memo[key] = deep_dup(val)
+        end
+      when Array
+        value.map { |entry| deep_dup(entry) }
       else
         value
       end
