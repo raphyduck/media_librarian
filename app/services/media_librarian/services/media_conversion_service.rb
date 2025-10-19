@@ -25,6 +25,12 @@ module MediaLibrarian
       def convert(request)
         last_name = ''
         results = []
+        missing_path = false
+        unless file_system.exist?(request.path)
+          speaker.speak_up("#{request.path} does not exist!")
+          missing_path = true
+        end
+
         type_pair = EXTENSIONS_TYPE.find { |_type, values| values.include?(request.input_format) }
         return speaker.speak_up('Unknown input format') unless type_pair
 
@@ -43,9 +49,7 @@ module MediaLibrarian
           return unless continue == 'y'
         end
 
-        unless file_system.exist?(request.path)
-          return speaker.speak_up("#{request.path} does not exist!")
-        end
+        return [] if missing_path
 
         if file_system.directory?(request.path)
           directory_results, last_name = convert_directory(request)
