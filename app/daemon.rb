@@ -247,6 +247,8 @@ class Daemon
         next unless @template_cache[type]
 
         @template_cache[type].each do |task, params|
+          limit = determine_queue_limit(params)
+          queue_limits[task] = limit
           args = params['command'].split('.')
           if params['args'].is_a?(Hash)
             args += params['args'].map { |a, v| "--#{a}=#{v}" }
@@ -259,9 +261,11 @@ class Daemon
             frequency = Utils.timeperiod_to_sec(params['every']).to_i
             next unless should_run_periodic?(task, frequency)
 
+            queue_name = fetch_function_config(args)[1] || task
+            queue_limits[queue_name] = limit
             enqueue(
               args: args,
-              queue: fetch_function_config(args)[1] || task,
+              queue: queue_name,
               task: task,
               internal: 0,
               client: Thread.current[:current_daemon],
@@ -295,6 +299,7 @@ class Daemon
       @last_execution = {}
       @last_email_report = {}
       @template_cache = nil
+      @queue_limits = Concurrent::Hash.new
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
       @executor = Concurrent::ThreadPoolExecutor.new(
@@ -500,7 +505,66 @@ class Daemon
     end
 
     def queue_busy?(queue)
-      job_registry.values.any? { |job| job.queue == queue && job.running? }
+      return false if queue.to_s.empty?
+
+      active_jobs_for_queue(queue).size >= queue_limit(queue)
+    end
+
+    def active_jobs_for_queue(queue)
+      return [] if queue.to_s.empty?
+
+      job_registry.values.select { |job| job.queue == queue && job.running? }
+    end
+
+    def queue_limit(queue)
+      return 1 if queue.to_s.empty?
+
+      limit = queue_limits[queue]
+      unless limit
+        limit = queue_limit_from_template(queue)
+        limit = 1 if limit.nil? || limit <= 0
+        queue_limits[queue] = limit
+      end
+      limit
+    end
+
+    def queue_limit_from_template(queue)
+      return unless @template_cache
+
+      %w[continuous periodic].each do |type|
+        params = @template_cache[type] && @template_cache[type][queue]
+        next unless params
+
+        return determine_queue_limit(params)
+      end
+
+      nil
+    end
+
+    def queue_limits
+      @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def determine_queue_limit(params)
+      limit = extract_configured_limit(params)
+      limit = 1 if limit.nil? || limit <= 0
+      limit
+    end
+
+    def extract_configured_limit(params)
+      return unless params.is_a?(Hash)
+
+      limit = params['max_concurrency'] || params['max_pool_size']
+      limit = limit.to_i if limit
+      return limit if limit && limit.positive?
+
+      command = params['command']
+      return unless command
+
+      config = fetch_function_config(command.split('.'))
+      limit = config[0]
+      limit = limit.to_i if limit
+      limit if limit && limit.positive?
     end
 
     def should_run_periodic?(task, frequency)
@@ -545,6 +609,7 @@ class Daemon
       @control_server = nil
       @executor = nil
       @template_cache = nil
+      @queue_limits = nil
       @running = nil
       @stop_event = nil
       @is_daemon = false
