@@ -1,95 +1,51 @@
-# Database schema definition
-DB_SCHEMA = {
-  queues_state: {
-    columns: {
-      queue_name: 'varchar(200) primary key',
-      value: 'text',
-      created_at: 'datetime'
-    }
-  },
-  media_lists: {
-    columns: {
-      list_name: 'text',
-      type: 'text',
-      title: 'text',
-      year: 'integer',
-      alt_titles: 'text',
-      url: 'text',
-      imdb: 'text',
-      tmdb: 'text',
-      created_at: 'datetime'
-    },
-    unique: [:list_name, :title, :year, :imdb]
-  },
-  metadata_search: {
-    columns: {
-      keywords: 'text',
-      type: 'integer',
-      result: 'text',
-      created_at: 'datetime'
-    },
-    unique: [:keywords, :type]
-  },
-  torrents: {
-    columns: {
-      name: 'varchar(500) primary key',
-      identifier: 'text',
-      identifiers: 'text',
-      tattributes: 'text',
-      created_at: 'datetime',
-      updated_at: 'datetime',
-      waiting_until: 'datetime',
-      torrent_id: 'text',
-      status: 'integer'
-    },
-    unique: [:torrent_id]
-  },
-  trakt_auth: {
-    columns: {
-      account: 'varchar(30) primary key',
-      access_token: 'varchar(200)',
-      token_type: 'varchar(200)',
-      refresh_token: 'varchar(200)',
-      scope: 'varchar(200)',
-      created_at: 'integer',
-      expires_in: 'integer'
-    }
-  }
-}.freeze
+# frozen_string_literal: true
+
+require 'json'
+require 'sequel'
+require 'time'
+require 'date'
+
+Sequel.extension :migration
 
 module Storage
   class Db
-    def initialize(db_path, readonly = 0)
-      @s_db = SQLite3::Database.new(db_path) unless @s_db
-      setup(db_path, readonly)
-      @readonly = readonly
+    attr_reader :database
+
+    def initialize(db_path, readonly = 0, migrations_path: default_migrations_path)
+      @readonly = readonly.to_i.positive?
+      @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly)
+      run_migrations(migrations_path) unless @readonly
+    rescue StandardError => e
+      log_error(e)
+      raise
     end
 
     def delete_rows(table, conditions = {}, additionals = {})
-      query = "DELETE FROM #{table}"
-      query << prepare_conditions(conditions, additionals)
-      values = conditions.values + additionals.values
-
-      execute_query(table, query, values)
-    rescue => e
+      dataset = build_dataset(table, conditions, additionals)
+      sql = dataset.delete_sql
+      run_write(table, sql) { dataset.delete }
+    rescue StandardError => e
       log_error(e)
       nil
     end
 
     def dump_schema
-      schema = {}
-      get_rows('sqlite_master', { type: 'table' }).each do |table|
-        schema[table[:name].to_sym] = table_columns(table[:name])
+      database.tables.each_with_object({}) do |table_name, schema|
+        schema[table_name] = database.schema(table_name).each_with_object({}) do |(column, details), memo|
+          memo[column] = details[:db_type]
+        end
       end
-      schema
     end
 
     def execute(raw_sql)
-      @s_db.execute(raw_sql)
+      log_sql(raw_sql)
+      return if skip_write?(raw_sql)
+
+      database.run(raw_sql)
     end
 
     def get_main_column(table)
-      case table
+      case table.to_s
       when 'torrents'
         :name
       when 'metadata_search'
@@ -100,93 +56,46 @@ module Storage
     end
 
     def get_rows(table, conditions = {}, additionals = {})
-      query = "SELECT * FROM #{table}"
-      query << prepare_conditions(conditions, additionals)
-      values = conditions.values.map(&:to_s) + additionals.values.map(&:to_s)
-
-      result = execute_query(table, query, values, 0)
-
-      result.map do |row|
-        columns = table_columns(table)
-        row_hash = {}
-
-        columns.each_with_index do |(column_name, _), index|
-          value = row[index]
-          # Parse JSON/Array-like strings
-          if value.is_a?(String) && value.match?(/^[{\[].*[}\]]$/)
-            value = eval(value) rescue value
-          end
-          row_hash[column_name.to_sym] = value
-        end
-
-        row_hash
-      end
-    rescue => e
+      dataset = build_dataset(table, conditions, additionals)
+      log_sql(dataset.sql)
+      rows = Utils.lock_block("db_#{table}") { dataset.all }
+      rows.map { |row| deserialize_row(row) }
+    rescue StandardError => e
       log_error(e)
       []
     end
 
     def insert_row(table, values, or_replace = 0)
-      prepared_values = prepare_values(table, values)
-      columns = prepared_values.keys.map(&:to_s).join(',')
-      placeholders = Array.new(prepared_values.size, '?').join(',')
-
-      query = "INSERT#{' OR REPLACE' if or_replace.to_i > 0} INTO #{table} (#{columns}) VALUES (#{placeholders})"
-      execute_query(table, query, prepared_values.values.map(&:to_s))
+      dataset = dataset_for(table)
+      dataset = dataset.insert_conflict(:replace) if or_replace.to_i.positive?
+      prepared = prepare_values(table, values)
+      sql = dataset.insert_sql(prepared)
+      run_write(table, sql) { dataset.insert(prepared) }
+    rescue StandardError => e
+      log_error(e)
+      nil
     end
 
     def insert_rows(table, rows, replace_existing = false)
       return true if rows.empty?
 
-      # For small number of rows, use individual inserts
-      if rows.size <= 3
-        rows.each { |values| insert_row(table, values, replace_existing) }
+      if replace_existing
+        rows.each { |values| insert_row(table, values, 1) }
         return true
       end
 
-      # For larger batches, use multi-row insert
-      first_row = rows.first
-      prepared_values = prepare_values(table, first_row)
-      columns = prepared_values.keys.map(&:to_s).join(',')
-
-      # Create the multi-row insert statement
-      query = if replace_existing
-                "INSERT OR REPLACE INTO #{table} (#{columns}) VALUES "
-              else
-                "INSERT INTO #{table} (#{columns}) VALUES "
-              end
-
-      # Build value placeholders for all rows
-      placeholders = []
-      all_values = []
-
-      rows.each do |row_values|
-        prepared = prepare_values(table, row_values)
-
-        # Skip rows with mismatched columns
-        next unless prepared.keys.map(&:to_s).sort == prepared_values.keys.map(&:to_s).sort
-
-        placeholders << "(#{Array.new(prepared.size, '?').join(',')})"
-        all_values.concat(prepared.values.map(&:to_s))
-      end
-
-      query << placeholders.join(',')
-
-      execute_query(table, query, all_values)
+      dataset = dataset_for(table)
+      prepared_rows = rows.map { |values| prepare_values(table, values) }
+      sql = Array(dataset.multi_insert_sql(prepared_rows)).join('; ')
+      run_write(table, sql) { dataset.multi_insert(prepared_rows) }
       true
-    rescue => e
+    rescue StandardError => e
       log_error(e)
       false
     end
 
-    def setup(db_path, readonly = 0)
-      @s_db = SQLite3::Database.new(db_path) unless @s_db
-      return if readonly.to_i > 0
-
-      DB_SCHEMA.each do |table_name, schema|
-        create_or_update_table(table_name, schema)
-        create_indices(table_name, schema) if schema[:unique]
-      end
+    def setup(_db_path, _readonly = 0)
+      # Migrations are handled during initialization.
     end
 
     def touch_rows(table, conditions, additionals = {})
@@ -194,207 +103,205 @@ module Storage
     end
 
     def update_rows(table, values, conditions, additionals = {})
-      prepared_values = prepare_values(table, values, 1)
-      set_clause = prepared_values.keys.map { |c| "#{c} = (?)" }.join(', ')
-
-      query = "UPDATE #{table} SET #{set_clause}"
-      query << prepare_conditions(conditions, additionals)
-
-      values_for_query = prepared_values.values.map(&:to_s) +
-        conditions.values.map(&:to_s) +
-        additionals.values.map(&:to_s)
-
-      execute_query(table, query, values_for_query)
-    rescue => e
+      dataset = build_dataset(table, conditions, additionals)
+      prepared = prepare_values(table, values, true)
+      return 0 if prepared.empty?
+      sql = dataset.update_sql(prepared)
+      run_write(table, sql) { dataset.update(prepared) }
+    rescue StandardError => e
       log_error(e)
       nil
     end
 
+    def table_exists?(table)
+      database.table_exists?(table.to_sym)
+    end
+
     private
 
-    def create_or_update_table(table_name, schema)
-      replace = 0
-      table_create(table_name, schema[:columns])
+    attr_reader :readonly
 
-      table_def = table_columns(table_name)
-      db_columns = table_def.keys.map(&:to_s)
+    def build_dataset(table, conditions = {}, additionals = {})
+      dataset = dataset_for(table)
+      conditions.each do |column, value|
+        dataset = dataset.where(column.to_sym => value)
+      end
+      additionals.each do |key, value|
+        dataset = apply_additional_filter(dataset, key, value)
+      end
+      dataset
+    end
 
-      # Add missing columns
-      schema[:columns].each do |column, definition|
-        unless db_columns.include?(column.to_s)
-          @s_db.execute("ALTER TABLE #{table_name} ADD COLUMN #{column} #{definition}")
+    def apply_additional_filter(dataset, key, value)
+      if key.is_a?(String)
+        column, operator = parse_operator(key)
+        return dataset.where(column => value) if operator == :eq
+        return dataset.exclude(column => value) if operator == :ne
+        return dataset.where(Sequel.like(column, value)) if operator == :like
+        return dataset.where(Sequel.ilike(column, value)) if operator == :ilike
+        if %i[gt gte lt lte].include?(operator)
+          comparison_method = {
+            gt: :>,
+            gte: :>=,
+            lt: :<,
+            lte: :<=
+          }.fetch(operator)
+          return dataset.where(Sequel.expr(column).public_send(comparison_method, value))
         end
-
-        # Check if column definition has changed
-        if table_def[column] && table_def[column].downcase != definition.downcase
-          replace = 1
-          break
-        end
       end
+      dataset.where(normalize_key(key) => value)
+    end
 
-      # Recreate table if column definitions changed
-      if replace > 0
-        recreate_table(table_name, schema, db_columns)
+    def dataset_for(table)
+      database[table.to_sym]
+    end
+
+    def default_migrations_path
+      File.expand_path('db/migrations', __dir__)
+    end
+
+    def deserialize_row(row)
+      row.each_with_object({}) do |(column, value), memo|
+        memo[column] = deserialize_value(value)
       end
     end
 
-    def recreate_table(table_name, schema, db_columns)
-      MediaLibrarian.app.speaker.speak_up("Definition of one or more columns of table '#{table_name}' has changed, will modify the schema")
-
-      temp_table = "tmp_#{table_name}"
-      table_create(temp_table, schema[:columns])
-
-      # Copy data from existing columns
-      column_list = schema[:columns].keys.map do |column|
-        db_columns.include?(column.to_s) ? column.to_s : '0'
-      end.join(', ')
-
-      @s_db.execute("INSERT OR IGNORE INTO #{temp_table} SELECT #{column_list} FROM #{table_name}")
-      @s_db.execute("DROP TABLE #{table_name}")
-      @s_db.execute("ALTER TABLE #{temp_table} RENAME TO #{table_name}")
-    end
-
-    def create_indices(table_name, schema)
-      idx_list = index_list(table_name)
-      unique_columns = schema[:unique]
-
-      if idx_list[:unique].nil? ||
-        !(unique_columns - idx_list[:unique]).empty? ||
-        !(idx_list[:unique] - unique_columns).empty?
-
-        MediaLibrarian.app.speaker.speak_up("Missing index on '#{table_name}(#{unique_columns.join(', ')})', adding index now")
-        index_name = "idx_#{table_name}_#{unique_columns.join('_')}"
-        columns_list = unique_columns.join(', ')
-        @s_db.execute("CREATE UNIQUE INDEX #{index_name} ON #{table_name}(#{columns_list})")
-      end
-    end
-
-    def execute_query(table, query, values, write = 1)
-      tries ||= 3
-      query_str = query.dup
-      query_log = query.dup
-
-      values.each do |value|
-        query_str.sub!(/([\(,])\?([\),])/, "\\1'#{value}'\\2")
-        query_log.sub!(/([\(,])\?([\),])/, "\\1'#{value.to_s[0..100]}'\\2")
-      end
-
-      if Env.pretend? && write > 0
-        return MediaLibrarian.app.speaker.speak_up("Would #{query_log}")
-      end
-
-      MediaLibrarian.app.speaker.speak_up("Executing SQL query: '#{query_log}'", 0) if Env.debug?
-      raise 'ReadOnly Db' if write > 0 && @readonly > 0
-
-      Utils.lock_block("db_#{table}") do
-        statement = @s_db.prepare(query)
-        statement.execute(values)
-      end
-    rescue => e
-      if (tries -= 1) >= 0
-        sleep 10
-        retry
+    def deserialize_value(value)
+      case value
+      when Time, Date, DateTime
+        value.iso8601
+      when String
+        parse_json(value)
       else
-        log_error(e, query)
-        raise e
+        value
       end
     end
 
-    def log_error(error, query = nil)
-      context = query ? { query: query } : {}
-      MediaLibrarian.app.speaker.tell_error(error, Utils.arguments_dump(binding, 2, "Storage::Db", context))
-    end
+    def parse_json(value)
+      stripped = value.strip
+      return value if stripped.empty?
+      return JSON.parse(stripped, symbolize_names: true) if stripped.start_with?('{', '[')
 
-    def index_list(table)
-      index_list = {}
-
-      @s_db.execute("PRAGMA index_list('#{table}')").each do |idx|
-        index_name = idx[1]
-        index_type = idx[2].to_i > 0 && idx[3] != 'pk' ? :unique : :primary_key
-
-        index_list[index_type] = []
-        @s_db.execute("PRAGMA index_xinfo('#{index_name}')").each do |col|
-          index_list[index_type] << col[2].to_sym unless col[1].to_i < 0
-        end
-      end
-
-      index_list
-    rescue => e
-      log_error(e)
-      {}
-    end
-
-    # These methods appear to be used but aren't defined in the provided code
-    # Adding placeholder definitions to maintain functionality
-    def prepare_conditions(conditions, additionals)
-      return '' if (conditions.nil? || conditions.empty?) && (additionals.nil? || additionals.empty?)
-
-      parts = []
-      parts << conditions.map { |k, _| "#{k} = (?)" }.join(' AND ') unless conditions.nil? || conditions.empty?
-      parts << additionals.map { |k, _| "#{k} (?)" }.join(' AND ') unless additionals.nil? || additionals.empty?
-
-      " WHERE #{parts.join(' AND ')}"
+      value
+    rescue JSON::ParserError
+      value
     end
 
     def prepare_values(table, values, update_only = false)
-      # Handle array inputs by converting to hash based on table schema
-      if values.is_a?(Array)
-        table_sym = table.to_sym
-        schema = DB_SCHEMA[table_sym]
+      hash_values = normalize_values(table, values)
+      schema = schema_info(table)
 
-        if schema && schema[:columns]
-          column_keys = schema[:columns].keys
-          # Create a hash from the array using column names as keys
-          values_hash = {}
-          values.each_with_index do |value, index|
-            values_hash[column_keys[index]] = value if index < column_keys.length
-          end
-          values = values_hash
-        else
-          # If schema not found, return the array as is
-          return values
-        end
+      if schema.key?(:created_at) && !update_only && !hash_values.key?(:created_at)
+        hash_values[:created_at] = current_timestamp
       end
 
-      result = values.dup
-      table_sym = table.to_sym
-      schema = DB_SCHEMA[table_sym]
-
-      if schema && schema[:columns]
-        # Add created_at timestamp for new records
-        if !update_only && schema[:columns].include?(:created_at) &&
-          !result.has_key?(:created_at) && !result.has_key?('created_at')
-          result[:created_at] = Time.now.to_s
-        end
-
-        # Always update updated_at timestamp when column exists
-        if schema[:columns].include?(:updated_at) &&
-          !result.has_key?(:updated_at) && !result.has_key?('updated_at')
-          result[:updated_at] = Time.now.to_s
-        end
+      if schema.key?(:updated_at) && !hash_values.key?(:updated_at)
+        hash_values[:updated_at] = current_timestamp
+      elsif update_only && hash_values.empty? && schema.key?(:updated_at)
+        hash_values[:updated_at] = current_timestamp
       end
 
-      result
-    rescue => e
-      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
-      values
+      hash_values.transform_values { |value| serialize_value(value) }
     end
 
-    def table_columns(table)
-      tbl_def = {}
-      @s_db.execute("PRAGMA table_info('#{table}')").each do |column_info|
-        id, name, type, not_null, default_value, primary_key = column_info
-        tbl_def[name.to_sym] = "#{type}#{' NOT NULL' if not_null.to_i > 0}#{' PRIMARY KEY' if primary_key.to_i > 0}"
+    def normalize_values(table, values)
+      case values
+      when Hash
+        values.each_with_object({}) do |(key, value), memo|
+          memo[key.to_sym] = value
+        end
+      when Array
+        columns = schema_info(table).keys
+        Hash[columns.zip(values)].compact
+      else
+        {}
       end
-      tbl_def
-    rescue => e
-      log_error(e)
-      {}
     end
 
-    def table_create(table_name, schema)
-      column_definitions = schema.map { |column, definition| "#{column} #{definition}" }.join(', ')
-      @s_db.execute("CREATE TABLE IF NOT EXISTS #{table_name} (#{column_definitions})")
+    def serialize_value(value)
+      case value
+      when Hash, Array
+        JSON.generate(value)
+      when Time, Date, DateTime
+        value.iso8601
+      else
+        value
+      end
+    end
+
+    def current_timestamp
+      Time.now.utc.iso8601
+    end
+
+    def schema_info(table)
+      @schema_cache ||= {}
+      @schema_cache[table.to_sym] ||= database.schema(table.to_sym).each_with_object({}) do |(column, info), memo|
+        memo[column] = info
+      end
+    end
+
+    def parse_operator(key)
+      match = key.to_s.strip.match(/^(\w+)\s*(=|!=|<>|>=|<=|>|<|like|ilike)$/i)
+      return [match[1].to_sym, operator_symbol(match[2].downcase)] if match
+
+      [normalize_key(key), :eq]
+    end
+
+    def operator_symbol(operator)
+      {
+        '=' => :eq,
+        '!=' => :ne,
+        '<>' => :ne,
+        '>' => :gt,
+        '<' => :lt,
+        '>=' => :gte,
+        '<=' => :lte,
+        'like' => :like,
+        'ilike' => :ilike
+      }.fetch(operator, :eq)
+    end
+
+    def run_migrations(path)
+      return unless path && Dir.exist?(path)
+
+      Sequel::Migrator.run(database, path)
+    end
+
+    def normalize_key(key)
+      key.is_a?(String) ? key.to_sym : key
+    end
+
+    def run_write(table, sql)
+      log_sql(sql, write: true)
+      return speaker&.speak_up("Would #{sql}") if Env.pretend?
+      raise 'ReadOnly Db' if readonly
+
+      Utils.lock_block("db_#{table}") { yield }
+    end
+
+    def skip_write?(sql)
+      return false unless Env.pretend?
+
+      speaker&.speak_up("Would #{sql}")
+      true
+    end
+
+    def log_sql(sql, write: false)
+      return if sql.to_s.empty?
+      speaker&.speak_up("Executing SQL query: '#{sql}'", 0) if Env.debug?
+    end
+
+    def log_error(error, sql = nil)
+      context = sql ? { query: sql } : {}
+      speaker&.tell_error(error, Utils.arguments_dump(binding, 2, 'Storage::Db', context))
+    end
+
+    def speaker
+      return unless defined?(MediaLibrarian)
+      app = MediaLibrarian.respond_to?(:app) ? MediaLibrarian.app : nil
+      app&.speaker
+    rescue StandardError
+      nil
     end
   end
 end
