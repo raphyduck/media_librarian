@@ -7,6 +7,7 @@ gem 'bencode', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'concurrent-ruby', :require => false
 gem 'feedjira', :require => false
+gem 'bcrypt', :require => false
 gem 'fuzzy-string-match', :require => false
 gem 'get_process_mem', :require => false
 gem 'hanami-mailer', :require => false

@@ -6,6 +6,7 @@ require 'yaml'
 require 'json'
 require 'net/http'
 require 'fileutils'
+require 'bcrypt'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../app/client'
@@ -58,7 +59,7 @@ class DaemonIntegrationTest < Minitest::Test
 
   def test_stop_endpoint_requires_control_token
     token = 'integration-secret'
-    boot_daemon_environment(control_token: token)
+    boot_daemon_environment(control_token: token, authenticate: false)
 
     unauthorized = control_post('/stop')
     assert_equal 403, unauthorized[:status_code]
@@ -173,15 +174,66 @@ class DaemonIntegrationTest < Minitest::Test
     assert_includes response.body, 'Media Librarian'
   end
 
+  def test_session_authentication_enables_access
+    boot_daemon_environment(authenticate: false)
+
+    login = control_post('/session', body: {
+                           'username' => @auth_credentials.fetch(:username),
+                           'password' => @auth_credentials.fetch(:password)
+                         })
+    assert_equal 201, login[:status_code]
+    refute_nil @session_cookie
+
+    status = control_get('/status')
+    assert_equal 200, status[:status_code]
+  end
+
+  def test_access_is_denied_without_session
+    boot_daemon_environment(authenticate: false)
+
+    unauthorized = control_get('/status')
+    assert_equal 403, unauthorized[:status_code]
+
+    authenticate_session
+
+    authorized = control_get('/status')
+    assert_equal 200, authorized[:status_code]
+  end
+
+  def test_api_token_support_remains_available
+    boot_daemon_environment(authenticate: false)
+
+    response = control_get('/status', token: @api_token)
+    assert_equal 200, response[:status_code]
+
+    reload = control_post('/config/reload', token: @api_token)
+    assert_equal 204, reload[:status_code]
+  end
+
+  def test_logout_revokes_session
+    boot_daemon_environment
+
+    logout = control_delete('/session')
+    assert_equal 204, logout[:status_code]
+    assert_nil @session_cookie
+
+    forbidden = control_get('/status')
+    assert_equal 403, forbidden[:status_code]
+  end
+
   private
 
-  def boot_daemon_environment(scheduler: nil, control_token: nil)
+  def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials)
+    credentials = credentials.dup
+    @auth_credentials = credentials
+    @session_cookie = nil
+    @api_token = nil
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
     Daemon.configure(app: @environment.application)
     Client.configure(app: @environment.application)
 
-    override_port(control_token: control_token)
+    override_port(control_token: control_token, credentials: credentials)
 
     yield if block_given?
 
@@ -192,12 +244,24 @@ class DaemonIntegrationTest < Minitest::Test
     end
 
     wait_for_http_ready
+    authenticate_session if authenticate
   end
 
-  def override_port(control_token: nil)
+  def override_port(control_token: nil, credentials: default_credentials)
     port = free_port
-    options = { 'bind_address' => '127.0.0.1', 'listen_port' => port }
-    options['control_token'] = control_token if control_token
+    token = control_token || 'integration-token'
+    hashed_password = BCrypt::Password.create(credentials.fetch(:password)).to_s
+    options = {
+      'bind_address' => '127.0.0.1',
+      'listen_port' => port,
+      'auth' => {
+        'username' => credentials.fetch(:username),
+        'password_hash' => hashed_password
+      },
+      'api_token' => token,
+      'control_token' => token
+    }
+    @api_token = token
     @environment.application.api_option = options
   end
 
@@ -285,20 +349,28 @@ class DaemonIntegrationTest < Minitest::Test
     }.to_yaml
   end
 
+  def default_credentials
+    { username: 'operator', password: 'secret-pass' }
+  end
+
   def free_port
     TCPServer.open('127.0.0.1', 0) { |server| server.addr[1] }
   end
 
-  def control_get(path)
-    perform_control_request(Net::HTTP::Get, path)
+  def control_get(path, token: nil, headers: nil)
+    perform_control_request(Net::HTTP::Get, path, headers: headers, token: token)
   end
 
-  def control_put(path, body:)
-    perform_control_request(Net::HTTP::Put, path, body: body)
+  def control_put(path, body:, token: nil, headers: nil)
+    perform_control_request(Net::HTTP::Put, path, body: body, headers: headers, token: token)
   end
 
-  def control_post(path, body: nil)
-    perform_control_request(Net::HTTP::Post, path, body: body)
+  def control_post(path, body: nil, token: nil, headers: nil)
+    perform_control_request(Net::HTTP::Post, path, body: body, headers: headers, token: token)
+  end
+
+  def control_delete(path, body: nil, token: nil, headers: nil)
+    perform_control_request(Net::HTTP::Delete, path, body: body, headers: headers, token: token)
   end
 
   def control_get_raw(path)
@@ -309,23 +381,62 @@ class DaemonIntegrationTest < Minitest::Test
     end
   end
 
-  def perform_control_request(klass, path, body: nil)
+  def perform_control_request(klass, path, body: nil, headers: nil, token: nil)
     uri = control_uri(path)
     request = klass.new(uri)
+    Array(headers).each do |key, value|
+      request[key] = value
+    end
+    request['Cookie'] = @session_cookie if @session_cookie
+    request['X-Control-Token'] = token if token
     if body
-      request['Content-Type'] = 'application/json'
+      request['Content-Type'] ||= 'application/json'
       request.body = JSON.dump(body)
     end
 
     Net::HTTP.start(uri.hostname, uri.port) do |http|
       response = http.request(request)
+      store_session_cookie(response)
       parse_control_response(response)
     end
   end
 
   def parse_control_response(response)
-    parsed = response.body.to_s.empty? ? nil : JSON.parse(response.body)
-    { status_code: response.code.to_i, body: parsed }
+    raw = response.body.to_s
+    parsed = if raw.empty?
+               nil
+             else
+               JSON.parse(raw)
+             end
+    { status_code: response.code.to_i, body: parsed, headers: response.each_header.to_h }
+  rescue JSON::ParserError
+    { status_code: response.code.to_i, body: raw, headers: response.each_header.to_h }
+  end
+
+  def store_session_cookie(response)
+    cookies = response.get_fields('set-cookie') || []
+    session_cookie = cookies.find { |cookie| cookie.start_with?("#{Daemon::SESSION_COOKIE_NAME}=") }
+    return unless session_cookie
+
+    value = session_cookie.split(';').first
+    if value == "#{Daemon::SESSION_COOKIE_NAME}="
+      @session_cookie = nil
+    else
+      @session_cookie = value
+    end
+  end
+
+  def authenticate_session
+    response = perform_control_request(
+      Net::HTTP::Post,
+      '/session',
+      body: {
+        'username' => @auth_credentials.fetch(:username),
+        'password' => @auth_credentials.fetch(:password)
+      }
+    )
+    assert_equal 201, response[:status_code], "Session authentication failed: #{response.inspect}"
+    response
   end
 
   def control_uri(path)
