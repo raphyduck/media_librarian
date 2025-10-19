@@ -10,14 +10,12 @@ gem 'feedjira', :require => false
 gem 'flac2mp3', :require => false
 gem 'fuzzy-string-match', :require => false
 gem 'get_process_mem', :require => false
-gem 'goodreads', :git => 'https://github.com/raphyduck/goodreads.git', :require => false
 gem 'hanami-mailer', :require => false
 gem 'imdb_party', :git => 'https://github.com/raphyduck/imdb-party.git', :require => false
 gem 'mechanize', :require => false
 gem 'mediainfo', :git => 'https://github.com/raphyduck/mediainfo.git', :require => false
 gem 'net-ssh', :require => false
 gem 'nokogiri', :require => false
-gem 'pdf-reader', :require => false
 gem 'poltergeist', :require => false
 gem 'rexml', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false

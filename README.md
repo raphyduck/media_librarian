@@ -26,8 +26,6 @@ TODO:
     * Make it cross-platform
     * Trackers as templates
     
-* Ebooks/Comics:
-    
 * Music:
     * Subscribe to artists automatically and download and process new albums
     

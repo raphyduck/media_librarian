@@ -37,22 +37,18 @@ FILENAME_NAMING_TEMPLATE=%w(
     part
 )
 VALID_CONVERSION_INPUTS = {
-    :books => ['cbz', 'pdf', 'cbr', 'epub'],
     :music => ['flac'],
     :video => ['iso', 'ts', 'm2ts']
 }
 VALID_CONVERSION_OUTPUT = {
-    :books => ['cbz'],
     :music => ['mp3'],
     :video => ['mkv']
 }
 VALID_MEDIA_TYPES = {
-    :books => ['books'],
     :music => ['music'],
     :video => ['movies', 'shows']
 }
 EXTENSIONS_TYPE= {
-    :books => %w(cbz cbr pdf),
     :music => %w(flac mp3),
     :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts m2ts)
 }
@@ -63,8 +59,6 @@ REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') 
 SPACE_SUBSTITUTE='\. _\-'
 BASIC_EP_MATCH='((([' + SPACE_SUBSTITUTE + ']|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[exEX](\d{1,4})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([#{SPACE_SUBSTITUTE}]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
-REGEX_BOOK_NB=Regexp.new('^(.*)[' + SPACE_SUBSTITUTE + '-]{1,2}((HS|T(ome )?)(\d{1,4}\.?\d{1,3}?)?)[' + SPACE_SUBSTITUTE + '-]{1,3}(.*)', Regexp::IGNORECASE)
-REGEX_BOOK_NB2=/^(.*)\(([^#]{5,}), (#()(\d+\.?\d{1,3}?))\)$/
 FOLDER_HIERARCHY = {
     'shows' => 3,
     'movies' => 0
@@ -89,10 +83,7 @@ METADATA_SEARCH = {
         :trakt => 3,
         :tv_episodes_search => 4,
         :tv_show_search => 5,
-        :book_search => 6,
-        :books_series_get => 7,
-        :book_series_search => 8,
-        :movie_get => 9,
-        :movie_set_get => 10
+        :movie_get => 6,
+        :movie_set_get => 7
     }
 }

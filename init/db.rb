@@ -6,5 +6,3 @@ app = container.application
 
 # Accessing through the container eagerly materializes the shared services.
 app.db
-app.calibre
-

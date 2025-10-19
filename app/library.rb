@@ -409,8 +409,6 @@ class Library
     existing_files = {}
     missing = {}
     case source_type
-    when 'calibre'
-      search_list.merge!(BookSeries.subscribe_series(no_prompt)) if source['series'].to_i > 0
     when 'search'
       keywords = source['keywords']
       keywords = [keywords] if keywords.is_a?(String)
