@@ -125,7 +125,10 @@ module MediaLibrarian
       store(:tracker_client, {}, freeze: false)
       store(:tracker_client_last_login, {}, freeze: false)
 
-      store(:api_option, 'bind_address' => '127.0.0.1', 'listen_port' => '8888')
+      store(:api_option,
+            'bind_address' => '127.0.0.1',
+            'listen_port' => '8888',
+            'auth' => {})
 
       daemon_config = config.fetch('daemon', {})
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)

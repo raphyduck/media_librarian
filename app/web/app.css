@@ -33,7 +33,7 @@ header h1 {
   color: var(--muted);
 }
 
-.token {
+.session {
   max-width: 640px;
   margin: 0 auto 2rem;
   padding: 1rem 1.5rem;
@@ -43,11 +43,16 @@ header h1 {
   gap: 0.5rem;
 }
 
-.token label {
+.session h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.session label {
   font-weight: 600;
 }
 
-.token input {
+.session input {
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -55,8 +60,33 @@ header h1 {
   color: inherit;
 }
 
-.token button {
+.session button {
   justify-self: start;
+}
+
+.session form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.session-status {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.session-status p {
+  margin: 0;
+}
+
+.hidden {
+  display: none !important;
 }
 
 main {

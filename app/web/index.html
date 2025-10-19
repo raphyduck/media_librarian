@@ -12,14 +12,23 @@
       <p class="subtitle">Tableau de bord du serveur de contrôle</p>
     </header>
 
-    <section class="token">
-      <label for="control-token">Jeton de contrôle</label>
-      <input id="control-token" type="password" placeholder="Optionnel" />
-      <button id="clear-token" type="button">Effacer</button>
-      <p class="hint">Le jeton est envoyé avec les requêtes d'écriture (POST/PUT). Il est conservé localement dans votre navigateur.</p>
+    <section class="session" id="session-panel">
+      <form id="login-form" autocomplete="off">
+        <h2>Connexion</h2>
+        <label for="login-username">Nom d'utilisateur</label>
+        <input id="login-username" name="username" type="text" required autocomplete="username" />
+        <label for="login-password">Mot de passe</label>
+        <input id="login-password" name="password" type="password" required autocomplete="current-password" />
+        <button type="submit" class="primary">Se connecter</button>
+      </form>
+      <div class="session-status" id="session-status" hidden>
+        <p>Connecté en tant que <span id="session-username"></span></p>
+        <button id="logout-button" type="button">Se déconnecter</button>
+      </div>
+      <p class="hint">Les identifiants sont définis dans la configuration du démon (`api_option.auth`).</p>
     </section>
 
-    <main>
+    <main id="dashboard" class="hidden">
       <section class="panel" id="jobs-panel">
         <div class="panel-header">
           <h2>Jobs</h2>

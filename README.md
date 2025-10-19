@@ -15,18 +15,24 @@ Le démon expose un serveur HTTP léger (WEBrick) permettant de piloter les jobs
 2. Par défaut le serveur écoute sur `127.0.0.1:8888` (configurable via `MediaLibrarian.application.api_option`).
 3. Ouvrir un navigateur sur `http://127.0.0.1:8888/` pour accéder au tableau de bord.
 
-### Protection des écritures
+### Authentification et sessions
 
-Les opérations d'écriture (`PUT /config`, `PUT /scheduler`, `POST /config/reload`, `POST /scheduler/reload`, `POST /jobs`) acceptent un jeton via l'en-tête `X-Control-Token` (ou le paramètre `token`). Le tableau de bord propose un champ "Jeton de contrôle" qui enregistre localement la valeur et l'envoie automatiquement lors des sauvegardes.
+La consultation et la modification du démon HTTP nécessitent désormais une session authentifiée. Configurez un nom d'utilisateur et un mot de passe haché (BCrypt) avant le démarrage :
 
-Définir le jeton en amont via :
-
-```bash
-export MEDIA_LIBRARIAN_CONTROL_TOKEN="super-secret"
-bundle exec ruby librarian.rb daemon start
+```ruby
+MediaLibrarian.application.api_option = {
+  'bind_address' => '127.0.0.1',
+  'listen_port' => 8888,
+  'auth' => {
+    'username' => 'admin',
+    'password_hash' => BCrypt::Password.create('mot-de-passe').to_s
+  }
+}
 ```
 
-Il est également possible de fournir `control_token` dans `MediaLibrarian.application.api_option` avant le démarrage du serveur.
+Depuis l'interface web, un formulaire de connexion envoie les identifiants à `POST /session` et un cookie sécurisé (`Secure`, `HttpOnly`) est retourné lorsque l'authentification réussit. La déconnexion s'effectue via `DELETE /session`.
+
+Pour la rétrocompatibilité (clients CLI, automatisations, etc.), il reste possible de définir un jeton d'API qui autorise les requêtes munies de l'en-tête `X-Control-Token` (ou du paramètre `token`). Le jeton peut être fourni via `MediaLibrarian.application.api_option['api_token']`, `['control_token']` (hérité) ou les variables d'environnement `MEDIA_LIBRARIAN_API_TOKEN` / `MEDIA_LIBRARIAN_CONTROL_TOKEN`.
 
 ### Limites actuelles
 

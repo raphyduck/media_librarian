@@ -1,15 +1,8 @@
 const state = {
-  token: '',
+  authenticated: false,
+  username: '',
   autoRefresh: null,
 };
-
-function applyToken(headers = new Headers()) {
-  const result = new Headers(headers);
-  if (state.token) {
-    result.set('X-Control-Token', state.token);
-  }
-  return result;
-}
 
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
@@ -21,19 +14,86 @@ function showNotification(message, kind = 'info') {
   }, 3500);
 }
 
+async function parseErrorMessage(response) {
+  const text = await response.text();
+  if (!text) {
+    return '';
+  }
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') {
+      return parsed.error || parsed.message || JSON.stringify(parsed);
+    }
+  } catch (error) {
+    // ignore JSON errors, fall back to text
+  }
+  return text;
+}
+
+function stopAutoRefresh() {
+  if (state.autoRefresh) {
+    window.clearInterval(state.autoRefresh);
+    state.autoRefresh = null;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  state.autoRefresh = window.setInterval(() => {
+    if (!state.authenticated) {
+      return;
+    }
+    loadStatus();
+    loadLogs();
+  }, 10000);
+}
+
+function setAuthenticated(authenticated, username = '') {
+  state.authenticated = authenticated;
+  state.username = authenticated ? username : '';
+
+  const dashboard = document.getElementById('dashboard');
+  const loginForm = document.getElementById('login-form');
+  const status = document.getElementById('session-status');
+  const usernameLabel = document.getElementById('session-username');
+
+  if (authenticated) {
+    dashboard.classList.remove('hidden');
+    loginForm.classList.add('hidden');
+    status.hidden = false;
+    usernameLabel.textContent = username || '';
+    startAutoRefresh();
+  } else {
+    dashboard.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    status.hidden = true;
+    usernameLabel.textContent = '';
+    stopAutoRefresh();
+  }
+}
+
+function handleUnauthorized() {
+  const wasAuthenticated = state.authenticated;
+  stopAutoRefresh();
+  setAuthenticated(false);
+  if (wasAuthenticated) {
+    showNotification('Session expirée. Veuillez vous reconnecter.', 'error');
+  }
+}
+
 async function fetchJson(path, options = {}) {
   const init = { ...options };
-  init.headers = applyToken(options.headers);
+  init.credentials = 'include';
+  init.headers = new Headers(options.headers || {});
+
   const response = await fetch(path, init);
+  if (response.status === 401 || response.status === 403) {
+    const message = await parseErrorMessage(response);
+    handleUnauthorized();
+    throw new Error(message || 'Authentification requise');
+  }
   if (!response.ok) {
-    const text = await response.text();
-    let message = text;
-    try {
-      const parsed = JSON.parse(text);
-      message = parsed.error || JSON.stringify(parsed);
-    } catch (error) {
-      // ignore JSON errors, fall back to text
-    }
+    const message = await parseErrorMessage(response);
     throw new Error(message || `Requête échouée (${response.status})`);
   }
   if (response.status === 204) {
@@ -114,7 +174,9 @@ async function loadStatus() {
     const data = await fetchJson('/status');
     renderJobs(Array.isArray(data) ? data : data?.jobs || []);
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -123,7 +185,9 @@ async function loadLogs() {
     const data = await fetchJson('/logs');
     renderLogs(data.logs || {});
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -132,7 +196,9 @@ async function loadConfig() {
     const data = await fetchJson('/config');
     document.getElementById('config-editor').value = data.content || '';
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -152,6 +218,9 @@ async function loadScheduler() {
     document.getElementById('save-scheduler').disabled = true;
     document.getElementById('reload-scheduler').disabled = true;
     hint.textContent = "Aucun scheduler configuré ou erreur lors du chargement.";
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -165,7 +234,9 @@ async function saveConfig() {
     });
     showNotification('Configuration sauvegardée.');
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -179,7 +250,9 @@ async function saveScheduler() {
     });
     showNotification('Scheduler sauvegardé.');
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -188,7 +261,9 @@ async function reloadConfig() {
     await fetchJson('/config/reload', { method: 'POST' });
     showNotification('Configuration rechargée.');
   } catch (error) {
-    showNotification(error.message, 'error');
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
   }
 }
 
@@ -197,33 +272,77 @@ async function reloadScheduler() {
     await fetchJson('/scheduler/reload', { method: 'POST' });
     showNotification('Scheduler rechargé.');
   } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+}
+
+async function refreshAll() {
+  if (!state.authenticated) {
+    return;
+  }
+  await loadStatus();
+  if (!state.authenticated) {
+    return;
+  }
+  await loadLogs();
+  if (!state.authenticated) {
+    return;
+  }
+  await loadConfig();
+  if (!state.authenticated) {
+    return;
+  }
+  await loadScheduler();
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const form = event.target;
+  const username = form.username.value.trim();
+  const password = form.password.value;
+  if (!username || !password) {
+    showNotification('Veuillez renseigner vos identifiants.', 'error');
+    return;
+  }
+  try {
+    const response = await fetchJson('/session', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ username, password }),
+    });
+    form.reset();
+    const resolvedUsername = response?.username || username;
+    setAuthenticated(true, resolvedUsername);
+    showNotification('Connexion réussie.');
+    await refreshAll();
+  } catch (error) {
     showNotification(error.message, 'error');
   }
 }
 
-function setupTokenHandling() {
-  const input = document.getElementById('control-token');
-  const clear = document.getElementById('clear-token');
-  const stored = window.localStorage.getItem('ml-control-token');
-  if (stored) {
-    state.token = stored;
-    input.value = stored;
-  }
-  input.addEventListener('input', (event) => {
-    const value = event.target.value.trim();
-    state.token = value;
-    if (value) {
-      window.localStorage.setItem('ml-control-token', value);
-    } else {
-      window.localStorage.removeItem('ml-control-token');
+async function logout() {
+  try {
+    await fetchJson('/session', { method: 'DELETE' });
+    showNotification('Déconnexion effectuée.');
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
     }
-  });
-  clear.addEventListener('click', () => {
-    state.token = '';
-    input.value = '';
-    window.localStorage.removeItem('ml-control-token');
-    showNotification('Jeton effacé.');
-  });
+  } finally {
+    setAuthenticated(false);
+  }
+}
+
+async function bootstrapSession() {
+  try {
+    await fetchJson('/status');
+    setAuthenticated(true, state.username);
+    await refreshAll();
+  } catch (error) {
+    // Auth required or other errors already handled.
+  }
 }
 
 function setupEventListeners() {
@@ -233,17 +352,11 @@ function setupEventListeners() {
   document.getElementById('save-scheduler').addEventListener('click', saveScheduler);
   document.getElementById('reload-config').addEventListener('click', reloadConfig);
   document.getElementById('reload-scheduler').addEventListener('click', reloadScheduler);
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('logout-button').addEventListener('click', logout);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  setupTokenHandling();
   setupEventListeners();
-  loadStatus();
-  loadLogs();
-  loadConfig();
-  loadScheduler();
-  state.autoRefresh = window.setInterval(() => {
-    loadStatus();
-    loadLogs();
-  }, 10000);
+  bootstrapSession();
 });

@@ -5,8 +5,13 @@ require 'securerandom'
 require 'time'
 require 'webrick'
 require 'concurrent-ruby'
+require 'bcrypt'
 require 'yaml'
 require 'fileutils'
+
+WEBrick::HTTPServlet::ProcHandler.class_eval do
+  alias do_DELETE do_GET unless method_defined?(:do_DELETE)
+end
 
 class Daemon
   include MediaLibrarian::AppContainerSupport
@@ -63,6 +68,7 @@ class Daemon
 
   CONTROL_CONTENT_TYPE = 'application/json'
   LOG_TAIL_BYTES = 4096
+  SESSION_COOKIE_NAME = 'ml_session'
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -466,12 +472,17 @@ class Daemon
     end
 
     def start_control_server
-      opts = app.api_option
-      @control_token = opts['control_token'] || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+      opts = app.api_option || {}
+      @api_token = resolve_api_token(opts)
+      @auth_config = normalize_auth_config(opts['auth'])
+      @session_store = Concurrent::Hash.new
+
+      port = opts['listen_port'] || 8888
+      address = opts['bind_address'] || '127.0.0.1'
 
       @control_server = WEBrick::HTTPServer.new(
-        Port: opts['listen_port'],
-        BindAddress: opts['bind_address'],
+        Port: port,
+        BindAddress: address,
         Logger: WEBrick::Log.new(File::NULL),
         AccessLog: []
       )
@@ -482,38 +493,56 @@ class Daemon
                                FancyIndexing: false, DirectoryIndex: ['index.html'])
       end
 
+      @control_server.mount_proc('/session') do |req, res|
+        handle_session_request(req, res)
+      end
+
       @control_server.mount_proc('/jobs') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_jobs_request(req, res)
       end
 
-      @control_server.mount_proc('/status') do |_req, res|
+      @control_server.mount_proc('/status') do |req, res|
+        next unless require_authorization(req, res)
+
         json_response(res, body: status_snapshot[:jobs].map(&:to_h))
       end
 
       @control_server.mount_proc('/stop') do |req, res|
-        next unless require_control_token(req, res)
+        next unless require_authorization(req, res)
 
         json_response(res, body: { 'status' => 'stopping' })
         Thread.new { stop }
       end
 
       @control_server.mount_proc('/logs') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_logs_request(req, res)
       end
 
       @control_server.mount_proc('/config') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_config_request(req, res)
       end
 
       @control_server.mount_proc('/scheduler') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_scheduler_request(req, res)
       end
 
       @control_server.mount_proc('/config/reload') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_config_reload_request(req, res)
       end
 
       @control_server.mount_proc('/scheduler/reload') do |req, res|
+        next unless require_authorization(req, res)
+
         handle_scheduler_reload_request(req, res)
       end
 
@@ -523,7 +552,6 @@ class Daemon
     def handle_jobs_request(req, res)
       case req.request_method
       when 'POST'
-        return unless require_control_token(req, res)
         return handle_job_not_found(res) unless req.path == '/jobs'
 
         payload = parse_payload(req)
@@ -608,7 +636,6 @@ class Daemon
         content = mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
         json_response(res, body: { 'content' => content })
       when 'PUT'
-        return unless require_control_token(req, res)
         begin
           payload = parse_payload(req)
         rescue JSON::ParserError => e
@@ -643,7 +670,6 @@ class Daemon
 
     def handle_config_reload_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
-      return unless require_control_token(req, res)
 
       process_reload_request(res) { reload }
     end
@@ -651,7 +677,6 @@ class Daemon
     def handle_scheduler_reload_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
       return error_response(res, status: 404, message: 'scheduler_not_configured') unless @scheduler_name
-      return unless require_control_token(req, res)
 
       process_reload_request(res) { reload_scheduler }
     end
@@ -705,12 +730,58 @@ class Daemon
       File.join(app.template_dir, "#{@scheduler_name}.yml")
     end
 
-    def control_token
-      @control_token
+    def authentication_configured?
+      auth_enabled? || !api_token.to_s.empty?
     end
 
-    def require_control_token(req, res)
-      return true unless control_token
+    def auth_enabled?
+      config = auth_config
+      username = config['username']
+      password_hash = config['password_hash']
+      username && !username.empty? && password_hash && !password_hash.empty?
+    end
+
+    def api_token
+      @api_token
+    end
+
+    def auth_config
+      @auth_config ||= {}
+    end
+
+    def session_store
+      @session_store ||= Concurrent::Hash.new
+    end
+
+    def require_authorization(req, res)
+      return true unless authentication_configured?
+
+      if authenticated_session?(req) || api_token_authorized?(req)
+        true
+      else
+        error_response(res, status: 403, message: 'forbidden')
+        false
+      end
+    end
+
+    def authenticated_session?(req)
+      session_id, session = session_from_request(req)
+      session_id && session
+    end
+
+    def session_from_request(req)
+      cookie = req.cookies.find { |c| c.name == SESSION_COOKIE_NAME }
+      return unless cookie && !cookie.value.to_s.empty?
+
+      session = session_store[cookie.value]
+      return unless session
+
+      [cookie.value, session]
+    end
+
+    def api_token_authorized?(req)
+      token = api_token
+      return false if token.to_s.empty?
 
       provided = req['X-Control-Token']
       provided = req.query['token'] if (!provided || provided.empty?) && req.respond_to?(:query)
@@ -723,10 +794,104 @@ class Daemon
         end
       end
 
-      return true if provided == control_token
+      provided == token
+    end
 
-      error_response(res, status: 403, message: 'forbidden')
-      false
+    def handle_session_request(req, res)
+      case req.request_method
+      when 'POST'
+        handle_session_create(req, res)
+      when 'DELETE'
+        handle_session_destroy(req, res)
+      else
+        method_not_allowed(res, 'POST, DELETE')
+      end
+    end
+
+    def handle_session_create(req, res)
+      unless auth_enabled?
+        return error_response(res, status: 503, message: 'auth_not_configured')
+      end
+
+      begin
+        payload = parse_payload(req)
+      rescue JSON::ParserError => e
+        return error_response(res, status: 422, message: e.message)
+      end
+
+      username = payload['username'].to_s
+      password = payload['password'].to_s
+      if username.empty? || password.empty?
+        return error_response(res, status: 422, message: 'missing_credentials')
+      end
+
+      unless username == auth_config['username']
+        return error_response(res, status: 401, message: 'invalid_credentials')
+      end
+
+      begin
+        digest = BCrypt::Password.new(auth_config['password_hash'])
+      rescue BCrypt::Errors::InvalidHash => e
+        return error_response(res, status: 500, message: e.message)
+      end
+
+      unless digest == password
+        return error_response(res, status: 401, message: 'invalid_credentials')
+      end
+
+      session_id = SecureRandom.hex(32)
+      session_store[session_id] = {
+        'username' => auth_config['username'],
+        'created_at' => Time.now
+      }
+
+      res.cookies << build_session_cookie(session_id)
+      json_response(res, status: 201, body: { 'username' => auth_config['username'] })
+    end
+
+    def handle_session_destroy(req, res)
+      session_id, = session_from_request(req)
+      unless session_id
+        return error_response(res, status: 403, message: 'forbidden')
+      end
+
+      session_store.delete(session_id)
+      res.cookies << expire_session_cookie
+      json_response(res, status: 204)
+    end
+
+    def build_session_cookie(value)
+      cookie = WEBrick::Cookie.new(SESSION_COOKIE_NAME, value.to_s)
+      cookie.path = '/'
+      cookie.secure = true
+      cookie.instance_variable_set(:@httponly, true)
+      cookie
+    end
+
+    def expire_session_cookie
+      cookie = build_session_cookie('')
+      cookie.expires = Time.at(0)
+      cookie
+    end
+
+    def normalize_auth_config(raw)
+      return {} unless raw.is_a?(Hash)
+
+      username = raw['username'] || raw[:username]
+      password_hash = raw['password_hash'] || raw[:password_hash]
+
+      result = {}
+      result['username'] = username.to_s unless username.nil? || username.to_s.empty?
+      result['password_hash'] = password_hash.to_s unless password_hash.nil? || password_hash.to_s.empty?
+      result
+    end
+
+    def resolve_api_token(opts)
+      return nil unless opts
+
+      opts['api_token'] || opts[:api_token] ||
+        opts['control_token'] || opts[:control_token] ||
+        ENV['MEDIA_LIBRARIAN_API_TOKEN'] || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
     end
 
     def log_paths

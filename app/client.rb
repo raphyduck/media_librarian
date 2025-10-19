@@ -9,7 +9,13 @@ class Client
 
   def initialize(control_token: nil)
     options = app.api_option
-    resolved_token = control_token || (options && options['control_token']) || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+    resolved_token = control_token || ENV['MEDIA_LIBRARIAN_API_TOKEN']
+    unless resolved_token
+      if options
+        resolved_token = options['api_token'] || options['control_token']
+      end
+      resolved_token ||= ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+    end
     @control_token = resolved_token unless resolved_token.to_s.empty?
   end
 
@@ -69,8 +75,6 @@ class Client
 
   def attach_control_token(request)
     return unless control_token
-    return unless %w[POST PUT PATCH DELETE].include?(request.method)
-
     request['X-Control-Token'] = control_token
   end
 end
