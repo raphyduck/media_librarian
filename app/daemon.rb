@@ -136,7 +136,6 @@ class Daemon < EventMachine::Connection
 
   def self.kill_job(w)
     queue_name = w[:queue_name]
-    @queues[queue_name][:clearing] = 1 if queue_name && @queues[queue_name]
     waiter = 0
     while w[:jid].to_i > 0 && get_children_count(w[:jid]).to_i > 0 && waiter < 10
       $speaker.speak_up "Waiting for child jobs to clear up..."
