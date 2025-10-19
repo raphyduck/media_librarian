@@ -247,16 +247,18 @@ class Librarian
   end
 end
 
-container = MediaLibrarian::Boot.container
-librarian = Librarian.new(container: container)
-arguments = librarian.args.dup
-first_time = true
+if $PROGRAM_NAME == __FILE__
+  container = MediaLibrarian::Boot.container
+  librarian = Librarian.new(container: container)
+  arguments = librarian.args.dup
+  first_time = true
 
-while ((librarian.reload && !Daemon.is_daemon?) || first_time)
-  first_time = false
-  librarian.args = arguments.dup
-  librarian.reload = false
-  librarian.run!
+  while ((librarian.reload && !Daemon.is_daemon?) || first_time)
+    first_time = false
+    librarian.args = arguments.dup
+    librarian.reload = false
+    librarian.run!
+  end
+
+  librarian.leave
 end
-
-librarian.leave
