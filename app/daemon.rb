@@ -5,6 +5,8 @@ require 'securerandom'
 require 'time'
 require 'webrick'
 require 'concurrent-ruby'
+require 'yaml'
+require 'fileutils'
 
 class Daemon
   include MediaLibrarian::AppContainerSupport
@@ -60,6 +62,7 @@ class Daemon
   end
 
   CONTROL_CONTENT_TYPE = 'application/json'
+  LOG_TAIL_BYTES = 4096
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -424,6 +427,28 @@ class Daemon
       @scheduler.execute
     end
 
+    def reload_scheduler
+      return false unless ensure_daemon
+
+      scheduler_name = @scheduler_name
+      return false unless scheduler_name
+
+      if @scheduler
+        @scheduler.shutdown
+        @scheduler.wait_for_termination
+      end
+
+      @template_cache = nil
+      @queue_limits = Concurrent::Hash.new
+      @last_execution = {}
+      @scheduler = nil
+      start_scheduler(scheduler_name)
+      true
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      false
+    end
+
     def start_quit_timer
       @quit_timer = Concurrent::TimerTask.new(execution_interval: 1) { quit }
       @quit_timer.execute
@@ -454,14 +479,32 @@ class Daemon
       end
 
       @control_server.mount_proc('/status') do |_req, res|
-        res['Content-Type'] = CONTROL_CONTENT_TYPE
-        res.body = JSON.dump(status_snapshot[:jobs].map(&:to_h))
+        json_response(res, body: status_snapshot[:jobs].map(&:to_h))
       end
 
       @control_server.mount_proc('/stop') do |_req, res|
-        res['Content-Type'] = CONTROL_CONTENT_TYPE
-        res.body = JSON.dump('status' => 'stopping')
+        json_response(res, body: { 'status' => 'stopping' })
         Thread.new { stop }
+      end
+
+      @control_server.mount_proc('/logs') do |req, res|
+        handle_logs_request(req, res)
+      end
+
+      @control_server.mount_proc('/config') do |req, res|
+        handle_config_request(req, res)
+      end
+
+      @control_server.mount_proc('/scheduler') do |req, res|
+        handle_scheduler_request(req, res)
+      end
+
+      @control_server.mount_proc('/config/reload') do |req, res|
+        handle_config_reload_request(req, res)
+      end
+
+      @control_server.mount_proc('/scheduler/reload') do |req, res|
+        handle_scheduler_reload_request(req, res)
       end
 
       @control_thread = Thread.new { @control_server.start }
@@ -494,42 +537,185 @@ class Daemon
           job.future.value!
         end
 
-        res['Content-Type'] = CONTROL_CONTENT_TYPE
-        res.body = JSON.dump('job' => job&.to_h)
+        json_response(res, body: { 'job' => job&.to_h })
       when 'GET'
         return handle_job_not_found(res) unless req.path.start_with?('/jobs/')
 
         handle_job_lookup(req, res)
       else
-        handle_job_not_found(res)
+        method_not_allowed(res, 'GET, POST')
       end
     rescue StandardError => e
-      res.status = 422
-      res['Content-Type'] = CONTROL_CONTENT_TYPE
-      res.body = JSON.dump('error' => e.message)
+      error_response(res, status: 422, message: e.message)
     end
 
     def handle_job_lookup(req, res)
       jid = req.path.sub('/jobs/', '')
       job = job_registry[jid]
       if job
-        res['Content-Type'] = CONTROL_CONTENT_TYPE
-        res.body = JSON.dump(job.to_h)
+        json_response(res, body: job.to_h)
       else
         handle_job_not_found(res)
       end
     end
 
     def handle_job_not_found(res)
-      res.status = 404
-      res['Content-Type'] = CONTROL_CONTENT_TYPE
-      res.body = JSON.dump('error' => 'not_found')
+      error_response(res, status: 404, message: 'not_found')
     end
 
     def parse_payload(req)
       return {} if req.body.nil? || req.body.empty?
 
       JSON.parse(req.body)
+    end
+
+    def handle_logs_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      logs = {}
+      log_paths.each do |name, path|
+        logs[name] = tail_file(path)
+      end
+
+      json_response(res, body: { 'logs' => logs })
+    end
+
+    def handle_config_request(req, res)
+      handle_file_request(req, res, app.config_file, config_mutex, 'GET, PUT')
+    end
+
+    def handle_scheduler_request(req, res)
+      path = scheduler_template_path
+      return error_response(res, status: 404, message: 'scheduler_not_configured') unless path
+
+      handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
+    end
+
+    def handle_file_request(req, res, path, mutex, allowed_methods)
+      case req.request_method
+      when 'GET'
+        content = mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
+        json_response(res, body: { 'content' => content })
+      when 'PUT'
+        begin
+          payload = parse_payload(req)
+        rescue JSON::ParserError => e
+          return error_response(res, status: 422, message: e.message)
+        end
+
+        unless payload.key?('content')
+          return error_response(res, status: 422, message: 'missing_content')
+        end
+
+        content = payload['content']
+        unless content.is_a?(String)
+          return error_response(res, status: 422, message: 'invalid_content')
+        end
+
+        begin
+          validate_yaml(content)
+        rescue Psych::SyntaxError => e
+          return error_response(res, status: 422, message: e.message)
+        end
+
+        mutex.synchronize do
+          FileUtils.mkdir_p(File.dirname(path))
+          File.write(path, content)
+        end
+
+        json_response(res, status: 204)
+      else
+        method_not_allowed(res, allowed_methods)
+      end
+    end
+
+    def handle_config_reload_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      process_reload_request(res) { reload }
+    end
+
+    def handle_scheduler_reload_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+      return error_response(res, status: 404, message: 'scheduler_not_configured') unless @scheduler_name
+
+      process_reload_request(res) { reload_scheduler }
+    end
+
+    def process_reload_request(res)
+      unless running?
+        return error_response(res, status: 503, message: 'not_running')
+      end
+
+      outcome = yield
+      if outcome
+        json_response(res, status: 204)
+      else
+        error_response(res, status: 500, message: 'reload_failed')
+      end
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def json_response(res, body: nil, status: 200)
+      res.status = status
+      if body.nil? || status == 204
+        res['Content-Type'] = nil
+        res.body = ''
+      else
+        res['Content-Type'] = CONTROL_CONTENT_TYPE
+        res.body = JSON.dump(body)
+      end
+    end
+
+    def error_response(res, status:, message:)
+      json_response(res, body: { 'error' => message }, status: status)
+    end
+
+    def method_not_allowed(res, allow)
+      res['Allow'] = allow
+      error_response(res, status: 405, message: 'method_not_allowed')
+    end
+
+    def config_mutex
+      @config_mutex ||= Mutex.new
+    end
+
+    def scheduler_mutex
+      @scheduler_mutex ||= Mutex.new
+    end
+
+    def scheduler_template_path
+      return unless @scheduler_name
+
+      File.join(app.template_dir, "#{@scheduler_name}.yml")
+    end
+
+    def log_paths
+      log_dir = File.join(app.config_dir, 'log')
+      {
+        'medialibrarian.log' => File.join(log_dir, 'medialibrarian.log'),
+        'medialibrarian_errors.log' => File.join(log_dir, 'medialibrarian_errors.log')
+      }
+    end
+
+    def tail_file(path)
+      return nil unless File.exist?(path)
+
+      File.open(path, 'r') do |file|
+        size = file.size
+        if size > LOG_TAIL_BYTES
+          file.seek(-LOG_TAIL_BYTES, IO::SEEK_END)
+          file.gets
+        else
+          file.seek(0, IO::SEEK_SET)
+        end
+        file.read
+      end
+    end
+
+    def validate_yaml(content)
+      YAML.safe_load(content, aliases: true)
     end
 
     def queue_busy?(queue)
