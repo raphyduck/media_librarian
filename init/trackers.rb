@@ -1,2 +1,4 @@
-app = MediaLibrarian.app
-app.trackers
+require_relative '../boot/librarian'
+
+MediaLibrarian::Boot.container.trackers
+

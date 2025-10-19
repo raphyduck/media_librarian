@@ -1,5 +1,7 @@
 # Configure email alerts
-app = MediaLibrarian.app
+require_relative '../boot/librarian'
+
+app = MediaLibrarian::Boot.application
 app.email_templates = File.expand_path('../app/mailer_templates', __dir__)
 FileUtils.mkdir_p(app.email_templates) unless File.exist?(app.email_templates)
 app.email = app.config['email']

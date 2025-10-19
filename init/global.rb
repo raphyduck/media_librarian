@@ -1,6 +1,7 @@
+require_relative '../boot/librarian'
 require_relative 'languages_translation'
 
-app = MediaLibrarian.app
+app = MediaLibrarian::Boot.application
 app.str_closeness
 app.tracker_client
 app.tracker_client_last_login

@@ -1,4 +1,6 @@
-app = MediaLibrarian.app
+require_relative '../boot/librarian'
+
+app = MediaLibrarian::Boot.application
 goodreads = app.config['goodreads']
 
 if goodreads && goodreads['api_key'] && goodreads['api_secret']

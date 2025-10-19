@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative 'lib/media_librarian/application'
+require_relative 'boot/librarian'
 require_relative 'lib/media_librarian/command_registry'
 require_relative 'lib/media_librarian/app_container_support'
 
@@ -8,7 +8,7 @@ class Librarian
   include MediaLibrarian::AppContainerSupport
 
   attr_accessor :args, :quit, :reload
-  attr_reader :command_registry, :app
+  attr_reader :command_registry, :app, :container
 
   class << self
     attr_accessor :debug_classes
@@ -22,7 +22,9 @@ class Librarian
 
   self.debug_classes = []
 
-  def initialize(app:, args: ARGV)
+  def initialize(container:, args: ARGV)
+    @container = container
+    app = container.application
     self.class.configure(app: app)
     @app = app
     @args = args
@@ -245,7 +247,8 @@ class Librarian
   end
 end
 
-librarian = Librarian.new(app: MediaLibrarian.app)
+container = MediaLibrarian::Boot.container
+librarian = Librarian.new(container: container)
 arguments = librarian.args.dup
 first_time = true
 
