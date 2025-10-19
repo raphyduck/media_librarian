@@ -1,17 +1,18 @@
 class Library
+  include MediaLibrarian::AppContainerSupport
 
   @refusal = 0
 
   def self.break_processing(no_prompt = 0, threshold = 3)
     if @refusal > threshold
       @refusal = 0
-      return MediaLibrarian.app.speaker.ask_if_needed("Do you want to stop processing the list now? (y/n)", no_prompt, 'n') == 'y'
+      return app.speaker.ask_if_needed("Do you want to stop processing the list now? (y/n)", no_prompt, 'n') == 'y'
     end
     false
   end
 
   def self.skip_loop_item(question, no_prompt = 0)
-    if MediaLibrarian.app.speaker.ask_if_needed(question, no_prompt) != 'y'
+    if app.speaker.ask_if_needed(question, no_prompt) != 'y'
       @refusal += 1
       return 1
     else
@@ -23,21 +24,21 @@ class Library
   def self.convert_media(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '', qualities: nil)
     name, results = '', []
     type = EXTENSIONS_TYPE.select { |_, v| v.include?(input_format) }.first[0]
-    return MediaLibrarian.app.speaker.speak_up("Unknown input format") unless type != ''
+    return app.speaker.speak_up("Unknown input format") unless type != ''
     unless VALID_CONVERSION_INPUTS[type] && VALID_CONVERSION_INPUTS[type].include?(input_format)
-      return MediaLibrarian.app.speaker.speak_up("Invalid input format, needs to be one of #{VALID_CONVERSION_INPUTS[type]}")
+      return app.speaker.speak_up("Invalid input format, needs to be one of #{VALID_CONVERSION_INPUTS[type]}")
     end
     unless VALID_CONVERSION_OUTPUT[type] && VALID_CONVERSION_OUTPUT[type].include?(output_format)
-      return MediaLibrarian.app.speaker.speak_up("Invalid output format, needs to be one of #{VALID_CONVERSION_OUTPUT[type]}")
+      return app.speaker.speak_up("Invalid output format, needs to be one of #{VALID_CONVERSION_OUTPUT[type]}")
     end
-    return if no_warning.to_i == 0 && input_format == 'pdf' && MediaLibrarian.app.speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
-    return MediaLibrarian.app.speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
+    return if no_warning.to_i == 0 && input_format == 'pdf' && app.speaker.ask_if_needed("WARNING: The images extractor is incomplete, can result in corrupted or incomplete CBZ file. Do you want to continue? (y/n)") != 'y'
+    return app.speaker.speak_up("#{path.to_s} does not exist!") unless File.exist?(path)
     if FileTest.directory?(path)
       FileUtils.search_folder(path, { 'regex' => ".*#{search_pattern.to_s + '.*' if search_pattern.to_s != ''}\.#{input_format}" }).each do |f|
         results += convert_media(path: f[0], input_format: input_format, output_format: output_format, no_warning: 1, rename_original: rename_original, move_destination: move_destination)
       end
     elsif search_pattern.to_s != ''
-      MediaLibrarian.app.speaker.speak_up "Can not use search_pattern if path is not a directory"
+      app.speaker.speak_up "Can not use search_pattern if path is not a directory"
     else
       input_format = FileUtils.get_extension(path)
       Dir.chdir(File.dirname(path)) do
@@ -52,7 +53,7 @@ class Library
             return results
           end
         end
-        MediaLibrarian.app.speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
+        app.speaker.speak_up("Will convert #{name} to #{output_format.to_s.upcase} format #{dest_file}")
         FileUtils.mkdir(File.dirname(name)) unless File.directory?(File.dirname(name))
         skipping = case type
                    when :books
@@ -65,19 +66,19 @@ class Library
         return results if skipping.to_i > 0
         FileUtils.mv(File.basename(path), "_#{File.basename(path)}_") if rename_original.to_i > 0
         FileUtils.mv(dest_file, final_file) if final_file != dest_file
-        MediaLibrarian.app.speaker.speak_up("#{name} converted!")
+        app.speaker.speak_up("#{name} converted!")
         results << final_file
       end
     end
     results
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     name.to_s != '' && Dir.exist?(File.dirname(path) + '/' + name) && FileUtils.rm_r(File.dirname(path) + '/' + name)
     raise e
   end
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
-    MediaLibrarian.app.speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
+    app.speaker.speak_up("Starting cleaning remote files on #{remote_user}@#{remote_server}:#{path} using criteria #{filter_criteria}, no_prompt=#{no_prompt}")
     ssh_opts = Utils.recursive_typify_keys(ssh_opts)
     ssh_opts = {} if ssh_opts.nil?
     tries = 10
@@ -85,7 +86,7 @@ class Library
     list.each do |f|
       begin
         f_path = f[0]
-        MediaLibrarian.app.speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
+        app.speaker.speak_up("Comparing #{f_path} on local and remote #{remote_server}")
         local_md5sum = FileUtils.md5sum(f_path)
         remote_md5sum = ''
         Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
@@ -96,30 +97,30 @@ class Library
           remote_md5sum = remote_md5sum.first
           remote_md5sum = remote_md5sum ? remote_md5sum.gsub(/(\w*)( .*\n)/, '\1') : ''
         end
-        MediaLibrarian.app.speaker.speak_up("Local md5sum is #{local_md5sum}")
-        MediaLibrarian.app.speaker.speak_up("Remote md5sum is #{remote_md5sum}")
+        app.speaker.speak_up("Local md5sum is #{local_md5sum}")
+        app.speaker.speak_up("Remote md5sum is #{remote_md5sum}")
         if local_md5sum != remote_md5sum || local_md5sum == '' || remote_md5sum == ''
-          MediaLibrarian.app.speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
-          if local_md5sum != '' && remote_md5sum != '' && MediaLibrarian.app.speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
+          app.speaker.speak_up("Mismatch between the 2 files, the remote file might not exist or the local file is incorrectly downloaded")
+          if local_md5sum != '' && remote_md5sum != '' && app.speaker.ask_if_needed("Delete the local file? (y/n)", no_prompt, 'n') == 'y'
             FileUtils.rm_r(f_path)
           end
         else
-          MediaLibrarian.app.speaker.speak_up("The 2 files are identical!")
-          if MediaLibrarian.app.speaker.ask_if_needed("Delete the remote file? (y/n)", no_prompt, 'y') == 'y'
+          app.speaker.speak_up("The 2 files are identical!")
+          if app.speaker.ask_if_needed("Delete the remote file? (y/n)", no_prompt, 'y') == 'y'
             Net::SSH.start(remote_server, remote_user, ssh_opts) do |ssh|
               ssh.exec!("rm \"#{f_path}\"")
             end
           end
         end
       rescue => e
-        MediaLibrarian.app.speaker.tell_error(e, "Library.compare_remote_files - file #{f[0]}")
+        app.speaker.tell_error(e, "Library.compare_remote_files - file #{f[0]}")
         retry if (tries -= 1) > 0
       end
     end
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {}, no_prompt: 0)
-    MediaLibrarian.app.speaker.speak_up("Fetching items from #{origin}...", 0)
+    app.speaker.speak_up("Fetching items from #{origin}...", 0)
     new_list = {
       'movies' => TraktAgent.list(origin, 'movies'),
       'shows' => TraktAgent.list(origin, 'shows')
@@ -127,30 +128,30 @@ class Library
     dest_list = TraktAgent.list('lists').select { |l| l['name'] == name }.first
     to_delete = {}
     if dest_list
-      MediaLibrarian.app.speaker.speak_up("List #{name} exists", 0)
+      app.speaker.speak_up("List #{name} exists", 0)
       to_delete = TraktAgent.parse_custom_list(TraktAgent.list(name))
     else
-      MediaLibrarian.app.speaker.speak_up("List #{name} doesn't exist, creating it...")
+      app.speaker.speak_up("List #{name} doesn't exist, creating it...")
       TraktAgent.create_list(name, description)
     end
-    MediaLibrarian.app.speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.", 0)
+    app.speaker.speak_up("Ok, we have added #{(new_list['movies'].length + new_list['shows'].length)} items from #{origin}, let's chose what to include in the new list #{name}.", 0)
     ['movies', 'shows'].each do |type|
       t_criteria = criteria[type] || {}
-      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || MediaLibrarian.app.speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", no_prompt, 'y') != 'y'
+      if (t_criteria['noadd'] && t_criteria['noadd'].to_i > 0) || app.speaker.ask_if_needed("Do you want to add #{type} items? (y/n)", no_prompt, 'y') != 'y'
         new_list.delete(type)
         new_list[type] = to_delete[type] if t_criteria['add_only'].to_i > 0 && to_delete && to_delete[type]
         next
       end
-      folder = MediaLibrarian.app.speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
+      folder = app.speaker.ask_if_needed("What is the path of your folder where #{type} are stored? (in full)", t_criteria['folder'].nil? ? 0 : 1, t_criteria['folder'])
       ['released_before', 'released_after', 'days_older', 'days_newer', 'entirely_watched', 'partially_watched',
        'ended', 'not_ended', 'watched', 'canceled'].each do |cr|
-        if MediaLibrarian.app.speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", no_prompt, t_criteria[cr]).to_s != ''
+        if app.speaker.ask_if_needed("Enter the value to keep only #{type} #{cr.gsub('_', ' ')}: (empty to not use this filter)", no_prompt, t_criteria[cr]).to_s != ''
           new_list[type] = TraktAgent.filter_trakt_list(new_list[type], type, cr, t_criteria['include'], t_criteria['add_only'], to_delete[type], t_criteria[cr], folder)
         end
       end
-      if t_criteria['review'] || MediaLibrarian.app.speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)", no_prompt, 'n') == 'y'
+      if t_criteria['review'] || app.speaker.ask_if_needed("Do you want to review #{type} individually? (y/n)", no_prompt, 'n') == 'y'
         review_cr = t_criteria['review'] || {}
-        MediaLibrarian.app.speaker.speak_up('Preparing list of files to review...', 0)
+        app.speaker.speak_up('Preparing list of files to review...', 0)
         new_list[type].reverse_each do |item|
           title = item[type[0...-1]]['title']
           year = item[type[0...-1]]['year']
@@ -158,19 +159,19 @@ class Library
           folders = FileUtils.search_folder(folder, { 'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'shows' ? 1 : nil), 'includedir' => 1, 'return_first' => 1 })
           file = folders.first
           size = file ? FileUtils.get_disk_size(file[0]) : -1
-          if size.to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || MediaLibrarian.app.speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", no_prompt, 'n') == 'y')
-            MediaLibrarian.app.speaker.speak_up "No folder found for '#{title}', removing from list" if Env.debug?
+          if size.to_d < 0 && (review_cr['remove_deleted'].to_i > 0 || app.speaker.ask_if_needed("No folder found for #{title}, do you want to delete the item from the list? (y/n)", no_prompt, 'n') == 'y')
+            app.speaker.speak_up "No folder found for '#{title}', removing from list" if Env.debug?
             new_list[type].delete(item)
             next
           end
-          if (t_criteria['add_only'].to_i == 0 || !TraktAgent.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && MediaLibrarian.app.speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(size.to_d / 1024 / 1024 / 1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
-            MediaLibrarian.app.speaker.speak_up "Removing '#{title}' from list" if Env.debug?
+          if (t_criteria['add_only'].to_i == 0 || !TraktAgent.search_list(type[0...-1], item, to_delete[type])) && (t_criteria['include'].nil? || !t_criteria['include'].include?(title)) && app.speaker.ask_if_needed("Do you want to add #{type} '#{title}' (disk size #{[(size.to_d / 1024 / 1024 / 1024).round(2), 0].max} GB) to the list (y/n)", review_cr['add_all'].to_i, 'y') != 'y'
+            app.speaker.speak_up "Removing '#{title}' from list" if Env.debug?
             new_list[type].delete(item)
             next
           end
           if type == 'shows' && (review_cr['add_all'].to_i == 0 || review_cr['no_season'].to_i > 0) && ((review_cr['add_all'].to_i == 0 &&
-            review_cr['no_season'].to_i > 0) || MediaLibrarian.app.speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", no_prompt, 'n') != 'y')
-            choice = MediaLibrarian.app.speaker.ask_if_needed("Which seasons do you want to keep? (separated by comma, like this: '1,2,3', empty for none", no_prompt, '').split(',')
+            review_cr['no_season'].to_i > 0) || app.speaker.ask_if_needed("Do you want to keep all seasons of #{title}? (y/n)", no_prompt, 'n') != 'y')
+            choice = app.speaker.ask_if_needed("Which seasons do you want to keep? (separated by comma, like this: '1,2,3', empty for none", no_prompt, '').split(',')
             if choice.empty?
               item['seasons'] = nil
             else
@@ -184,11 +185,11 @@ class Library
         i[type[0...-1]]['seasons'] = i['seasons'].map { |s| s.select { |k, _| k != 'episodes' } } if i['seasons']
         i[type[0...-1]]
       end
-      MediaLibrarian.app.speaker.speak_up('Updating items in the list...', 0)
+      app.speaker.speak_up('Updating items in the list...', 0)
       TraktAgent.remove_from_list(to_delete[type], name, type) unless to_delete.nil? || to_delete.empty? || to_delete[type].nil? || to_delete[type].empty? || t_criteria['add_only'].to_i > 0
       TraktAgent.add_to_list(new_list[type], name, type)
     end
-    MediaLibrarian.app.speaker.speak_up("List #{name} is up to date!", 0)
+    app.speaker.speak_up("List #{name} is up to date!", 0)
   end
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
@@ -203,7 +204,7 @@ class Library
           fetcher = Librarian.burst_thread { fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder, bandwith_limit, ssh_opts, active_hours, exclude_folders_in_check) }
           while fetcher.alive?
             if !Utils.check_if_active(active_hours) || low_b > 60
-              MediaLibrarian.app.speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
+              app.speaker.speak_up('Bandwidth too low, restarting the synchronisation') if low_b > 24
               `pgrep -f '#{remote_user}@#{remote_server}:#{remote_folder}' | xargs kill -15`
               low_b = 0
             end
@@ -222,7 +223,7 @@ class Library
           sleep 3600 unless exit_status.nil?
         end
       rescue => e
-        MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+        app.speaker.tell_error(e, Utils.arguments_dump(binding))
         sleep 180
       end
     end
@@ -231,31 +232,31 @@ class Library
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
     remote_box = "#{remote_user}@#{remote_server}:#{remote_folder}"
     rsynced_clean = false
-    MediaLibrarian.app.speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}", 0)
-    return MediaLibrarian.app.speaker.speak_up("Would run synchonisation") if Env.pretend?
+    app.speaker.speak_up("Starting media synchronisation with #{remote_box} - #{Time.now.utc}", 0)
+    return app.speaker.speak_up("Would run synchonisation") if Env.pretend?
     base_opts = ['--verbose', '--recursive', '--acls', '--times', '--remove-source-files', '--human-readable', "--bwlimit=#{bandwith_limit}"]
     opts = base_opts + ["--partial-dir=#{local_folder}/.rsync-partial"]
-    MediaLibrarian.app.speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}") if Env.debug?
+    app.speaker.speak_up("Running the command: rsync #{opts.join(' ')} #{remote_box}/ #{local_folder}") if Env.debug?
     Rsync.run("#{remote_box}/", "#{local_folder}", opts, ssh_opts['port'] || 22, ssh_opts['keys']) do |result|
       result.changes.each do |change|
-        MediaLibrarian.app.speaker.speak_up "#{change.filename} (#{change.summary})"
+        app.speaker.speak_up "#{change.filename} (#{change.summary})"
       end
       if result.success?
         rsynced_clean = true
       else
-        MediaLibrarian.app.speaker.speak_up result.error
+        app.speaker.speak_up result.error
       end
     end
     if rsynced_clean && clean_remote_folder && clean_remote_folder.is_a?(Array)
       clean_remote_folder.each do |c|
-        MediaLibrarian.app.speaker.speak_up("Cleaning folder #{c} on #{remote_server}", 0) if Env.debug?
+        app.speaker.speak_up("Cleaning folder #{c} on #{remote_server}", 0) if Env.debug?
         Net::SSH.start(remote_server, remote_user, Utils.recursive_typify_keys(ssh_opts)) do |ssh|
           ssh.exec!('find ' + c.to_s + ' -type d -empty -exec rmdir "{}" \;')
         end
       end
     end
     compare_remote_files(path: local_folder, remote_server: remote_server, remote_user: remote_user, filter_criteria: { 'days_newer' => 10, 'exclude_path' => exclude_folders }, ssh_opts: ssh_opts, no_prompt: 1) unless rsynced_clean || Utils.check_if_active(active_hours)
-    MediaLibrarian.app.speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}", 0)
+    app.speaker.speak_up("Finished media box synchronisation - #{Time.now.utc}", 0)
     raise "Rsync failure" unless rsynced_clean
   end
 
@@ -274,7 +275,7 @@ class Library
 
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
     if list.nil? || list.empty?
-      list_name = MediaLibrarian.app.speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
+      list_name = app.speaker.ask_if_needed('Please enter the name of the trakt list you want to know the total disk size of (of medias on your set folder): ')
       list = TraktAgent.list(list_name, '')
     end
     parsed_media = {}
@@ -287,7 +288,7 @@ class Library
       l_type = type[-1] == 's' ? type : "#{type}s"
       next if type_filter && type_filter != '' && type_filter != l_type
       parsed_media[l_type] = {} unless parsed_media[l_type]
-      folder[l_type] = MediaLibrarian.app.speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].to_s == ''
+      folder[l_type] = app.speaker.ask_if_needed("Enter the path of the folder where your #{type}s media are stored: ") if folder[l_type].to_s == ''
       title = "#{item[type]['title']}#{' (' + item[type]['year'].to_s + ')' if l_type == 'movies' && item[type]['year'].to_i > 0}"
       next if parsed_media[l_type][title] && r_type != 'season'
       folders = FileUtils.search_folder(folder[l_type], { 'regex' => StringUtils.title_match_string(title), 'maxdepth' => (type == 'show' ? 1 : nil), 'includedir' => 1, 'return_first' => 1 })
@@ -305,14 +306,14 @@ class Library
           list_paths << file[0]
         end
       else
-        MediaLibrarian.app.speaker.speak_up("#{title} NOT FOUND in #{folder[l_type]}")
+        app.speaker.speak_up("#{title} NOT FOUND in #{folder[l_type]}")
       end
       parsed_media[l_type][title] = item[type]
     end
-    MediaLibrarian.app.speaker.speak_up("The total disk size of this list is #{(list_size / 1024 / 1024 / 1024).round(2)} GB")
+    app.speaker.speak_up("The total disk size of this list is #{(list_size / 1024 / 1024 / 1024).round(2)} GB")
     return list_size, list_paths
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     return 0, []
   end
 
@@ -321,7 +322,7 @@ class Library
     # 'source' peut être nil ou invalide. On renvoie toujours un couple cohérent
     # (existing_files, search_list) pour éviter les plantages en aval.
     unless source.is_a?(Hash) && source['existing_folder'] && source['existing_folder'][category]
-      MediaLibrarian.app.speaker.speak_up("get_search_list: empty/invalid source for category=#{category}, returning empty", 0) if defined?(MediaLibrarian.app.speaker)
+      app.speaker.speak_up("get_search_list: empty/invalid source for category=#{category}, returning empty", 0) if defined?(app.speaker)
       return { category => {} }, {}
     end
     return {} unless source['existing_folder'] && source['existing_folder'][category]
@@ -332,7 +333,7 @@ class Library
         search_list[cache_name] = process_folder(type: category, folder: source['existing_folder'][category], no_prompt: no_prompt, filter_criteria: source['filter_criteria'], item_name: source['item_name'])
         existing_files[category] = search_list[cache_name].dup
       when 'trakt'
-        MediaLibrarian.app.speaker.speak_up("Parsing trakt list '#{source['list_name']}', can take a long time...", 0)
+        app.speaker.speak_up("Parsing trakt list '#{source['list_name']}', can take a long time...", 0)
         TraktAgent.list(source['list_name']).each do |item|
           type = item['type'] rescue next
           f = item[type]
@@ -351,7 +352,7 @@ class Library
           )
         end
       when 'lists'
-        MediaLibrarian.app.speaker.speak_up("Parsing search list '#{source['list_name']}', can take a long time...", 0)
+        app.speaker.speak_up("Parsing search list '#{source['list_name']}', can take a long time...", 0)
         list_name = (source['list_name'] || 'default').to_s
         entries = ListStore.fetch_list(list_name)
         entries.each do |row|
@@ -377,31 +378,31 @@ class Library
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {}, exclude_path: ['extfls'])
-    return MediaLibrarian.app.speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
+    return app.speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
     completion_time = Time.now
     if root_process.to_i > 0
       opath = torrent_path.dup
       if move_completed_torrent['torrent_completed_path'].to_s != '' && torrent_id.to_s != ''
-        t = MediaLibrarian.app.db.get_rows('torrents', { :torrent_id => torrent_id }).first
+        t = app.db.get_rows('torrents', { :torrent_id => torrent_id }).first
         if t.nil? || t[:status].to_i < 5
           if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exist?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
             FileUtils.mkdir_p(torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
             FileUtils.mv(torrent_path + '/' + torrent_name, torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
           end
           opath = torrent_path.gsub!(completed_folder, move_completed_torrent['torrent_completed_path'].to_s + '/').to_s
-          MediaLibrarian.app.t_client.move_storage([torrent_id], opath) rescue nil
-          MediaLibrarian.app.speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
-          while FileUtils.is_in_path([MediaLibrarian.app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s], StringUtils.accents_clear(opath)).nil?
+          app.t_client.move_storage([torrent_id], opath) rescue nil
+          app.speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
+          while FileUtils.is_in_path([app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s], StringUtils.accents_clear(opath)).nil?
             break if Time.now - completion_time > 3600
             sleep 60
           end
-          MediaLibrarian.app.speaker.speak_up "Torrent storage moved to #{move_completed_torrent['torrent_completed_path']}" if Env.debug?
+          app.speaker.speak_up "Torrent storage moved to #{move_completed_torrent['torrent_completed_path']}" if Env.debug?
           completed_folder = move_completed_torrent['torrent_completed_path'].to_s
         end
       end
       if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
-        FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, MediaLibrarian.app.temp_dir + '/') + '/' + torrent_name)
-        completed_folder = MediaLibrarian.app.temp_dir
+        FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, app.temp_dir + '/') + '/' + torrent_name)
+        completed_folder = app.temp_dir
       end
       opath += +'/' + torrent_name
     end
@@ -435,7 +436,7 @@ class Library
         process_folder_list += hcd[1]
       end
     elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
-      MediaLibrarian.app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
+      app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
       otype = full_p.gsub(Regexp.new("^#{completed_folder}\/?([a-zA-Z1-9 _-]*)\/.*"), '\1')
       type = otype.downcase
@@ -465,16 +466,16 @@ class Library
         Thread.current[:block] << Proc.new { FileUtils.rm_r(torrent_path + '/extfls') }
       elsif handling['file_types']
         if force_process.to_i == 0 && !handled_files.include?(extension)
-          MediaLibrarian.app.speaker.speak_up "Unsupported extension '#{extension}'"
+          app.speaker.speak_up "Unsupported extension '#{extension}'"
           return handled, process_folder_list, error
         end
         args = handling['file_types'].select { |x| x.is_a?(Hash) && x[extension] }.first
         if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
-          MediaLibrarian.app.speaker.speak_up 'File is a sample, skipping...'
+          app.speaker.speak_up 'File is a sample, skipping...'
           return handled, process_folder_list, error
         end
         if File.stat(full_p).nlink > 2
-          MediaLibrarian.app.speaker.speak_up 'File is already hard linked, skipping...'
+          app.speaker.speak_up 'File is already hard linked, skipping...'
           return handled, process_folder_list, error
         end
         if args && args[extension] && args[extension]['convert_to'].to_s != ''
@@ -531,7 +532,7 @@ class Library
           handled = 1
         end
       elsif Env.debug?
-        MediaLibrarian.app.speaker.speak_up 'File type not handled, skipping...'
+        app.speaker.speak_up 'File type not handled, skipping...'
       end
     end
     if root_process.to_i > 0
@@ -542,15 +543,15 @@ class Library
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
       end
       if torrent_id.to_s != ""
-        active_time = (MediaLibrarian.app.t_client.get_torrent_status(torrent_id, ['name', 'active_time']) rescue {})['active_time'].to_i
+        active_time = (app.t_client.get_torrent_status(torrent_id, ['name', 'active_time']) rescue {})['active_time'].to_i
         Cache.queue_state_add_or_update('deluge_torrents_completed', { torrent_id => { :path => opath, :active_time => active_time } })
       end
     end
     return handled, process_folder_list, error
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     if root_process.to_i > 0
-      FileUtils.rm_r(full_p) if defined?(full_p) && full_p.to_s.include?(MediaLibrarian.app.temp_dir)
+      FileUtils.rm_r(full_p) if defined?(full_p) && full_p.to_s.include?(app.temp_dir)
       raise e
     end
     return handled, process_folder_list, 1
@@ -560,18 +561,18 @@ class Library
     files.each do |id, f|
       dup_files = get_duplicates(f)
       next unless dup_files.count > 0
-      MediaLibrarian.app.speaker.speak_up("Duplicate files found for #{f[:full_name]}")
+      app.speaker.speak_up("Duplicate files found for #{f[:full_name]}")
       langs = []
       dup_files.select! do |d|
-        MediaLibrarian.app.speaker.speak_up("'#{d[:name]}'")
+        app.speaker.speak_up("'#{d[:name]}'")
         to_rm = no_prompt.to_i == 0 || (dup_files.index(d) > 0 && (Quality.parse_qualities(d[:name], LANGUAGES) - langs).empty?)
         langs += Quality.parse_qualities(d[:name], LANGUAGES)
         to_rm
       end
       unless remove_duplicates.to_i <= 0 || dup_files.count == 0
-        MediaLibrarian.app.speaker.speak_up('Will now remove duplicates')
+        app.speaker.speak_up('Will now remove duplicates')
         dup_files.each do |d|
-          if MediaLibrarian.app.speaker.ask_if_needed("Remove file #{d[:name]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+          if app.speaker.ask_if_needed("Remove file #{d[:name]}? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
             FileUtils.rm(d[:name])
             files[id][:files].select! { |x| x[:name].to_s != d[:name] }
           end
@@ -608,7 +609,7 @@ class Library
     item_name, item = Metadata.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
       if Env.debug?
-        MediaLibrarian.app.speaker.speak_up("File '#{File.basename(file[:name])}' not identified, skipping. (folder_hierarchy='#{folder_hierarchy}', base_folder='#{base_folder}', ids='#{ids}')")
+        app.speaker.speak_up("File '#{File.basename(file[:name])}' not identified, skipping. (folder_hierarchy='#{folder_hierarchy}', base_folder='#{base_folder}', ids='#{ids}')")
       end
       return files
     end
@@ -637,17 +638,17 @@ class Library
     )
     return files if identifiers.empty? || full_name == ''
     return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
-    MediaLibrarian.app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
+    app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|
         if i.to_s != '' && identifiers.join.include?(i) && !fs.empty? && !fs.map { |obj| obj[:name] if obj[:type] == 'file' }.compact.include?(file[:name])
           Utils.lock_block("file_handling_found_#{i}") do
             ok = false
             fs.uniq.each do |f|
-              MediaLibrarian.app.speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." # if Env.debug?
+              app.speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." # if Env.debug?
               ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
               ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
-              ok = MediaLibrarian.app.db.delete_rows('media_lists',{:list_name => f[:list_name], :type => f[:obj_type], :title => f[:obj_title], :year => f[:obj_year], :url => f[:obj_url]}) if f[:type] == 'lists'
+              ok = app.db.delete_rows('media_lists',{:list_name => f[:list_name], :type => f[:obj_type], :title => f[:obj_title], :year => f[:obj_year], :url => f[:obj_url]}) if f[:type] == 'lists'
             end
             Cache.queue_state_remove('file_handling', i) if ok
           end
@@ -668,7 +669,7 @@ class Library
 
   def self.process_filter_sources(source_type:, source:, category:, no_prompt: 0, destination: {}, qualities: {})
     if source.nil? || source.empty?
-      MediaLibrarian.app.speaker.speak_up("Invalid source")
+      app.speaker.speak_up("Invalid source")
       return {}, {}
     end
     search_list = {}
@@ -696,7 +697,7 @@ class Library
     when 'filesystem', 'trakt', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
-        MediaLibrarian.app.speaker.speak_up(id) #REMOVEME
+        app.speaker.speak_up(id) #REMOVEME
         next if id.is_a?(Symbol)
         case category
         when 'movies'
@@ -707,9 +708,9 @@ class Library
           else
             already_exists = get_duplicates(existing_files[category][id], 1)
             already_exists.each do |ae|
-              if MediaLibrarian.app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
+              if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
                 search_list[id][:files] << ae unless source_type == 'filesystem'
-              elsif MediaLibrarian.app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+              elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
                 TraktAgent.remove_from_list([search_list[id][:trakt_obj]], source['list_name'], category) if search_list[id][:trakt_obj]
                 search_list.delete(id)
               end
@@ -734,7 +735,7 @@ class Library
   end
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL)
-    MediaLibrarian.app.speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
+    app.speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
     files, raw_filtered, cache_name, media_list = nil, [], folder.to_s + type.to_s, {}
     file_criteria = { 'regex' => '.*' + item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*' }
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
@@ -753,7 +754,7 @@ class Library
         media_list[cache_name, cache_expiration.to_i] = Daemon.consolidate_children
         media_list[cache_name, cache_expiration.to_i] = handle_duplicates(media_list[cache_name] || {}, remove_duplicates, no_prompt)
       elsif Env.debug?
-        MediaLibrarian.app.speaker.speak_up("Cache of media_list [#{cache_name}] exists, returning it directly", 0)
+        app.speaker.speak_up("Cache of media_list [#{cache_name}] exists, returning it directly", 0)
       end
     }
     if filter_criteria && !filter_criteria.empty? && !media_list[cache_name].empty?
@@ -762,20 +763,20 @@ class Library
     end
     return files || media_list[cache_name]
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     media_list.delete(cache_name)
     {}
   end
 
   def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home)
-    MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
+    app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
     media_info = FileInfo.new(original)
     _, qualities = Quality.detect_file_quality(original, media_info, 0, ensure_qualities, type)
     metadata = Metadata.identify_metadata(original, type, item_name, item, no_prompt, folder_hierarchy, base_folder, qualities)
     destination = Utils.parse_filename_template(destination, metadata)
     if destination.to_s == ''
-      MediaLibrarian.app.speaker.speak_up "Destination of file '#{original}' is empty, skipping..."
+      app.speaker.speak_up "Destination of file '#{original}' is empty, skipping..."
       return ''
     end
     if !metadata.empty? && metadata['is_found']
@@ -784,7 +785,7 @@ class Library
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
       raise "Error moving file" if destination.to_s == ''
     else
-      MediaLibrarian.app.speaker.speak_up "File '#{original}' not identified, skipping..."
+      app.speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''
     end
     destination
@@ -798,10 +799,10 @@ class Library
       raise ArgumentError, 'list_name must be provided' if list_name.to_s.strip.empty?
       raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
       count = ListStore.import_csv(list_name, csv_path, replace: replace.to_s == '1')
-      MediaLibrarian.app.speaker.speak_up("import_list_csv: imported #{count} rows into list '#{list_name}'", 0) if defined?(MediaLibrarian.app.speaker)
+      app.speaker.speak_up("import_list_csv: imported #{count} rows into list '#{list_name}'", 0) if defined?(app.speaker)
       count
     rescue => e
-      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
+      app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
       0
     end
   end

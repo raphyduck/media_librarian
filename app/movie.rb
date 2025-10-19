@@ -1,4 +1,8 @@
 class Movie
+  include MediaLibrarian::AppContainerSupport
+
+  attr_reader :app
+
   SHOW_MAPPING = {
     id: :id,
     ids: :ids,
@@ -17,11 +21,13 @@ class Movie
     attr_accessor attr
   end
 
-  def initialize(opts)
+  def initialize(opts, app: self.class.app)
+    self.class.configure(app: app)
+    @app = app
     assign_attributes(opts)
     year
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     raise e
   end
 
@@ -68,7 +74,7 @@ class Movie
     when 'released'
       result = opts['release_date'] || opts['premiered']
     when 'set'
-      result = MoviesSet.new(opts['belongs_to_collection']) if opts['belongs_to_collection'].to_s != ''
+      result = MoviesSet.new(opts['belongs_to_collection'], app: app) if opts['belongs_to_collection'].to_s != ''
     when 'url'
       imdb_id = opts['imdb_id'] || (opts['ids'] && opts['ids']['imdb'])
       result = "https://www.imdb.com/title/#{imdb_id}/" if imdb_id
@@ -98,7 +104,7 @@ class Movie
     extracted_year = (name && Metadata.identify_release_year(name) > 0) ? Metadata.identify_release_year(name) : nil
 
     if (real_year || extracted_year || release_date).nil?
-      MediaLibrarian.app.speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'"
+      app.speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'"
     end
 
     @year ||= (real_year || extracted_year || (release_date || Time.now + 3.years).year).to_i
@@ -114,7 +120,7 @@ class Movie
             .compact
   end
 
-  def self.movie_get(ids, type = 'movie_get', movie = nil)
+  def self.movie_get(ids, type = 'movie_get', movie = nil, app: self.app)
     cache_name = ids.map { |k, v| v.to_s.empty? ? nil : "#{k}#{v}" }.compact.join
     return '', nil if cache_name.empty?
 
@@ -135,38 +141,38 @@ class Movie
         movie = Cache.object_pack(trakt_movie, 1)
         src = 'trakt'
       end
-      movie = Movie.new(movie.merge('data_source' => src)) if movie
+      movie = Movie.new(movie.merge('data_source' => src), app: app) if movie
       full_save = movie
       title = movie.name if movie&.name.to_s != ''
     when 'movie_set_get'
       if ids['tmdb'].to_s.empty?
-        _, m = movie_get(ids)
+        _, m = movie_get(ids, app: app)
         ids = { 'tmdb' => m.ids['tmdb'] } if m
       end
-      _, m = movie_get({ 'tmdb' => ids['tmdb'] })
+      _, m = movie_get({ 'tmdb' => ids['tmdb'] }, app: app)
       if m&.set.to_s != ''
         collection_detail = Tmdb::Collection.detail(m.set.id)
-        movie = collection_detail.is_a?(Hash) ? MoviesSet.new(Cache.object_pack(collection_detail, 1)) : collection_detail
+        movie = collection_detail.is_a?(Hash) ? MoviesSet.new(Cache.object_pack(collection_detail, 1), app: app) : collection_detail
       end
       title = movie.name if movie&.name.to_s != ''
       full_save = movie || {}
     end
     Cache.cache_add(type, cache_name, [title, movie], full_save)
-    MediaLibrarian.app.speaker.speak_up "#{Utils.arguments_dump(binding)}= '', nil" if movie.nil?
+    app.speaker.speak_up "#{Utils.arguments_dump(binding)}= '', nil" if movie.nil?
     return title, movie
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add(type, cache_name, ['', nil], nil)
     return '', nil
   end
 
-  def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {})
+  def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app)
     Metadata.media_lookup(
       'movies',
       title,
       'movie_lookup',
       { 'name' => 'name', 'titles' => 'alt_titles', 'url' => 'url', 'year' => 'year' },
-      Movie.method('movie_get'),
+      ->(search_ids) { movie_get(search_ids, app: app) },
       [[Tmdb::Movie, :find], [TraktAgent, :search__movies]],
       no_prompt,
       original_filename,

@@ -1,4 +1,5 @@
 class Music
+  include MediaLibrarian::AppContainerSupport
   CRITERIA_KEYS = %w[artist albumartist album year decade genre].freeze
 
   def self.convert_songs(path, dest_file, input_format, output_format = 'mp3', qualities = nil)
@@ -18,7 +19,7 @@ class Music
     song_count = 0
     library = Hash.new { |hash, key| hash[key] = [] }
 
-    MediaLibrarian.app.speaker.speak_up("Listing all songs in #{folder}")
+    app.speaker.speak_up("Listing all songs in #{folder}")
     files = FileUtils.search_folder(folder, { 'regex' => '.*\.[mM][pP]3' })
 
     files.each do |file_entry|
@@ -40,8 +41,8 @@ class Music
       unless valid_tags?(f_song)
         missing = missing_tags(f_song)
         prompt = "File #{f_song[:path]} has no proper tags, missing: #{missing}, do you want to move it to another folder? (y/n)"
-        if MediaLibrarian.app.speaker.ask_if_needed(prompt, move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
-          destination_folder = MediaLibrarian.app.speaker.ask_if_needed("Enter the full path of the folder to move the files into: ",
+        if app.speaker.ask_if_needed(prompt, move_untagged.to_s != '' ? 1 : 0, 'y') == 'y'
+          destination_folder = app.speaker.ask_if_needed("Enter the full path of the folder to move the files into: ",
                                                       move_untagged.to_s != '' ? 1 : 0,
                                                       move_untagged.to_s)
           dest_subfolder = File.join(destination_folder, File.basename(File.dirname(f_song[:path])))
@@ -62,7 +63,7 @@ class Music
       print "Processed song #{song_count} / #{files.count}\r"
     end
 
-    MediaLibrarian.app.speaker.speak_up("Finished processing songs, now generating playlists...")
+    app.speaker.speak_up("Finished processing songs, now generating playlists...")
     collection = ordered_collection.sort_by { |k, _| k }
                                    .map { |_, songs| songs.sort_by { |s| s[:track_nr].to_i } }
     collection.shuffle! if random.to_i > 0
@@ -79,23 +80,23 @@ class Music
       prompt = "Do you want to generate playlists based on #{cr}? (y/n)"
       default_choice = criteria[cr].to_s != '' ? 1 : 0
       default_answer = criteria[cr].to_i > 0 ? 'y' : 'n'
-      if MediaLibrarian.app.speaker.ask_if_needed(prompt, default_choice, default_answer) == 'y'
+      if app.speaker.ask_if_needed(prompt, default_choice, default_answer) == 'y'
         if library[cr].nil? || library[cr].empty?
-          MediaLibrarian.app.speaker.speak_up("No collection of #{cr} found!")
+          app.speaker.speak_up("No collection of #{cr} found!")
           next
         end
-        MediaLibrarian.app.speaker.speak_up("Will generate playlists based on #{cr}")
+        app.speaker.speak_up("Will generate playlists based on #{cr}")
         library[cr].each do |p|
           safe_name = "#{folder}/#{cr}s-#{p.gsub('/', '').gsub(/[^\u0000-\u007F]+/, '_').gsub(' ', '_')}".sub(/\/+\z/, '')
           generate_playlist(safe_name, collection.select { |s| s[cr.to_sym] == p })
         end
-        MediaLibrarian.app.speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
+        app.speaker.speak_up("#{library[cr].length} #{cr} playlists have been generated")
       end
     end
   end
 
   def self.generate_playlist(name, list)
-    MediaLibrarian.app.speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
+    app.speaker.speak_up("Generating playlist #{name}.m3u with #{list.count} elements")
     File.open("#{name}.m3u", "w:UTF-8") do |playlist|
       playlist.puts "#EXTM3U"
       list.each do |s|

@@ -1,8 +1,9 @@
 class Client < EventMachine::Connection
+  include MediaLibrarian::AppContainerSupport
 
   def initialize(args)
     @args = args
-    MediaLibrarian.app.daemon_client = self
+    self.class.app.daemon_client = self
   end
 
   def post_init
