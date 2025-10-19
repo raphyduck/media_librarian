@@ -537,6 +537,7 @@ class Library
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
       0
+    end
   end
 
   class << self
@@ -554,6 +555,4 @@ class Library
       MediaLibrarian::Services::ListManagementService.new(app: app)
     end
   end
-end
-
 end
