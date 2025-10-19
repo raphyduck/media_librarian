@@ -37,23 +37,18 @@ FILENAME_NAMING_TEMPLATE=%w(
     part
 )
 VALID_CONVERSION_INPUTS = {
-    :music => ['flac'],
     :video => ['iso', 'ts', 'm2ts']
 }
 VALID_CONVERSION_OUTPUT = {
-    :music => ['mp3'],
     :video => ['mkv']
 }
 VALID_MEDIA_TYPES = {
-    :music => ['music'],
     :video => ['movies', 'shows']
 }
 EXTENSIONS_TYPE= {
-    :music => %w(flac mp3),
     :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts m2ts)
 }
 VALID_VIDEO_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
-VALID_MUSIC_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:music].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
 SPACE_SUBSTITUTE='\. _\-'

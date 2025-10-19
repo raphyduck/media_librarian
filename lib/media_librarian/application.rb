@@ -175,7 +175,6 @@ module MediaLibrarian
         TorrentClient
         Client
         Library
-        Music
       ].each { |const| register.call(const) }
     end
   end

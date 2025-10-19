@@ -34,10 +34,6 @@ module MediaLibrarian
           import_csv: ['ListStore', 'import_csv'],
           process_folder: ['Library', 'process_folder']
         },
-        music: {
-          create_playlists: ['Music', 'create_playlists'],
-          convert_songs: ['Library', 'convert_media']
-        },
         torrent: {
           check_all_download: ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
           check_orphaned_torrent_folders: ['TorrentClient', 'check_orphaned_torrent_folders'],
