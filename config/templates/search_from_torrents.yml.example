@@ -8,8 +8,6 @@ torrent_sources:
       - https://feed.second:
           timeframe: 3 hours
 filter_sources:
-  calibre:
-    series: 1
   filesystem:
     existing_folder:
       movies: '/folder/of/movies'
@@ -45,7 +43,7 @@ filter_sources:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'
 category: shows
-search_category: optional_can_be_one_of_movies_shows_books_comics
+search_category: optional_can_be_one_of_movies_shows
 no_prompt: 0
 qualities:
   min_quality: 720p hdtv
@@ -67,8 +65,6 @@ download_criteria:
   whitelisted_extensions:
     video:
       - avi
-    books:
-      - cbr
   destination:
     shows: '/home/user/tv/{{ series_name }}/Season {{ episode_season }}'
     movies: '/home/user/Movie/'

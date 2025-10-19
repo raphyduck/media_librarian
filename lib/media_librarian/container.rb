@@ -51,14 +51,6 @@ module MediaLibrarian
       store(:db, value, freeze: false)
     end
 
-    def calibre
-      services.fetch(:calibre)
-    end
-
-    def calibre=(value)
-      store(:calibre, value, freeze: false)
-    end
-
     def trackers
       services.fetch(:trackers)
     end
@@ -116,7 +108,6 @@ module MediaLibrarian
       store(:args_dispatch, SimpleArgsDispatch::Agent.new(speaker, application.env_flags), freeze: false)
 
       store(:db, Storage::Db.new(File.join(application.config_dir, 'librarian.db')), freeze: false)
-      store(:calibre, build_calibre, freeze: false)
 
       store(:trackers, build_trackers)
 
@@ -129,13 +120,6 @@ module MediaLibrarian
       daemon_config = config.fetch('daemon', {})
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
-    end
-
-    def build_calibre
-      library_config = config['calibre_library']
-      return nil unless library_config && library_config['path'].to_s != ''
-
-      File.exist?(library_config['path']) ? Storage::Db.new(library_config['path'], 1) : nil
     end
 
     def build_trackers

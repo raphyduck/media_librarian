@@ -25,10 +25,6 @@ module MediaLibrarian
           dump_mem_stat: ['Memory', 'stat_dump'],
           kill_job: ['Daemon', 'kill', 1, 'priority']
         },
-        books: {
-          compress_comics: ['Book', 'compress_comics'],
-          convert_comics: ['Library', 'convert_media']
-        },
         library: {
           compare_remote_files: ['Library', 'compare_remote_files'],
           create_custom_list: ['Library', 'create_custom_list'],

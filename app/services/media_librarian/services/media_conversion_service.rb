@@ -110,8 +110,6 @@ module MediaLibrarian
           ensure_destination_directory(name)
 
           skipping = case type
-                     when :books
-                       Book.convert_comics(request.path, name, request.input_format, request.output_format, dest_file, request.no_warning)
                      when :music
                        Music.convert_songs(request.path, dest_file, request.input_format, request.output_format, request.qualities)
                      when :video

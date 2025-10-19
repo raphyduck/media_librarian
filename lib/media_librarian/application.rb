@@ -25,7 +25,6 @@ module MediaLibrarian
                   :email_templates,
                   :ffmpeg_crf,
                   :ffmpeg_preset,
-                  :goodreads,
                   :kodi,
                   :mechanizer,
                   :tvdb,
@@ -79,14 +78,6 @@ module MediaLibrarian
 
     def db=(value)
       container.db = value
-    end
-
-    def calibre
-      container.calibre
-    end
-
-    def calibre=(value)
-      container.calibre = value
     end
 
     def trackers
@@ -180,8 +171,6 @@ module MediaLibrarian
         TvSeries
         Report
         Daemon
-        Book
-        BookSeries
         TorrentSearch
         TorrentClient
         Client

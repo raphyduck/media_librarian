@@ -14,16 +14,6 @@ GIT
       rencoder (~> 0.2)
 
 GIT
-  remote: https://github.com/raphyduck/goodreads.git
-  revision: 9c33913a0ac05b9fbc05498b28a0b4200ab23ed7
-  specs:
-    goodreads (0.7.0)
-      activesupport (>= 3.0)
-      i18n (>= 0.6, < 2)
-      oauth (~> 0.4)
-      rest-client (~> 2.0)
-
-GIT
   remote: https://github.com/raphyduck/imdb-party.git
   revision: fb1636b2e440fc10a9b5a8fe5b24d74104cbaae6
   specs:
@@ -91,7 +81,6 @@ GIT
 GEM
   remote: http://rubygems.org/
   specs:
-    Ascii85 (2.0.1)
     RubyInline (3.14.2)
       ZenTest (~> 4.3)
     ZenTest (4.12.2)
@@ -110,7 +99,6 @@ GEM
       tzinfo (~> 2.0)
     addressable (2.8.7)
       public_suffix (>= 2.0.2, < 7.0)
-    afm (0.2.2)
     base64 (0.3.0)
     benchmark (0.4.1)
     bencode (1.0.0)
@@ -152,8 +140,6 @@ GEM
     hanami-utils (1.3.8)
       concurrent-ruby (~> 1.0)
       transproc (~> 1.0)
-    hashery (2.1.2)
-    hashie (5.0.0)
     http-cookie (1.0.8)
       domain_name (~> 0.5)
     httparty (0.23.1)
@@ -215,15 +201,6 @@ GEM
     nkf (0.2.0)
     nokogiri (1.18.9-x86_64-linux-gnu)
       racc (~> 1.4)
-    oauth (0.6.2)
-      snaky_hash (~> 2.0)
-      version_gem (~> 1.1)
-    pdf-reader (2.14.1)
-      Ascii85 (>= 1.0, < 3.0, != 2.0.0)
-      afm (~> 0.2.1)
-      hashery (~> 2.0)
-      ruby-rc4
-      ttfunk
     poltergeist (1.18.1)
       capybara (>= 2.1, < 4)
       cliver (~> 0.3.1)
@@ -240,7 +217,6 @@ GEM
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
     rexml (3.4.1)
-    ruby-rc4 (0.1.5)
     rubyntlm (0.6.5)
       base64
     sax-machine (1.3.2)
@@ -252,9 +228,6 @@ GEM
     simple_config_man (0.3.9)
       simple_speaker (~> 0.3.0)
     simple_speaker (0.3.0.8)
-    snaky_hash (2.0.3)
-      hashie (>= 0.1.0, < 6)
-      version_gem (>= 1.1.8, < 3)
     sqlite3 (1.5.3)
       mini_portile2 (~> 2.8.0)
     streamio-ffmpeg (3.0.2)
@@ -265,13 +238,10 @@ GEM
     timeout (0.4.3)
     titleize (1.4.1)
     transproc (1.1.1)
-    ttfunk (1.8.0)
-      bigdecimal (~> 3.1)
     tvdb_party (0.9.3)
       httparty (>= 0.6.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
-    version_gem (1.1.8)
     webrick (1.9.1)
     webrobots (0.1.2)
     websocket-driver (0.8.0)
@@ -295,14 +265,12 @@ DEPENDENCIES
   flac2mp3
   fuzzy-string-match
   get_process_mem
-  goodreads!
   hanami-mailer
   imdb_party!
   mechanize
   mediainfo!
   net-ssh
   nokogiri
-  pdf-reader
   poltergeist
   rexml
   rsync!

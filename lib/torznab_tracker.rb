@@ -21,9 +21,6 @@ class TorznabTracker
     elsif type.to_s == 'music' && @tracker.caps.search_modes.music_search.available
       t = 'music'
       cat = @tracker.caps.categories.select { |c| c.name.downcase.include?('music') || c.name.downcase.include?('musique') }.map { |c| c.id }
-    elsif ['books', 'comics'].include?(type.to_s) && @tracker.caps.search_modes.book_search.available
-      t = 'book'
-      cat = @tracker.caps.categories.select { |c| c.name.downcase.include?('book') }.map { |c| c.id }
     end
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
     Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit}))[:rss][:channel][:item].each do |i|

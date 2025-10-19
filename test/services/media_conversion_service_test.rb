@@ -34,21 +34,21 @@ class MediaConversionServiceTest < Minitest::Test
 
   def test_reports_missing_path
     request = MediaLibrarian::Services::MediaConversionRequest.new(
-      path: '/missing.cbz',
-      input_format: 'cbz',
-      output_format: 'cbz'
+      path: '/missing.flac',
+      input_format: 'flac',
+      output_format: 'mp3'
     )
 
     @service.convert(request)
 
-    assert_includes @speaker.messages, '/missing.cbz does not exist!'
+    assert_includes @speaker.messages, '/missing.flac does not exist!'
   end
 
   def test_unknown_format_triggers_warning
     request = MediaLibrarian::Services::MediaConversionRequest.new(
       path: '/tmp/file.xxx',
       input_format: 'xxx',
-      output_format: 'cbz'
+      output_format: 'mp3'
     )
 
     @service.convert(request)
