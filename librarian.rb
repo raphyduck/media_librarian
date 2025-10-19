@@ -153,18 +153,34 @@ class Librarian
       SimpleConfigMan.reconfigure(app.config_file, app.config_example)
     end
 
-    def route_cmd(args, internal = 0, task = 'exclusive', max_pool_size = 1, queue = Thread.current[:jid], &block)
-      if Daemon.is_daemon?
-        Daemon.thread_cache_add(queue, args, Daemon.job_id, task, internal, max_pool_size, 0,
-                                Daemon.fetch_function_config(args)[2] || 0,
-                                Thread.current[:current_daemon], 43_200, 1, &block)
+    def route_cmd(args, internal = 0, task = 'exclusive', _max_pool_size = 1, queue = Thread.current[:jid], &block)
+      if Daemon.running?
+        Daemon.enqueue(
+          args: args,
+          queue: queue,
+          task: task,
+          internal: internal,
+          client: Thread.current[:current_daemon],
+          child: 1,
+          env_flags: Daemon.dump_env_flags,
+          parent_thread: Thread.current,
+          &block
+        )
       elsif app.librarian.pid_status(app.pidfile) == :running && internal.to_i.zero?
         return if args.nil? || args.empty?
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
-        EventMachine.run do
-          EventMachine.connect '127.0.0.1', app.api_option['listen_port'], Client, args
-          EM.open_keyboard(ClientInput)
+        response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: internal)
+        if response['error']
+          app.speaker.speak_up("Daemon rejected the job: #{response['error']}")
+        elsif response['body'] && response['body']['job'] && response['body']['job']['error']
+          job = response['body']['job']
+          app.speaker.speak_up("Job #{job['id']} failed: #{job['error']}")
+        elsif response['body'] && response['body']['job']
+          job = response['body']['job']
+          app.speaker.speak_up("Job #{job['id']} completed")
+        else
+          app.speaker.speak_up('Command dispatched to daemon')
         end
       else
         app.librarian.load_requirements unless app.librarian.loaded?
