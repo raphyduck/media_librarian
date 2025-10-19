@@ -1,6 +1,7 @@
+require_relative '../boot/librarian'
 require_relative 'db'
 
-app = MediaLibrarian.app
+app = MediaLibrarian::Boot.application
 
 if app.config['trakt']
   app.trakt_account = app.config['trakt']['account_id']

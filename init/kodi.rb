@@ -1,5 +1,7 @@
 # start Kodi client
-app = MediaLibrarian.app
+require_relative '../boot/librarian'
+
+app = MediaLibrarian::Boot.application
 app.kodi = nil
 
 if app.config['kodi']

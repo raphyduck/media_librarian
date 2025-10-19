@@ -1,4 +1,6 @@
-app = MediaLibrarian.app
+require_relative '../boot/librarian'
+
+app = MediaLibrarian::Boot.application
 app.deluge_connected = nil
 
 if app.config['deluge'] && !app.config['deluge'].empty?
