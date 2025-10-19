@@ -31,7 +31,7 @@ module TestSupport
 
     class StubApplication
       attr_accessor :librarian, :speaker, :args_dispatch,
-                    :api_option, :workers_pool_size, :queue_slots, :container
+                    :workers_pool_size, :queue_slots, :container
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example,
                   :tracker_dir
@@ -51,7 +51,7 @@ module TestSupport
         pid_dir = File.join(root, 'tmp')
         FileUtils.mkdir_p(pid_dir)
         @pidfile = File.join(pid_dir, 'librarian.pid')
-        @api_option = { 'bind_address' => '127.0.0.1', 'listen_port' => 8888 }
+        @api_option = default_api_option
         @workers_pool_size = 2
         @queue_slots = 2
         @speaker = speaker
@@ -63,13 +63,40 @@ module TestSupport
         def eager_load; end
       end
 
-      private
-
       def persist_default_configuration
         return if File.exist?(@config_file)
 
         File.write(@config_file, { 'daemon' => { 'workers_pool_size' => @workers_pool_size,
                                                  'queue_slots' => @queue_slots } }.to_yaml)
+      end
+
+      def api_option
+        @api_option
+      end
+
+      def api_option=(value)
+        @api_option = default_api_option.merge(value || {}) do |key, default_value, override|
+          if default_value.is_a?(Hash) && override.is_a?(Hash)
+            default_value.merge(override)
+          else
+            override
+          end
+        end
+      end
+
+      private
+
+      def default_api_option
+        {
+          'bind_address' => '127.0.0.1',
+          'listen_port' => 8888,
+          'auth' => {},
+          'ssl_enabled' => false,
+          'ssl_certificate_path' => nil,
+          'ssl_private_key_path' => nil,
+          'ssl_ca_path' => nil,
+          'ssl_verify_mode' => 'none'
+        }
       end
     end
 

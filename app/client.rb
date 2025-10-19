@@ -3,12 +3,14 @@
 require 'json'
 require 'net/http'
 require 'uri'
+require 'openssl'
 
 class Client
   include MediaLibrarian::AppContainerSupport
 
   def initialize(control_token: nil)
-    options = app.api_option
+    options = app.api_option || {}
+    @api_options = options
     resolved_token = control_token || ENV['MEDIA_LIBRARIAN_API_TOKEN']
     unless resolved_token
       if options
@@ -49,12 +51,13 @@ class Client
   def perform(request)
     attach_control_token(request)
 
-    Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
+    http_options = net_http_options
+    Net::HTTP.start(request.uri.hostname, request.uri.port, **http_options) do |http|
       http.read_timeout = 120
       response = http.request(request)
       parse_response(response)
     end
-  rescue Errno::ECONNREFUSED => e
+  rescue Errno::ECONNREFUSED, OpenSSL::SSL::SSLError => e
     { 'status_code' => 503, 'error' => e.message }
   end
 
@@ -64,7 +67,8 @@ class Client
   end
 
   def uri_for(path)
-    URI::HTTP.build(
+    builder = ssl_enabled? ? URI::HTTPS : URI::HTTP
+    builder.build(
       host: app.api_option['bind_address'],
       port: app.api_option['listen_port'],
       path: path
@@ -77,4 +81,55 @@ class Client
     return unless control_token
     request['X-Control-Token'] = control_token
   end
+
+  def ssl_enabled?
+    truthy?(api_options['ssl_enabled'])
+  end
+
+  def net_http_options
+    return {} unless ssl_enabled?
+
+    options = { use_ssl: true }
+    verify_mode = resolve_ssl_verify_mode(api_options['ssl_verify_mode'])
+    options[:verify_mode] = verify_mode unless verify_mode.nil?
+
+    ca_path = api_options['ssl_ca_path']
+    if ca_path && !ca_path.to_s.empty?
+      if File.directory?(ca_path)
+        options[:ca_path] = ca_path
+      elsif File.file?(ca_path)
+        options[:ca_file] = ca_path
+      end
+    end
+
+    options
+  end
+
+  def resolve_ssl_verify_mode(mode)
+    return mode if mode.is_a?(Integer)
+
+    case mode.to_s.downcase
+    when '', 'none', 'off', 'false'
+      OpenSSL::SSL::VERIFY_NONE
+    when 'peer'
+      OpenSSL::SSL::VERIFY_PEER
+    when 'fail_if_no_peer_cert', 'force_peer', 'require'
+      OpenSSL::SSL::VERIFY_PEER | OpenSSL::SSL::VERIFY_FAIL_IF_NO_PEER_CERT
+    else
+      OpenSSL::SSL::VERIFY_NONE
+    end
+  end
+
+  def truthy?(value)
+    case value
+    when true then true
+    when false, nil then false
+    when String then value.match?(/\A(true|1|yes|on)\z/i)
+    when Numeric then !value.zero?
+    else
+      !!value
+    end
+  end
+
+  attr_reader :api_options
 end

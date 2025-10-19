@@ -64,6 +64,10 @@ module MediaLibrarian
       container.api_option
     end
 
+    def api_option=(value)
+      container.api_option = value
+    end
+
     def workers_pool_size
       container.workers_pool_size
     end
