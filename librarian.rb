@@ -2,17 +2,16 @@
 
 require_relative 'lib/media_librarian/application'
 require_relative 'lib/media_librarian/command_registry'
+require_relative 'lib/media_librarian/app_container_support'
 
 class Librarian
+  include MediaLibrarian::AppContainerSupport
+
   attr_accessor :args, :quit, :reload
   attr_reader :command_registry, :app
 
   class << self
     attr_accessor :debug_classes
-
-    def app
-      MediaLibrarian.app
-    end
 
     def command_registry
       return app.librarian.command_registry if app.librarian
@@ -23,9 +22,10 @@ class Librarian
 
   self.debug_classes = []
 
-  def initialize(app = MediaLibrarian.app)
+  def initialize(app:, args: ARGV)
+    self.class.configure(app: app)
     @app = app
-    @args = ARGV
+    @args = args
     @loaded = false
     @command_registry = MediaLibrarian::CommandRegistry.new(app)
     app.librarian = self
@@ -245,7 +245,7 @@ class Librarian
   end
 end
 
-librarian = Librarian.new
+librarian = Librarian.new(app: MediaLibrarian.app)
 arguments = librarian.args.dup
 first_time = true
 

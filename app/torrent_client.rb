@@ -1,4 +1,7 @@
 class TorrentClient
+  include MediaLibrarian::AppContainerSupport
+
+  attr_reader :app
   # Constants
   DEFAULT_SEED_TIME = 1 # hours
 
@@ -8,7 +11,9 @@ class TorrentClient
   # Instance variables
   attr_reader :connected
 
-  def initialize
+  def initialize(app: self.class.app)
+    self.class.configure(app: app)
+    @app = app
     @deluge = nil
     @connected = false
     @throttled = false
@@ -17,10 +22,10 @@ class TorrentClient
   def init
     Utils.lock_block("deluge_daemon_init") do
       @deluge = Deluge::Rpc::Client.new(
-        host: MediaLibrarian.app.config['deluge']['host'],
+        host: app.config['deluge']['host'],
         port: 58846,
-        login: MediaLibrarian.app.config['deluge']['username'],
-        password: MediaLibrarian.app.config['deluge']['password']
+        login: app.config['deluge']['username'],
+        password: app.config['deluge']['password']
       )
       @connected = false
     end
@@ -28,7 +33,7 @@ class TorrentClient
 
   def listen
     @deluge.register_event('TorrentAddedEvent') do |torrent_id|
-      MediaLibrarian.app.speaker.speak_up "Torrent #{torrent_id} was successfully added!"
+      app.speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       Cache.queue_state_add_or_update('deluge_torrents_added', torrent_id) if torrent_id.to_s != ''
     end
   end
@@ -44,8 +49,8 @@ class TorrentClient
   end
 
   def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
-    MediaLibrarian.app.t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
-    MediaLibrarian.app.db.update_rows('torrents', { :status => delete_status }, { :name => tname })
+    app.t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
+    app.db.update_rows('torrents', { :status => delete_status }, { :name => tname })
     Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
 
@@ -64,20 +69,20 @@ class TorrentClient
     options['add_paused'] = true unless download[:type] > 1
     case download[:type]
     when 1
-      MediaLibrarian.app.t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
+      app.t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
       if meta_id.to_s != ''
-        status = MediaLibrarian.app.t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
+        status = app.t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
         raise 'Download failed' if status.nil? || status.empty?
-        MediaLibrarian.app.t_client.queue_top(meta_id) if status['queue'].to_i > 1
+        app.t_client.queue_top(meta_id) if status['queue'].to_i > 1
       end
     when 2
-      MediaLibrarian.app.t_client.add_torrent_magnet(download[:url], options)
+      app.t_client.add_torrent_magnet(download[:url], options)
     when 3
-      MediaLibrarian.app.t_client.add_torrent_url(download[:url], options)
+      app.t_client.add_torrent_url(download[:url], options)
     end
   rescue => e
     if meta_id.to_s != '' && download.is_a?(Hash) && download[:type].to_i == 1
-      status = MediaLibrarian.app.t_client.get_torrent_status(meta_id, ['name', 'progress'])
+      status = app.t_client.get_torrent_status(meta_id, ['name', 'progress'])
       raise e if status.nil? || status.empty?
     else
       raise e
@@ -92,7 +97,7 @@ class TorrentClient
       elsif whitelisted_exts.empty? || whitelisted_exts.include?(FileUtils.get_extension(file['path']))
         fname = file['path']
       else
-        MediaLibrarian.app.speaker.speak_up "The file '#{file['path']}' is not on the allowed extension list (#{whitelisted_exts.join(', ')}), will not be included" if Env.debug?
+        app.speaker.speak_up "The file '#{file['path']}' is not on the allowed extension list (#{whitelisted_exts.join(', ')}), will not be included" if Env.debug?
         fname = 'illegalext'
       end
       files[fname] = { :s => 0, :f => [] } unless files[fname]
@@ -101,7 +106,7 @@ class TorrentClient
     end
     files.select { |k, f| k != 'illegalext' && f[:s] > 0.8 * status['total_size'].to_i }.map { |_, v| v[:f] }.flatten
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
   end
 
@@ -115,12 +120,12 @@ class TorrentClient
   end
 
   def parse_torrents_to_download
-    MediaLibrarian.app.speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
-    MediaLibrarian.app.db.get_rows('torrents', { :status => 2 }).each do |t|
+    app.speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
+    app.db.get_rows('torrents', { :status => 2 }).each do |t|
       torrent = Cache.object_unpack(t[:tattributes])
       if Env.debug?
-        MediaLibrarian.app.speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        (torrent + t.select { |k, _| [:name, :identifiers].include?(k) }).each { |k, v| MediaLibrarian.app.speaker.speak_up "#{k} = #{v}" }
+        app.speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
+        (torrent + t.select { |k, _| [:name, :identifiers].include?(k) }).each { |k, v| app.speaker.speak_up "#{k} = #{v}" }
       end
       tdid = (Time.now.to_f * 1000).to_i.to_s
       url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
@@ -142,22 +147,22 @@ class TorrentClient
       ttype = 1
       success = false
       tries = 5
-      nodl = TorrentSearch.get_tracker_config(torrent[:tracker])['no_download'].to_i
-      MediaLibrarian.app.speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
+      nodl = TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['no_download'].to_i
+      app.speaker.speak_up("Will download torrent '#{t[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
       if url.to_s != '' && nodl == 0
         path = TorrentSearch.get_torrent_file(tdid, url)
       elsif magnet.to_s != '' && nodl == 0
         path, ttype = magnet, 2
       else
-        MediaLibrarian.app.speaker.speak_up "no_download setting is activated for this tracker, please download manually."
+        app.speaker.speak_up "no_download setting is activated for this tracker, please download manually."
         path = "nodl"
       end
-      path = MediaLibrarian.app.temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?(MediaLibrarian.app.temp_dir + "/#{t[:name]}.torrent")
+      path = app.temp_dir + "/#{t[:name]}.torrent" if path.to_s == '' && File.exist?(app.temp_dir + "/#{t[:name]}.torrent")
       next if path.nil?
       while (tries -= 1) >= 0 && !success
         success = process_download_torrent(t[:name], ttype, path, opts[t[:name]], torrent[:tracker], nodl, (torrent[:files].is_a?(Array) && !torrent[:files].empty? ? { t[:identifier] => torrent[:files] } : {}))
-        MediaLibrarian.app.speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
-        FileUtils.rm(MediaLibrarian.app.temp_dir + "/#{tdid}.torrent") rescue nil
+        app.speaker.speak_up "Download of torrent '#{t[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl == 0
+        FileUtils.rm(app.temp_dir + "/#{tdid}.torrent") rescue nil
       end
       delete_torrent(t[:name], 0, 1) unless success
     end
@@ -168,20 +173,20 @@ class TorrentClient
       tid = Cache.queue_state_shift('deluge_torrents_added')
       tries = 10
       begin
-        status = MediaLibrarian.app.t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
+        status = app.t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
         opts = Cache.queue_state_select('deluge_options') { |_, v| v && v[:info_hash] == tid }
         opts = Cache.queue_state_select('deluge_options') { |tn, _| tn == status['name'] } if opts.nil? || opts.empty?
         if opts.nil? || opts.empty?
-          opts = Cache.queue_state_select('deluge_options') { |tn, _| MediaLibrarian.app.str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9 }
+          opts = Cache.queue_state_select('deluge_options') { |tn, _| app.str_closeness.getDistance(tn[0..30], status['name'][0..30]) > 0.9 }
         end
-        MediaLibrarian.app.speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
+        app.speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
         (opts || {}).each do |tname, o|
-          torrent_cache = MediaLibrarian.app.db.get_rows('torrents', { :name => tname }).first
-          MediaLibrarian.app.db.update_rows('torrents', { :torrent_id => tid, :status => 3 }, { :name => tname }) if torrent_cache && torrent_cache[:torrent_id].nil?
+          torrent_cache = app.db.get_rows('torrents', { :name => tname }).first
+          app.db.update_rows('torrents', { :torrent_id => tid, :status => 3 }, { :name => tname }) if torrent_cache && torrent_cache[:torrent_id].nil?
           set_options = {}
           main_file = find_main_file(status, o[:whitelisted_extensions] || [])
           if main_file.empty? && o[:expect_main_file].to_i > 0
-            MediaLibrarian.app.speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
+            app.speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
             delete_torrent(tname, tid)
             next
           end
@@ -189,14 +194,14 @@ class TorrentClient
           set_options = main_file_only(status, main_file) if o[:main_only] && !main_file.empty?
           rename_torrent_files(tid, status['files'], o[:rename_main].to_s, torrent_qualities, o[:category])
           unless set_options.empty?
-            MediaLibrarian.app.speaker.speak_up("Will set options: #{set_options}")
-            MediaLibrarian.app.t_client.set_torrent_options([tid], set_options)
+            app.speaker.speak_up("Will set options: #{set_options}")
+            app.t_client.set_torrent_options([tid], set_options)
           end
-          MediaLibrarian.app.t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' # Queue to bottom once all processed unless option to keep on top
+          app.t_client.queue_bottom([tid]) unless o[:queue].to_s == 'top' # Queue to bottom once all processed unless option to keep on top
           if o[:add_paused].to_i > 0
-            MediaLibrarian.app.t_client.pause_torrent([tid])
+            app.t_client.pause_torrent([tid])
           else
-            MediaLibrarian.app.t_client.resume_torrent([tid])
+            app.t_client.resume_torrent([tid])
           end
           Cache.queue_state_remove('deluge_options', tname)
         end
@@ -205,43 +210,43 @@ class TorrentClient
           sleep 30
           retry
         else
-          MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+          app.speaker.tell_error(e, Utils.arguments_dump(binding))
         end
       end
     end
   end
 
   def process_completed_torrents
-    MediaLibrarian.app.speaker.speak_up("Will process completed torrents", 0) if Env.debug?
+    app.speaker.speak_up("Will process completed torrents", 0) if Env.debug?
     Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
-      t = MediaLibrarian.app.db.get_rows('torrents', {}, { "torrent_id like " => tid }).first
+      t = app.db.get_rows('torrents', {}, { "torrent_id like " => tid }).first
       remove_it = 0
       begin
         if t.nil?
-          MediaLibrarian.app.t_client.remove_torrent(tid, true) if MediaLibrarian.app.remove_torrent_on_completion
+          app.t_client.remove_torrent(tid, true) if app.remove_torrent_on_completion
         else
           torrent = Cache.object_unpack(t[:tattributes])
-          MediaLibrarian.app.speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...", 0) if Env.debug?
-          target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker])['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
-          seed_time = MediaLibrarian.app.t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
+          app.speaker.speak_up("Processing torrent '#{t[:name]}' (tid '#{tid}')...", 0) if Env.debug?
+          target_seed_time = (TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['seed_time'] || TorrentClient.get_config('deluge', 'default_seed_time') || 1).to_i
+          seed_time = app.t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
           if seed_time.nil?
-            MediaLibrarian.app.speaker.speak_up "Torrent no longer exists, will remove now..." if Env.debug?
+            app.speaker.speak_up "Torrent no longer exists, will remove now..." if Env.debug?
             remove_it = 1
           elsif target_seed_time <= seed_time.to_i / 3600
-            MediaLibrarian.app.speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
-            MediaLibrarian.app.t_client.remove_torrent(tid, false) if MediaLibrarian.app.remove_torrent_on_completion && t[:status].to_i < 5
-            MediaLibrarian.app.db.update_rows('torrents', { :status => [t[:status], 4].max }, { :name => t[:name] })
+            app.speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
+            app.t_client.remove_torrent(tid, false) if app.remove_torrent_on_completion && t[:status].to_i < 5
+            app.db.update_rows('torrents', { :status => [t[:status], 4].max }, { :name => t[:name] })
             remove_it = 1
           elsif Env.debug?
-            MediaLibrarian.app.speaker.speak_up("Torrent has been seeding for #{seed_time.to_i / 3600} hours, less than the seed time set at #{target_seed_time} hour(s) for this tracker. Skipping...", 0)
+            app.speaker.speak_up("Torrent has been seeding for #{seed_time.to_i / 3600} hours, less than the seed time set at #{target_seed_time} hour(s) for this tracker. Skipping...", 0)
           end
         end
       rescue => e
         if e.to_s == "InvalidTorrentError"
-          MediaLibrarian.app.speaker.speak_up "Torrent no longer exists, removing from database..." if Env.debug?
+          app.speaker.speak_up "Torrent no longer exists, removing from database..." if Env.debug?
           remove_it = 1
         else
-          MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+          app.speaker.tell_error(e, Utils.arguments_dump(binding))
         end
       end
       if remove_it > 0
@@ -267,21 +272,21 @@ class TorrentClient
       meta_id = Time.now.to_f
     end
     if nodl == 0
-      if !MediaLibrarian.app.db.get_rows('torrents', { :torrent_id => meta_id }).empty? && meta_id.to_s != '' # It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
-        MediaLibrarian.app.speaker.speak_up "Torrent with TID '#{meta_id}' already exists, nothing to do" if Env.debug?
+      if !app.db.get_rows('torrents', { :torrent_id => meta_id }).empty? && meta_id.to_s != '' # It can happen if the torrent name is displayed slightly differently on the tracker for some reason or another
+        app.speaker.speak_up "Torrent with TID '#{meta_id}' already exists, nothing to do" if Env.debug?
         delete_torrent(torrent_name, 0, 1)
         return true
       end
-      MediaLibrarian.app.speaker.speak_up "Adding #{download[:type_str]} torrent #{torrent_name}"
+      app.speaker.speak_up "Adding #{download[:type_str]} torrent #{torrent_name}"
       download_file(download, opts.deep_dup, meta_id)
       Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && torrent_type == 1
     end
-    MediaLibrarian.app.db.update_rows('torrents', { :status => 3, :torrent_id => meta_id }, { :name => torrent_name })
+    app.db.update_rows('torrents', { :status => 3, :torrent_id => meta_id }, { :name => torrent_name })
     Cache.queue_state_add_or_update('file_handling', queue_file_handling, 1, 1) unless queue_file_handling.empty?
     true
   rescue => e
     Cache.queue_state_remove('deluge_options', torrent_name)
-    MediaLibrarian.app.speaker.tell_error(
+    app.speaker.tell_error(
       e,
       "torrentclient.process_download_torrent('#{torrent_type}', '#{path}', '#{opts}', '#{tracker}')"
     )
@@ -289,63 +294,63 @@ class TorrentClient
   end
 
   def rename_torrent_files(tid, files, new_dir_name, torrent_qualities = '', category = '')
-    MediaLibrarian.app.speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}', ensuring qualities #{torrent_qualities} in the filenames") if new_dir_name.to_s != ''
+    app.speaker.speak_up("Will move all files in torrent in a directory '#{new_dir_name}', ensuring qualities #{torrent_qualities} in the filenames") if new_dir_name.to_s != ''
     paths = []
     files.each do |file|
       old_name = Quality.filename_quality_change(File.basename(file['path']), torrent_qualities, [], category)
       new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{StringUtils.fix_encoding(old_name)}"
       paths << [file['index'], new_path]
     end
-    MediaLibrarian.app.t_client.rename_files(tid, paths)
+    app.t_client.rename_files(tid, paths)
   end
 
   def self.check_orphaned_torrent_folders(completed_folder:)
     ff = FileUtils.search_folder(completed_folder, { 'maxdepth' => 1, 'dironly' => 1 }).map { |f| File.basename(f[0]) }
-    tids = MediaLibrarian.app.t_client.get_session_state
+    tids = app.t_client.get_session_state
     tids.each do |tid|
-      status = MediaLibrarian.app.t_client.get_torrent_status(tid, ['name', 'state'])
+      status = app.t_client.get_torrent_status(tid, ['name', 'state'])
       ff.delete(status['name'])
     end
     ff.each do |f|
-      MediaLibrarian.app.speaker.speak_up "Warning, folder '#{f}' is orphaned, will be removed"
+      app.speaker.speak_up "Warning, folder '#{f}' is orphaned, will be removed"
       FileUtils.rm_r("#{completed_folder}/#{f}")
     end
   end
 
   def self.flush_queues
-    if MediaLibrarian.app.t_client
-      MediaLibrarian.app.t_client.parse_torrents_to_download
+    if app.t_client
+      app.t_client.parse_torrents_to_download
       sleep 15
-      MediaLibrarian.app.t_client.process_added_torrents
-      MediaLibrarian.app.t_client.process_completed_torrents
-      #MediaLibrarian.app.t_client.disconnect
+      app.t_client.process_added_torrents
+      app.t_client.process_completed_torrents
+      #app.t_client.disconnect
     end
   end
 
   def self.get_config(client, key)
-    MediaLibrarian.app.config[client][key] rescue nil
+    app.config[client][key] rescue nil
   end
 
   def self.monitor_torrent_client
-    MediaLibrarian.app.speaker.speak_up("Checking free space remaining on torrent server", 0)
-    free_space = MediaLibrarian.app.t_client.get_free_space / 1024 / 1024 / 1024
-    MediaLibrarian.app.speaker.speak_up("Free space remaining: #{free_space}GB", 0)
+    app.speaker.speak_up("Checking free space remaining on torrent server", 0)
+    free_space = app.t_client.get_free_space / 1024 / 1024 / 1024
+    app.speaker.speak_up("Free space remaining: #{free_space}GB", 0)
     if free_space <= get_config('deluge', 'min_torrent_free_space').to_i && !@throttled
-      MediaLibrarian.app.speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
-      MediaLibrarian.app.t_client.set_config([{ 'config' => { 'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max } }])
+      app.speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
+      app.t_client.set_config([{ 'config' => { 'max_download_speed' => [get_config('deluge', 'max_download_rate').to_i / 100, 10].max } }])
       @throttled = true
     elsif @throttled && free_space > get_config('deluge', 'min_torrent_free_space').to_i
-      MediaLibrarian.app.speaker.speak_up "There is now enoough free space on torrent server, restoring full download speed!"
-      MediaLibrarian.app.t_client.set_config([{ 'config' => { 'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000 } }]) # todo: better fix than putting in brackets
+      app.speaker.speak_up "There is now enoough free space on torrent server, restoring full download speed!"
+      app.t_client.set_config([{ 'config' => { 'max_download_speed' => get_config('deluge', 'max_download_rate') || 1000 } }]) # todo: better fix than putting in brackets
       @throttled = false
     end
   end
 
   def self.no_delete_torrent(name: '', tid: '')
-    return MediaLibrarian.app.speaker.speak_up "No torrent name or id provided!" if name.to_s == '' && tid.to_s == ''
-    MediaLibrarian.app.speaker.speak_up "Torrent identified by #{{ 'name' => name, 'tid' => tid }.map { |k, v| k.to_s + ' = ' + v.to_s }.join(' and ')} will not be deleted"
-    MediaLibrarian.app.db.update_rows('torrents', { :status => 5 }, { :name => name.to_s }) if name.to_s != ''
-    MediaLibrarian.app.db.update_rows('torrents', { :status => 5 }, { :torrent_id => tid.to_s })
+    return app.speaker.speak_up "No torrent name or id provided!" if name.to_s == '' && tid.to_s == ''
+    app.speaker.speak_up "Torrent identified by #{{ 'name' => name, 'tid' => tid }.map { |k, v| k.to_s + ' = ' + v.to_s }.join(' and ')} will not be deleted"
+    app.db.update_rows('torrents', { :status => 5 }, { :name => name.to_s }) if name.to_s != ''
+    app.db.update_rows('torrents', { :status => 5 }, { :torrent_id => tid.to_s })
   end
 
   def method_missing(name, *args)
@@ -358,7 +363,7 @@ class TorrentClient
 
     safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, "MediaLibrarian.app.t_client.#{debug_message}")
+    app.speaker.tell_error(e, "app.t_client.#{debug_message}")
   end
 
   private
@@ -369,7 +374,7 @@ class TorrentClient
   end
 
   def log_operation(debug_message)
-    MediaLibrarian.app.speaker.speak_up("Running MediaLibrarian.app.t_client.#{debug_message}", 0) if Env.debug?
+    app.speaker.speak_up("Running app.t_client.#{debug_message}", 0) if Env.debug?
   end
 
   def skip_operation?(name)
@@ -397,7 +402,7 @@ class TorrentClient
       sleep 5
       safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
     else
-      MediaLibrarian.app.speaker.tell_error(e, "MediaLibrarian.app.t_client.#{debug_message}")
+      app.speaker.tell_error(e, "app.t_client.#{debug_message}")
       raise e
     end
   end

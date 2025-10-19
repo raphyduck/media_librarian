@@ -1,35 +1,36 @@
 require 'uri'
 class TorrentSearch
+  include MediaLibrarian::AppContainerSupport
 
   def self.check_status(identifier, timeout = 10, download = nil)
-    download = MediaLibrarian.app.db.get_rows('torrents', {:status => 3, :identifiers => identifier}).first if download.nil?
+    download = app.db.get_rows('torrents', {:status => 3, :identifiers => identifier}).first if download.nil?
     return if download.nil?
     progress, state = 0, ''
-    MediaLibrarian.app.speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
+    app.speaker.speak_up("Checking status of download #{download[:name]} (tid #{download[:torrent_id]})") if Env.debug?
     progress = -1 if download[:torrent_id].to_s == ''
     if progress >= 0
-      status = MediaLibrarian.app.t_client.get_torrent_status(download[:torrent_id], ['name', 'progress', 'state'])
+      status = app.t_client.get_torrent_status(download[:torrent_id], ['name', 'progress', 'state'])
       progress = status['progress'].to_i rescue -1
       state = status.empty? ? 'none' : status['state'].to_s rescue ''
     end
-    MediaLibrarian.app.speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}, expires in #{(Time.parse(download[:updated_at]) + 30.days - Time.now).to_i / 3600 / 24} days") if Env.debug?
-    MediaLibrarian.app.db.touch_rows('torrents', {:name => download[:name]}) unless ['Downloading', 'none', ''].include?(state)
+    app.speaker.speak_up("Progress for #{download[:name]} is #{progress}, state is #{state}, expires in #{(Time.parse(download[:updated_at]) + 30.days - Time.now).to_i / 3600 / 24} days") if Env.debug?
+    app.db.touch_rows('torrents', {:name => download[:name]}) unless ['Downloading', 'none', ''].include?(state)
     return if progress < 100 && (Time.parse(download[:updated_at]) >= Time.now - timeout.to_i.days && state != 'none' || !['Downloading', 'none', ''].include?(state))
     if progress >= 100
-      MediaLibrarian.app.db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
+      app.db.update_rows('torrents', {:status => 4}, {:name => download[:name]})
     elsif Time.parse(download[:updated_at]) < Time.now - timeout.to_i.days
-      MediaLibrarian.app.speaker.speak_up("Download #{download[:name]} (tid '#{download[:torrent_id]}') has failed, removing it from download entries")
-      MediaLibrarian.app.t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
+      app.speaker.speak_up("Download #{download[:name]} (tid '#{download[:torrent_id]}') has failed, removing it from download entries")
+      app.t_client.delete_torrent(download[:name], download[:torrent_id], progress >= 0 ? 1 : 0)
     elsif state == 'none'
-      MediaLibrarian.app.speaker.speak_up("Download #{identifier} no longer exists, removing it from download entries")
-      MediaLibrarian.app.t_client.delete_torrent(download[:name], '', 1)
+      app.speaker.speak_up("Download #{identifier} no longer exists, removing it from download entries")
+      app.t_client.delete_torrent(download[:name], '', 1)
     end
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.check_all_download(timeout: 10)
-    MediaLibrarian.app.db.get_rows('torrents', {:status => 3}).each do |d|
+    app.db.get_rows('torrents', {:status => 3}).each do |d|
       check_status(d[:identifiers], timeout, d)
     end
   end
@@ -45,7 +46,7 @@ class TorrentSearch
   def self.filter_results(results, condition_name, required_value, &condition)
     results.select! do |t|
       if Env.debug? && !condition.call(t)
-        MediaLibrarian.app.speaker.speak_up "Torrent '#{t[:name]}'[#{condition_name}] do not match requirements (required #{required_value}), removing from list"
+        app.speaker.speak_up "Torrent '#{t[:name]}'[#{condition_name}] do not match requirements (required #{required_value}), removing from list"
       end
       condition.call(t)
     end
@@ -60,7 +61,7 @@ class TorrentSearch
     trackers = get_trackers(sources)
     timeframe_trackers = TorrentSearch.parse_tracker_timeframes(sources || {})
     trackers.each do |t|
-      MediaLibrarian.app.speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
+      app.speaker.speak_up("Looking for all torrents in category '#{search_category}' on '#{t}'") if keyword.to_s == '' && Env.debug?
       keyword_s = (keyword + self.get_site_keywords(t, search_category)).strip
       cr = launch_search(t, search_category, keyword_s)
       cr = launch_search(t, search_category, keyword) if keyword_s != keyword && (cr.nil? || cr.empty?)
@@ -119,23 +120,23 @@ class TorrentSearch
     end
     r
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     retry unless (tries -= 1) <= 0
     {}
   end
 
   def self.get_site_keywords(type, category = '')
-    category && category != '' && MediaLibrarian.app.config[type] && MediaLibrarian.app.config[type]['site_specific_kw'] && MediaLibrarian.app.config[type]['site_specific_kw'][category] ? " #{MediaLibrarian.app.config[type]['site_specific_kw'][category]}" : ''
+    category && category != '' && app.config[type] && app.config[type]['site_specific_kw'] && app.config[type]['site_specific_kw'][category] ? " #{app.config[type]['site_specific_kw'][category]}" : ''
   end
 
-  def self.get_torrent_file(did, url, destination_folder = MediaLibrarian.app.temp_dir)
+  def self.get_torrent_file(did, url, destination_folder = app.temp_dir)
     return did if Env.pretend?
     path = "#{destination_folder}/#{did}.torrent"
     FileUtils.rm(path) if File.exist?(path)
     url = @base_url + '/' + url if url.start_with?('/')
     begin
       tries ||= 3
-      MediaLibrarian.app.mechanizer.get(url).save(path)
+      app.mechanizer.get(url).save(path)
     rescue => e
       if (tries -= 1) >= 0
         sleep 1
@@ -146,25 +147,25 @@ class TorrentSearch
     end
     path
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
     nil
   end
 
   def self.get_trackers(sources)
     trackers = parse_tracker_sources(sources || [])
-    trackers = MediaLibrarian.app.trackers.map { |t, _| t } if trackers.empty?
+    trackers = app.trackers.map { |t, _| t } if trackers.empty?
     trackers
   end
 
-  def self.get_tracker_config(tracker)
-    MediaLibrarian.app.trackers[tracker].config
+  def self.get_tracker_config(tracker, app: self.app)
+    app.trackers[tracker].config
   rescue
     {}
   end
 
   def self.launch_search(tracker, search_category, keyword)
-    if MediaLibrarian.app.trackers[tracker]
-      MediaLibrarian.app.trackers[tracker].search(search_category, keyword)
+    if app.trackers[tracker]
+      app.trackers[tracker].search(search_category, keyword)
     else
       TorrentRss.links(tracker)
     end
@@ -207,7 +208,7 @@ class TorrentSearch
   end
 
   def self.processing_result(results, sources, limit, f, qualities, no_prompt, download_criteria, no_waiting = 0, grab_all = 0, search_category = nil)
-    MediaLibrarian.app.speaker.speak_up "TorrentSearch.processing_result(results, sources, #{limit}, #{f.select { |k, _| ![:files].include?(k) }}, '#{qualities}', #{no_prompt}, '#{download_criteria}', #{no_waiting})" if Env.debug?
+    app.speaker.speak_up "TorrentSearch.processing_result(results, sources, #{limit}, #{f.select { |k, _| ![:files].include?(k) }}, '#{qualities}', #{no_prompt}, '#{download_criteria}', #{no_waiting})" if Env.debug?
     f_type, extra_files = f[:f_type] || '', []
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
@@ -231,7 +232,7 @@ class TorrentSearch
           }
           next if skip
           f_type = ft
-          MediaLibrarian.app.speaker.speak_up("Looking for keyword '#{k[:s]}', type '#{f[:type]}', subtype '#{f_type}'", 0)
+          app.speaker.speak_up("Looking for keyword '#{k[:s]}', type '#{f[:type]}', subtype '#{f_type}'", 0)
           extra_files = k[:extra_files] || []
           dc = download_criteria.deep_dup
           dc[:destination][f[:type].to_sym].gsub!(/[^\/]*{{ episode_season }}[^\/]*/, '') if dc && dc[:destination] if f[:type] == 'shows' && f[:f_type] == 'episode' && f_type == 'season'
@@ -271,16 +272,16 @@ class TorrentSearch
     filtered = Quality.sort_media_files(subset, qualities, f[:language], f[:type])
     subset = filtered unless no_prompt.to_i == 0 && filtered.empty?
     if subset.empty?
-      MediaLibrarian.app.speaker.speak_up("No torrent found for #{f[:full_name]}!", 0) if Env.debug?
+      app.speaker.speak_up("No torrent found for #{f[:full_name]}!", 0) if Env.debug?
       return
     end
     i = 1
     subset.each do |torrent|
       break unless (grab_all.to_i > 0 && i < 6) || no_prompt.to_i == 0 || i == 1
       if no_prompt.to_i == 0 || Env.debug?
-        MediaLibrarian.app.speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
-        MediaLibrarian.app.speaker.speak_up(LINE_SEPARATOR)
-        MediaLibrarian.app.speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
+        app.speaker.speak_up("Showing result for '#{f[:name]}' (#{subset.length} results)", 0)
+        app.speaker.speak_up(LINE_SEPARATOR)
+        app.speaker.speak_up("Index: #{i}") if no_prompt.to_i == 0
         torrent.select { |k, _| [:name, :size, :seeders, :leechers, :added, :link, :tracker, :in_db].include?(k) }.each do |k, v|
           val = case k
                 when :size
@@ -291,10 +292,10 @@ class TorrentSearch
                 else
                   v
                 end
-          MediaLibrarian.app.speaker.speak_up "#{k.to_s.titleize}: #{val}"
+          app.speaker.speak_up "#{k.to_s.titleize}: #{val}"
         end
       end
-      download_id = MediaLibrarian.app.speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, i).to_i
+      download_id = app.speaker.ask_if_needed('Enter the index of the torrent you want to download, or just hit Enter if you do not want to download anything: ', no_prompt, i).to_i
       i += 1
       next unless subset[download_id.to_i - 1]
       Utils.lock_block(__method__.to_s) {
@@ -303,7 +304,7 @@ class TorrentSearch
       }
     end
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {}, no_waiting: 0, grab_all: 0, search_category: nil)
@@ -321,9 +322,9 @@ class TorrentSearch
           _, p = Quality.identify_proper(t[:name])
           p.to_i > 0
         end
-        MediaLibrarian.app.speaker.speak_up "Releases for '#{ts[:name]} (id '#{i}) have #{propers.count} proper torrent" if Env.debug?
+        app.speaker.speak_up "Releases for '#{ts[:name]} (id '#{i}) have #{propers.count} proper torrent" if Env.debug?
         if propers.count > 0 && filter.select { |f| f[:series_name] == ts[:series_name] }.empty?
-          MediaLibrarian.app.speaker.speak_up "Will add torrents for '#{ts[:name]}' (id '#{i}') because of proper" if Env.debug?
+          app.speaker.speak_up "Will add torrents for '#{ts[:name]}' (id '#{i}') because of proper" if Env.debug?
           ts[:files] = if existing_files[ts[:identifier]] && existing_files[ts[:identifier]][:files].is_a?(Array)
                          existing_files[ts[:identifier]][:files]
                        else
@@ -352,8 +353,8 @@ class TorrentSearch
       search_list.merge!(slist)
       existing_files.merge!(elist)
     end
-    MediaLibrarian.app.speaker.speak_up "Empty searchlist" if search_list.empty?
-    MediaLibrarian.app.speaker.speak_up "No trackers source configured!" if (torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?)
+    app.speaker.speak_up "Empty searchlist" if search_list.empty?
+    app.speaker.speak_up "No trackers source configured!" if (torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?)
     return if search_list.empty? || torrent_sources['trackers'].nil? || torrent_sources['trackers'].empty?
     results = case torrent_sources['type'].to_s
               when 'sub'
@@ -389,16 +390,16 @@ class TorrentSearch
     waiting_until = waiting_time_set(torrent)
     torrent[:category] = category
     if no_waiting.to_i == 0 && download_now?(waiting_until).to_i == 1 && no_prompt.to_i > 0
-      MediaLibrarian.app.speaker.speak_up("Setting timeframe for '#{torrent[:name]}' on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
+      app.speaker.speak_up("Setting timeframe for '#{torrent[:name]}' on #{torrent[:tracker]} to #{waiting_until}", 0) if torrent[:in_db].to_i == 0
       torrent[:download_now] = 1
     else
-      MediaLibrarian.app.speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
+      app.speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
       torrent[:download_now] = 2
     end
     if torrent[:in_db]
-      MediaLibrarian.app.db.update_rows('torrents', {:status => torrent[:download_now], :waiting_until => waiting_until}, {:name => torrent[:name]})
+      app.db.update_rows('torrents', {:status => torrent[:download_now], :waiting_until => waiting_until}, {:name => torrent[:name]})
     else
-      MediaLibrarian.app.db.insert_row('torrents', {
+      app.db.insert_row('torrents', {
           :identifier => torrent[:identifier],
           :identifiers => torrent[:identifiers],
           :name => torrent[:name],
@@ -409,14 +410,14 @@ class TorrentSearch
     end
     if torrent[:download_now] == 2
       remove_others.each do |tname|
-        t = MediaLibrarian.app.db.get_rows('torrents', {:name => tname}).first
+        t = app.db.get_rows('torrents', {:name => tname}).first
         next if t.nil? || t[:status].to_i > 3
-        MediaLibrarian.app.speaker.speak_up "Will remove torrent '#{tname}' with same identifier than torrent '#{torrent[:name]}' (tid '#{t[:torrent_id]}')" if Env.debug?
-        MediaLibrarian.app.t_client.delete_torrent(tname, t[:torrent_id], 0, 1)
+        app.speaker.speak_up "Will remove torrent '#{tname}' with same identifier than torrent '#{torrent[:name]}' (tid '#{t[:torrent_id]}')" if Env.debug?
+        app.t_client.delete_torrent(tname, t[:torrent_id], 0, 1)
       end
     end
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding, 2))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding, 2))
   end
 
   def self.waiting_time_set(torrent)

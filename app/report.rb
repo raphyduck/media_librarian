@@ -1,4 +1,6 @@
 class Report
+  include MediaLibrarian::AppContainerSupport
+
   include Hanami::Mailer
   from :from
   to :to
@@ -26,13 +28,13 @@ class Report
       body_s: StringUtils.fix_encoding(ebody.to_s)
     )
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, 'Report.push_email', 0)
+    app.speaker.tell_error(e, 'Report.push_email', 0)
     push_email(email_subject, ebody, trials - 1)
   end
 
   def self.sent_out(email_subject, t = Thread.current, content = '')
     email_content = content.to_s.empty? ? (t || Thread.current)[:email_msg].to_s : content.to_s
-    if MediaLibrarian.app.email && !email_content.empty? && (t.nil? || t[:send_email].to_i > 0)
+    if app.email && !email_content.empty? && (t.nil? || t[:send_email].to_i > 0)
       Librarian.route_cmd(['Report', 'push_email', email_subject, email_content], 1, 'email', 1, 'priority')
       Librarian.reset_notifications(t) if t
       Thread.current[:parent] = nil
@@ -42,7 +44,7 @@ class Report
   private
 
   def email_notification(key)
-    MediaLibrarian.app.email ? MediaLibrarian.app.email[key] : nil
+    self.class.app.email ? self.class.app.email[key] : nil
   end
 
   def bcc

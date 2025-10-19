@@ -133,6 +133,7 @@ module MediaLibrarian
       @loader.push_dir(File.join(root, 'lib'))
       @loader.push_dir(File.join(root, 'min_lib'))
       @loader.ignore(__FILE__)
+      register_loader_hooks
       @loader.setup
     end
 
@@ -162,6 +163,31 @@ module MediaLibrarian
       end
 
       FileUtils.mkdir_p(File.join(@config_dir, 'log'))
+    end
+
+    def register_loader_hooks
+      return unless defined?(@loader)
+
+      register = lambda do |const|
+        @loader.on_load(const) do |klass|
+          klass.configure(app: self) if klass.respond_to?(:configure)
+        end
+      end
+
+      %w[
+        MoviesSet
+        Movie
+        TvSeries
+        Report
+        Daemon
+        Book
+        BookSeries
+        TorrentSearch
+        TorrentClient
+        Client
+        Library
+        Music
+      ].each { |const| register.call(const) }
     end
   end
 

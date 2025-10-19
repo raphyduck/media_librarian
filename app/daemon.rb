@@ -1,4 +1,5 @@
 class Daemon < EventMachine::Connection
+  include MediaLibrarian::AppContainerSupport
 
   @last_execution = {}
   @last_email_report = {}
@@ -48,7 +49,7 @@ class Daemon < EventMachine::Connection
           clear_queue(@queues[qname][:threads], @queues[qname][:waiting_threads])
         end
       rescue => e
-        MediaLibrarian.app.speaker.tell_error(e, "Daemon.clear_workers block worker('#{DataUtils.dump_variable(worker)}')")
+        app.speaker.tell_error(e, "Daemon.clear_workers block worker('#{DataUtils.dump_variable(worker)}')")
       end
       queue_remove(qname)
       spin += 1
@@ -64,14 +65,14 @@ class Daemon < EventMachine::Connection
 
   def self.dump_env_flags(expiration = 43200)
     env_flags = {}
-    MediaLibrarian.app.env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
+    app.env_flags.keys.each { |k| env_flags[k.to_s] = Thread.current[k] }
     env_flags['expiration_period'] = expiration
     env_flags
   end
 
   def self.ensure_daemon
     unless is_daemon?
-      MediaLibrarian.app.speaker.speak_up 'No daemon running'
+      app.speaker.speak_up 'No daemon running'
       return false
     end
     true
@@ -131,7 +132,7 @@ class Daemon < EventMachine::Connection
         return 1 if jid.to_s != 'all'
       end
     end
-    MediaLibrarian.app.speaker.speak_up "No job found with ID '#{jid}'!" if jid.to_s != 'all'
+    app.speaker.speak_up "No job found with ID '#{jid}'!" if jid.to_s != 'all'
   end
 
   def self.kill_job(w)
@@ -139,11 +140,11 @@ class Daemon < EventMachine::Connection
     @queues[queue_name][:clearing] = 1 if queue_name && @queues[queue_name]
     waiter = 0
     while w[:jid].to_i > 0 && get_children_count(w[:jid]).to_i > 0 && waiter < 10
-      MediaLibrarian.app.speaker.speak_up "Waiting for child jobs to clear up..."
+      app.speaker.speak_up "Waiting for child jobs to clear up..."
       waiter += 1
       sleep 1
     end
-    MediaLibrarian.app.speaker.speak_up "Killing job '#{w[:object]}' from queue '#{w[:queue_name]}'"
+    app.speaker.speak_up "Killing job '#{w[:object]}' from queue '#{w[:queue_name]}'"
     Librarian.run_termination(w, nil, "Killed job #{w[:object]}")
     w.kill if w.alive?
   end
@@ -168,18 +169,18 @@ class Daemon < EventMachine::Connection
   end
 
   def self.max_pool_size(qname)
-    return [MediaLibrarian.app.workers_pool_size.to_i, 1].max unless @queues[qname]
-    [(@queues[qname][:max_pool_size] || MediaLibrarian.app.workers_pool_size.to_i), 1].max
+    return [app.workers_pool_size.to_i, 1].max unless @queues[qname]
+    [(@queues[qname][:max_pool_size] || app.workers_pool_size.to_i), 1].max
   end
 
   def self.max_queue_slots
-    [MediaLibrarian.app.queue_slots.to_i, 1].max
+    [app.queue_slots.to_i, 1].max
   end
 
   def self.merge_notifications(t, parent = Thread.current)
     Utils.lock_time_merge(t, parent)
     return if parent[:email_msg].nil?
-    MediaLibrarian.app.speaker.speak_up(t[:log_msg].to_s, -1, parent) if t[:log_msg]
+    app.speaker.speak_up(t[:log_msg].to_s, -1, parent) if t[:log_msg]
     parent[:email_msg] << t[:email_msg].to_s
     parent[:send_email] = t[:send_email].to_i if t[:send_email].to_i > 0
   end
@@ -189,7 +190,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.queue_clear(qname)
-    MediaLibrarian.app.speaker.speak_up "Clearing queue '#{qname}'"
+    app.speaker.speak_up "Clearing queue '#{qname}'"
     @queues[qname][:threads].each { |_, t| kill_job(t) }
     @queues[qname][:waiting_threads].each { |_, t| kill_job(t) }
     @queues[qname][:jobs] = []
@@ -199,13 +200,13 @@ class Daemon < EventMachine::Connection
 
   def self.queue_remove(qname)
     return if get_children_count(qname).to_i > 0 || qname.nil?
-    MediaLibrarian.app.speaker.speak_up "Removing empty queue '#{qname}'"
+    app.speaker.speak_up "Removing empty queue '#{qname}'"
     @queues.delete(qname)
   end
 
   def self.queues_restore
     Cache.queue_state_get('daemon_queues', Hash).each do |qname, v|
-      MediaLibrarian.app.speaker.speak_up "Restoring jobs from queue '#{qname}'"
+      app.speaker.speak_up "Restoring jobs from queue '#{qname}'"
       v.each do |args|
         thread_cache_add(qname, args[5], args[0], args[2], args[1], fetch_function_config(args[5])[0] || 1, 0, fetch_function_config(args[5])[2] || 0)
       end
@@ -213,7 +214,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.queue_save(qname)
-    MediaLibrarian.app.speaker.speak_up "Saving queue '#{qname}'"
+    app.speaker.speak_up "Saving queue '#{qname}'"
     Cache.queue_state_add_or_update('daemon_queues', {qname => (@queues[qname][:jobs] + @queues[qname][:current_jobs].map { |_, j| j })}, 1, 1)
   end
 
@@ -230,7 +231,7 @@ class Daemon < EventMachine::Connection
   end
 
   def self.quit
-    if MediaLibrarian.app.librarian.quit? && !@is_quitting
+    if app.librarian.quit? && !@is_quitting
       @is_quitting = true
       @is_daemon = false
       queues_save
@@ -242,12 +243,12 @@ class Daemon < EventMachine::Connection
   def self.reload
     #TODO: Fix me, when a command is issued before the daemon is reloaded, the pid file is never created
     return unless ensure_daemon
-    MediaLibrarian.app.speaker.speak_up('Will reload after pending operations')
-    MediaLibrarian.app.librarian.reload = true
+    app.speaker.speak_up('Will reload after pending operations')
+    app.librarian.reload = true
   end
 
   def self.schedule(scheduler)
-    @jobs ||= MediaLibrarian.app.args_dispatch.load_template(scheduler, MediaLibrarian.app.template_dir)
+    @jobs ||= app.args_dispatch.load_template(scheduler, app.template_dir)
     ['periodic', 'continuous'].each do |type|
       (@jobs[type] || {}).each do |task, params|
         args = params['command'].split('.')
@@ -274,27 +275,27 @@ class Daemon < EventMachine::Connection
     thread_cache_fetch
     launch_command
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.start(scheduler: 'scheduler')
-    return MediaLibrarian.app.speaker.speak_up 'Daemon already started' if is_daemon?
-    MediaLibrarian.app.speaker.speak_up("Will now work in the background")
-    MediaLibrarian.app.librarian.daemonize
-    MediaLibrarian.app.librarian.write_pid
-    Logger.renew_logs(MediaLibrarian.app.config_dir + '/log')
+    return app.speaker.speak_up 'Daemon already started' if is_daemon?
+    app.speaker.speak_up("Will now work in the background")
+    app.librarian.daemonize
+    app.librarian.write_pid
+    Logger.renew_logs(app.config_dir + '/log')
     @is_daemon = true
     queues_restore
     EventMachine.run do
-      start_server(MediaLibrarian.app.api_option)
+      start_server(app.api_option)
       EM.add_periodic_timer(0.2) { schedule(scheduler) }
       EM.add_periodic_timer(1) { quit }
       EM.add_periodic_timer(3700) { TraktAgent.get_trakt_token }
     end
-    MediaLibrarian.app.librarian.delete_pid
-    MediaLibrarian.app.speaker.speak_up('Shutting down')
+    app.librarian.delete_pid
+    app.speaker.speak_up('Shutting down')
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.start_server(opts = {})
@@ -303,51 +304,51 @@ class Daemon < EventMachine::Connection
   end
 
   def self.status
-    return MediaLibrarian.app.speaker.speak_up 'Not in daemon mode' unless is_daemon?
+    return app.speaker.speak_up 'Not in daemon mode' unless is_daemon?
     bq = 0
     @queues.each do |qname, _|
       bq += 1 if queue_busy?(qname)
     end
-    MediaLibrarian.app.speaker.speak_up "Total queues: #{@queues.keys.count}"
-    MediaLibrarian.app.speaker.speak_up "Working queues: #{queues_slot_taken}"
-    MediaLibrarian.app.speaker.speak_up "Busy queues: #{bq}"
-    MediaLibrarian.app.speaker.speak_up LINE_SEPARATOR
+    app.speaker.speak_up "Total queues: #{@queues.keys.count}"
+    app.speaker.speak_up "Working queues: #{queues_slot_taken}"
+    app.speaker.speak_up "Busy queues: #{bq}"
+    app.speaker.speak_up LINE_SEPARATOR
     @queues.keys.each do |qname|
       wcw = @queues[qname][:threads].compact.select { |_, t| t[:nonex_lock].to_i == 0 }
       wcl = @queues[qname][:threads].compact.select { |_, t| t[:nonex_lock].to_i > 0 }
       wwc = @queues[qname][:waiting_threads].compact.dup
-      MediaLibrarian.app.speaker.speak_up "Queue #{qname}#{' (' + @queues[qname][:task_name].to_s + ')' if @queues[qname][:task_name].to_s != ''}#{' (slot taken)' if queue_slot_taken?(qname)}:"
-      MediaLibrarian.app.speaker.speak_up "#{SPACER}* #{wcw.count} worker(s) (max #{max_pool_size(qname)})"
+      app.speaker.speak_up "Queue #{qname}#{' (' + @queues[qname][:task_name].to_s + ')' if @queues[qname][:task_name].to_s != ''}#{' (slot taken)' if queue_slot_taken?(qname)}:"
+      app.speaker.speak_up "#{SPACER}* #{wcw.count} worker(s) (max #{max_pool_size(qname)})"
       wcw.each do |_, w|
         status_worker(w, 1)
       end
       if wcl.count > 0
-        MediaLibrarian.app.speaker.speak_up "#{SPACER}* Jobs locked out with non exclusive lock, waiting for release of their lock:"
+        app.speaker.speak_up "#{SPACER}* Jobs locked out with non exclusive lock, waiting for release of their lock:"
         wcl.values[0..10].each do |w|
           status_worker(w, 1)
         end
-        MediaLibrarian.app.speaker.speak_up "#{SPACER}and #{wcl.values[11..-1].count} more" unless wcl.values[11..-1].nil?
+        app.speaker.speak_up "#{SPACER}and #{wcl.values[11..-1].count} more" unless wcl.values[11..-1].nil?
       end
       if wwc && wwc.count > 0
-        MediaLibrarian.app.speaker.speak_up "#{SPACER}* Finished jobs waiting for completion of children:"
+        app.speaker.speak_up "#{SPACER}* Finished jobs waiting for completion of children:"
         wwc.values[0..10].each do |w|
           status_worker(w)
         end
-        MediaLibrarian.app.speaker.speak_up "#{SPACER}and #{wwc.values[11..-1].count} more" unless wwc.values[11..-1].nil?
+        app.speaker.speak_up "#{SPACER}and #{wwc.values[11..-1].count} more" unless wwc.values[11..-1].nil?
       end
-      MediaLibrarian.app.speaker.speak_up "#{SPACER}* #{@queues[qname][:jobs].count} in queue"
-      MediaLibrarian.app.speaker.speak_up LINE_SEPARATOR
+      app.speaker.speak_up "#{SPACER}* #{@queues[qname][:jobs].count} in queue"
+      app.speaker.speak_up LINE_SEPARATOR
     end
-    MediaLibrarian.app.speaker.speak_up LINE_SEPARATOR
+    app.speaker.speak_up LINE_SEPARATOR
     bus_vars = BusVariable.list_bus_variables
-    MediaLibrarian.app.speaker.speak_up "Bus Variables:" unless bus_vars.empty?
+    app.speaker.speak_up "Bus Variables:" unless bus_vars.empty?
     bus_vars.each do |vname|
       v = LibraryBus.bus_variable_get(vname)
-      MediaLibrarian.app.speaker.speak_up "#{SPACER}* Variable '#{vname}': Type '#{v.class}'#{', with ' + v.length.to_s + ' elements' if [Hash, Vash, Array].include?(v.class)}"
+      app.speaker.speak_up "#{SPACER}* Variable '#{vname}': Type '#{v.class}'#{', with ' + v.length.to_s + ' elements' if [Hash, Vash, Array].include?(v.class)}"
     end
-    MediaLibrarian.app.speaker.speak_up LINE_SEPARATOR
-    MediaLibrarian.app.speaker.speak_up "Global lock time:#{Utils.lock_time_get}"
-    MediaLibrarian.app.speaker.speak_up LINE_SEPARATOR
+    app.speaker.speak_up LINE_SEPARATOR
+    app.speaker.speak_up "Global lock time:#{Utils.lock_time_get}"
+    app.speaker.speak_up LINE_SEPARATOR
   end
 
   def self.status_worker(worker, warn = 0)
@@ -355,7 +356,7 @@ class Daemon < EventMachine::Connection
     warning = warn > 1 ? "#{" (WARNING: Worker is dead" unless worker.alive? || (Time.now - worker[:end_time]).to_i < 5}\
     #{"for " + TimeUtils.seconds_in_words(Time.now - worker[:end_time]) if worker[:end_time] && (Time.now - worker[:end_time]).to_i >= 5}\
     #{" !)" unless worker.alive? || (Time.now - worker[:end_time]).to_i < 5}" : ''
-    MediaLibrarian.app.speaker.speak_up "#{SPACER * 2}-Job '#{worker[:object]}' (jid '#{worker[:jid]}' from queue '#{worker[:queue_name]}')\
+    app.speaker.speak_up "#{SPACER * 2}-Job '#{worker[:object]}' (jid '#{worker[:jid]}' from queue '#{worker[:queue_name]}')\
 #{" working for " + TimeUtils.seconds_in_words(Time.now - worker[:start_time]) if worker[:start_time]}\
 #{" waiting for " + childs.to_s + ' childs' if childs.to_i > 0},#{Utils.lock_time_get(worker)}\
 #{" locked by '#{worker[:locked_by]}'" if worker[:locked_by]}#{warning}"
@@ -363,8 +364,8 @@ class Daemon < EventMachine::Connection
 
   def self.stop
     return unless ensure_daemon
-    MediaLibrarian.app.speaker.speak_up('Will shutdown after pending operations')
-    MediaLibrarian.app.librarian.quit = true
+    app.speaker.speak_up('Will shutdown after pending operations')
+    app.librarian.quit = true
   end
 
   def self.thread_cache_add(queue, args, jid, task, internal = 0, max_pool_size = 0, continuous = 0, save_to_disk = 0, client = Thread.current[:current_daemon], expiration = 43200, child = 0, &block)
@@ -410,12 +411,12 @@ class Daemon < EventMachine::Connection
         @client = data.gsub('hello from ', '').to_s
         send_data('listening')
       when /^user_input/
-        MediaLibrarian.app.speaker.user_input(data.to_s.gsub('user_input ', ''))
+        app.speaker.user_input(data.to_s.gsub('user_input ', ''))
       else
         send_data('identify yourself first')
       end
     end
   rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 end
