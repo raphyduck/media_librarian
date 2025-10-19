@@ -2,6 +2,14 @@
 
 require 'yaml'
 
+require 'simple_args_dispatch' unless defined?(SimpleArgsDispatch)
+require 'simple_config_man' unless defined?(SimpleConfigMan)
+require 'simple_speaker' unless defined?(SimpleSpeaker)
+
+require_relative '../db' unless defined?(Storage::Db)
+require_relative '../torznab_tracker' unless defined?(TorznabTracker)
+require_relative '../utils' unless defined?(Utils)
+
 module MediaLibrarian
   # Container responsible for managing application wide service instances.
   # All services are instantiated once during boot and reused everywhere.
