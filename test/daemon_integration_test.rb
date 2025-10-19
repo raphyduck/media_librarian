@@ -3,6 +3,9 @@
 require 'socket'
 require 'timeout'
 require 'yaml'
+require 'json'
+require 'net/http'
+require 'fileutils'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../app/client'
@@ -70,6 +73,79 @@ class DaemonIntegrationTest < Minitest::Test
 
     assert_equal 5, MediaLibrarian.application.queue_slots
     wait_for_recorded_command('--message=updated')
+  end
+
+  def test_logs_endpoint_returns_tail
+    boot_daemon_environment
+
+    log_dir = File.join(@environment.application.config_dir, 'log')
+    FileUtils.mkdir_p(log_dir)
+    log_path = File.join(log_dir, 'medialibrarian.log')
+    error_path = File.join(log_dir, 'medialibrarian_errors.log')
+
+    lines = Array.new(50) { |index| "line#{index}" }.join("\n") + "\n"
+    File.write(log_path, lines)
+    File.write(error_path, "error_line\n")
+
+    response = control_get('/logs')
+    assert_equal 200, response[:status_code]
+
+    logs = response[:body].fetch('logs')
+    assert_match(/line49/, logs.fetch('medialibrarian.log'))
+    assert_equal "error_line\n", logs.fetch('medialibrarian_errors.log')
+  end
+
+  def test_config_endpoint_allows_read_and_write_with_reload
+    boot_daemon_environment
+
+    initial = control_get('/config')
+    assert_equal 200, initial[:status_code]
+    assert_includes initial[:body].fetch('content'), 'queue_slots'
+
+    new_config = {
+      'daemon' => {
+        'workers_pool_size' => 4,
+        'queue_slots' => 7
+      }
+    }.to_yaml
+
+    update = control_put('/config', body: { 'content' => new_config })
+    assert_equal 204, update[:status_code]
+    assert_equal new_config, File.read(@environment.application.config_file)
+
+    reload = control_post('/config/reload')
+    assert_equal 204, reload[:status_code]
+    assert_equal 7, MediaLibrarian.application.queue_slots
+
+    invalid = control_put('/config', body: { 'content' => "daemon: [" })
+    assert_equal 422, invalid[:status_code]
+    assert_equal new_config, File.read(@environment.application.config_file)
+  end
+
+  def test_scheduler_endpoint_updates_template_via_http
+    scheduler_name = 'http_scheduler'
+
+    boot_daemon_environment(scheduler: scheduler_name) do
+      write_scheduler_template(scheduler_name, message: 'initial')
+    end
+
+    wait_for_recorded_command('--message=initial')
+
+    new_template = scheduler_template_yaml(message: 'updated')
+    response = control_put('/scheduler', body: { 'content' => new_template })
+    assert_equal 204, response[:status_code]
+    assert_equal new_template, File.read(File.join(@environment.application.template_dir, "#{scheduler_name}.yml"))
+
+    clear_recorded_commands
+
+    reload_response = control_post('/scheduler/reload')
+    assert_equal 204, reload_response[:status_code]
+
+    wait_for_recorded_command('--message=updated')
+
+    fetched = control_get('/scheduler')
+    assert_equal 200, fetched[:status_code]
+    assert_equal new_template, fetched[:body].fetch('content')
   end
 
   private
@@ -168,7 +244,60 @@ class DaemonIntegrationTest < Minitest::Test
     File.write(path, template.to_yaml)
   end
 
+  def scheduler_template_yaml(message:)
+    {
+      'periodic' => {
+        'reload_task' => {
+          'command' => 'Library.noop',
+          'every' => '1 minutes',
+          'args' => {
+            'message' => message
+          }
+        }
+      }
+    }.to_yaml
+  end
+
   def free_port
     TCPServer.open('127.0.0.1', 0) { |server| server.addr[1] }
+  end
+
+  def control_get(path)
+    perform_control_request(Net::HTTP::Get, path)
+  end
+
+  def control_put(path, body:)
+    perform_control_request(Net::HTTP::Put, path, body: body)
+  end
+
+  def control_post(path, body: nil)
+    perform_control_request(Net::HTTP::Post, path, body: body)
+  end
+
+  def perform_control_request(klass, path, body: nil)
+    uri = control_uri(path)
+    request = klass.new(uri)
+    if body
+      request['Content-Type'] = 'application/json'
+      request.body = JSON.dump(body)
+    end
+
+    Net::HTTP.start(uri.hostname, uri.port) do |http|
+      response = http.request(request)
+      parse_control_response(response)
+    end
+  end
+
+  def parse_control_response(response)
+    parsed = response.body.to_s.empty? ? nil : JSON.parse(response.body)
+    { status_code: response.code.to_i, body: parsed }
+  end
+
+  def control_uri(path)
+    URI::HTTP.build(
+      host: @environment.application.api_option['bind_address'],
+      port: @environment.application.api_option['listen_port'],
+      path: path
+    )
   end
 end
