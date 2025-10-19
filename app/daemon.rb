@@ -490,7 +490,9 @@ class Daemon
         json_response(res, body: status_snapshot[:jobs].map(&:to_h))
       end
 
-      @control_server.mount_proc('/stop') do |_req, res|
+      @control_server.mount_proc('/stop') do |req, res|
+        next unless require_control_token(req, res)
+
         json_response(res, body: { 'status' => 'stopping' })
         Thread.new { stop }
       end

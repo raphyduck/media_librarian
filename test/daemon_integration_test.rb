@@ -56,6 +56,20 @@ class DaemonIntegrationTest < Minitest::Test
     refute Daemon.running?
   end
 
+  def test_stop_endpoint_requires_control_token
+    token = 'integration-secret'
+    boot_daemon_environment(control_token: token)
+
+    unauthorized = control_post('/stop')
+    assert_equal 403, unauthorized[:status_code]
+
+    stop_response = Client.new.stop
+    assert_equal 200, stop_response['status_code']
+
+    @daemon_thread.join
+    refute Daemon.running?
+  end
+
   def test_reload_refreshes_configuration_and_scheduler
     scheduler_name = 'reload_scheduler'
 
@@ -161,13 +175,13 @@ class DaemonIntegrationTest < Minitest::Test
 
   private
 
-  def boot_daemon_environment(scheduler: nil)
+  def boot_daemon_environment(scheduler: nil, control_token: nil)
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
     Daemon.configure(app: @environment.application)
     Client.configure(app: @environment.application)
 
-    override_port
+    override_port(control_token: control_token)
 
     yield if block_given?
 
@@ -180,9 +194,11 @@ class DaemonIntegrationTest < Minitest::Test
     wait_for_http_ready
   end
 
-  def override_port
+  def override_port(control_token: nil)
     port = free_port
-    @environment.application.api_option = { 'bind_address' => '127.0.0.1', 'listen_port' => port }
+    options = { 'bind_address' => '127.0.0.1', 'listen_port' => port }
+    options['control_token'] = control_token if control_token
+    @environment.application.api_option = options
   end
 
   def recorded_commands

@@ -7,6 +7,12 @@ require 'uri'
 class Client
   include MediaLibrarian::AppContainerSupport
 
+  def initialize(control_token: nil)
+    options = app.api_option
+    resolved_token = control_token || (options && options['control_token']) || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+    @control_token = resolved_token unless resolved_token.to_s.empty?
+  end
+
   def enqueue(command, wait: true, queue: nil, task: nil, internal: 0)
     request = Net::HTTP::Post.new(uri_for('/jobs'))
     request['Content-Type'] = 'application/json'
@@ -35,6 +41,8 @@ class Client
   private
 
   def perform(request)
+    attach_control_token(request)
+
     Net::HTTP.start(request.uri.hostname, request.uri.port) do |http|
       http.read_timeout = 120
       response = http.request(request)
@@ -55,5 +63,14 @@ class Client
       port: app.api_option['listen_port'],
       path: path
     )
+  end
+
+  attr_reader :control_token
+
+  def attach_control_token(request)
+    return unless control_token
+    return unless %w[POST PUT PATCH DELETE].include?(request.method)
+
+    request['X-Control-Token'] = control_token
   end
 end
