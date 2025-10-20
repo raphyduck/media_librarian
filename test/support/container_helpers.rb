@@ -34,7 +34,7 @@ module TestSupport
                     :workers_pool_size, :queue_slots, :container
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example,
-                  :tracker_dir
+                  :tracker_dir, :api_config_file
 
       def initialize(root:, speaker:, args_dispatch:)
         @root = root
@@ -44,6 +44,7 @@ module TestSupport
         FileUtils.mkdir_p(@config_dir)
         @config_file = File.join(@config_dir, 'conf.yml')
         @config_example = File.join(@config_dir, 'conf.example.yml')
+        @api_config_file = File.join(@config_dir, 'api.yml')
         @template_dir = File.join(root, 'templates')
         FileUtils.mkdir_p(@template_dir)
         @tracker_dir = File.join(root, 'trackers')
@@ -57,6 +58,7 @@ module TestSupport
         @speaker = speaker
         @args_dispatch = args_dispatch
         persist_default_configuration
+        persist_default_api_configuration
       end
 
       class NullLoader
@@ -70,18 +72,25 @@ module TestSupport
                                                  'queue_slots' => @queue_slots } }.to_yaml)
       end
 
+      def persist_default_api_configuration
+        return if File.exist?(@api_config_file)
+
+        File.write(@api_config_file, default_api_option.to_yaml)
+      end
+
       def api_option
         @api_option
       end
 
       def api_option=(value)
-        @api_option = default_api_option.merge(value || {}) do |key, default_value, override|
+        @api_option = default_api_option.merge(stringify_keys(value || {})) do |key, default_value, override|
           if default_value.is_a?(Hash) && override.is_a?(Hash)
             default_value.merge(override)
           else
             override
           end
         end
+        File.write(@api_config_file, @api_option.to_yaml)
       end
 
       private
@@ -95,8 +104,22 @@ module TestSupport
           'ssl_certificate_path' => nil,
           'ssl_private_key_path' => nil,
           'ssl_ca_path' => nil,
-          'ssl_verify_mode' => 'none'
+          'ssl_verify_mode' => 'none',
+          'ssl_client_verify_mode' => 'none'
         }
+      end
+
+      def stringify_keys(value)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, val), memo|
+            memo[key.to_s] = stringify_keys(val)
+          end
+        when Array
+          value.map { |entry| stringify_keys(entry) }
+        else
+          value
+        end
       end
     end
 
@@ -110,6 +133,13 @@ module TestSupport
         daemon_config = @config.fetch('daemon', {})
         @workers_pool_size = daemon_config['workers_pool_size'] || application.workers_pool_size
         @queue_slots = daemon_config['queue_slots'] || application.queue_slots
+      end
+
+      def reload_api_option!
+        return unless File.exist?(application.api_config_file)
+
+        loaded = YAML.safe_load(File.read(application.api_config_file), aliases: true) || {}
+        application.api_option = loaded
       end
 
       def reload_config!(new_settings)

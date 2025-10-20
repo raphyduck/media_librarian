@@ -278,7 +278,12 @@ class DaemonIntegrationTest < Minitest::Test
       end
     end
     @api_token = token
-    @environment.application.api_option = options
+
+    config_path = @environment.application.api_config_file
+    payload = stringify_keys(options)
+    File.write(config_path, payload.to_yaml)
+
+    @environment.container.reload_api_option!
   end
 
   def recorded_commands
@@ -394,6 +399,19 @@ class DaemonIntegrationTest < Minitest::Test
     request = Net::HTTP::Get.new(uri)
     Net::HTTP.start(uri.hostname, uri.port, **control_http_options) do |http|
       http.request(request)
+    end
+  end
+
+  def stringify_keys(value)
+    case value
+    when Hash
+      value.each_with_object({}) do |(key, val), memo|
+        memo[key.to_s] = stringify_keys(val)
+      end
+    when Array
+      value.map { |entry| stringify_keys(entry) }
+    else
+      value
     end
   end
 
