@@ -23,7 +23,7 @@ This program is made to answer my various needs for automation in the management
    If you prefer installing things manually, make sure you install the packages listed above and then run Bundler yourself:
 
    ```bash
-   gem install bundler:2.3.22
+   gem install bundler:2.4.10
    bundle config set deployment 'true'
    bundle install --jobs 4 --retry 3
    ```
