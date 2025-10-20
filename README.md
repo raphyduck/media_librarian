@@ -5,6 +5,63 @@ WARNING: This is beta software. It might not work as intended.
 What is it?
 This program is made to answer my various needs for automation in the management of video media collections.
 
+## Installation
+
+1. **Clone the repository** and switch into it:
+
+   ```bash
+   git clone https://github.com/USERNAME/media_librarian.git
+   cd media_librarian
+   ```
+
+2. **Install the system and Ruby dependencies.** The project provides a helper script that tries to detect your package manager and install the required tools (flac, lame, mediainfo, ffmpeg, mkvtoolnix, MakeMKV) before running Bundler:
+
+   ```bash
+   ./install.sh
+   ```
+
+   If you prefer installing things manually, make sure you install the packages listed above and then run Bundler yourself:
+
+   ```bash
+   gem install bundler:2.3.22
+   bundle config set deployment 'true'
+   bundle install --jobs 4 --retry 3
+   ```
+
+3. **Create your configuration directory** (the daemon looks under `~/.medialibrarian/`) and copy the provided examples as a starting point:
+
+   ```bash
+   mkdir -p ~/.medialibrarian
+   cp config/conf.yml.example ~/.medialibrarian/settings.yml
+   cp config/api.yml.example ~/.medialibrarian/api.yml
+   ```
+
+   Edit both files to match your environment (torrent client credentials, ffmpeg settings, API tokens, TLS options, etc.). Passwords should generally be stored as BCrypt hashes in `api.yml`.
+
+## Usage
+
+### CLI / daemon
+
+* Run the daemon with your configuration file:
+
+  ```bash
+  bundle exec ruby librarian.rb daemon start --config ~/.medialibrarian/settings.yml
+  ```
+
+* Stop it when needed:
+
+  ```bash
+  bundle exec ruby librarian.rb daemon stop
+  ```
+
+* You can also execute a one-shot command without the daemon by pointing directly at the configuration file:
+
+  ```bash
+  bundle exec ruby librarian.rb --config ~/.medialibrarian/settings.yml
+  ```
+
+The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `settings.yml`.
+
 ## Contrôle HTTP et interface web
 
 Le démon expose un serveur HTTP léger (WEBrick) permettant de piloter les jobs, consulter les logs et éditer les fichiers de configuration YAML. Une interface web statique est disponible à l'adresse racine `/` et consomme les endpoints JSON (`/status`, `/logs`, `/config`, `/scheduler`).
