@@ -48,7 +48,8 @@ install_system_dependencies() {
   case "$manager" in
     pacman)
       log "==> Installing system packages with pacman"
-      run_as_root pacman -Sy --needed --noconfirm flac lame mediainfo mkvtoolnix
+      # Arch Linux split MKVToolNix into CLI/GUIs; install the CLI tools which provide mkvmerge.
+      run_as_root pacman -Sy --needed --noconfirm flac lame mediainfo mkvtoolnix-cli
       if ! command -v ffmpeg &>/dev/null; then
         echo "→ Installing ffmpeg-full from AUR (requires trizen or yay)"
         if command -v trizen &>/dev/null; then
