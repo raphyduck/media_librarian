@@ -106,7 +106,7 @@ module MediaLibrarian
     def reload_config!(new_settings)
       store(:config, new_settings)
 
-      daemon_config = config.fetch('daemon', {})
+      daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
 
@@ -137,7 +137,7 @@ module MediaLibrarian
 
       reload_api_option!
 
-      daemon_config = config.fetch('daemon', {})
+      daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
     end
