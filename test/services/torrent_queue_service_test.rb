@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require_relative 'service_test_helper'
-require_relative '../../app/services/media_librarian/services'
-require_relative '../../app/services/media_librarian/services/base_service'
-require_relative '../../app/services/media_librarian/services/torrent_queue_service'
+require_relative '../../app/media_librarian/services'
+require_relative '../../app/media_librarian/services/base_service'
+require_relative '../../app/media_librarian/services/torrent_queue_service'
 
 class TorrentQueueServiceTest < Minitest::Test
   class FakeDB
