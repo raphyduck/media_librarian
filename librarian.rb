@@ -122,7 +122,7 @@ class Librarian
       Thread.new do
         app.args_dispatch.set_env_variables(app.env_flags, envf)
         reset_notifications(Thread.current)
-        Thread.current[:log_msg] = '' if child.to_i > 0
+        Thread.current[:log_msg] = String.new if child.to_i > 0
         Thread.current[:current_daemon] = client || Thread.current[:current_daemon]
         Thread.current[:parent] = parent
         Thread.current[:jid] = tid
@@ -190,7 +190,7 @@ class Librarian
     end
 
     def reset_notifications(thread)
-      thread[:email_msg] = ''
+      thread[:email_msg] = String.new
       thread[:send_email] = 0
     end
 
@@ -205,7 +205,7 @@ class Librarian
           p = Object.const_get(m).method(a.to_sym)
           cmd.nil? ? p.call : p.call(*cmd)
         else
-          app.speaker.speak_up('Running command: ', 0)
+          app.speaker.speak_up(String.new('Running command: '), 0)
           app.speaker.speak_up("#{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
           app.args_dispatch.dispatch(MediaLibrarian::APP_NAME, cmd, command_registry.actions, nil, app.template_dir)
         end

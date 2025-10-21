@@ -211,8 +211,12 @@ class TraktAgent
 
   def self.get_trakt_token
     return unless MediaLibrarian.app.trakt && MediaLibrarian.app.trakt_account
+
     token = MediaLibrarian.app.trakt.access_token
-    MediaLibrarian.app.db.insert_row('trakt_auth', token.merge({:account => MediaLibrarian.app.trakt_account}), 1) if token
+    MediaLibrarian.app.db.insert_row('trakt_auth', token.merge({ account: MediaLibrarian.app.trakt_account }), 1) if token
+  rescue StandardError => e
+    MediaLibrarian.app.speaker.tell_error(e, 'TraktAgent.get_trakt_token')
+    nil
   end
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')

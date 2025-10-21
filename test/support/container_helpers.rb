@@ -42,7 +42,7 @@ module TestSupport
         @env_flags = {}
         @config_dir = File.join(root, 'config')
         FileUtils.mkdir_p(@config_dir)
-        @config_file = File.join(@config_dir, 'conf.yml')
+        @config_file = File.join(@config_dir, 'settings.yml')
         @config_example = File.join(@config_dir, 'conf.example.yml')
         @api_config_file = File.join(@config_dir, 'api.yml')
         @template_dir = File.join(root, 'templates')

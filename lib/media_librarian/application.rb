@@ -140,13 +140,13 @@ module MediaLibrarian
     def setup_environment
       @env_flags = {
         debug: 0,
-        no_email_notif: 0,
+        no_email_notif: 1,
         pretend: 0,
         expiration_period: 0
       }
 
       @config_dir = File.join(Dir.home, '.medialibrarian')
-      @config_file = File.join(@config_dir, 'conf.yml')
+      @config_file = File.join(@config_dir, 'settings.yml')
       @config_example = File.join(root, 'config', 'conf.yml.example')
       @api_config_file = File.join(@config_dir, 'api.yml')
       @api_config_example = File.join(root, 'config', 'api.yml.example')

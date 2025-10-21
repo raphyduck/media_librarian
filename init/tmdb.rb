@@ -1,3 +1,4 @@
+require 'themoviedb'
 require_relative '../boot/librarian'
 
 app = MediaLibrarian::Boot.application
