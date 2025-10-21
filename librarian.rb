@@ -195,6 +195,14 @@ class Librarian
     end
 
     def run_command(cmd, direct = 0, object = '', &block)
+      original_cmd = Array(cmd).dup
+      cmd = sanitize_arguments(original_cmd)
+
+      if direct.to_i.zero? && cmd.empty?
+        notify_missing_command(original_cmd)
+        cmd = ['help']
+      end
+
       object = cmd[0..1].join(' ') if object.to_s.empty? || object == 'rcv'
       init_thread(Thread.current, object, direct, &block)
 
@@ -214,6 +222,39 @@ class Librarian
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
       run_termination(Thread.current, thread_value, "Error on #{object}")
+    end
+
+    def sanitize_arguments(args)
+      sanitized = []
+      skip_next = false
+
+      Array(args).each do |arg|
+        if skip_next
+          skip_next = false
+          next
+        end
+
+        case arg
+        when '--config'
+          skip_next = true
+        when /^--config=/
+          next
+        else
+          sanitized << arg
+        end
+      end
+
+      sanitized
+    end
+
+    def notify_missing_command(original_cmd)
+      return unless original_cmd.any?
+
+      if original_cmd.any? { |arg| arg == '--config' || arg.start_with?('--config=') }
+        app.speaker.speak_up('No command provided after --config option, showing help instead.')
+      else
+        app.speaker.speak_up('No command provided, showing help instead.')
+      end
     end
 
     def run_termination(thread, thread_value, object = nil)
