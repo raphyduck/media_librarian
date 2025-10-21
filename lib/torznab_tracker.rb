@@ -1,3 +1,5 @@
+require 'torznab/client'
+
 class TorznabTracker
   attr_accessor :config, :tracker, :name, :limit
 
