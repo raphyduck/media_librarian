@@ -132,6 +132,7 @@ module MediaLibrarian
       @loader.push_dir(File.join(root, 'lib'))
       @loader.push_dir(File.join(root, 'min_lib'))
       @loader.ignore(__FILE__)
+      @loader.ignore(File.join(root, 'lib', 'db', 'migrations'))
       register_loader_hooks
       @loader.setup
     end
