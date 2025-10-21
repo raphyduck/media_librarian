@@ -1,3 +1,5 @@
+require 'hanami/mailer'
+
 class Report
   include MediaLibrarian::AppContainerSupport
 
