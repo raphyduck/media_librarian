@@ -157,7 +157,7 @@ module Storage
     end
 
     def default_migrations_path
-      File.expand_path('db/migrations', __dir__)
+      File.expand_path('../db/migrations', __dir__)
     end
 
     def deserialize_row(row)
