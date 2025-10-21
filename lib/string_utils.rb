@@ -1,3 +1,5 @@
+require 'titleize'
+
 class StringUtils
 
   def self.accents_clear(str)
