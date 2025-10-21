@@ -7,7 +7,7 @@ require 'ostruct'
 require_relative '../test_helper'
 
 Storage.send(:remove_const, :Db) if Storage.const_defined?(:Db)
-load File.expand_path('../../lib/db.rb', __dir__)
+load File.expand_path('../../lib/storage/db.rb', __dir__)
 
 class StorageDbTest < Minitest::Test
   def setup
