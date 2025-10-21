@@ -1,4 +1,4 @@
-class MkvMuxer
+class MkvMux
   attr_reader :command
 
   def initialize(path, output = nil, force = false)
@@ -58,7 +58,7 @@ class MkvMuxer
   end
 
   def apply_crc32!
-    crc32 = MkvMuxer.crc32_of @output
+    crc32 = MkvMux.crc32_of @output
     FileUtils.mv(@output, @output.gsub(/CRC32/, crc32)[0..-2])
   end
 
