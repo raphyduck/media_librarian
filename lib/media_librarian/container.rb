@@ -2,6 +2,8 @@
 
 require 'yaml'
 
+require 'io/console'
+
 require 'simple_args_dispatch' unless defined?(SimpleArgsDispatch)
 require 'simple_config_man' unless defined?(SimpleConfigMan)
 require 'simple_speaker' unless defined?(SimpleSpeaker)
