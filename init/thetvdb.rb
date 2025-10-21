@@ -1,4 +1,5 @@
 # Start thetvdb client
+require 'tvdb_party'
 require_relative '../boot/librarian'
 
 app = MediaLibrarian::Boot.application

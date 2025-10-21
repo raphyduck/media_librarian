@@ -75,6 +75,7 @@ class Daemon
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
+      daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
       return app.speaker.speak_up('Daemon already started') if running?
 
       app.speaker.speak_up('Will now work in the background')

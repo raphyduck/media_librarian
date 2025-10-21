@@ -18,8 +18,20 @@ class Utils
   end
 
   def self.arguments_dump(binding, max_depth = 2, class_name = '', calling_name = '')
-    class_name = caller[0].match(/\/(\w*)\.rb:/)[1].gsub('_', ' ').titleize.gsub(' ', '') if class_name.to_s == ''
-    calling_name = caller[0][/`.*'/][1..-2].gsub('rescue in ', '') if calling_name.to_s == ''
+    caller_info = caller(1..1).first
+    if caller_info
+      if class_name.to_s == ''
+        class_match = caller_info.match(/\/(\w*)\.rb:/)
+        class_name = class_match[1].gsub('_', ' ').titleize.gsub(' ', '') if class_match
+      end
+      if calling_name.to_s == ''
+        method_match = caller_info[/`.*'/]
+        calling_name = method_match[1..-2].gsub('rescue in ', '') if method_match
+      end
+    end
+
+    class_name = class_name.to_s
+    calling_name = calling_name.to_s
     args_params, hash_params = arguments_get(binding, class_name, calling_name, max_depth)
     "#{class_name}.#{calling_name}(#{args_params.map { |_, v| v }.join(', ') unless args_params.nil? || args_params.empty?}#{', ' unless args_params.nil? || args_params.empty? || hash_params.nil? || hash_params.empty?}#{Hash[hash_params] unless hash_params.nil? || hash_params.empty?})"
   end
