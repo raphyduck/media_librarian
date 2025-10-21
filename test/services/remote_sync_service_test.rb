@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require_relative 'service_test_helper'
-require_relative '../../app/services/media_librarian/services'
-require_relative '../../app/services/media_librarian/services/base_service'
-require_relative '../../app/services/media_librarian/services/remote_sync_service'
+require_relative '../../app/media_librarian/services'
+require_relative '../../app/media_librarian/services/base_service'
+require_relative '../../app/media_librarian/services/remote_sync_service'
 
 class RemoteSyncServiceTest < Minitest::Test
   class FakeFileSystem
