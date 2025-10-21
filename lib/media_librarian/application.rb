@@ -122,6 +122,8 @@ module MediaLibrarian
 
     def setup_dependencies
       Bundler.require(:default)
+      require 'fuzzystringmatch' unless defined?(FuzzyStringMatch)
+      require 'mechanize' unless defined?(Mechanize)
     end
 
     def setup_loader
