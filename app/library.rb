@@ -112,6 +112,7 @@ class Library
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {}, exclude_path: ['extfls'])
     return app.speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
+    state = init_download_processing_state
     completion_time = Time.now
     if root_process.to_i > 0
       opath = torrent_path.dup
@@ -140,7 +141,6 @@ class Library
       opath += +'/' + torrent_name
     end
     full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/, '/')
-    state = init_download_processing_state
     handled_files = handled_file_types(handling)
     if FileTest.directory?(full_p)
       ensure_qualities = Quality.qualities_merge(ensure_qualities, full_p)
