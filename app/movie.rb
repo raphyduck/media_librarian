@@ -88,6 +88,8 @@ class Movie
     elsif @release_date
       Time.parse(@release_date) rescue nil
     else
+      return nil if @year.to_i.zero?
+
       Time.new(@year.to_i)
     end
   end
@@ -97,6 +99,7 @@ class Movie
 
     release_time = release_date
     release_year = release_time&.year
+    release_year = nil if release_year&.zero?
     extracted_year = nil
     if name
       identified_year = Metadata.identify_release_year(name)
