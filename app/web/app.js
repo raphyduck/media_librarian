@@ -4,6 +4,33 @@ const state = {
   autoRefresh: null,
 };
 
+const LOG_MAX_LINES = 10000;
+
+function getLogTail(content, maxLines = LOG_MAX_LINES) {
+  if (!content) {
+    return { text: '', truncated: false };
+  }
+
+  const normalized = content.replace(/\r\n/g, '\n');
+  const endsWithNewline = normalized.endsWith('\n');
+  const lines = normalized.split('\n');
+
+  if (endsWithNewline) {
+    lines.pop();
+  }
+
+  const truncated = lines.length > maxLines;
+  if (!truncated) {
+    return { text: normalized, truncated: false };
+  }
+
+  const tail = lines.slice(-maxLines).join('\n');
+  return {
+    text: endsWithNewline ? `${tail}\n` : tail,
+    truncated: true,
+  };
+}
+
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
   container.textContent = message;
@@ -173,15 +200,22 @@ function renderLogs(logs = {}) {
   Object.entries(logs).forEach(([name, content]) => {
     const fragment = template.content.cloneNode(true);
     fragment.querySelector('.log-name').textContent = name;
-    fragment.querySelector('.log-content').textContent = content || '—';
+    const { text: displayContent, truncated } = getLogTail(content || '');
+    fragment.querySelector('.log-content').textContent = displayContent || '—';
     fragment.querySelector('.copy-log').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(content || '');
+        await navigator.clipboard.writeText(displayContent || '');
         showNotification(`Log « ${name} » copié dans le presse-papiers.`);
       } catch (error) {
         showNotification(`Impossible de copier le log « ${name} ».`, 'error');
       }
     });
+    if (truncated) {
+      const hint = document.createElement('p');
+      hint.className = 'log-hint';
+      hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
+      fragment.querySelector('.log-entry').appendChild(hint);
+    }
     container.appendChild(fragment);
   });
 }
