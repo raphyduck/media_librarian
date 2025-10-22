@@ -12,6 +12,8 @@ require 'bcrypt'
 require 'yaml'
 require 'fileutils'
 
+require_relative 'client'
+
 WEBrick::HTTPServlet::ProcHandler.class_eval do
   alias do_DELETE do_GET unless method_defined?(:do_DELETE)
 end
@@ -140,20 +142,28 @@ class Daemon
     end
 
     def status
-      return app.speaker.speak_up('Not in daemon mode') unless running?
-
-      snapshot = status_snapshot
-      app.speaker.speak_up "Total jobs: #{snapshot[:jobs].count}"
-      app.speaker.speak_up "Running jobs: #{snapshot[:running].count}"
-      app.speaker.speak_up "Queued jobs: #{snapshot[:queued].count}"
-      app.speaker.speak_up "Finished jobs: #{snapshot[:finished].count}"
-      app.speaker.speak_up LINE_SEPARATOR
-      snapshot[:jobs].each do |job|
-        app.speaker.speak_up "- Job #{job.id} (queue: #{job.queue}) status=#{job.status}"
+      if running?
+        print_status(status_snapshot, lock_time: Utils.lock_time_get)
+        return
       end
-      app.speaker.speak_up LINE_SEPARATOR
-      app.speaker.speak_up "Global lock time:#{Utils.lock_time_get}"
-      app.speaker.speak_up LINE_SEPARATOR
+
+      response = Client.new.status
+      status_code = response['status_code']
+
+      case status_code
+      when 200
+        body = response['body']
+        jobs = extract_jobs_from(body)
+        lock_time = body.is_a?(Hash) ? body['lock_time'] : nil
+        print_status(build_snapshot_from_hashes(jobs), lock_time: lock_time)
+      when 401, 403
+        app.speaker.speak_up('Not authorized to query daemon status')
+      when 503
+        app.speaker.speak_up('No daemon running')
+      else
+        message = response['error'] || "Unable to retrieve daemon status (HTTP #{status_code})"
+        app.speaker.speak_up(message)
+      end
     end
 
     def status_snapshot
@@ -164,6 +174,63 @@ class Daemon
         queued: jobs.reject(&:finished?).reject(&:running?),
         finished: jobs.select(&:finished?)
       }
+    end
+
+    def build_snapshot_from_hashes(jobs)
+      running = jobs.select { |job| job[:status] == 'running' }
+      finished = jobs.select { |job| %w[finished failed cancelled].include?(job[:status]) }
+      queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
+      {
+        jobs: jobs,
+        running: running,
+        queued: queued,
+        finished: finished
+      }
+    end
+
+    def extract_jobs_from(body)
+      jobs =
+        case body
+        when Hash
+          Array(body['jobs'])
+        when Array
+          body
+        else
+          []
+        end
+
+      jobs.map do |job|
+        {
+          id: job['id'],
+          queue: job['queue'],
+          status: job['status'] || job[:status]
+        }
+      end
+    end
+
+    def print_status(snapshot, lock_time: nil)
+      jobs = snapshot[:jobs]
+      running = snapshot[:running]
+      queued = snapshot[:queued]
+      finished = snapshot[:finished]
+
+      app.speaker.speak_up "Total jobs: #{jobs.count}"
+      app.speaker.speak_up "Running jobs: #{running.count}"
+      app.speaker.speak_up "Queued jobs: #{queued.count}"
+      app.speaker.speak_up "Finished jobs: #{finished.count}"
+      app.speaker.speak_up LINE_SEPARATOR
+
+      jobs.each do |job|
+        job_id = job.respond_to?(:id) ? job.id : job[:id]
+        queue_name = job.respond_to?(:queue) ? job.queue : job[:queue]
+        status = job.respond_to?(:status) ? job.status : job[:status]
+        app.speaker.speak_up "- Job #{job_id} (queue: #{queue_name}) status=#{status}"
+      end
+
+      app.speaker.speak_up LINE_SEPARATOR
+      lock_output = lock_time || Utils.lock_time_get
+      app.speaker.speak_up "Global lock time:#{lock_output}"
+      app.speaker.speak_up LINE_SEPARATOR
     end
 
     def ensure_daemon
@@ -521,7 +588,14 @@ class Daemon
       @control_server.mount_proc('/status') do |req, res|
         next unless require_authorization(req, res)
 
-        json_response(res, body: status_snapshot[:jobs].map(&:to_h))
+        snapshot = status_snapshot
+        json_response(
+          res,
+          body: {
+            'jobs' => snapshot[:jobs].map(&:to_h),
+            'lock_time' => Utils.lock_time_get
+          }
+        )
       end
 
       @control_server.mount_proc('/stop') do |req, res|

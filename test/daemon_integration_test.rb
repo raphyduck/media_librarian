@@ -36,7 +36,8 @@ class DaemonIntegrationTest < Minitest::Test
 
     status = Client.new.status
     assert_equal 200, status['status_code']
-    jobs = status.fetch('body')
+    body = status.fetch('body')
+    jobs = body.is_a?(Array) ? body : Array(body['jobs'])
     assert_equal 1, jobs.size
     assert_equal job['id'], jobs.first['id']
   end
