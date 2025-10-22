@@ -12,6 +12,7 @@ require 'bcrypt'
 require 'yaml'
 require 'fileutils'
 
+require_relative '../lib/logger'
 require_relative 'client'
 
 WEBrick::HTTPServlet::ProcHandler.class_eval do
