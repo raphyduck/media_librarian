@@ -17,33 +17,40 @@ class Client
   def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
     request = Net::HTTP::Post.new(uri_for('/jobs'))
     request['Content-Type'] = 'application/json'
-    request.body = JSON.dump(
+    payload = {
       'command' => command,
       'wait' => wait,
       'queue' => queue,
       'task' => task,
       'internal' => internal,
       'capture_output' => capture_output
-    )
+    }
+    payload['token'] = control_token if control_token
+    request.body = JSON.dump(payload)
     perform(request)
   end
 
   def status
-    perform(Net::HTTP::Get.new(uri_for('/status')))
+    perform(Net::HTTP::Get.new(uri_for('/status', include_token: true)))
   end
 
   def job_status(job_id)
-    perform(Net::HTTP::Get.new(uri_for("/jobs/#{job_id}")))
+    perform(Net::HTTP::Get.new(uri_for("/jobs/#{job_id}", include_token: true)))
   end
 
   def stop
-    perform(Net::HTTP::Post.new(uri_for('/stop')))
+    request = Net::HTTP::Post.new(uri_for('/stop'))
+    if control_token
+      request['Content-Type'] = 'application/json'
+      request.body = JSON.dump('token' => control_token)
+    end
+    perform(request)
   end
 
   private
 
   def perform(request)
-    attach_control_token(request)
+    attach_client_headers(request)
 
     http_options = net_http_options
     Net::HTTP.start(request.uri.hostname, request.uri.port, **http_options) do |http|
@@ -60,28 +67,34 @@ class Client
     { 'status_code' => response.code.to_i, 'body' => body }
   end
 
-  def uri_for(path)
+  def uri_for(path, include_token: false)
     builder = ssl_enabled? ? URI::HTTPS : URI::HTTP
+    query = include_token && control_token ? URI.encode_www_form('token' => control_token) : nil
     builder.build(
       host: app.api_option['bind_address'],
       port: app.api_option['listen_port'],
-      path: path
+      path: path,
+      query: query
     )
   end
 
   attr_reader :control_token
 
-  def attach_control_token(request)
+  def attach_client_headers(request)
+    request['X-Requested-By'] ||= 'librarian-cli'
     return unless control_token
+
     request['X-Control-Token'] = control_token
   end
 
   def resolve_control_token(explicit_token, options)
     select_token(
       explicit_token,
-      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
       options['api_token'],
+      options[:api_token],
       options['control_token'],
+      options[:control_token],
+      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
       ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
     )
   end

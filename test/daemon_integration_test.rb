@@ -238,6 +238,40 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 200, response['status_code']
   end
 
+  def test_cli_prefers_config_control_token_over_env_api_token
+    boot_daemon_environment(control_token: 'control-secret',
+                            authenticate: false,
+                            api_overrides: { 'api_token' => '' })
+
+    previous_api = ENV['MEDIA_LIBRARIAN_API_TOKEN']
+    previous_api_exists = ENV.key?('MEDIA_LIBRARIAN_API_TOKEN')
+    ENV['MEDIA_LIBRARIAN_API_TOKEN'] = 'stale-token'
+
+    client = Client.new
+    assert_equal 'control-secret', client.instance_variable_get(:@control_token)
+
+    response = client.enqueue(['daemon', 'status'], wait: false)
+    assert_equal 200, response['status_code']
+  ensure
+    if previous_api_exists
+      ENV['MEDIA_LIBRARIAN_API_TOKEN'] = previous_api
+    else
+      ENV.delete('MEDIA_LIBRARIAN_API_TOKEN')
+    end
+  end
+
+  def test_cli_can_reach_daemon_without_token_when_local
+    boot_daemon_environment(control_token: '',
+                            authenticate: false,
+                            api_overrides: { 'api_token' => '' })
+
+    client = Client.new
+    assert_nil client.instance_variable_get(:@control_token)
+
+    response = client.enqueue(['daemon', 'status'], wait: false)
+    assert_equal 200, response['status_code']
+  end
+
   def test_logout_revokes_session
     boot_daemon_environment
 

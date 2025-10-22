@@ -875,6 +875,10 @@ class Daemon
     def require_authorization(req, res)
       return true unless authentication_configured?
 
+      if api_token.to_s.empty? && trusted_cli_request?(req)
+        return true
+      end
+
       if authenticated_session?(req) || api_token_authorized?(req)
         true
       else
@@ -914,6 +918,23 @@ class Daemon
       end
 
       provided == token
+    end
+
+    def trusted_cli_request?(req)
+      return false unless req['X-Requested-By'] == 'librarian-cli'
+
+      address = extract_peer_address(req)
+      return false unless address
+
+      IPAddr.new(address).loopback?
+    rescue ArgumentError
+      false
+    end
+
+    def extract_peer_address(req)
+      req.peeraddr[3]
+    rescue StandardError
+      nil
     end
 
     def handle_session_request(req, res)
