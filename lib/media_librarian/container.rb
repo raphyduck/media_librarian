@@ -5,7 +5,7 @@ require 'yaml'
 require 'io/console'
 
 require_relative '../simple_speaker' unless defined?(SimpleSpeaker::Speaker)
-require 'simple_args_dispatch' unless defined?(SimpleArgsDispatch)
+require_relative '../simple_args_dispatch' unless defined?(SimpleArgsDispatch)
 require 'simple_config_man' unless defined?(SimpleConfigMan)
 
 require_relative '../storage/db' unless defined?(Storage::Db)
