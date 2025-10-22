@@ -146,7 +146,7 @@ module MediaLibrarian
       }
 
       @config_dir = File.join(Dir.home, '.medialibrarian')
-      @config_file = File.join(@config_dir, 'settings.yml')
+      @config_file = File.join(@config_dir, 'conf.yml')
       @config_example = File.join(root, 'config', 'conf.yml.example')
       @api_config_file = File.join(@config_dir, 'api.yml')
       @api_config_example = File.join(root, 'config', 'api.yml.example')
