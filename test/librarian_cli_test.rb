@@ -82,7 +82,7 @@ class LibrarianCliTest < Minitest::Test
     end
 
     assert_includes env.application.speaker.messages,
-                    'Daemon rejected the job: forbidden (HTTP 403)'
+                    'Daemon rejected the job: forbidden (HTTP 403). Check the control token configuration for the daemon.'
     refute_includes env.application.speaker.messages, 'Command dispatched to daemon'
   end
 
