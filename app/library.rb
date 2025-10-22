@@ -12,13 +12,9 @@ class Library
   end
 
   def self.skip_loop_item(question, no_prompt = 0)
-    if app.speaker.ask_if_needed(question, no_prompt) != 'y'
-      @refusal += 1
-      return 1
-    else
-      @refusal == 0
-      return 0
-    end
+    answer = app.speaker.ask_if_needed(question, no_prompt)
+    @refusal = answer == 'y' ? 0 : @refusal + 1
+    answer == 'y' ? 0 : 1
   end
 
   def self.convert_media(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '', qualities: nil)
