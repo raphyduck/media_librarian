@@ -10,6 +10,23 @@ const state = {
   isRefreshing: false,
 };
 
+const API_BASE_PATH = (() => {
+  const { pathname } = window.location;
+  if (pathname.endsWith('/')) {
+    return pathname;
+  }
+  const lastSegment = pathname.substring(pathname.lastIndexOf('/') + 1);
+  if (!lastSegment || !lastSegment.includes('.')) {
+    return `${pathname}/`;
+  }
+  return pathname.replace(/[^/]*$/, '');
+})();
+
+function buildApiUrl(path) {
+  const normalizedPath = (path || '').replace(/^\/+/, '');
+  return `${API_BASE_PATH}${normalizedPath}`;
+}
+
 const LOG_MAX_LINES = 10000;
 
 function getLogTail(content, maxLines = LOG_MAX_LINES) {
@@ -137,7 +154,10 @@ function updateConnectionHint() {
   const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
   const host = window.location.host || '127.0.0.1:8888';
   const base = "Les identifiants sont définis dans la configuration du démon (`api_option.auth`).";
-  const urlMessage = ` Interface disponible sur ${protocol}://${host}/.`;
+  const path = API_BASE_PATH || '/';
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${protocol}://${host}${normalizedPath}`;
+  const urlMessage = ` Interface disponible sur ${url}.`;
   const tlsReminder = protocol === 'https'
     ? ' En développement, pensez à accepter le certificat TLS auto-signé si nécessaire.'
     : '';
@@ -159,7 +179,8 @@ async function fetchJson(path, options = {}) {
   init.credentials = 'include';
   init.headers = new Headers(options.headers || {});
 
-  const response = await fetch(path, init);
+  const url = buildApiUrl(path);
+  const response = await fetch(url, init);
   if (response.status === 401 || response.status === 403) {
     const message = await parseErrorMessage(response);
     handleUnauthorized();
