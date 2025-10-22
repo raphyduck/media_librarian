@@ -141,6 +141,12 @@ module MediaLibrarian
     end
 
     def setup_environment
+      mkdir_p = if FileUtils.respond_to?(:mkdir_p_orig)
+                  FileUtils.method(:mkdir_p_orig)
+                else
+                  FileUtils.method(:mkdir_p)
+                end
+
       @env_flags = {
         debug: 0,
         no_email_notif: 1,
@@ -159,15 +165,15 @@ module MediaLibrarian
       @pid_dir = File.join(@config_dir, 'pids')
       @pidfile = File.join(@pid_dir, 'pid.file')
 
-      FileUtils.mkdir_p(@config_dir)
-      FileUtils.mkdir_p(@temp_dir)
-      FileUtils.mkdir_p(@pid_dir)
+      mkdir_p.call(@config_dir)
+      mkdir_p.call(@temp_dir)
+      mkdir_p.call(@pid_dir)
 
       unless File.exist?(@template_dir)
         FileUtils.cp_r(File.join(root, 'config', 'templates/'), @template_dir)
       end
 
-      FileUtils.mkdir_p(File.join(@config_dir, 'log'))
+      mkdir_p.call(File.join(@config_dir, 'log'))
     end
 
     def register_loader_hooks
