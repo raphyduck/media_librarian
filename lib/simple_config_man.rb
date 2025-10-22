@@ -11,24 +11,30 @@ module SimpleConfigMan
       if name.empty? || speaker.ask_if_needed("Do you want to configure #{name}? (y/n)", 0, 'y') == 'y'
         node.each do |key, value|
           current_value = current ? current[key] : nil
-          node[key] = if value.is_a?(Hash)
-                        configure_node(value, [name, key].reject(&:empty?).join(' '), current_value, remove_existing)
-                      elsif %w[password client_secret].include?(key)
-                        STDIN.getpass("What is your #{name} #{key}? ")
-                      else
-                        speaker.speak_up "What is your #{name} #{key}? [#{current_value}] "
-                        STDIN.gets&.strip
-                      end
 
-          next if value.is_a?(Hash)
-
-          if node[key].nil? || node[key] == ''
-            node[key] = if remove_existing.zero? && !current_value.nil?
-                          current_value
-                        else
-                          value
-                        end
+          if value.is_a?(Hash)
+            node[key] = configure_node(
+              value,
+              [name, key].reject(&:empty?).join(' '),
+              current_value,
+              remove_existing
+            )
+            next
           end
+
+          prompt = "What is your #{name} #{key}?"
+          answer = if %w[password client_secret].include?(key)
+                     STDIN.getpass("#{prompt} ")
+                   else
+                     speaker.speak_up "#{prompt} [#{current_value}] "
+                     STDIN.gets&.strip
+                   end
+
+          node[key] = if answer.nil? || answer.empty?
+                        current_value.nil? ? value : current_value
+                      else
+                        answer
+                      end
         end
       else
         node = remove_existing.positive? ? nil : current
