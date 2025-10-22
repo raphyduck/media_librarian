@@ -95,19 +95,41 @@ class Movie
   def year
     return @year if @year
 
-    imdb_or_trakt = ids['imdb'] || ids['trakt'] rescue ''
-    real_year = if imdb_or_trakt.to_s != ''
-                  TraktAgent.movie__releases(imdb_or_trakt, '')
-                            .map { |r| Time.parse(r['release_date']).year }
-                            .min rescue nil
-                end
-    extracted_year = (name && Metadata.identify_release_year(name) > 0) ? Metadata.identify_release_year(name) : nil
+    release_time = release_date
+    release_year = release_time&.year
+    extracted_year = nil
+    if name
+      identified_year = Metadata.identify_release_year(name)
+      extracted_year = identified_year if identified_year.to_i.positive?
+    end
 
-    if (real_year || extracted_year || release_date).nil?
+    real_year = nil
+    if release_year.nil? && extracted_year.nil?
+      imdb_or_trakt = ids['imdb'] || ids['trakt'] rescue ''
+      real_year = if imdb_or_trakt.to_s != ''
+                    begin
+                      TraktAgent.movie__releases(imdb_or_trakt, '')
+                                .filter_map do |release|
+                                  date = release['release_date']
+                                  next unless date
+
+                                  Time.parse(date).year
+                                rescue ArgumentError
+                                  nil
+                                end
+                                .min
+                    rescue StandardError
+                      nil
+                    end
+                  end
+    end
+
+    if (real_year || extracted_year || release_year).nil?
       app.speaker.speak_up "Unknown year for m='#{Cache.object_pack(self, 1)}'"
     end
 
-    @year ||= (real_year || extracted_year || (release_date || Time.now + 3.years).year).to_i
+    fallback_year = (release_time || Time.now + 3.years).year
+    @year ||= (release_year || extracted_year || real_year || fallback_year).to_i
   end
 
   def self.identifier(movie_name, year)
