@@ -1008,9 +1008,34 @@ class Daemon
     def resolve_api_token(opts)
       return nil unless opts
 
-      opts['api_token'] || opts[:api_token] ||
-        opts['control_token'] || opts[:control_token] ||
-        ENV['MEDIA_LIBRARIAN_API_TOKEN'] || ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+      select_token(
+        opts['api_token'],
+        opts[:api_token],
+        opts['control_token'],
+        opts[:control_token],
+        ENV['MEDIA_LIBRARIAN_API_TOKEN'],
+        ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+      )
+    end
+
+    def select_token(*candidates)
+      candidates.each do |candidate|
+        value = normalize_token(candidate)
+        return value if value
+      end
+      nil
+    end
+
+    def normalize_token(candidate)
+      case candidate
+      when nil
+        nil
+      when String
+        token = candidate.strip
+        token.empty? ? nil : token
+      else
+        candidate
+      end
     end
 
     def ssl_enabled?(opts)

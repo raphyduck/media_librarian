@@ -226,6 +226,18 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 204, reload[:status_code]
   end
 
+  def test_cli_uses_control_token_when_api_token_blank
+    boot_daemon_environment(control_token: 'control-secret',
+                            authenticate: false,
+                            api_overrides: { 'api_token' => '' })
+
+    client = Client.new
+    assert_equal 'control-secret', client.instance_variable_get(:@control_token)
+
+    response = client.enqueue(['daemon', 'status'], wait: false)
+    assert_equal 200, response['status_code']
+  end
+
   def test_logout_revokes_session
     boot_daemon_environment
 
