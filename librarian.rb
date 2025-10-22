@@ -173,12 +173,15 @@ class Librarian
         response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: internal)
         if response['error']
           app.speaker.speak_up("Daemon rejected the job: #{response['error']}")
-        elsif response['body'] && response['body']['job'] && response['body']['job']['error']
-          job = response['body']['job']
-          app.speaker.speak_up("Job #{job['id']} failed: #{job['error']}")
         elsif response['body'] && response['body']['job']
           job = response['body']['job']
-          app.speaker.speak_up("Job #{job['id']} completed")
+          output = job['output'].to_s
+          app.speaker.speak_up(output, 0) unless output.empty?
+          if job['error']
+            app.speaker.speak_up("Job #{job['id']} failed: #{job['error']}")
+          else
+            app.speaker.speak_up("Job #{job['id']} completed")
+          end
         else
           app.speaker.speak_up('Command dispatched to daemon')
         end

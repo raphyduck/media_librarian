@@ -124,6 +124,7 @@ module MediaLibrarian
       Bundler.require(:default)
       require 'fuzzystringmatch' unless defined?(FuzzyStringMatch)
       require 'mechanize' unless defined?(Mechanize)
+      load File.expand_path('../simple_speaker.rb', __dir__)
     end
 
     def setup_loader

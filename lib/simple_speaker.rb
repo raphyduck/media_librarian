@@ -34,11 +34,14 @@ module SimpleSpeaker
     end
 
     def daemon_send(str)
+      line = str.to_s
       if Thread.current[:current_daemon]
-        Thread.current[:current_daemon].send_data "#{str}\n"
+        Thread.current[:current_daemon].send_data "#{line}\n"
       else
-        puts str
+        puts line
       end
+      buffer = Thread.current[:captured_output]
+      buffer&.<<(line.end_with?("\n") ? line : "#{line}\n")
     end
 
     def email_msg_add(str, in_mail, thread)
