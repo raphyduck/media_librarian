@@ -11,12 +11,13 @@ class Client
   def initialize(control_token: nil)
     options = app.api_option || {}
     @api_options = options
-    resolved_token = control_token
-    resolved_token ||= ENV['MEDIA_LIBRARIAN_API_TOKEN']
-    resolved_token ||= options['api_token']
-    resolved_token ||= options['control_token']
-    resolved_token ||= ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
-    @control_token = resolved_token unless resolved_token.to_s.empty?
+    @control_token = pick_token(
+      control_token,
+      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
+      options['api_token'],
+      options['control_token'],
+      ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+    )
   end
 
   def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
@@ -79,6 +80,27 @@ class Client
   def attach_control_token(request)
     return unless control_token
     request['X-Control-Token'] = control_token
+  end
+
+  def pick_token(*candidates)
+    candidates.each do |candidate|
+      value = normalize_token(candidate)
+      return value if value
+    end
+
+    nil
+  end
+
+  def normalize_token(candidate)
+    case candidate
+    when nil
+      nil
+    when String
+      token = candidate.strip
+      token.empty? ? nil : token
+    else
+      candidate
+    end
   end
 
   def ssl_enabled?
