@@ -91,9 +91,51 @@ header h1 {
 
 main {
   display: grid;
-  gap: 2rem;
+  gap: 1.5rem;
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.tab-button {
+  padding: 0.5rem 1.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 23, 42, 0.65);
+  color: inherit;
+  font-weight: 600;
+  transition: background 0.2s ease, transform 0.2s ease, border 0.2s ease;
+}
+
+.tab-button:hover {
+  transform: translateY(-1px);
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.tab-button.active,
+.tab-button[aria-selected="true"] {
+  background: var(--accent);
+  border-color: transparent;
+  color: #f8fafc;
+}
+
+.tab-contents {
+  display: block;
+}
+
+.tab-panel {
+  display: none;
+  gap: 2rem;
+}
+
+.tab-panel.active {
+  display: grid;
 }
 
 .panel {
@@ -240,6 +282,11 @@ textarea {
   line-height: 1.45;
   resize: vertical;
   font-family: "SFMono-Regular", ui-monospace, SFMono, "Fira Code", monospace;
+}
+
+textarea[data-dirty="true"] {
+  border-color: rgba(248, 113, 113, 0.6);
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.3);
 }
 
 .hint {
