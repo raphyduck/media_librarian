@@ -18,6 +18,12 @@ module MediaLibrarian
       end
 
       def app
+        return @app if defined?(@app) && @app
+
+        if defined?(MediaLibrarian) && MediaLibrarian.respond_to?(:application)
+          self.app = MediaLibrarian.application
+        end
+
         @app || raise(ArgumentError, "#{name} requires an application container")
       end
     end
