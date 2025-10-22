@@ -1,4 +1,4 @@
-require 'simple_speaker'
+require_relative 'simple_speaker'
 require 'yaml'
 
 module SimpleArgsDispatch

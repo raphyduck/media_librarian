@@ -42,6 +42,8 @@ class Daemon
     :future,
     :worker_thread,
     :block,
+    :capture_output,
+    :output,
     keyword_init: true
   ) do
     def running?
@@ -67,7 +69,8 @@ class Daemon
         'started_at' => started_at&.iso8601,
         'finished_at' => finished_at&.iso8601,
         'result' => result,
-        'error' => error && error.to_s
+        'error' => error && error.to_s,
+        'output' => output
       }
     end
   end
@@ -344,7 +347,7 @@ class Daemon
       end
     end
 
-    def enqueue(args:, queue: nil, task: nil, internal: 0, client: Thread.current[:current_daemon], child: 0, env_flags: nil, parent_thread: Thread.current, &block)
+    def enqueue(args:, queue: nil, task: nil, internal: 0, client: Thread.current[:current_daemon], child: 0, env_flags: nil, parent_thread: Thread.current, capture_output: false, &block)
       return unless running?
 
       queue_name = queue || task || args[0..1].join(' ')
@@ -360,7 +363,8 @@ class Daemon
         child: child,
         created_at: Time.now,
         status: :queued,
-        block: block
+        block: block,
+        capture_output: capture_output
       )
       register_job(job)
       start_job(job)
@@ -469,12 +473,16 @@ class Daemon
       thread[:jid] = job.id
       thread[:queue_name] = job.queue
       thread[:log_msg] = '' if job.child.to_i.positive?
+      captured_output = job.capture_output ? String.new : nil
+      thread[:captured_output] = captured_output if captured_output
       LibraryBus.initialize_queue(thread)
       app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
       job.status = :running
       job.started_at = Time.now
       Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
     ensure
+      job.output = captured_output.dup if captured_output
+      thread[:captured_output] = nil if captured_output
       thread[:jid] = nil
       job.worker_thread = nil
     end
@@ -678,7 +686,8 @@ class Daemon
           internal: internal,
           child: payload['child'].to_i,
           env_flags: payload['env_flags'],
-          parent_thread: nil
+          parent_thread: nil,
+          capture_output: payload.fetch('capture_output', false)
         )
 
         if wait && job&.future

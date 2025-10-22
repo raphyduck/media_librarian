@@ -9,6 +9,7 @@ require 'fileutils'
 require 'bcrypt'
 require 'openssl'
 require 'test_helper'
+require_relative '../lib/simple_speaker'
 require_relative '../app/daemon'
 require_relative '../app/client'
 
@@ -40,6 +41,19 @@ class DaemonIntegrationTest < Minitest::Test
     jobs = body.is_a?(Array) ? body : Array(body['jobs'])
     assert_equal 1, jobs.size
     assert_equal job['id'], jobs.first['id']
+  end
+
+  def test_http_job_response_includes_command_output
+    speaker = SimpleSpeaker::Speaker.new
+    boot_daemon_environment(speaker: speaker)
+
+    response = Client.new.enqueue(['Library', 'noop'], wait: true)
+    job = response.fetch('body').fetch('job')
+
+    output = job.fetch('output')
+    refute_nil output
+    assert_includes output, 'Running command:'
+    assert_includes output, 'Library noop'
   end
 
   def test_jobs_can_be_inspected_and_daemon_stops_cleanly
@@ -233,12 +247,12 @@ class DaemonIntegrationTest < Minitest::Test
 
   private
 
-  def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials, api_overrides: {})
+  def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials, api_overrides: {}, **environment_overrides)
     credentials = credentials.dup
     @auth_credentials = credentials
     @session_cookie = nil
     @api_token = nil
-    @environment = build_stubbed_environment
+    @environment = build_stubbed_environment(**environment_overrides)
     MediaLibrarian.application = @environment.application
     Daemon.configure(app: @environment.application)
     Client.configure(app: @environment.application)

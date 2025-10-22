@@ -21,7 +21,7 @@ class Client
     @control_token = resolved_token unless resolved_token.to_s.empty?
   end
 
-  def enqueue(command, wait: true, queue: nil, task: nil, internal: 0)
+  def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
     request = Net::HTTP::Post.new(uri_for('/jobs'))
     request['Content-Type'] = 'application/json'
     request.body = JSON.dump(
@@ -29,7 +29,8 @@ class Client
       'wait' => wait,
       'queue' => queue,
       'task' => task,
-      'internal' => internal
+      'internal' => internal,
+      'capture_output' => capture_output
     )
     perform(request)
   end
