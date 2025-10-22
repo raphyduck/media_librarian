@@ -171,10 +171,17 @@ class Librarian
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
         response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: internal)
+        status_code = response['status_code'].to_i
+        body = response['body']
+
         if response['error']
           app.speaker.speak_up("Daemon rejected the job: #{response['error']}")
-        elsif response['body'] && response['body']['job']
-          job = response['body']['job']
+        elsif status_code >= 400
+          error_detail = body.is_a?(Hash) ? body['error'] || body['message'] : nil
+          message = error_detail ? "#{error_detail} (HTTP #{status_code})" : "HTTP #{status_code}"
+          app.speaker.speak_up("Daemon rejected the job: #{message}")
+        elsif body && body['job']
+          job = body['job']
           output = job['output'].to_s
           app.speaker.speak_up(output, 0) unless output.empty?
           if job['error']
