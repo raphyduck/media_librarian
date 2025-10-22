@@ -273,6 +273,10 @@ module Cache
     def queue_state_get(*)
       []
     end
+
+    def object_pack(value, *_args)
+      value
+    end
   end
 end
 
