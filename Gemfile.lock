@@ -216,8 +216,6 @@ GEM
       bigdecimal
     simple_args_dispatch (0.4.5)
       simple_speaker (~> 0.3.0)
-    simple_config_man (0.3.9)
-      simple_speaker (~> 0.3.0)
     simple_speaker (0.3.0.8)
     sqlite3 (1.5.3)
       mini_portile2 (~> 2.8.0)
@@ -267,7 +265,6 @@ DEPENDENCIES
   rsync!
   sequel
   simple_args_dispatch (~> 0.4.0)
-  simple_config_man (~> 0.3.8)
   simple_speaker (~> 0.3.0)
   sqlite3 (= 1.5.3)
   streamio-ffmpeg
