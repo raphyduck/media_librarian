@@ -31,7 +31,10 @@ module SimpleConfigMan
   def load_settings(config_dir, config_file, config_example)
     Dir.mkdir(config_dir) unless File.exist?(config_dir)
     reconfigure(config_file, config_example) unless File.exist?(config_file)
-    YAML.load_file(config_file)
+    default_config = YAML.load_file(config_example) || {}
+    user_config = YAML.load_file(config_file) || {}
+
+    deep_merge(default_config, user_config)
   end
 
   def reconfigure(config_file, config_example)
@@ -52,5 +55,15 @@ module SimpleConfigMan
 
   def speaker
     @speaker ||= SimpleSpeaker::Speaker.new
+  end
+
+  def deep_merge(defaults, overrides)
+    if defaults.is_a?(Hash) && overrides.is_a?(Hash)
+      defaults.merge(overrides) do |_key, default_val, override_val|
+        deep_merge(default_val, override_val)
+      end
+    else
+      overrides.nil? ? defaults : overrides
+    end
   end
 end
