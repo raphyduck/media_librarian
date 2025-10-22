@@ -57,7 +57,7 @@ class Vash < Hash
   def [](key)
     sterilize(key)
     clear(key) if expired?(key)
-    cleanup! if Time.now > @last_cleanup + 1.hour
+    cleanup! if Time.now - @last_cleanup > 3600
     regular_reader(key)
   end
 
