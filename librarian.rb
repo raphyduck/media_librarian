@@ -179,6 +179,9 @@ class Librarian
         elsif status_code >= 400
           error_detail = body.is_a?(Hash) ? body['error'] || body['message'] : nil
           message = error_detail ? "#{error_detail} (HTTP #{status_code})" : "HTTP #{status_code}"
+          if [401, 403].include?(status_code)
+            message = "#{message}. Check the control token configuration for the daemon."
+          end
           app.speaker.speak_up("Daemon rejected the job: #{message}")
         elsif body && body['job']
           job = body['job']
