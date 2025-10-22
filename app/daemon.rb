@@ -76,7 +76,7 @@ class Daemon
   end
 
   CONTROL_CONTENT_TYPE = 'application/json'
-  LOG_TAIL_BYTES = 4096
+  LOG_TAIL_LINES = 10_000
   SESSION_COOKIE_NAME = 'ml_session'
 
   class << self
@@ -1175,18 +1175,25 @@ class Daemon
       }
     end
 
-    def tail_file(path)
+    def tail_file(path, max_lines: LOG_TAIL_LINES)
       return nil unless File.exist?(path)
 
-      File.open(path, 'r') do |file|
-        size = file.size
-        if size > LOG_TAIL_BYTES
-          file.seek(-LOG_TAIL_BYTES, IO::SEEK_END)
-          file.gets
-        else
-          file.seek(0, IO::SEEK_SET)
-        end
-        file.read
+      buffer = Array.new(max_lines)
+      line_count = 0
+
+      File.foreach(path) do |line|
+        buffer[line_count % max_lines] = line
+        line_count += 1
+      end
+
+      return '' if line_count.zero?
+
+      if line_count < max_lines
+        buffer.first(line_count).join
+      else
+        start = line_count % max_lines
+        tail = (buffer[start, max_lines - start] || []) + buffer[0, start]
+        tail.join
       end
     end
 
