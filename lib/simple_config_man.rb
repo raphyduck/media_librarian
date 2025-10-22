@@ -20,7 +20,15 @@ module SimpleConfigMan
                         STDIN.gets&.strip
                       end
 
-          node[key] = current_value if (node[key].nil? || node[key] == '') && !value.is_a?(Hash) && remove_existing.zero?
+          next if value.is_a?(Hash)
+
+          if node[key].nil? || node[key] == ''
+            node[key] = if remove_existing.zero? && !current_value.nil?
+                          current_value
+                        else
+                          value
+                        end
+          end
         end
       else
         node = remove_existing.positive? ? nil : current
