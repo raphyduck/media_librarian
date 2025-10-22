@@ -29,58 +29,116 @@
     </section>
 
     <main id="dashboard" class="hidden">
-      <section class="panel" id="jobs-panel">
-        <div class="panel-header">
-          <h2>Jobs</h2>
-          <div class="actions">
-            <button id="refresh-status" type="button">Actualiser</button>
-          </div>
-        </div>
-        <div class="jobs-columns">
-          <div>
-            <h3>En cours</h3>
-            <ul id="jobs-running" class="job-list"></ul>
-          </div>
-          <div>
-            <h3>Terminés</h3>
-            <ul id="jobs-finished" class="job-list"></ul>
-          </div>
-        </div>
-      </section>
+      <div class="tabs" role="tablist">
+        <button
+          id="tab-jobs"
+          class="tab-button active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          data-tab="jobs"
+        >
+          Jobs
+        </button>
+        <button
+          id="tab-logs"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="logs"
+        >
+          Logs
+        </button>
+        <button
+          id="tab-config"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="config"
+        >
+          Configuration
+        </button>
+      </div>
 
-      <section class="panel" id="logs-panel">
-        <div class="panel-header">
-          <h2>Logs</h2>
-          <div class="actions">
-            <button id="refresh-logs" type="button">Actualiser</button>
-          </div>
-        </div>
-        <div id="logs-container" class="logs"></div>
-      </section>
+      <div class="tab-contents">
+        <section
+          class="tab-panel active"
+          data-tab="jobs"
+          role="tabpanel"
+          aria-labelledby="tab-jobs"
+        >
+          <section class="panel" id="jobs-panel">
+            <div class="panel-header">
+              <h2>Jobs</h2>
+              <div class="actions">
+                <button id="refresh-status" type="button">Actualiser</button>
+              </div>
+            </div>
+            <div class="jobs-columns">
+              <div>
+                <h3>En cours</h3>
+                <ul id="jobs-running" class="job-list"></ul>
+              </div>
+              <div>
+                <h3>Terminés</h3>
+                <ul id="jobs-finished" class="job-list"></ul>
+              </div>
+            </div>
+          </section>
+        </section>
 
-      <section class="panel" id="config-panel">
-        <div class="panel-header">
-          <h2>Configuration</h2>
-          <div class="actions">
-            <button id="reload-config" type="button">Recharger</button>
-            <button id="save-config" type="button" class="primary">Sauvegarder</button>
-          </div>
-        </div>
-        <textarea id="config-editor" spellcheck="false" placeholder="Configuration YAML"></textarea>
-        <p class="hint">Les modifications sont validées côté serveur (syntaxe YAML) avant d'être enregistrées.</p>
-      </section>
+        <section
+          class="tab-panel"
+          data-tab="logs"
+          role="tabpanel"
+          aria-labelledby="tab-logs"
+          hidden
+        >
+          <section class="panel" id="logs-panel">
+            <div class="panel-header">
+              <h2>Logs</h2>
+              <div class="actions">
+                <button id="refresh-logs" type="button">Actualiser</button>
+              </div>
+            </div>
+            <div id="logs-container" class="logs"></div>
+          </section>
+        </section>
 
-      <section class="panel" id="scheduler-panel">
-        <div class="panel-header">
-          <h2>Planificateur</h2>
-          <div class="actions">
-            <button id="reload-scheduler" type="button">Recharger</button>
-            <button id="save-scheduler" type="button" class="primary">Sauvegarder</button>
-          </div>
-        </div>
-        <textarea id="scheduler-editor" spellcheck="false" placeholder="Modèle YAML du scheduler"></textarea>
-        <p class="hint" id="scheduler-hint">Modifiez le fichier du scheduler si un planificateur est configuré.</p>
-      </section>
+        <section
+          class="tab-panel"
+          data-tab="config"
+          role="tabpanel"
+          aria-labelledby="tab-config"
+          hidden
+        >
+          <section class="panel" id="config-panel">
+            <div class="panel-header">
+              <h2>Configuration</h2>
+              <div class="actions">
+                <button id="reload-config" type="button">Recharger</button>
+                <button id="save-config" type="button" class="primary">Sauvegarder</button>
+              </div>
+            </div>
+            <textarea id="config-editor" spellcheck="false" placeholder="Configuration YAML"></textarea>
+            <p class="hint">Les modifications sont validées côté serveur (syntaxe YAML) avant d'être enregistrées.</p>
+          </section>
+
+          <section class="panel" id="scheduler-panel">
+            <div class="panel-header">
+              <h2>Planificateur</h2>
+              <div class="actions">
+                <button id="reload-scheduler" type="button">Recharger</button>
+                <button id="save-scheduler" type="button" class="primary">Sauvegarder</button>
+              </div>
+            </div>
+            <textarea id="scheduler-editor" spellcheck="false" placeholder="Modèle YAML du scheduler"></textarea>
+            <p class="hint" id="scheduler-hint">Modifiez le fichier du scheduler si un planificateur est configuré.</p>
+          </section>
+        </section>
+      </div>
     </main>
 
     <template id="log-entry-template">

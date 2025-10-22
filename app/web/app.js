@@ -2,6 +2,12 @@ const state = {
   authenticated: false,
   username: '',
   autoRefresh: null,
+  activeTab: 'jobs',
+  dirty: {
+    config: false,
+    scheduler: false,
+  },
+  isRefreshing: false,
 };
 
 const LOG_MAX_LINES = 10000;
@@ -41,6 +47,19 @@ function showNotification(message, kind = 'info') {
   }, 3500);
 }
 
+function setEditorDirty(editorKey, dirty) {
+  state.dirty[editorKey] = dirty;
+  const elementId = editorKey === 'config' ? 'config-editor' : 'scheduler-editor';
+  const editor = document.getElementById(elementId);
+  if (editor) {
+    editor.dataset.dirty = dirty ? 'true' : 'false';
+  }
+}
+
+function isEditorDirty(editorKey) {
+  return Boolean(state.dirty[editorKey]);
+}
+
 async function parseErrorMessage(response) {
   const text = await response.text();
   if (!text) {
@@ -70,8 +89,7 @@ function startAutoRefresh() {
     if (!state.authenticated) {
       return;
     }
-    loadStatus();
-    loadLogs();
+    refreshAll();
   }, 10000);
 }
 
@@ -96,6 +114,17 @@ function setAuthenticated(authenticated, username = '') {
     status.hidden = true;
     usernameLabel.textContent = '';
     stopAutoRefresh();
+    setActiveTab('jobs', { skipLoad: true });
+    setEditorDirty('config', false);
+    setEditorDirty('scheduler', false);
+    const configEditor = document.getElementById('config-editor');
+    const schedulerEditor = document.getElementById('scheduler-editor');
+    if (configEditor) {
+      configEditor.value = '';
+    }
+    if (schedulerEditor) {
+      schedulerEditor.value = '';
+    }
   }
 }
 
@@ -242,10 +271,21 @@ async function loadLogs() {
   }
 }
 
-async function loadConfig() {
+async function loadConfig({ force = false } = {}) {
+  const editor = document.getElementById('config-editor');
+  if (!editor) {
+    return;
+  }
+  if (!force && isEditorDirty('config')) {
+    return;
+  }
   try {
     const data = await fetchJson('/config');
-    document.getElementById('config-editor').value = data.content || '';
+    if (!force && isEditorDirty('config')) {
+      return;
+    }
+    editor.value = data.content || '';
+    setEditorDirty('config', false);
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -253,26 +293,45 @@ async function loadConfig() {
   }
 }
 
-async function loadScheduler() {
+async function loadScheduler({ force = false } = {}) {
   const editor = document.getElementById('scheduler-editor');
   const hint = document.getElementById('scheduler-hint');
+  if (!editor || !hint) {
+    return;
+  }
+  if (!force && isEditorDirty('scheduler')) {
+    return;
+  }
   try {
     const data = await fetchJson('/scheduler');
     editor.disabled = false;
     document.getElementById('save-scheduler').disabled = false;
     document.getElementById('reload-scheduler').disabled = false;
+    if (!force && isEditorDirty('scheduler')) {
+      return;
+    }
     editor.value = data.content || '';
     hint.textContent = 'Modifiez le fichier du scheduler si un planificateur est configuré.';
+    setEditorDirty('scheduler', false);
   } catch (error) {
     editor.value = '';
     editor.disabled = true;
     document.getElementById('save-scheduler').disabled = true;
     document.getElementById('reload-scheduler').disabled = true;
     hint.textContent = "Aucun scheduler configuré ou erreur lors du chargement.";
+    setEditorDirty('scheduler', false);
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
   }
+}
+
+async function loadConfigTab(options = {}) {
+  await loadConfig(options);
+  if (!state.authenticated) {
+    return;
+  }
+  await loadScheduler(options);
 }
 
 async function saveConfig() {
@@ -284,6 +343,8 @@ async function saveConfig() {
       body: JSON.stringify({ content }),
     });
     showNotification('Configuration sauvegardée.');
+    setEditorDirty('config', false);
+    await loadConfig({ force: true });
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -300,6 +361,8 @@ async function saveScheduler() {
       body: JSON.stringify({ content }),
     });
     showNotification('Scheduler sauvegardé.');
+    setEditorDirty('scheduler', false);
+    await loadScheduler({ force: true });
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -311,6 +374,8 @@ async function reloadConfig() {
   try {
     await fetchJson('/config/reload', { method: 'POST' });
     showNotification('Configuration rechargée.');
+    setEditorDirty('config', false);
+    await loadConfig({ force: true });
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -322,6 +387,8 @@ async function reloadScheduler() {
   try {
     await fetchJson('/scheduler/reload', { method: 'POST' });
     showNotification('Scheduler rechargé.');
+    setEditorDirty('scheduler', false);
+    await loadScheduler({ force: true });
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -329,23 +396,40 @@ async function reloadScheduler() {
   }
 }
 
-async function refreshAll() {
+const TAB_LOADERS = {
+  jobs: () => loadStatus(),
+  logs: () => loadLogs(),
+  config: (options = {}) => loadConfigTab(options),
+};
+
+async function refreshActiveTab(options = {}) {
   if (!state.authenticated) {
     return;
   }
-  await loadStatus();
-  if (!state.authenticated) {
+  const loader = TAB_LOADERS[state.activeTab];
+  if (typeof loader === 'function') {
+    await loader(options);
+  }
+}
+
+async function refreshAll(options = {}) {
+  if (!state.authenticated || state.isRefreshing) {
     return;
   }
-  await loadLogs();
-  if (!state.authenticated) {
-    return;
+  state.isRefreshing = true;
+  try {
+    await loadStatus();
+    if (!state.authenticated) {
+      return;
+    }
+    await loadLogs();
+    if (!state.authenticated) {
+      return;
+    }
+    await loadConfigTab(options);
+  } finally {
+    state.isRefreshing = false;
   }
-  await loadConfig();
-  if (!state.authenticated) {
-    return;
-  }
-  await loadScheduler();
 }
 
 async function handleLogin(event) {
@@ -396,7 +480,42 @@ async function bootstrapSession() {
   }
 }
 
+function setActiveTab(tabName, { skipLoad = false } = {}) {
+  const resolved = TAB_LOADERS[tabName] ? tabName : 'jobs';
+  state.activeTab = resolved;
+
+  const buttons = document.querySelectorAll('.tab-button');
+  buttons.forEach((button) => {
+    const isActive = button.dataset.tab === resolved;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+    button.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+
+  const panels = document.querySelectorAll('.tab-panel');
+  panels.forEach((panel) => {
+    const isActive = panel.dataset.tab === resolved;
+    panel.classList.toggle('active', isActive);
+    panel.hidden = !isActive;
+  });
+
+  if (!skipLoad) {
+    refreshActiveTab();
+  }
+}
+
+function setupTabs() {
+  const buttons = document.querySelectorAll('.tab-button');
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const { tab } = button.dataset;
+      setActiveTab(tab);
+    });
+  });
+}
+
 function setupEventListeners() {
+  setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
   document.getElementById('save-config').addEventListener('click', saveConfig);
@@ -405,10 +524,22 @@ function setupEventListeners() {
   document.getElementById('reload-scheduler').addEventListener('click', reloadScheduler);
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
+
+  const configEditor = document.getElementById('config-editor');
+  const schedulerEditor = document.getElementById('scheduler-editor');
+  if (configEditor) {
+    configEditor.addEventListener('input', () => setEditorDirty('config', true));
+  }
+  if (schedulerEditor) {
+    schedulerEditor.addEventListener('input', () => setEditorDirty('scheduler', true));
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  setEditorDirty('config', false);
+  setEditorDirty('scheduler', false);
+  setActiveTab(state.activeTab, { skipLoad: true });
   updateConnectionHint();
   bootstrapSession();
 });
