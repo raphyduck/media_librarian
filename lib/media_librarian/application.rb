@@ -1,6 +1,13 @@
 require 'bundler/setup'
 require 'zeitwerk'
 require 'fileutils'
+require_relative '../file_utils'
+
+begin
+  require 'deluge/rpc/client'
+rescue LoadError
+  warn 'deluge-rpc client library is not available. Deluge integration will be disabled until the gem is installed.'
+end
 require_relative 'container'
 
 module MediaLibrarian
