@@ -19,7 +19,6 @@ gem 'nokogiri', :require => false
 gem 'poltergeist', :require => false
 gem 'rexml', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
-gem 'simple_args_dispatch', '~>0.4.0', :require => false
 gem 'simple_config_man', '~>0.3.8', :require => false
 gem 'simple_speaker', '~>0.3.0', :require => false
 #gem "selenium-webdriver", :require => false
