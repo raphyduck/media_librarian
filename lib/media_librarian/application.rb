@@ -124,6 +124,8 @@ module MediaLibrarian
       Bundler.require(:default)
       require 'fuzzystringmatch' unless defined?(FuzzyStringMatch)
       require 'mechanize' unless defined?(Mechanize)
+      require 'deluge/rpc/client' unless defined?(Deluge::Rpc::Client)
+      require_relative '../file_utils'
       load File.expand_path('../simple_speaker.rb', __dir__)
     end
 

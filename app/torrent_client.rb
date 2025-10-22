@@ -188,7 +188,8 @@ class TorrentClient
 
   def self.monitor_torrent_client
     app.speaker.speak_up("Checking free space remaining on torrent server", 0)
-    free_space = app.t_client.get_free_space / 1024 / 1024 / 1024
+    free_space_bytes = app.t_client.get_free_space
+    free_space = free_space_bytes.to_f / 1024 / 1024 / 1024
     app.speaker.speak_up("Free space remaining: #{free_space}GB", 0)
     if free_space <= get_config('deluge', 'min_torrent_free_space').to_i && !@throttled
       app.speaker.speak_up "There is only #{free_space}GB of free space on torrent server, will throttle download rate now!"
