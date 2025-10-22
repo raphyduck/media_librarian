@@ -272,15 +272,19 @@ async function loadLogs() {
 }
 
 async function loadConfig({ force = false } = {}) {
+  const editor = document.getElementById('config-editor');
+  if (!editor) {
+    return;
+  }
   if (!force && isEditorDirty('config')) {
     return;
   }
   try {
     const data = await fetchJson('/config');
-    const editor = document.getElementById('config-editor');
-    if (editor) {
-      editor.value = data.content || '';
+    if (!force && isEditorDirty('config')) {
+      return;
     }
+    editor.value = data.content || '';
     setEditorDirty('config', false);
   } catch (error) {
     if (state.authenticated) {
@@ -292,6 +296,9 @@ async function loadConfig({ force = false } = {}) {
 async function loadScheduler({ force = false } = {}) {
   const editor = document.getElementById('scheduler-editor');
   const hint = document.getElementById('scheduler-hint');
+  if (!editor || !hint) {
+    return;
+  }
   if (!force && isEditorDirty('scheduler')) {
     return;
   }
@@ -300,6 +307,9 @@ async function loadScheduler({ force = false } = {}) {
     editor.disabled = false;
     document.getElementById('save-scheduler').disabled = false;
     document.getElementById('reload-scheduler').disabled = false;
+    if (!force && isEditorDirty('scheduler')) {
+      return;
+    }
     editor.value = data.content || '';
     hint.textContent = 'Modifiez le fichier du scheduler si un planificateur est configuré.';
     setEditorDirty('scheduler', false);
