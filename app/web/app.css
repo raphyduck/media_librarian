@@ -222,6 +222,12 @@ button.primary:hover {
   white-space: pre-wrap;
 }
 
+.log-hint {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 textarea {
   width: 100%;
   min-height: 16rem;
