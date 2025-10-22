@@ -22,7 +22,10 @@ class Library
   end
 
   def self.convert_media(path:, input_format:, output_format:, no_warning: 0, rename_original: 1, move_destination: '', search_pattern: '', qualities: nil)
-    request = MediaLibrarian::Services::MediaConversionRequest.new(
+    dispatch_service_request(
+      :media_conversion_service,
+      :convert,
+      MediaLibrarian::Services::MediaConversionRequest,
       path: path,
       input_format: input_format,
       output_format: output_format,
@@ -32,11 +35,13 @@ class Library
       search_pattern: search_pattern,
       qualities: qualities
     )
-    media_conversion_service.convert(request)
   end
 
   def self.compare_remote_files(path:, remote_server:, remote_user:, filter_criteria: {}, ssh_opts: {}, no_prompt: 0)
-    request = MediaLibrarian::Services::RemoteComparisonRequest.new(
+    dispatch_service_request(
+      :remote_sync_service,
+      :compare_remote_files,
+      MediaLibrarian::Services::RemoteComparisonRequest,
       path: path,
       remote_server: remote_server,
       remote_user: remote_user,
@@ -44,22 +49,26 @@ class Library
       ssh_opts: ssh_opts,
       no_prompt: no_prompt
     )
-    remote_sync_service.compare_remote_files(request)
   end
 
   def self.create_custom_list(name:, description:, origin: 'collection', criteria: {}, no_prompt: 0)
-    request = MediaLibrarian::Services::CustomListRequest.new(
+    dispatch_service_request(
+      :list_management_service,
+      :create_custom_list,
+      MediaLibrarian::Services::CustomListRequest,
       name: name,
       description: description,
       origin: origin,
       criteria: criteria,
       no_prompt: no_prompt
     )
-    list_management_service.create_custom_list(request)
   end
 
   def self.fetch_media_box(local_folder:, remote_user:, remote_server:, remote_folder:, clean_remote_folder: [], bandwith_limit: 0, active_hours: {}, ssh_opts: {}, exclude_folders_in_check: [], monitor_options: {})
-    request = MediaLibrarian::Services::RemoteFetchRequest.new(
+    dispatch_service_request(
+      :remote_sync_service,
+      :fetch_media_box,
+      MediaLibrarian::Services::RemoteFetchRequest,
       local_folder: local_folder,
       remote_user: remote_user,
       remote_server: remote_server,
@@ -71,7 +80,6 @@ class Library
       exclude_folders_in_check: exclude_folders_in_check,
       monitor_options: monitor_options
     )
-    remote_sync_service.fetch_media_box(request)
   end
 
   def self.fetch_media_box_core(local_folder, remote_user, remote_server, remote_folder, clean_remote_folder = [], bandwith_limit = 0, ssh_opts = {}, active_hours = {}, exclude_folders = [])
@@ -92,22 +100,26 @@ class Library
   end
 
   def self.get_media_list_size(list: [], folder: {}, type_filter: '')
-    request = MediaLibrarian::Services::MediaListSizeRequest.new(
+    dispatch_service_request(
+      :list_management_service,
+      :get_media_list_size,
+      MediaLibrarian::Services::MediaListSizeRequest,
       list: list,
       folder: folder,
       type_filter: type_filter
     )
-    list_management_service.get_media_list_size(request)
   end
 
   def self.get_search_list(source_type, category, source, no_prompt = 0)
-    request = MediaLibrarian::Services::SearchListRequest.new(
+    dispatch_service_request(
+      :list_management_service,
+      :get_search_list,
+      MediaLibrarian::Services::SearchListRequest,
       source_type: source_type,
       category: category,
       source: source,
       no_prompt: no_prompt
     )
-    list_management_service.get_search_list(request)
   end
 
   def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {}, exclude_path: ['extfls'])
@@ -540,6 +552,11 @@ class Library
 
   class << self
     private
+
+    def dispatch_service_request(service_accessor, action, request_class, **request_args)
+      request = request_class.new(**request_args)
+      send(service_accessor).public_send(action, request)
+    end
 
     def media_conversion_service
       MediaLibrarian::Services::MediaConversionService.new(app: app)
