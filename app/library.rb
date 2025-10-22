@@ -140,33 +140,29 @@ class Library
       opath += +'/' + torrent_name
     end
     full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/, '/')
-    handled, process_folder_list, error = 0, [], 0
-    handled_files = (
-      if handling['file_types'].is_a?(Array)
-        handling['file_types'].map { |o| o.is_a?(Hash) ? o.map { |k, _| k.downcase } : o.downcase } + ['rar', 'zip']
-      else
-        ['rar', 'zip']
-      end).flatten
+    state = init_download_processing_state
+    handled_files = handled_file_types(handling)
     if FileTest.directory?(full_p)
       ensure_qualities = Quality.qualities_merge(ensure_qualities, full_p)
+      base_child_context = child_download_context(
+        completed_folder: completed_folder,
+        destination_folder: destination_folder,
+        handling: handling,
+        remove_duplicates: remove_duplicates,
+        force_process: force_process,
+        folder_hierarchy: folder_hierarchy,
+        ensure_qualities: ensure_qualities,
+        move_completed_torrent: move_completed_torrent,
+        exclude_path: exclude_path
+      )
       FileUtils.search_folder(full_p, { 'exclude' => '.tmp.', 'exclude_path' => exclude_path, 'includedir' => 1, 'maxdepth' => 1 }).each do |f|
-        hcd = handle_completed_download(
+        child_args = build_child_download_args(
+          base_child_context,
           torrent_path: File.dirname(f[0]),
           torrent_name: File.basename(f[0]),
-          completed_folder: completed_folder,
-          destination_folder: destination_folder,
-          handling: handling,
-          remove_duplicates: remove_duplicates,
-          folder_hierarchy: Hash[folder_hierarchy.map { |k, v| [k, v.to_i + 1] }],
-          force_process: force_process,
-          root_process: 0,
-          ensure_qualities: ensure_qualities,
-          move_completed_torrent: move_completed_torrent,
-          exclude_path: exclude_path
+          folder_hierarchy: increment_folder_hierarchy(folder_hierarchy)
         )
-        handled += hcd[0]
-        error += hcd[2]
-        process_folder_list += hcd[1]
+        accumulate_download_results(state, handle_completed_download(**child_args))
       end
     elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
       app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
@@ -179,37 +175,38 @@ class Library
         FileUtils.rm_r(torrent_path + '/extfls') if File.exist?(torrent_path + '/extfls')
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
         ensure_qualities = Quality.parse_qualities(torrent_name, VALID_QUALITIES, '', ttype).join('.') if ensure_qualities.to_s == ''
-        hcd = handle_completed_download(
-          torrent_path: torrent_path,
-          torrent_name: 'extfls',
+        child_context = child_download_context(
           completed_folder: completed_folder,
           destination_folder: destination_folder,
           handling: handling,
           remove_duplicates: remove_duplicates,
-          folder_hierarchy: Hash[folder_hierarchy.map { |k, v| [k, v.to_i + 1] }],
           force_process: force_process,
-          root_process: 0,
+          folder_hierarchy: folder_hierarchy,
           ensure_qualities: ensure_qualities,
           move_completed_torrent: move_completed_torrent,
           exclude_path: exclude_path - ['extfls']
         )
-        handled += hcd[0]
-        error += hcd[2]
-        process_folder_list += hcd[1]
+        child_args = build_child_download_args(
+          child_context,
+          torrent_path: torrent_path,
+          torrent_name: 'extfls',
+          folder_hierarchy: increment_folder_hierarchy(folder_hierarchy)
+        )
+        accumulate_download_results(state, handle_completed_download(**child_args))
         Thread.current[:block] << Proc.new { FileUtils.rm_r(torrent_path + '/extfls') }
       elsif handling['file_types']
         if force_process.to_i == 0 && !handled_files.include?(extension)
           app.speaker.speak_up "Unsupported extension '#{extension}'"
-          return handled, process_folder_list, error
+          return state[:handled], state[:process_folder_list], state[:error]
         end
         args = handling['file_types'].select { |x| x.is_a?(Hash) && x[extension] }.first
         if File.basename(File.dirname(full_p)).downcase == 'sample' || File.basename(full_p).match(/([\. -])?sample([\. -])?/)
           app.speaker.speak_up 'File is a sample, skipping...'
-          return handled, process_folder_list, error
+          return state[:handled], state[:process_folder_list], state[:error]
         end
         if File.stat(full_p).nlink > 2
           app.speaker.speak_up 'File is already hard linked, skipping...'
-          return handled, process_folder_list, error
+          return state[:handled], state[:process_folder_list], state[:error]
         end
         if args && args[extension] && args[extension]['convert_to'].to_s != ''
           convert_media(
@@ -220,23 +217,23 @@ class Library
             rename_original: 0,
             move_destination: File.dirname(full_p)
           ).each do |nf|
-            hcd = handle_completed_download(
-              torrent_path: File.dirname(nf),
-              torrent_name: File.basename(nf),
+            child_context = child_download_context(
               completed_folder: completed_folder,
               destination_folder: destination_folder,
               handling: handling,
               remove_duplicates: remove_duplicates,
-              folder_hierarchy: folder_hierarchy,
               force_process: force_process,
-              root_process: 0,
+              folder_hierarchy: folder_hierarchy,
               ensure_qualities: ensure_qualities,
               move_completed_torrent: move_completed_torrent,
               exclude_path: exclude_path
             )
-            handled += hcd[0]
-            error += hcd[2]
-            process_folder_list += hcd[1]
+            child_args = build_child_download_args(
+              child_context,
+              torrent_path: File.dirname(nf),
+              torrent_name: File.basename(nf)
+            )
+            accumulate_download_results(state, handle_completed_download(**child_args))
           end
         elsif handling[type] && handling[type]['move_to']
           if completed_folder == move_completed_torrent['torrent_completed_path'].to_s && move_completed_torrent['replace_destination_folder'].to_s != ''
@@ -258,11 +255,11 @@ class Library
         else
           destination = full_p.gsub(completed_folder, destination_folder)
           _, moved = FileUtils.move_file(full_p, destination, 1)
-          error += 1 unless moved
+          state[:error] += 1 unless moved
         end
         if defined?(destination) && destination.to_s != ''
-          process_folder_list << [ttype, File.dirname(destination)]
-          handled = 1
+          state[:process_folder_list] << [ttype, File.dirname(destination)]
+          state[:handled] = 1
         end
       elsif Env.debug?
         app.speaker.speak_up 'File type not handled, skipping...'
@@ -270,9 +267,9 @@ class Library
     end
     if root_process.to_i > 0
       FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
-      raise 'Could not find any file to handle!' if handled == 0
-      raise "An error occured" if error.to_i > 0
-      process_folder_list.uniq.each do |p|
+      raise 'Could not find any file to handle!' if state[:handled] == 0
+      raise "An error occured" if state[:error].to_i > 0
+      state[:process_folder_list].uniq.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
       end
       if torrent_id.to_s != ""
@@ -280,15 +277,61 @@ class Library
         Cache.queue_state_add_or_update('deluge_torrents_completed', { torrent_id => { :path => opath, :active_time => active_time } })
       end
     end
-    return handled, process_folder_list, error
+    return state[:handled], state[:process_folder_list], state[:error]
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     if root_process.to_i > 0
       FileUtils.rm_r(full_p) if defined?(full_p) && full_p.to_s.include?(app.temp_dir)
       raise e
     end
-    return handled, process_folder_list, 1
+    return state[:handled], state[:process_folder_list], 1
   end
+
+  def self.init_download_processing_state
+    { handled: 0, process_folder_list: [], error: 0 }
+  end
+
+  def self.handled_file_types(handling)
+    file_types = handling['file_types']
+    return ['rar', 'zip'] unless file_types.is_a?(Array)
+
+    (file_types.map { |o| o.is_a?(Hash) ? o.map { |k, _| k.downcase } : o.downcase } + ['rar', 'zip']).flatten
+  end
+
+  def self.child_download_context(completed_folder:, destination_folder:, handling:, remove_duplicates:, force_process:, folder_hierarchy:, ensure_qualities:, move_completed_torrent:, exclude_path:)
+    {
+      completed_folder: completed_folder,
+      destination_folder: destination_folder,
+      handling: handling,
+      remove_duplicates: remove_duplicates,
+      force_process: force_process,
+      folder_hierarchy: folder_hierarchy,
+      ensure_qualities: ensure_qualities,
+      move_completed_torrent: move_completed_torrent,
+      exclude_path: exclude_path
+    }
+  end
+
+  def self.build_child_download_args(base_context, overrides = {})
+    base_context.merge(overrides).merge(root_process: 0)
+  end
+
+  def self.increment_folder_hierarchy(folder_hierarchy)
+    Hash[folder_hierarchy.map { |k, v| [k, v.to_i + 1] }]
+  end
+
+  def self.accumulate_download_results(state, new_results)
+    state[:handled] += new_results[0]
+    state[:process_folder_list] += new_results[1]
+    state[:error] += new_results[2]
+  end
+
+  private_class_method :init_download_processing_state,
+                       :handled_file_types,
+                       :child_download_context,
+                       :build_child_download_args,
+                       :increment_folder_hierarchy,
+                       :accumulate_download_results
 
   def self.handle_duplicates(files, remove_duplicates = 0, no_prompt = 0)
     files.each do |id, f|
