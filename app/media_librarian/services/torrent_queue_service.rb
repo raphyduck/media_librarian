@@ -197,7 +197,9 @@ module MediaLibrarian
 
       def log_torrent_details(torrent, torrent_row)
         speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
-        (torrent + torrent_row.select { |key, _| [:name, :identifiers].include?(key) }).each { |key, value| speaker.speak_up "#{key} = #{value}" }
+        torrent.merge(torrent_row.select { |key, _| [:name, :identifiers].include?(key) }).each do |key, value|
+          speaker.speak_up "#{key} = #{value}"
+        end
       end
 
       def build_download_options(torrent_row, torrent, tdid)
