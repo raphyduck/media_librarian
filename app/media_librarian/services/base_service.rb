@@ -22,7 +22,12 @@ module MediaLibrarian
       end
 
       def speak_up(message, *args)
-        delegate&.speak_up(message, *args)
+        mutable_message = if message.is_a?(String) && message.frozen?
+                            message.dup
+                          else
+                            message
+                          end
+        delegate&.speak_up(mutable_message, *args)
       end
 
       def ask_if_needed(question, no_prompt = 0, default = nil)
