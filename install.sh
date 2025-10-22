@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 CONFIG_DIR="${HOME}/.medialibrarian"
-SETTINGS_FILE="${CONFIG_DIR}/settings.yml"
+CONF_FILE="${CONFIG_DIR}/conf.yml"
 API_FILE="${CONFIG_DIR}/api.yml"
 
 log() {
@@ -179,9 +179,9 @@ generate_bcrypt_hash() {
 configure_web_interface() {
   log "==> Configuring web interface"
   mkdir -p "$CONFIG_DIR"
-  if [[ ! -f "$SETTINGS_FILE" ]]; then
-    cp "$REPO_ROOT/config/conf.yml.example" "$SETTINGS_FILE"
-    echo "→ Created $SETTINGS_FILE from template"
+  if [[ ! -f "$CONF_FILE" ]]; then
+    cp "$REPO_ROOT/config/conf.yml.example" "$CONF_FILE"
+    echo "→ Created $CONF_FILE from template"
   fi
 
   local bind_address listen_port username password_hash ssl_enabled cert_path key_path ca_path verify_mode client_verify_mode api_token control_token
@@ -241,7 +241,7 @@ main() {
   configure_web_interface
   log "✅  Installation complete"
   echo "You can start the daemon with:"
-  echo "  bundle exec ruby librarian.rb daemon start --config $SETTINGS_FILE"
+  echo "  bundle exec ruby librarian.rb daemon start --config $CONF_FILE"
 }
 
 main "$@"

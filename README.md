@@ -32,7 +32,7 @@ This program is made to answer my various needs for automation in the management
 
    ```bash
    mkdir -p ~/.medialibrarian
-   cp config/conf.yml.example ~/.medialibrarian/settings.yml
+   cp config/conf.yml.example ~/.medialibrarian/conf.yml
    cp config/api.yml.example ~/.medialibrarian/api.yml
    ```
 
@@ -45,7 +45,7 @@ This program is made to answer my various needs for automation in the management
 * Run the daemon with your configuration file:
 
   ```bash
-  bundle exec ruby librarian.rb daemon start --config ~/.medialibrarian/settings.yml
+  bundle exec ruby librarian.rb daemon start --config ~/.medialibrarian/conf.yml
   ```
 
 * Stop it when needed:
@@ -57,10 +57,10 @@ This program is made to answer my various needs for automation in the management
 * You can also execute a one-shot command without the daemon by pointing directly at the configuration file:
 
   ```bash
-  bundle exec ruby librarian.rb --config ~/.medialibrarian/settings.yml
+  bundle exec ruby librarian.rb --config ~/.medialibrarian/conf.yml
   ```
 
-The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `settings.yml`.
+The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `conf.yml`.
 
 ## Contrôle HTTP et interface web
 
