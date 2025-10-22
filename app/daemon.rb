@@ -109,11 +109,31 @@ class Daemon
     end
 
     def stop
-      return unless ensure_daemon
+      if running?
+        app.speaker.speak_up('Will shutdown after pending operations')
+        app.librarian.quit = true
+        shutdown
+        return true
+      end
 
-      app.speaker.speak_up('Will shutdown after pending operations')
-      app.librarian.quit = true
-      shutdown
+      response = Client.new.stop
+      status_code = response['status_code']
+
+      case status_code
+      when 200
+        app.speaker.speak_up('Stop command sent to daemon')
+        true
+      when 401, 403
+        app.speaker.speak_up('Not authorized to stop daemon')
+        false
+      when 503
+        app.speaker.speak_up('No daemon running')
+        false
+      else
+        message = response['error'] || "Unable to stop daemon (HTTP #{status_code})"
+        app.speaker.speak_up(message)
+        false
+      end
     end
 
     def reload
