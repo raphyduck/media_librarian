@@ -11,13 +11,11 @@ class Client
   def initialize(control_token: nil)
     options = app.api_option || {}
     @api_options = options
-    resolved_token = control_token || ENV['MEDIA_LIBRARIAN_API_TOKEN']
-    unless resolved_token
-      if options
-        resolved_token = options['api_token'] || options['control_token']
-      end
-      resolved_token ||= ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
-    end
+    resolved_token = control_token
+    resolved_token ||= ENV['MEDIA_LIBRARIAN_API_TOKEN']
+    resolved_token ||= options['api_token']
+    resolved_token ||= options['control_token']
+    resolved_token ||= ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
     @control_token = resolved_token unless resolved_token.to_s.empty?
   end
 
@@ -96,9 +94,10 @@ class Client
 
     ca_path = api_options['ssl_ca_path']
     if ca_path && !ca_path.to_s.empty?
-      if File.directory?(ca_path)
+      case ca_path
+      when ->(path) { File.directory?(path) }
         options[:ca_path] = ca_path
-      elsif File.file?(ca_path)
+      when ->(path) { File.file?(path) }
         options[:ca_file] = ca_path
       end
     end
