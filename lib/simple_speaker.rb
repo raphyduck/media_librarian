@@ -25,10 +25,12 @@ module SimpleSpeaker
           end
           @user_input = nil
         else
-          ask_if_needed = STDIN.gets.strip
+          input = STDIN.gets
+          ask_if_needed = input.nil? ? nil : input.strip
         end
       end
-      ask_if_needed
+      ask_if_needed = nil if ask_if_needed.respond_to?(:empty?) && ask_if_needed.empty?
+      ask_if_needed.nil? ? default : ask_if_needed
     end
 
     def daemon_send(str)
