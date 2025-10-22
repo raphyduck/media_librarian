@@ -79,9 +79,11 @@ class Client
   def resolve_control_token(explicit_token, options)
     select_token(
       explicit_token,
-      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
       options['api_token'],
+      options[:api_token],
       options['control_token'],
+      options[:control_token],
+      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
       ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
     )
   end
