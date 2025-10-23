@@ -73,6 +73,7 @@ class Report
   def self.formatted_subject(subject)
     hostname = Socket.gethostname.to_s
     timestamp = Time.now.strftime("%a %d %b %Y")
-    "[#{hostname}]#{subject} - #{timestamp}"
+    sanitized_subject = StringUtils.fix_encoding(subject.to_s)
+    "[#{hostname}]#{sanitized_subject} - #{timestamp}"
   end
 end
