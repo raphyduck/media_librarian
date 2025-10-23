@@ -51,8 +51,8 @@ class Client
       response = http.request(request)
       parse_response(response)
     end
-  rescue Errno::ECONNREFUSED, OpenSSL::SSL::SSLError => e
-    { 'status_code' => 503, 'error' => e.message }
+  rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
+    { 'status_code' => 503, 'error' => connection_error_message(e) }
   end
 
   def parse_response(response)
@@ -159,4 +159,15 @@ class Client
   end
 
   attr_reader :api_options
+
+  def connection_error_message(error)
+    case error
+    when Errno::ECONNREFUSED
+      'Failed to connect to daemon'
+    when Net::OpenTimeout, Net::ReadTimeout
+      'Timed out waiting for daemon response'
+    else
+      error.message
+    end
+  end
 end

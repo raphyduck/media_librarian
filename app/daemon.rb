@@ -115,7 +115,11 @@ class Daemon
       if running?
         app.speaker.speak_up('Will shutdown after pending operations')
         app.librarian.quit = true
-        shutdown
+        if Thread.current[:jid]
+          Thread.new { shutdown }
+        else
+          shutdown
+        end
         return true
       end
 

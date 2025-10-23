@@ -54,6 +54,68 @@ class DaemonCliStopTest < Minitest::Test
     fake_client.verify if defined?(fake_client)
   end
 
+  def test_stop_runs_shutdown_in_background_when_called_from_job_thread
+    Librarian.new(container: @environment.container, args: [])
+    Daemon.instance_variable_set(:@running, Concurrent::AtomicBoolean.new(true))
+
+    shutdown_threads = Queue.new
+    worker = nil
+    singleton = Daemon.singleton_class
+    original_shutdown = singleton.instance_method(:shutdown)
+
+    singleton.send(:define_method, :shutdown) do
+      shutdown_threads << Thread.current
+    end
+
+    shutdown_thread = nil
+
+    begin
+      worker = Thread.new do
+        Thread.current[:jid] = 'job-123'
+        Daemon.stop
+      ensure
+        Thread.current[:jid] = nil
+      end
+      result = worker.value
+      shutdown_thread = shutdown_threads.pop
+      shutdown_thread.join if shutdown_thread.alive?
+    ensure
+      singleton.send(:define_method, :shutdown, original_shutdown)
+    end
+
+    assert result
+    refute_same worker, shutdown_thread
+    assert_includes @environment.application.speaker.messages, 'Will shutdown after pending operations'
+  ensure
+    Daemon.instance_variable_set(:@running, nil)
+  end
+
+  def test_stop_runs_shutdown_inline_outside_job_threads
+    Librarian.new(container: @environment.container, args: [])
+    Daemon.instance_variable_set(:@running, Concurrent::AtomicBoolean.new(true))
+
+    calling_thread = Thread.current
+    shutdown_thread = nil
+    singleton = Daemon.singleton_class
+    original_shutdown = singleton.instance_method(:shutdown)
+
+    singleton.send(:define_method, :shutdown) do
+      shutdown_thread = Thread.current
+    end
+
+    begin
+      result = Daemon.stop
+    ensure
+      singleton.send(:define_method, :shutdown, original_shutdown)
+    end
+
+    assert result
+    assert_equal calling_thread, shutdown_thread
+    assert_includes @environment.application.speaker.messages, 'Will shutdown after pending operations'
+  ensure
+    Daemon.instance_variable_set(:@running, nil)
+  end
+
   private
 
   def remove_app_reference(klass)
