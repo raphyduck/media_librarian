@@ -262,6 +262,8 @@ button.primary:hover {
   font-family: "SFMono-Regular", ui-monospace, SFMono, "Fira Code", monospace;
   font-size: 0.85rem;
   white-space: pre-wrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .log-hint {
