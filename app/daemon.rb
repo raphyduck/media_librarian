@@ -84,30 +84,53 @@ class Daemon
       daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
       return app.speaker.speak_up('Daemon already started') if running?
 
-      app.speaker.speak_up('Will now work in the background')
-      if daemonize
-        app.librarian.daemonize
-        app.librarian.write_pid
-        Logger.renew_logs(app.config_dir + '/log')
-      end
+      restart_flag = restart_requested_flag
+      manage_pid = daemonize
+      daemonized = false
+      first_cycle = true
 
-      boot_framework_state
-      @is_daemon = true
-      @scheduler_name = scheduler
+      begin
+        loop do
+          app.speaker.speak_up(first_cycle ? 'Will now work in the background' : 'Restarting daemon')
+          if daemonize && !daemonized
+            app.librarian.daemonize
+            app.librarian.write_pid
+            Logger.renew_logs(app.config_dir + '/log')
+            daemonized = true
+          end
 
-      start_scheduler(scheduler) if scheduler
-      start_quit_timer
-      start_trakt_timer
-      start_control_server
+          begin
+            boot_framework_state
+            @is_daemon = true
+            @scheduler_name = scheduler
 
-      wait_for_shutdown
-    rescue StandardError => e
-      app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    ensure
-      cleanup
-      if daemonize
-        app.librarian.delete_pid
-        app.speaker.speak_up('Shutting down')
+            start_scheduler(scheduler) if scheduler
+            start_quit_timer
+            start_trakt_timer
+            start_control_server
+
+            wait_for_shutdown
+          rescue StandardError => e
+            app.speaker.tell_error(e, Utils.arguments_dump(binding))
+          ensure
+            cleanup
+            app.librarian.quit = false if app.librarian
+          end
+
+          break unless restart_flag.true?
+
+          restart_flag.make_false
+          first_cycle = false
+          daemonize = false
+        end
+      rescue StandardError => e
+        app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      ensure
+        restart_flag.make_false if restart_flag
+        if manage_pid && daemonized
+          app.librarian.delete_pid
+          app.speaker.speak_up('Shutting down')
+        end
       end
     end
 
@@ -137,6 +160,20 @@ class Daemon
         app.speaker.speak_up(message)
         false
       end
+    end
+
+    def restart
+      return :not_running unless ensure_daemon
+
+      flag = restart_requested_flag
+      return :already_restarting if flag.true?
+
+      flag.make_true
+      Thread.new { stop }
+      :scheduled
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      :failed
     end
 
     def reload
@@ -657,6 +694,12 @@ class Daemon
         Thread.new { stop }
       end
 
+      @control_server.mount_proc('/restart') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_restart_request(req, res)
+      end
+
       @control_server.mount_proc('/logs') do |req, res|
         next unless require_authorization(req, res)
 
@@ -823,6 +866,22 @@ class Daemon
       process_reload_request(res) { reload_scheduler }
     end
 
+    def handle_restart_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      outcome = restart
+      case outcome
+      when :scheduled
+        json_response(res, status: 202, body: { 'status' => 'restarting' })
+      when :already_restarting
+        error_response(res, status: 409, message: 'restart_in_progress')
+      when :not_running
+        error_response(res, status: 503, message: 'not_running')
+      else
+        error_response(res, status: 500, message: 'restart_failed')
+      end
+    end
+
     def process_reload_request(res)
       unless running?
         return error_response(res, status: 503, message: 'not_running')
@@ -836,6 +895,10 @@ class Daemon
       end
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
+    end
+
+    def restart_requested_flag
+      @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
     def json_response(res, body: nil, status: 200)

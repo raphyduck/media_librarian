@@ -86,6 +86,19 @@ class DaemonIntegrationTest < Minitest::Test
     refute Daemon.running?
   end
 
+  def test_restart_endpoint_restarts_daemon
+    boot_daemon_environment
+
+    response = control_post('/restart')
+    assert_equal 202, response[:status_code]
+
+    wait_for_http_ready
+
+    assert Daemon.running?
+    status = Client.new.status
+    assert_equal 200, status['status_code']
+  end
+
   def test_reload_refreshes_configuration_and_scheduler
     scheduler_name = 'reload_scheduler'
 

@@ -189,6 +189,15 @@ button.primary:hover {
   background: #1d4ed8;
 }
 
+button.danger {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+button.danger:hover {
+  background: rgba(248, 113, 113, 0.32);
+}
+
 .jobs-columns {
   display: grid;
   gap: 1.5rem;
