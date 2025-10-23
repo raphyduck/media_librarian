@@ -417,6 +417,25 @@ async function reloadScheduler() {
   }
 }
 
+async function restartDaemon() {
+  const button = document.getElementById('restart-daemon');
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    await fetchJson('/restart', { method: 'POST' });
+    showNotification('Redémarrage du démon en cours…');
+    stopAutoRefresh();
+    setAuthenticated(false);
+  } catch (error) {
+    showNotification(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 const TAB_LOADERS = {
   jobs: () => loadStatus(),
   logs: () => loadLogs(),
@@ -538,6 +557,7 @@ function setupTabs() {
 function setupEventListeners() {
   setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
+  document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
   document.getElementById('save-config').addEventListener('click', saveConfig);
   document.getElementById('save-scheduler').addEventListener('click', saveScheduler);
