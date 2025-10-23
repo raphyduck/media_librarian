@@ -192,9 +192,10 @@ class Daemon
 
     def status_snapshot
       jobs = job_registry.values
+      running = jobs.select(&:running?)
       {
-        jobs: jobs,
-        running: jobs.select(&:running?),
+        jobs: running,
+        running: running,
         queued: jobs.reject(&:finished?).reject(&:running?),
         finished: jobs.select(&:finished?)
       }
@@ -227,7 +228,9 @@ class Daemon
         {
           id: job['id'],
           queue: job['queue'],
-          status: job['status'] || job[:status]
+          status: job['status'] || job[:status],
+          children: job['children'] || job[:children],
+          parent_id: job['parent_id'] || job[:parent_id]
         }
       end
     end
@@ -248,7 +251,17 @@ class Daemon
         job_id = job.respond_to?(:id) ? job.id : job[:id]
         queue_name = job.respond_to?(:queue) ? job.queue : job[:queue]
         status = job.respond_to?(:status) ? job.status : job[:status]
-        app.speaker.speak_up "- Job #{job_id} (queue: #{queue_name}) status=#{status}"
+        children = if job.respond_to?(:id)
+                     get_children_count(job.id)
+                   else
+                     (job[:children] || 0).to_i
+                   end
+        parent_id = job.respond_to?(:parent_job_id) ? job.parent_job_id : job[:parent_id]
+        details = []
+        details << "children=#{children}" if children.positive?
+        details << "parent=#{parent_id}" if parent_id
+        suffix = details.empty? ? '' : " (#{details.join(', ')})"
+        app.speaker.speak_up "- Job #{job_id} (queue: #{queue_name}) status=#{status}#{suffix}"
       end
 
       app.speaker.speak_up LINE_SEPARATOR
@@ -424,6 +437,14 @@ class Daemon
     end
 
     private
+
+    def serialize_job(job)
+      data = job.to_h
+      children = get_children_count(job.id)
+      data['children'] = children if children.positive?
+      data['parent_id'] = job.parent_job_id if job.parent_job_id
+      data
+    end
 
     def boot_framework_state
       @running = Concurrent::AtomicBoolean.new(true)
@@ -618,10 +639,12 @@ class Daemon
         next unless require_authorization(req, res)
 
         snapshot = status_snapshot
+        jobs = snapshot[:jobs].map { |job| serialize_job(job) }
+
         json_response(
           res,
           body: {
-            'jobs' => snapshot[:jobs].map(&:to_h),
+            'jobs' => jobs,
             'lock_time' => Utils.lock_time_get
           }
         )
