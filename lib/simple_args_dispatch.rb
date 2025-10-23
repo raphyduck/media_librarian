@@ -93,7 +93,13 @@ module SimpleArgsDispatch
     end
 
     def show_available(app_name, available, prepend = nil, join='|', separator = new_line, extra_info = '')
-      @speaker.speak_up("Usage: #{app_name} #{prepend + ' ' if prepend}#{available[0..1].map { |k, v| "#{'[' if v == :key}#{k.to_s}#{']' if v == :key}" }.join(join)}")
+      entries = available.is_a?(Hash) ? available.to_a : (available ? Array(available) : [])
+      display = entries.first(2).map do |item|
+        key, flag = Array(item).values_at(0, 1)
+        key = key.to_s
+        flag == :key ? "[#{key}]" : key
+      end.join(join)
+      @speaker.speak_up("Usage: #{app_name} #{prepend + ' ' if prepend}#{display}")
       if extra_info.to_s != ''
         @speaker.speak_up(separator)
         @speaker.speak_up(extra_info)
