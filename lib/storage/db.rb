@@ -268,7 +268,7 @@ module Storage
     end
 
     def normalize_key(key)
-      key.is_a?(String) ? key.to_sym : key
+      key.is_a?(String) ? key.strip.to_sym : key
     end
 
     def run_write(table, sql)
