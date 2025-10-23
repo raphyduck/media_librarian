@@ -21,18 +21,13 @@ class TorrentClient
 
   def init
     Utils.lock_block("deluge_daemon_init") do
-      @deluge = Deluge::Rpc::Client.new(
-        host: app.config['deluge']['host'],
-        port: 58846,
-        login: app.config['deluge']['username'],
-        password: app.config['deluge']['password']
-      )
-      @connected = false
+      reset_connection
+      deluge
     end
   end
 
   def listen
-    @deluge.register_event('TorrentAddedEvent') do |torrent_id|
+    deluge.register_event('TorrentAddedEvent') do |torrent_id|
       app.speaker.speak_up "Torrent #{torrent_id} was successfully added!"
       Cache.queue_state_add_or_update('deluge_torrents_added', torrent_id) if torrent_id.to_s != ''
     end
@@ -41,9 +36,8 @@ class TorrentClient
   def authenticate
     Utils.lock_block("deluge_daemon_init") do
       return if @connected
-      @deluge.close rescue nil
-      @deluge.connect
-      @connected = 1
+      deluge.connect
+      @connected = true
       listen
     end
   end
@@ -55,8 +49,7 @@ class TorrentClient
   end
 
   def disconnect
-    @deluge.close
-    @deluge_connected = nil
+    reset_connection
   end
 
   def download_file(download, options = {}, meta_id = '')
@@ -240,20 +233,12 @@ class TorrentClient
   def safely_execute_deluge_operation(name, args, debug_message, tries_remaining)
     Timeout.timeout(60) do
       authenticate
-
-      # Check if the method exists on the Deluge core before calling it
-      core = eval("@deluge.core")
-
-      # Make sure the method exists before trying to call it
-      # unless core.respond_to?(name)
-      #   raise NoMethodError, "Method '#{name}' is not available on the connected torrent client"
-      # end
-
-      # Use send instead of method().call for more direct method invocation
+      core = deluge.core
       args.empty? ? core.send(name) : core.send(name, *args)
     end
   rescue => e
     reset_connection
+    raise e if e.respond_to?(:message) && e.message == 'InvalidTorrentError'
     if tries_remaining > 1
       sleep 5
       safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
@@ -265,8 +250,17 @@ class TorrentClient
 
   def reset_connection
     @connected = false
+    @deluge&.close rescue nil
     @deluge = nil
-    init
+  end
+
+  def deluge
+    @deluge ||= Deluge::Rpc::Client.new(
+      host: app.config['deluge']['host'],
+      port: 58846,
+      login: app.config['deluge']['username'],
+      password: app.config['deluge']['password']
+    )
   end
 
 end
