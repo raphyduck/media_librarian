@@ -43,6 +43,7 @@ class DaemonStatusSnapshotTest < Minitest::Test
     parent_payload = Daemon.send(:serialize_job, parent_job)
     assert_equal 'alpha', parent_payload['queue']
     assert_equal 1, parent_payload['children']
+    assert_equal ['child'], parent_payload['children_ids']
 
     child_payload = Daemon.send(:serialize_job, child_job)
     assert_equal 'parent', child_payload['parent_id']
