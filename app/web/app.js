@@ -210,21 +210,30 @@ function formatDate(value) {
 }
 
 function renderJobs(jobs = []) {
-  const running = jobs.filter((job) => job.status !== 'finished');
-  const finished = jobs.filter((job) => job.status === 'finished');
+  const finishedStatuses = new Set(['finished', 'failed', 'cancelled']);
+  const running = jobs.filter((job) => !finishedStatuses.has(job.status));
+  const finished = jobs.filter((job) => finishedStatuses.has(job.status));
 
   const runningList = document.getElementById('jobs-running');
   const finishedList = document.getElementById('jobs-finished');
 
-  const buildItem = (job) => {
+  const buildItem = (job, { childCount = 0, parentId = null, childIds = [] } = {}) => {
     const li = document.createElement('li');
     li.className = 'job-item';
     const header = document.createElement('header');
     header.innerHTML = `<span>${job.queue || '—'}</span><span>${job.status}</span>`;
     const meta = document.createElement('div');
     meta.className = 'job-meta';
+    const childIdsMarkup = childIds.map((id) => `<code>${id}</code>`).join(', ');
+    const childrenLabel = childCount
+      ? `Enfants: ${childCount}${childIdsMarkup ? ` (${childIdsMarkup})` : ''}`
+      : childIdsMarkup
+      ? `Enfants: ${childIdsMarkup}`
+      : '';
     meta.innerHTML = [
       job.id ? `<span>ID: <code>${job.id}</code></span>` : null,
+      parentId ? `<span>Parent: <code>${parentId}</code></span>` : null,
+      childrenLabel ? `<span>${childrenLabel}</span>` : null,
       job.task ? `<span>Tâche: ${job.task}</span>` : null,
       job.result ? `<span>Résultat: ${job.result}</span>` : null,
       job.error ? `<span class="error">Erreur: ${job.error}</span>` : null,
@@ -238,8 +247,66 @@ function renderJobs(jobs = []) {
     return li;
   };
 
-  runningList.replaceChildren(...running.map(buildItem));
-  finishedList.replaceChildren(...finished.map(buildItem));
+  const compareJobs = (a, b) => {
+    const queueA = (a.queue || '').toLowerCase();
+    const queueB = (b.queue || '').toLowerCase();
+    const queueCompare = queueA.localeCompare(queueB);
+    if (queueCompare) return queueCompare;
+    const createdA = a.created_at || '';
+    const createdB = b.created_at || '';
+    if (createdA && createdB && createdA !== createdB) {
+      return createdA < createdB ? -1 : 1;
+    }
+    return (a.id || '').localeCompare(b.id || '');
+  };
+
+  const nodeById = new Map();
+  running.forEach((job, index) => {
+    const key = job.id || `__job_${index}`;
+    nodeById.set(key, { job, children: [] });
+  });
+
+  const roots = [];
+  nodeById.forEach((node) => {
+    const parentId = node.job.parent_id;
+    if (parentId && nodeById.has(parentId)) {
+      nodeById.get(parentId).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const buildTree = (node) => {
+    node.children.sort((a, b) => compareJobs(a.job, b.job));
+    const reportedChildren = Array.isArray(node.job.children_ids)
+      ? node.job.children_ids.length
+      : node.job.children || 0;
+    const element = buildItem(node.job, {
+      childCount: node.children.length || reportedChildren,
+      parentId: node.job.parent_id || null,
+      childIds: Array.isArray(node.job.children_ids) ? node.job.children_ids : [],
+    });
+    if (node.children.length) {
+      const childList = document.createElement('ul');
+      childList.className = 'job-children';
+      childList.replaceChildren(...node.children.map(buildTree));
+      element.appendChild(childList);
+    }
+    return element;
+  };
+
+  roots.sort((a, b) => compareJobs(a.job, b.job));
+  runningList.replaceChildren(...roots.map(buildTree));
+  finished.sort(compareJobs);
+  finishedList.replaceChildren(
+    ...finished.map((job) =>
+      buildItem(job, {
+        childCount: Array.isArray(job.children_ids) ? job.children_ids.length : job.children || 0,
+        parentId: job.parent_id || null,
+        childIds: Array.isArray(job.children_ids) ? job.children_ids : [],
+      })
+    )
+  );
 }
 
 function renderLogs(logs = {}) {

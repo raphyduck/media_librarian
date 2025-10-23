@@ -233,12 +233,12 @@ class Daemon
 
     def status_snapshot
       jobs = job_registry.values
-      running = jobs.select(&:running?)
+      running = sort_jobs_by_queue(jobs.select(&:running?))
       {
         jobs: running,
         running: running,
-        queued: jobs.reject(&:finished?).reject(&:running?),
-        finished: jobs.select(&:finished?)
+        queued: sort_jobs_by_queue(jobs.reject(&:finished?).reject(&:running?)),
+        finished: sort_jobs_by_queue(jobs.select(&:finished?))
       }
     end
 
@@ -271,6 +271,7 @@ class Daemon
           queue: job['queue'],
           status: job['status'] || job[:status],
           children: job['children'] || job[:children],
+          children_ids: Array(job['children_ids'] || job[:children_ids]),
           parent_id: job['parent_id'] || job[:parent_id]
         }
       end
@@ -481,10 +482,15 @@ class Daemon
 
     def serialize_job(job)
       data = job.to_h
-      children = get_children_count(job.id)
-      data['children'] = children if children.positive?
+      children_ids = Array(job_children[job.id])
+      data['children'] = children_ids.length if children_ids.any?
+      data['children_ids'] = children_ids if children_ids.any?
       data['parent_id'] = job.parent_job_id if job.parent_job_id
       data
+    end
+
+    def sort_jobs_by_queue(collection)
+      collection.sort_by { |job| [job.queue.to_s, job.created_at || Time.at(0)] }
     end
 
     def boot_framework_state
