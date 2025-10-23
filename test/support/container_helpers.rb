@@ -31,7 +31,8 @@ module TestSupport
 
     class StubApplication
       attr_accessor :librarian, :speaker, :args_dispatch,
-                    :workers_pool_size, :queue_slots, :container
+                    :workers_pool_size, :queue_slots, :container,
+                    :email, :email_templates
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example,
                   :tracker_dir, :api_config_file
@@ -166,7 +167,7 @@ module TestSupport
         @messages << message
       end
 
-      def tell_error(error, context = nil)
+      def tell_error(error, context = nil, *_args)
         @messages << [:error, error, context]
       end
     end
