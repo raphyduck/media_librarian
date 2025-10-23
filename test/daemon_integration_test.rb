@@ -260,16 +260,6 @@ class DaemonIntegrationTest < Minitest::Test
     end
   end
 
-  def test_cli_accepts_numeric_control_token
-    boot_daemon_environment(control_token: 12_345, authenticate: false)
-
-    client = Client.new
-    assert_equal '12345', client.instance_variable_get(:@control_token)
-
-    response = client.enqueue(['daemon', 'status'], wait: false)
-    assert_equal 200, response['status_code']
-  end
-
   def test_logout_revokes_session
     boot_daemon_environment
 

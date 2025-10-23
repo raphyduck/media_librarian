@@ -170,8 +170,6 @@ class Librarian
         return if args.nil? || args.empty?
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
-        return Daemon.stop if stop_command?(args)
-
         response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: internal)
         status_code = response['status_code'].to_i
         body = response['body']
@@ -270,13 +268,6 @@ class Librarian
       else
         app.speaker.speak_up('No command provided, showing help instead.')
       end
-    end
-
-    def stop_command?(args)
-      command, subcommand = Array(args).first(2)
-      command && subcommand &&
-        command.to_s.casecmp('daemon').zero? &&
-        subcommand.to_s.casecmp('stop').zero?
     end
 
     def run_termination(thread, thread_value, object = nil)
