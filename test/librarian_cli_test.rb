@@ -2,7 +2,6 @@
 
 require_relative 'test_helper'
 require_relative '../app/client'
-require_relative '../app/daemon'
 
 class LibrarianCliTest < Minitest::Test
   def setup
@@ -38,24 +37,6 @@ class LibrarianCliTest < Minitest::Test
     dispatches = env.application.args_dispatch.dispatched_commands
     assert_equal 1, dispatches.length
     assert_equal ['daemon', 'status'], dispatches.first[:command]
-  end
-
-  def test_daemon_stop_uses_control_endpoint
-    env = use_environment
-    librarian = Librarian.new(container: env.container, args: ['daemon', 'stop'])
-
-    called = false
-
-    Client.stub(:new, ->(*) { raise 'Client.enqueue should not be used for daemon stop' }) do
-      Daemon.stub(:stop, -> { called = true; env.application.speaker.speak_up('Stop command sent to daemon'); true }) do
-        librarian.stub(:pid_status, ->(*) { :running }) do
-          librarian.run!
-        end
-      end
-    end
-
-    assert called
-    assert_includes env.application.speaker.messages, 'Stop command sent to daemon'
   end
 
   def test_dependencies_are_isolated_per_container

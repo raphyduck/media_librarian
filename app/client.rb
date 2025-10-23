@@ -97,10 +97,15 @@ class Client
   end
 
   def normalize_token(candidate)
-    return nil if candidate.nil?
-
-    token = candidate.to_s.strip
-    token.empty? ? nil : token
+    case candidate
+    when nil
+      nil
+    when String
+      token = candidate.strip
+      token.empty? ? nil : token
+    else
+      candidate
+    end
   end
 
   def ssl_enabled?
