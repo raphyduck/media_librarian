@@ -1393,20 +1393,29 @@ class Daemon
 
     def shutdown
       return unless running?
+
       @running.make_false
 
-      [@scheduler, @quit_timer, @trakt_timer].compact.each do |timer|
-        timer.shutdown
-        timer.wait_for_termination
+      begin
+        [@scheduler, @quit_timer, @trakt_timer].compact.each do |timer|
+          timer.shutdown
+          timer.wait_for_termination
+        end
+
+        @control_server&.shutdown
+        if @control_thread && @control_thread.alive? && @control_thread != Thread.current
+          @control_thread.join
+        end
+
+        if @executor
+          @executor.shutdown
+          @executor.wait_for_termination
+        end
+      rescue StandardError => e
+        app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      ensure
+        @stop_event&.set
       end
-
-      @control_server&.shutdown
-      @control_thread&.join
-
-      @executor.shutdown
-      @executor.wait_for_termination
-
-      @stop_event.set
     end
 
     def wait_for_shutdown
