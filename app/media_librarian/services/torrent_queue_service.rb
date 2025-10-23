@@ -117,7 +117,10 @@ module MediaLibrarian
       def process_completed_torrents
         speaker.speak_up('Will process completed torrents', 0) if Env.debug?
         Cache.queue_state_get('deluge_torrents_completed').each do |tid, data|
-          torrent_record = app.db.get_rows('torrents', {}, { 'torrent_id like ' => tid }).first
+          tid = tid.to_s
+          next if tid.empty?
+
+          torrent_record = app.db.get_rows('torrents', { torrent_id: tid }).first
           remove_it = 0
           begin
             if torrent_record.nil?
