@@ -316,9 +316,11 @@ function renderLogs(logs = {}) {
 
   Object.entries(logs).forEach(([name, content]) => {
     const fragment = template.content.cloneNode(true);
+    const logEntry = fragment.querySelector('.log-entry');
     fragment.querySelector('.log-name').textContent = name;
     const { text: displayContent, truncated } = getLogTail(content || '');
-    fragment.querySelector('.log-content').textContent = displayContent || '—';
+    const logContent = fragment.querySelector('.log-content');
+    logContent.textContent = displayContent || '—';
     fragment.querySelector('.copy-log').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(displayContent || '');
@@ -331,9 +333,12 @@ function renderLogs(logs = {}) {
       const hint = document.createElement('p');
       hint.className = 'log-hint';
       hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
-      fragment.querySelector('.log-entry').appendChild(hint);
+      logEntry.appendChild(hint);
     }
     container.appendChild(fragment);
+    if (logContent) {
+      logContent.scrollTop = logContent.scrollHeight;
+    }
   });
 }
 
