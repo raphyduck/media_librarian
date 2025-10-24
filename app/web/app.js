@@ -584,8 +584,11 @@ async function logout() {
 
 async function bootstrapSession() {
   try {
-    await fetchJson('/status');
-    setAuthenticated(true, state.username);
+    const session = await fetchJson('/session');
+    if (!session || !session.username) {
+      return;
+    }
+    setAuthenticated(true, session.username);
     await refreshAll();
   } catch (error) {
     // Auth required or other errors already handled.

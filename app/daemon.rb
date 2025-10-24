@@ -12,6 +12,7 @@ require 'concurrent-ruby'
 require 'bcrypt'
 require 'yaml'
 require 'fileutils'
+require 'base64'
 
 require_relative '../lib/logger'
 require_relative 'client'
@@ -644,8 +645,6 @@ class Daemon
       opts = app.api_option || {}
       @api_token = resolve_api_token(opts)
       @auth_config = normalize_auth_config(opts['auth'])
-      @session_store = Concurrent::Hash.new
-
       port = opts['listen_port'] || 8888
       address = opts['bind_address'] || '127.0.0.1'
 
@@ -967,10 +966,6 @@ class Daemon
       @auth_config ||= {}
     end
 
-    def session_store
-      @session_store ||= Concurrent::Hash.new
-    end
-
     def require_authorization(req, res)
       return true unless authentication_configured?
 
@@ -983,18 +978,14 @@ class Daemon
     end
 
     def authenticated_session?(req)
-      session_id, session = session_from_request(req)
-      session_id && session
+      !!session_from_request(req)
     end
 
     def session_from_request(req)
       cookie = req.cookies.find { |c| c.name == SESSION_COOKIE_NAME }
       return unless cookie && !cookie.value.to_s.empty?
 
-      session = session_store[cookie.value]
-      return unless session
-
-      [cookie.value, session]
+      decode_session_cookie(cookie.value)
     end
 
     def api_token_authorized?(req)
@@ -1021,8 +1012,10 @@ class Daemon
         handle_session_create(req, res)
       when 'DELETE'
         handle_session_destroy(req, res)
+      when 'GET'
+        handle_session_show(req, res)
       else
-        method_not_allowed(res, 'POST, DELETE')
+        method_not_allowed(res, 'GET, POST, DELETE')
       end
     end
 
@@ -1057,25 +1050,30 @@ class Daemon
         return error_response(res, status: 401, message: 'invalid_credentials')
       end
 
-      session_id = SecureRandom.hex(32)
-      session_store[session_id] = {
-        'username' => auth_config['username'],
-        'created_at' => Time.now
-      }
-
-      res.cookies << build_session_cookie(session_id)
+      payload = build_session_payload(auth_config['username'])
+      unless payload
+        return error_response(res, status: 500, message: 'session_unavailable')
+      end
+      res.cookies << build_session_cookie(payload)
       json_response(res, status: 201, body: { 'username' => auth_config['username'] })
     end
 
     def handle_session_destroy(req, res)
-      session_id, = session_from_request(req)
-      unless session_id
+      res.cookies << expire_session_cookie
+      json_response(res, status: 204)
+    end
+
+    def handle_session_show(req, res)
+      unless auth_enabled?
+        return error_response(res, status: 503, message: 'auth_not_configured')
+      end
+
+      session = session_from_request(req)
+      unless session
         return error_response(res, status: 403, message: 'forbidden')
       end
 
-      session_store.delete(session_id)
-      res.cookies << expire_session_cookie
-      json_response(res, status: 204)
+      json_response(res, body: { 'username' => session['username'] })
     end
 
     def build_session_cookie(value)
@@ -1102,6 +1100,59 @@ class Daemon
       result['username'] = username.to_s unless username.nil? || username.to_s.empty?
       result['password_hash'] = password_hash.to_s unless password_hash.nil? || password_hash.to_s.empty?
       result
+    end
+
+    def build_session_payload(username)
+      secret = session_secret
+      return unless secret
+
+      data = {
+        'username' => username.to_s,
+        'issued_at' => Time.now.utc.iso8601
+      }
+      encode_session_data(data, secret)
+    end
+
+    def decode_session_cookie(value)
+      secret = session_secret
+      return unless secret
+
+      encoded, signature = value.to_s.split('.', 2)
+      return unless encoded && signature
+
+      expected = OpenSSL::HMAC.hexdigest('SHA256', secret, encoded)
+      return unless secure_compare(signature, expected)
+
+      decoded = Base64.urlsafe_decode64(encoded)
+      payload = JSON.parse(decoded)
+      payload if payload.is_a?(Hash)
+    rescue ArgumentError, JSON::ParserError
+      nil
+    end
+
+    def encode_session_data(data, secret)
+      encoded = Base64.urlsafe_encode64(JSON.dump(data), padding: false)
+      signature = OpenSSL::HMAC.hexdigest('SHA256', secret, encoded)
+      "#{encoded}.#{signature}"
+    end
+
+    def session_secret
+      hash = auth_config['password_hash']
+      return if hash.nil? || hash.to_s.empty?
+
+      hash.to_s
+    end
+
+    def secure_compare(a, b)
+      return false unless a && b
+
+      a = a.to_s
+      b = b.to_s
+      return false unless a.bytesize == b.bytesize
+
+      result = 0
+      a.bytes.zip(b.bytes) { |x, y| result |= x ^ y }
+      result.zero?
     end
 
     def resolve_api_token(opts)
