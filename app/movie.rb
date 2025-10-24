@@ -1,3 +1,6 @@
+require 'timeout'
+require 'socket'
+
 class Movie
   include MediaLibrarian::AppContainerSupport
 
@@ -145,6 +148,11 @@ class Movie
             .compact
   end
 
+  NETWORK_TIMEOUT_ERRORS = [Timeout::Error, SocketError].tap do |errors|
+    errors << Net::OpenTimeout if defined?(Net::OpenTimeout)
+    errors << Net::ReadTimeout if defined?(Net::ReadTimeout)
+  end.freeze
+
   def self.movie_get(ids, type = 'movie_get', movie = nil, app: self.app)
     cache_name = ids.map { |k, v| v.to_s.empty? ? nil : "#{k}#{v}" }.compact.join
     return '', nil if cache_name.empty?
@@ -157,14 +165,20 @@ class Movie
     case type
     when 'movie_get'
       if movie.nil? && (ids['tmdb'].to_s != '' || ids['imdb'].to_s != '')
-        tmdb_movie = Tmdb::Movie.detail(ids['tmdb'] || ids['imdb']) rescue nil
-        movie = Cache.object_pack(tmdb_movie, 1)
-        src = 'tmdb'
+        tmdb_movie = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(ids['tmdb'] || ids['imdb']) }
+        if tmdb_movie
+          movie = Cache.object_pack(tmdb_movie, 1)
+          src = 'tmdb'
+        end
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
-        trakt_movie = TraktAgent.movie__summary(ids['trakt'] || ids['imdb'] || ids['slug'], "?extended=full") rescue nil
-        movie = Cache.object_pack(trakt_movie, 1)
-        src = 'trakt'
+        trakt_movie = lookup_with_timeout(app, 'trakt') do
+          TraktAgent.movie__summary(ids['trakt'] || ids['imdb'] || ids['slug'], "?extended=full")
+        end
+        if trakt_movie
+          movie = Cache.object_pack(trakt_movie, 1)
+          src = 'trakt'
+        end
       end
       movie = Movie.new(movie.merge('data_source' => src), app: app) if movie
       full_save = movie
@@ -189,6 +203,18 @@ class Movie
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add(type, cache_name, ['', nil], nil)
     return '', nil
+  end
+
+  def self.lookup_with_timeout(app, source, &block)
+    return unless block
+
+    Timeout.timeout(15) { block.call }
+  rescue *NETWORK_TIMEOUT_ERRORS => e
+    app.speaker.tell_error(e, "Movie.movie_get #{source} lookup timed out")
+    nil
+  rescue StandardError => e
+    app.speaker.tell_error(e, "Movie.movie_get #{source} lookup failed")
+    nil
   end
 
   def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app)
