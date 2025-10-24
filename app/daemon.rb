@@ -645,6 +645,7 @@ class Daemon
       opts = app.api_option || {}
       @api_token = resolve_api_token(opts)
       @auth_config = normalize_auth_config(opts['auth'])
+      @session_revocations = Concurrent::Hash.new
       port = opts['listen_port'] || 8888
       address = opts['bind_address'] || '127.0.0.1'
 
@@ -982,10 +983,10 @@ class Daemon
     end
 
     def session_from_request(req)
-      cookie = req.cookies.find { |c| c.name == SESSION_COOKIE_NAME }
-      return unless cookie && !cookie.value.to_s.empty?
+      session = session_cookie_payload(req)
+      return unless session && session_valid?(session)
 
-      decode_session_cookie(cookie.value)
+      session
     end
 
     def api_token_authorized?(req)
@@ -1059,6 +1060,8 @@ class Daemon
     end
 
     def handle_session_destroy(req, res)
+      session = session_cookie_payload(req)
+      revoke_session(session) if session
       res.cookies << expire_session_cookie
       json_response(res, status: 204)
     end
@@ -1113,6 +1116,13 @@ class Daemon
       encode_session_data(data, secret)
     end
 
+    def session_cookie_payload(req)
+      cookie = req.cookies.find { |c| c.name == SESSION_COOKIE_NAME }
+      return unless cookie && !cookie.value.to_s.empty?
+
+      decode_session_cookie(cookie.value)
+    end
+
     def decode_session_cookie(value)
       secret = session_secret
       return unless secret
@@ -1127,6 +1137,42 @@ class Daemon
       payload = JSON.parse(decoded)
       payload if payload.is_a?(Hash)
     rescue ArgumentError, JSON::ParserError
+      nil
+    end
+
+    def session_valid?(session)
+      return false unless session.is_a?(Hash)
+
+      username = session['username'].to_s
+      issued_at = parse_session_time(session['issued_at'])
+      return false if username.empty? || issued_at.nil?
+
+      revoked_at = session_revocations[username]
+      return false if revoked_at && issued_at <= revoked_at
+
+      true
+    end
+
+    def revoke_session(session)
+      return unless session.is_a?(Hash)
+
+      username = session['username'].to_s
+      return if username.empty?
+
+      now = Time.now.utc
+      previous = session_revocations[username]
+      session_revocations[username] = previous && previous > now ? previous : now
+    end
+
+    def session_revocations
+      @session_revocations ||= Concurrent::Hash.new
+    end
+
+    def parse_session_time(value)
+      return if value.nil?
+
+      Time.iso8601(value.to_s)
+    rescue ArgumentError
       nil
     end
 

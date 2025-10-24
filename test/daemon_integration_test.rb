@@ -286,12 +286,18 @@ class DaemonIntegrationTest < Minitest::Test
   def test_logout_revokes_session
     boot_daemon_environment
 
+    stale_cookie = @session_cookie
+    refute_nil stale_cookie
+
     logout = control_delete('/session')
     assert_equal 204, logout[:status_code]
     assert_nil @session_cookie
 
+    @session_cookie = stale_cookie
     forbidden = control_get('/status')
     assert_equal 403, forbidden[:status_code]
+  ensure
+    @session_cookie = nil
   end
 
   def test_session_cookie_survives_daemon_restart
