@@ -39,6 +39,18 @@ class EnvTest < Minitest::Test
     Thread.current[:no_email_notif] = nil
   end
 
+  def test_env_constant_available_after_requiring_librarian
+    result = nil
+
+    Bundler.with_unbundled_env do
+      Dir.chdir(File.expand_path('../..', __dir__)) do
+        result = system('bundle', 'exec', 'ruby', '-r./librarian', '-e', 'Env')
+      end
+    end
+
+    assert result, 'Env constant should load when requiring librarian'
+  end
+
   private
 
   def env_class

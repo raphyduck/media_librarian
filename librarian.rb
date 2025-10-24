@@ -4,6 +4,8 @@ require_relative 'boot/librarian'
 require_relative 'lib/media_librarian/command_registry'
 require_relative 'lib/media_librarian/app_container_support'
 
+autoload :Env, File.expand_path('lib/env.rb', __dir__) unless defined?(Env)
+
 class Librarian
   include MediaLibrarian::AppContainerSupport
 
