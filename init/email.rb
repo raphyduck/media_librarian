@@ -1,5 +1,21 @@
 # Configure email alerts
+require 'openssl'
+require 'mail/network/delivery_methods/smtp'
 require_relative '../boot/librarian'
+
+module MediaLibrarian
+  module SMTPVerifyCallback
+    CRL_ERROR = OpenSSL::X509::V_ERR_UNABLE_TO_GET_CRL
+
+    def ssl_context
+      super.tap do |context|
+        context.verify_callback ||= ->(ok, store) { ok || store&.error == CRL_ERROR }
+      end
+    end
+  end
+end
+
+Mail::SMTP.prepend(MediaLibrarian::SMTPVerifyCallback)
 
 app = MediaLibrarian::Boot.application
 app.email_templates = File.expand_path('../app/mailer_templates', __dir__)
