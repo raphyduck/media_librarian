@@ -541,7 +541,7 @@ class Daemon
       thread[:parent] = job.parent_thread
       thread[:jid] = job.id
       thread[:queue_name] = job.queue
-      thread[:log_msg] = '' if job.child.to_i.positive?
+      thread[:log_msg] = String.new if job.child.to_i.positive?
       captured_output = job.capture_output ? String.new : nil
       thread[:captured_output] = captured_output if captured_output
       LibraryBus.initialize_queue(thread)
