@@ -219,9 +219,9 @@ class Daemon
       case status_code
       when 200
         body = response['body']
-        jobs = extract_jobs_from(body)
+        snapshot = build_snapshot_from_hashes(body)
         lock_time = body.is_a?(Hash) ? body['lock_time'] : nil
-        print_status(build_snapshot_from_hashes(jobs), lock_time: lock_time)
+        print_status(snapshot, lock_time: lock_time)
       when 401, 403
         app.speaker.speak_up('Not authorized to query daemon status')
       when 503
@@ -233,25 +233,31 @@ class Daemon
     end
 
     def status_snapshot
-      jobs = job_registry.values
-      running = sort_jobs_by_queue(jobs.select(&:running?))
+      jobs = sort_jobs_by_queue(job_registry.values)
+      running = jobs.select(&:running?)
+      finished = jobs.select(&:finished?)
+      queued = jobs.reject { |job| job.running? || job.finished? }
       {
-        jobs: running,
+        jobs: jobs,
         running: running,
-        queued: sort_jobs_by_queue(jobs.reject(&:finished?).reject(&:running?)),
-        finished: sort_jobs_by_queue(jobs.select(&:finished?))
+        queued: queued,
+        finished: finished,
+        queues: queue_metrics_for(running: running, queued: queued, finished: finished)
       }
     end
 
-    def build_snapshot_from_hashes(jobs)
-      running = jobs.select { |job| job[:status] == 'running' }
-      finished = jobs.select { |job| %w[finished failed cancelled].include?(job[:status]) }
+    def build_snapshot_from_hashes(payload)
+      jobs = sort_jobs_by_queue(extract_jobs_from(payload))
+      finished_statuses = %w[finished failed cancelled]
+      running = jobs.select { |job| job[:status].to_s == 'running' }
+      finished = jobs.select { |job| finished_statuses.include?(job[:status].to_s) }
       queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
       {
         jobs: jobs,
         running: running,
         queued: queued,
-        finished: finished
+        finished: finished,
+        queues: queue_metrics_for(running: running, queued: queued, finished: finished)
       }
     end
 
@@ -271,6 +277,12 @@ class Daemon
           id: job['id'],
           queue: job['queue'],
           status: job['status'] || job[:status],
+          task: job['task'] || job[:task],
+          created_at: job['created_at'] || job[:created_at],
+          started_at: job['started_at'] || job[:started_at],
+          finished_at: job['finished_at'] || job[:finished_at],
+          result: job['result'] || job[:result],
+          error: job['error'] || job[:error],
           children: job['children'] || job[:children],
           children_ids: Array(job['children_ids'] || job[:children_ids]),
           parent_id: job['parent_id'] || job[:parent_id]
@@ -279,29 +291,50 @@ class Daemon
     end
 
     def print_status(snapshot, lock_time: nil)
-      jobs = snapshot[:jobs]
-      running = snapshot[:running]
-      queued = snapshot[:queued]
-      finished = snapshot[:finished]
+      jobs = Array(snapshot[:jobs])
+      running = Array(snapshot[:running])
+      queued = Array(snapshot[:queued])
+      finished = Array(snapshot[:finished])
+      queues = Array(snapshot[:queues])
 
       app.speaker.speak_up "Total jobs: #{jobs.count}"
       app.speaker.speak_up "Running jobs: #{running.count}"
       app.speaker.speak_up "Queued jobs: #{queued.count}"
       app.speaker.speak_up "Finished jobs: #{finished.count}"
+
+      unless queues.empty?
+        summary = queues.map do |entry|
+          queue_name = entry['queue'] || entry[:queue] || ''
+          display = queue_name.to_s.empty? ? 'default' : queue_name
+          running_count = entry['running'] || entry[:running] || 0
+          queued_count = entry['queued'] || entry[:queued] || 0
+          finished_count = entry['finished'] || entry[:finished] || 0
+          "#{display} r:#{running_count} q:#{queued_count} f:#{finished_count}"
+        end
+        app.speaker.speak_up "Queues: #{summary.join(' | ')}"
+      end
+
       app.speaker.speak_up LINE_SEPARATOR
 
-      jobs.each do |job|
-        job_id = job.respond_to?(:id) ? job.id : job[:id]
-        queue_name = job.respond_to?(:queue) ? job.queue : job[:queue]
-        status = job.respond_to?(:status) ? job.status : job[:status]
-        children = if job.respond_to?(:id)
-                     get_children_count(job.id)
-                   else
-                     (job[:children] || 0).to_i
-                   end
-        parent_id = job.respond_to?(:parent_job_id) ? job.parent_job_id : job[:parent_id]
+      running.each do |job|
+        job_id = job_attribute(job, :id)
+        queue_name = job_attribute(job, :queue) || 'default'
+        status = job_attribute(job, :status)
+        parent_id = job_attribute(job, :parent_job_id) || job_attribute(job, :parent_id)
+        children_ids =
+          if job.respond_to?(:id)
+            Array(job_children[job.id])
+          else
+            Array(job_attribute(job, :children_ids))
+          end
+        child_count = if children_ids.any?
+                         children_ids.length
+                       else
+                         value = job_attribute(job, :children)
+                         value ? value.to_i : 0
+                       end
         details = []
-        details << "children=#{children}" if children.positive?
+        details << "children=#{child_count}" if child_count.positive?
         details << "parent=#{parent_id}" if parent_id
         suffix = details.empty? ? '' : " (#{details.join(', ')})"
         app.speaker.speak_up "- Job #{job_id} (queue: #{queue_name}) status=#{status}#{suffix}"
@@ -491,7 +524,51 @@ class Daemon
     end
 
     def sort_jobs_by_queue(collection)
-      collection.sort_by { |job| [job.queue.to_s, job.created_at || Time.at(0)] }
+      collection.sort_by do |job|
+        queue = job_attribute(job, :queue).to_s
+        created = job_attribute(job, :created_at)
+        created_key =
+          case created
+          when Time
+            created.iso8601(6)
+          else
+            created.to_s
+          end
+        parent_present = job_attribute(job, :parent_job_id) || job_attribute(job, :parent_id)
+        identifier = job_attribute(job, :id).to_s
+        [queue, created_key, parent_present ? 1 : 0, identifier]
+      end
+    end
+
+    def queue_metrics_for(running:, queued:, finished:)
+      metrics = Hash.new do |hash, key|
+        hash[key] = { 'queue' => key, 'running' => 0, 'queued' => 0, 'finished' => 0, 'total' => 0 }
+      end
+
+      { 'running' => running, 'queued' => queued, 'finished' => finished }.each do |key, jobs|
+        jobs.each do |job|
+          queue = job_attribute(job, :queue).to_s
+          entry = metrics[queue]
+          entry[key] += 1
+          entry['total'] += 1
+        end
+      end
+
+      metrics.values.sort_by { |entry| entry['queue'] }
+    end
+
+    def job_attribute(job, name)
+      if job.respond_to?(name)
+        job.public_send(name)
+      elsif job.is_a?(Hash)
+        job[name] || job[name.to_s]
+      elsif job.respond_to?(:members) && job.members.include?(name.to_sym)
+        job[name]
+      elsif job.respond_to?(:[])
+        job[name]
+      end
+    rescue NameError
+      nil
     end
 
     def boot_framework_state
@@ -695,6 +772,10 @@ class Daemon
           res,
           body: {
             'jobs' => jobs,
+            'running' => snapshot[:running].map { |job| serialize_job(job) },
+            'queued' => snapshot[:queued].map { |job| serialize_job(job) },
+            'finished' => snapshot[:finished].map { |job| serialize_job(job) },
+            'queues' => snapshot[:queues],
             'lock_time' => Utils.lock_time_get
           }
         )

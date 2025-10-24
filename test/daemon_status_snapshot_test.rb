@@ -20,15 +20,17 @@ class DaemonStatusSnapshotTest < Minitest::Test
     @environment.cleanup if @environment
   end
 
-  def test_status_snapshot_only_reports_running_jobs
+  def test_status_snapshot_includes_all_jobs_and_queue_metrics
     finished_job = Daemon::Job.new(id: 'finished', queue: 'done', status: :finished, finished_at: Time.now)
     parent_job = Daemon::Job.new(id: 'parent', queue: 'alpha', status: :running, finished_at: nil)
     child_job = Daemon::Job.new(id: 'child', queue: 'alpha', status: :running, finished_at: nil, parent_job_id: 'parent')
+    queued_job = Daemon::Job.new(id: 'queued', queue: 'beta', status: :queued, finished_at: nil)
 
     jobs = {
       parent_job.id => parent_job,
       child_job.id => child_job,
-      finished_job.id => finished_job
+      finished_job.id => finished_job,
+      queued_job.id => queued_job
     }
     Daemon.instance_variable_set(:@jobs, jobs)
 
@@ -38,7 +40,23 @@ class DaemonStatusSnapshotTest < Minitest::Test
 
     snapshot = Daemon.status_snapshot
 
-    assert_equal %w[parent child].sort, snapshot[:jobs].map(&:id).sort
+    assert_equal %w[parent child queued finished], snapshot[:jobs].map(&:id)
+    assert_equal %w[parent child], snapshot[:running].map(&:id)
+    assert_equal ['queued'], snapshot[:queued].map(&:id)
+    assert_equal ['finished'], snapshot[:finished].map(&:id)
+
+    queues = snapshot[:queues]
+    assert_equal(%w[alpha beta done], queues.map { |entry| entry['queue'] })
+    alpha = queues.find { |entry| entry['queue'] == 'alpha' }
+    assert_equal 2, alpha['running']
+    assert_equal 0, alpha['queued']
+    assert_equal 0, alpha['finished']
+    assert_equal 2, alpha['total']
+    beta = queues.find { |entry| entry['queue'] == 'beta' }
+    assert_equal 0, beta['running']
+    assert_equal 1, beta['queued']
+    done = queues.find { |entry| entry['queue'] == 'done' }
+    assert_equal 1, done['finished']
 
     parent_payload = Daemon.send(:serialize_job, parent_job)
     assert_equal 'alpha', parent_payload['queue']
