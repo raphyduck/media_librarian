@@ -209,13 +209,49 @@ function formatDate(value) {
   }
 }
 
-function renderJobs(jobs = []) {
+function renderJobs(data = {}) {
   const finishedStatuses = new Set(['finished', 'failed', 'cancelled']);
-  const running = jobs.filter((job) => !finishedStatuses.has(job.status));
-  const finished = jobs.filter((job) => finishedStatuses.has(job.status));
+  const asArray = (value) => (Array.isArray(value) ? value : []);
+  const sourceJobs = Array.isArray(data) ? data : asArray(data.jobs);
+  const statusFor = (job) => String(job?.status || '');
+  const running = Array.isArray(data.running)
+    ? data.running
+    : sourceJobs.filter((job) => statusFor(job) === 'running');
+  const queued = Array.isArray(data.queued)
+    ? data.queued
+    : sourceJobs.filter((job) => {
+        const status = statusFor(job);
+        return status !== 'running' && !finishedStatuses.has(status);
+      });
+  const finished = Array.isArray(data.finished)
+    ? data.finished
+    : sourceJobs.filter((job) => finishedStatuses.has(statusFor(job)));
+
+  const computeQueueSummary = (runningJobs, queuedJobs, finishedJobs) => {
+    const metrics = new Map();
+    const bump = (job, key) => {
+      const queueName = String(job?.queue || '');
+      if (!metrics.has(queueName)) {
+        metrics.set(queueName, { queue: queueName, running: 0, queued: 0, finished: 0, total: 0 });
+      }
+      const entry = metrics.get(queueName);
+      entry[key] += 1;
+      entry.total += 1;
+    };
+    runningJobs.forEach((job) => bump(job, 'running'));
+    queuedJobs.forEach((job) => bump(job, 'queued'));
+    finishedJobs.forEach((job) => bump(job, 'finished'));
+    return Array.from(metrics.values()).sort((a, b) => a.queue.localeCompare(b.queue));
+  };
+
+  const queueSummary = Array.isArray(data.queues)
+    ? data.queues
+    : computeQueueSummary(running, queued, finished);
 
   const runningList = document.getElementById('jobs-running');
+  const queuedList = document.getElementById('jobs-queued');
   const finishedList = document.getElementById('jobs-finished');
+  const queueContainer = document.getElementById('jobs-queues');
 
   const buildItem = (job, { childCount = 0, parentId = null, childIds = [] } = {}) => {
     const li = document.createElement('li');
@@ -260,53 +296,82 @@ function renderJobs(jobs = []) {
     return (a.id || '').localeCompare(b.id || '');
   };
 
-  const nodeById = new Map();
-  running.forEach((job, index) => {
-    const key = job.id || `__job_${index}`;
-    nodeById.set(key, { job, children: [] });
-  });
-
-  const roots = [];
-  nodeById.forEach((node) => {
-    const parentId = node.job.parent_id;
-    if (parentId && nodeById.has(parentId)) {
-      nodeById.get(parentId).children.push(node);
-    } else {
-      roots.push(node);
+  const buildForest = (collection = []) => {
+    if (!collection.length) {
+      return [];
     }
-  });
-
-  const buildTree = (node) => {
-    node.children.sort((a, b) => compareJobs(a.job, b.job));
-    const reportedChildren = Array.isArray(node.job.children_ids)
-      ? node.job.children_ids.length
-      : node.job.children || 0;
-    const element = buildItem(node.job, {
-      childCount: node.children.length || reportedChildren,
-      parentId: node.job.parent_id || null,
-      childIds: Array.isArray(node.job.children_ids) ? node.job.children_ids : [],
+    const nodeById = new Map();
+    collection.forEach((job, index) => {
+      const key = job.id || `__job_${index}`;
+      nodeById.set(key, { job, children: [] });
     });
-    if (node.children.length) {
-      const childList = document.createElement('ul');
-      childList.className = 'job-children';
-      childList.replaceChildren(...node.children.map(buildTree));
-      element.appendChild(childList);
-    }
-    return element;
+    const roots = [];
+    nodeById.forEach((node) => {
+      const parentId = node.job.parent_id;
+      if (parentId && nodeById.has(parentId)) {
+        nodeById.get(parentId).children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    const buildTree = (node) => {
+      node.children.sort((a, b) => compareJobs(a.job, b.job));
+      const childIds = Array.isArray(node.job.children_ids) ? node.job.children_ids : [];
+      const reportedChildren = childIds.length || node.job.children || 0;
+      const element = buildItem(node.job, {
+        childCount: node.children.length || reportedChildren,
+        parentId: node.job.parent_id || null,
+        childIds,
+      });
+      if (node.children.length) {
+        const childList = document.createElement('ul');
+        childList.className = 'job-children';
+        childList.replaceChildren(...node.children.map(buildTree));
+        element.appendChild(childList);
+      }
+      return element;
+    };
+    roots.sort((a, b) => compareJobs(a.job, b.job));
+    return roots.map(buildTree);
   };
 
-  roots.sort((a, b) => compareJobs(a.job, b.job));
-  runningList.replaceChildren(...roots.map(buildTree));
-  finished.sort(compareJobs);
-  finishedList.replaceChildren(
-    ...finished.map((job) =>
-      buildItem(job, {
-        childCount: Array.isArray(job.children_ids) ? job.children_ids.length : job.children || 0,
-        parentId: job.parent_id || null,
-        childIds: Array.isArray(job.children_ids) ? job.children_ids : [],
-      })
-    )
-  );
+  if (runningList) {
+    runningList.replaceChildren(...buildForest(running));
+  }
+  if (queuedList) {
+    queuedList.replaceChildren(...buildForest(queued));
+  }
+  if (finishedList) {
+    const sortedFinished = [...finished].sort(compareJobs);
+    finishedList.replaceChildren(
+      ...sortedFinished.map((job) =>
+        buildItem(job, {
+          childCount: Array.isArray(job.children_ids) ? job.children_ids.length : job.children || 0,
+          parentId: job.parent_id || null,
+          childIds: Array.isArray(job.children_ids) ? job.children_ids : [],
+        })
+      )
+    );
+  }
+
+  if (queueContainer) {
+    if (!queueSummary.length) {
+      queueContainer.textContent = 'Aucune file active.';
+    } else {
+      const chips = queueSummary.map((entry) => {
+        const span = document.createElement('span');
+        span.className = 'queue-chip';
+        const queueName = String(entry.queue || '');
+        const label = queueName.trim() ? queueName : 'default';
+        const runningCount = entry.running ?? 0;
+        const queuedCount = entry.queued ?? 0;
+        const finishedCount = entry.finished ?? 0;
+        span.textContent = `${label}: r${runningCount} q${queuedCount} f${finishedCount}`;
+        return span;
+      });
+      queueContainer.replaceChildren(...chips);
+    }
+  }
 }
 
 function renderLogs(logs = {}) {
@@ -345,7 +410,7 @@ function renderLogs(logs = {}) {
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
-    renderJobs(Array.isArray(data) ? data : data?.jobs || []);
+    renderJobs(data);
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');

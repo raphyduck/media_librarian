@@ -209,6 +209,28 @@ button.danger:hover {
   }
 }
 
+@media (min-width: 1200px) {
+  .jobs-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.queues-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.queue-chip {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.55);
+}
+
 .job-list {
   list-style: none;
   margin: 0;

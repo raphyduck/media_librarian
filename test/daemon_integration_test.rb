@@ -38,8 +38,23 @@ class DaemonIntegrationTest < Minitest::Test
     status = Client.new.status
     assert_equal 200, status['status_code']
     body = status.fetch('body')
-    jobs = body.is_a?(Array) ? body : Array(body['jobs'])
-    assert_empty jobs
+    assert_kind_of Hash, body
+    jobs = Array(body['jobs'])
+    assert_equal 1, jobs.length
+    job_payload = jobs.first
+    assert_equal 'finished', job_payload['status']
+    assert_empty Array(body['running'])
+    assert_empty Array(body['queued'])
+    finished_jobs = Array(body['finished'])
+    assert_equal [job_payload['id']], finished_jobs.map { |job| job['id'] }
+    queues = Array(body['queues'])
+    assert_equal 1, queues.length
+    queue_stats = queues.first
+    assert_equal job_payload['queue'], queue_stats['queue']
+    assert_equal 0, queue_stats['running']
+    assert_equal 0, queue_stats['queued']
+    assert_equal 1, queue_stats['finished']
+    assert_equal 1, queue_stats['total']
   end
 
   def test_http_job_response_includes_command_output
