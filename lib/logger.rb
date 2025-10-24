@@ -1,3 +1,8 @@
+# frozen_string_literal: true
+
+require 'rbconfig'
+require File.join(RbConfig::CONFIG.fetch('rubylibdir'), 'logger')
+
 class Logger
   def self.renew_logs(log_dir)
     FileUtils.mv(log_dir + '/medialibrarian.log', log_dir + "/medialibrarian.log.old.#{DateTime.now.strftime('%Y.%m.%d_%H.%M.%S')}") if File.exist?(log_dir + '/medialibrarian.log')
