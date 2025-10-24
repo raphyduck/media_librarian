@@ -1,4 +1,5 @@
 require 'timeout'
+require 'socket'
 
 class Movie
   include MediaLibrarian::AppContainerSupport
