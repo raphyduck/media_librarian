@@ -231,6 +231,10 @@ class DaemonIntegrationTest < Minitest::Test
     attributes = cookie_header.split(';').map { |entry| entry.strip.downcase }
     refute_includes attributes, 'secure'
 
+    session = control_get('/session')
+    assert_equal 200, session[:status_code]
+    assert_equal @auth_credentials.fetch(:username), session.dig(:body, 'username')
+
     status = control_get('/status')
     assert_equal 200, status[:status_code]
   end
@@ -240,6 +244,9 @@ class DaemonIntegrationTest < Minitest::Test
 
     unauthorized = control_get('/status')
     assert_equal 403, unauthorized[:status_code]
+
+    forbidden = control_get('/session')
+    assert_equal 403, forbidden[:status_code]
 
     authenticate_session
 
@@ -294,12 +301,37 @@ class DaemonIntegrationTest < Minitest::Test
   def test_logout_revokes_session
     boot_daemon_environment
 
+    stale_cookie = @session_cookie
+    refute_nil stale_cookie
+
     logout = control_delete('/session')
     assert_equal 204, logout[:status_code]
     assert_nil @session_cookie
 
+    @session_cookie = stale_cookie
     forbidden = control_get('/status')
     assert_equal 403, forbidden[:status_code]
+  ensure
+    @session_cookie = nil
+  end
+
+  def test_session_cookie_survives_daemon_restart
+    boot_daemon_environment
+
+    original_cookie = @session_cookie
+    refute_nil original_cookie
+
+    restart = control_post('/restart')
+    assert_equal 202, restart[:status_code]
+
+    wait_for_http_ready
+
+    status = control_get('/status')
+    assert_equal 200, status[:status_code]
+
+    session = control_get('/session')
+    assert_equal 200, session[:status_code]
+    assert_equal @auth_credentials.fetch(:username), session.dig(:body, 'username')
   end
 
   def test_https_control_server_serves_requests
