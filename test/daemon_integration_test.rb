@@ -212,6 +212,10 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 201, login[:status_code]
     refute_nil @session_cookie
 
+    cookie_header = Array(login[:headers]['set-cookie']).first.to_s
+    attributes = cookie_header.split(';').map { |entry| entry.strip.downcase }
+    refute_includes attributes, 'secure'
+
     status = control_get('/status')
     assert_equal 200, status[:status_code]
   end
@@ -285,6 +289,11 @@ class DaemonIntegrationTest < Minitest::Test
 
   def test_https_control_server_serves_requests
     boot_daemon_environment(api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
+
+    login = authenticate_session
+    cookie_header = Array(login[:headers]['set-cookie']).first.to_s
+    attributes = cookie_header.split(';').map { |entry| entry.strip.downcase }
+    assert_includes attributes, 'secure'
 
     response = control_get('/status')
     assert_equal 200, response[:status_code]
