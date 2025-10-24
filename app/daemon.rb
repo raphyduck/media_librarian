@@ -656,7 +656,9 @@ class Daemon
         AccessLog: []
       }
 
-      if ssl_enabled?(opts)
+      @session_cookie_secure = ssl_enabled?(opts)
+
+      if @session_cookie_secure
         begin
           server_options.merge!(build_ssl_server_options(opts, address))
         rescue StandardError => e
@@ -1079,7 +1081,7 @@ class Daemon
     def build_session_cookie(value)
       cookie = WEBrick::Cookie.new(SESSION_COOKIE_NAME, value.to_s)
       cookie.path = '/'
-      cookie.secure = true
+      cookie.secure = !!@session_cookie_secure
       cookie.instance_variable_set(:@httponly, true)
       cookie
     end
@@ -1442,6 +1444,7 @@ class Daemon
       @stop_event = nil
       @is_daemon = false
       @scheduler_name = nil
+      @session_cookie_secure = nil
     end
 
     def job_registry
