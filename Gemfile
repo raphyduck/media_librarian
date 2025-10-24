@@ -3,6 +3,7 @@ ruby '3.2.3'
 
 gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :require => false
 gem 'activesupport', :require => false
+gem 'rake', :require => false
 gem 'bencode', :require => false
 gem 'deluge-rpc', :git => 'https://github.com/raphyduck/deluge-rpc.git', :require => false
 gem 'concurrent-ruby', :require => false

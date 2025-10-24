@@ -150,7 +150,7 @@ module MediaLibrarian
 
       @env_flags = {
         debug: 0,
-        no_email_notif: 1,
+        no_email_notif: 0,
         pretend: 0,
         expiration_period: 0
       }
