@@ -58,7 +58,7 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal 'Cancelled', job.error
   end
 
-  def configure_single_worker_executor
+  def test_thread_locals_restored_after_inline_child_execution
     executor = Daemon.send(:instance_variable_get, :@executor)
     executor&.kill
     executor&.wait_for_termination
@@ -66,12 +66,6 @@ class DaemonJobControlTest < Minitest::Test
     @environment.application.workers_pool_size = 1
     @environment.container.workers_pool_size = 1
     Daemon.send(:boot_framework_state)
-
-    nil
-  end
-
-  def test_thread_locals_restored_after_inline_child_execution
-    configure_single_worker_executor
 
     parent_snapshots = {}
     child_snapshot = nil
@@ -116,7 +110,14 @@ class DaemonJobControlTest < Minitest::Test
   end
 
   def test_captured_output_restored_after_inline_child_execution
-    configure_single_worker_executor
+    if (executor = Daemon.send(:instance_variable_get, :@executor))
+      executor.kill
+      executor.wait_for_termination
+    end
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
 
     outer_job = nil
     child_job = nil
@@ -152,7 +153,14 @@ class DaemonJobControlTest < Minitest::Test
   end
 
   def test_restores_nil_parent_after_worker_seeded_with_self_parent
-    configure_single_worker_executor
+    if (executor = Daemon.send(:instance_variable_get, :@executor))
+      executor.kill
+      executor.wait_for_termination
+    end
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
 
     worker_thread = nil
     child_job = nil
@@ -185,4 +193,5 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal :finished, child_job.status
     assert_nil worker_thread[:parent], 'expected worker thread parent to be cleared after jobs complete'
   end
+
 end
