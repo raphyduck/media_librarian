@@ -5,6 +5,7 @@ require File.dirname(__FILE__) + '/bus_variable'
 class Cache
   @tqueues = {}
   @cache_metadata = BusVariable.new('cache_metadata', Vash)
+  CONTAINER_INSTANCE_VARIABLES = %i[@app @application @container].freeze
 
   def self.cache_add(type, keyword, result, full_save = nil)
     if keyword.to_s == ''
@@ -93,7 +94,11 @@ class Cache
         [k, to_hash_only.to_i == 1 && obj[k].respond_to?("[]") ? obj[k][0..100] : obj[k]] rescue nil
       end]}]"
     else
-      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type, visited) }
+      source = obj
+      ivars = source.instance_variables - CONTAINER_INSTANCE_VARIABLES
+      obj = ivars.each_with_object({}) do |var, hash|
+        hash[var.to_s.delete("@")] = object_pack(source.instance_variable_get(var), to_hash_only, blacklisted_type, visited)
+      end
     end
     obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
