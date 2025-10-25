@@ -366,7 +366,9 @@ function renderJobs(data = {}) {
         const runningCount = entry.running ?? 0;
         const queuedCount = entry.queued ?? 0;
         const finishedCount = entry.finished ?? 0;
-        span.textContent = `${label}: r${runningCount} q${queuedCount} f${finishedCount}`;
+        const description = `${label}: ${runningCount} en cours · ${queuedCount} en attente · ${finishedCount} terminés`;
+        span.textContent = description;
+        span.title = description;
         return span;
       });
       queueContainer.replaceChildren(...chips);
