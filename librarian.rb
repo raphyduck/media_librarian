@@ -3,6 +3,7 @@
 require_relative 'boot/librarian'
 require_relative 'lib/media_librarian/command_registry'
 require_relative 'lib/media_librarian/app_container_support'
+require_relative 'lib/thread_state'
 
 autoload :Env, File.expand_path('lib/env.rb', __dir__) unless defined?(Env)
 
@@ -199,8 +200,9 @@ class Librarian
         end
       else
         app.librarian.load_requirements unless app.librarian.loaded?
-        LibraryBus.initialize_queue(Thread.current)
-        run_command(args, internal)
+        thread = Thread.current
+        LibraryBus.initialize_queue(thread)
+        ThreadState.around(thread) { |_snapshot| run_command(args, internal) }
       end
     end
 

@@ -86,6 +86,55 @@ class LibrarianCliTest < Minitest::Test
     refute_includes env.application.speaker.messages, 'Command dispatched to daemon'
   end
 
+  def test_direct_route_cmd_restores_parent_thread_state
+    env = use_environment
+    old_application = MediaLibrarian.application
+    MediaLibrarian.application = env.application
+    Librarian.configure(app: env.application)
+    librarian = Librarian.new(container: env.container, args: [])
+
+    thread = Thread.current
+    original = thread.keys.each_with_object({}) { |key, memo| memo[key] = thread[key] }
+    parent_block = [-> {}]
+    parent_email = String.new('parent-email')
+
+    thread[:object] = 'parent-object'
+    thread[:block] = parent_block
+    thread[:start_time] = Time.now - 5
+    thread[:email_msg] = parent_email
+    thread[:send_email] = 1
+    thread[:jid] = 'parent-jid'
+    thread[:queue_name] = 'parent-queue'
+    thread[:current_daemon] = 'parent-client'
+
+    before = thread.keys.each_with_object({}) { |key, memo| memo[key] = thread[key] }
+
+    Daemon.stub(:running?, false) do
+      librarian.stub(:pid_status, ->(*) { :stopped }) do
+        Librarian.route_cmd(['help'])
+      end
+    end
+
+    after = thread.keys.each_with_object({}) { |key, memo| memo[key] = thread[key] }
+
+    assert_equal before[:object], after[:object], 'expected parent object to remain unchanged'
+    assert_same parent_block, after[:block], 'expected parent block array to be restored'
+    assert_equal before[:start_time], after[:start_time], 'expected parent start time to persist'
+    assert_same parent_email, after[:email_msg], 'expected parent email buffer to be preserved'
+    assert_equal before[:send_email], after[:send_email], 'expected parent email flag to remain unchanged'
+    assert_equal before[:jid], after[:jid], 'expected parent jid to remain unchanged'
+    assert_equal before[:queue_name], after[:queue_name], 'expected parent queue name to remain unchanged'
+    assert_equal before[:current_daemon], after[:current_daemon], 'expected parent client to remain unchanged'
+
+    dispatches = env.application.args_dispatch.dispatched_commands
+    assert_equal 1, dispatches.length, 'expected nested command to run through ArgsDispatch'
+    assert_equal ['help'], dispatches.first[:command]
+  ensure
+    MediaLibrarian.application = old_application
+    original&.each { |key, value| thread[key] = value }
+    (thread.keys - original.keys).each { |key| thread[key] = nil }
+  end
+
   private
 
   def use_environment(**overrides)
