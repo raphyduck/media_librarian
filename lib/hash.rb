@@ -1,5 +1,19 @@
 class Hash
 
+  def deep_dup
+    each_with_object({}) do |(key, value), memo|
+      memo[key] = begin
+        if value.respond_to?(:deep_dup)
+          value.deep_dup
+        else
+          value.dup
+        end
+      rescue StandardError
+        value
+      end
+    end
+  end
+
   def +(h)
     h.keys.each do |k|
       if key?(k) && [Array, Hash, Vash].include?(h[k].class) && [Array, Hash, Vash].include?(values_at(k).first.class)
