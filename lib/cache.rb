@@ -1,3 +1,4 @@
+require 'set'
 require File.dirname(__FILE__) + '/vash'
 require File.dirname(__FILE__) + '/bus_variable'
 
@@ -63,29 +64,42 @@ class Cache
     @cache_metadata.delete_if { |c, _| c.start_with?(type) }
   end
 
-  def self.object_pack(object, to_hash_only = 0, blacklisted_type = [Proc])
-    obj = object.is_a?(Thread) ? object : object.clone
-    oclass = obj.class.to_s
+  def self.object_pack(object, to_hash_only = 0, blacklisted_type = [Proc], visited = nil)
+    visited ||= Set.new
+    return to_hash_only.to_i == 0 ? [object.class.to_s, 'circular_reference'] : 'circular_reference' if visited.include?(object.__id__)
+    visited.add(object.__id__)
+    obj = if object.is_a?(Thread)
+            object
+          else
+            begin
+              object.clone
+            rescue TypeError
+              object
+            end
+          end
+    oclass = object.class.to_s
     if ([Proc] + blacklisted_type).include?(obj.class)
-      return object_pack("Illegal object type", to_hash_only)
+      return object_pack("Illegal object type", to_hash_only, blacklisted_type, visited)
     end
     if [String, Integer, Float, BigDecimal, NilClass, TrueClass, FalseClass].include?(obj.class)
       obj = obj.to_s
     elsif [Date, DateTime, Time].include?(obj.class)
       obj = obj.strftime('%Y-%m-%dT%H:%M:%S%z')
     elsif obj.is_a?(Array)
-      obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only, blacklisted_type) }
+      obj.each_with_index { |o, idx| obj[idx] = object_pack(o, to_hash_only, blacklisted_type, visited) }
     elsif obj.is_a?(Hash)
-      obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only, blacklisted_type) }
+      obj.keys.each { |k| obj[k] = object_pack(obj[k], to_hash_only, blacklisted_type, visited) }
     elsif obj.is_a?(Thread)
       obj = "thread[#{Hash[obj.keys.map do |k|
         [k, to_hash_only.to_i == 1 && obj[k].respond_to?("[]") ? obj[k][0..100] : obj[k]] rescue nil
       end]}]"
     else
-      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type) }
+      obj = object.instance_variables.each_with_object({}) { |var, hash| hash[var.to_s.delete("@")] = object_pack(object.instance_variable_get(var), to_hash_only, blacklisted_type, visited) }
     end
     obj = [oclass, obj] if to_hash_only.to_i == 0
     obj
+  ensure
+    visited&.delete(object.__id__)
   end
 
   def self.object_unpack(object)
