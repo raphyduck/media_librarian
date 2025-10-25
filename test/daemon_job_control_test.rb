@@ -109,6 +109,47 @@ class DaemonJobControlTest < Minitest::Test
     refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
   end
 
+  def test_nested_capture_output_preserves_parent_buffer
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    child_job = nil
+    outer_output = nil
+    outer_thread = nil
+    child_thread = nil
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      case args.first
+      when 'outer'
+        outer_thread ||= Thread.current
+        buffer = Thread.current[:captured_output]
+        buffer << "outer start\n"
+        child_job = Daemon.enqueue(args: ['inner'], capture_output: true, child: 1, parent_thread: Thread.current)
+        buffer << "outer end\n"
+      when 'inner'
+        child_thread = Thread.current
+        Thread.current[:captured_output] << "inner body\n"
+      end
+
+      block&.call
+    end) do
+      outer_job = Daemon.enqueue(args: ['outer'], capture_output: true)
+      outer_job.future.value!
+      outer_output = outer_job.output
+    end
+
+    refute_nil child_job, 'expected child job to be enqueued'
+    child_job.future.value!
+    assert_equal "outer start\nouter end\n", outer_output
+    assert_equal "inner body\n", child_job.output
+    assert_same outer_thread, child_thread, 'expected child job to run inline on the outer worker thread'
+  end
+
   def test_restores_nil_parent_after_worker_seeded_with_self_parent
     executor = Daemon.send(:instance_variable_get, :@executor)
     executor&.kill
