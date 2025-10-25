@@ -2,6 +2,8 @@
 
 require 'minitest/autorun'
 
+require_relative '../lib/hash'
+require_relative '../lib/array'
 require_relative 'support/dependency_stubs'
 require_relative '../librarian'
 require_relative 'support/container_helpers'

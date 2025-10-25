@@ -126,6 +126,8 @@ module MediaLibrarian
       require 'mechanize' unless defined?(Mechanize)
       require 'deluge/rpc' unless defined?(Deluge::Rpc::Client)
       require 'mediainfo' unless defined?(MediaInfo)
+      require_relative '../hash'
+      require_relative '../array'
       require_relative '../file_utils'
       load File.expand_path('../simple_speaker.rb', __dir__)
     end
