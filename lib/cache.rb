@@ -72,11 +72,22 @@ class Cache
             object
           else
             begin
-              object.clone
+              object.dup
             rescue TypeError
-              object
+              begin
+                object.clone
+              rescue TypeError
+                object
+              end
             end
           end
+    if !obj.is_a?(Thread) && obj.respond_to?(:frozen?) && obj.frozen? && obj.respond_to?(:dup)
+      obj = begin
+              obj.dup
+            rescue TypeError
+              obj
+            end
+    end
     oclass = object.class.to_s
     if ([Proc] + blacklisted_type).include?(obj.class)
       return object_pack("Illegal object type", to_hash_only, blacklisted_type, visited)
