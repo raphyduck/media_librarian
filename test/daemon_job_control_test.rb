@@ -108,4 +108,45 @@ class DaemonJobControlTest < Minitest::Test
     refute_same worker_thread, child_snapshot[:parent], 'child thread parent should not reference the worker thread itself'
     refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
   end
+
+  def test_restores_nil_parent_after_worker_seeded_with_self_parent
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    worker_thread = nil
+    child_job = nil
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+      worker_thread ||= thread
+
+      case args.first
+      when 'parent'
+        child_job = Daemon.enqueue(args: ['child'], child: 1, parent_thread: thread)
+      end
+
+      block&.call
+    end) do
+      seed_job = Daemon.enqueue(args: ['seed'])
+      seed_job.future.value!
+
+      worker_thread[:parent] = worker_thread
+
+      parent_job = Daemon.enqueue(args: ['parent'])
+      parent_job.future.value!
+
+      assert_equal :finished, parent_job.status
+    end
+
+    refute_nil worker_thread, 'expected to capture worker thread from seed job'
+    refute_nil child_job, 'expected child job to be enqueued'
+    child_job.future.value!
+    assert_equal :finished, child_job.status
+    assert_nil worker_thread[:parent], 'expected worker thread parent to be cleared after jobs complete'
+  end
 end
