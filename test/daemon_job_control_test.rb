@@ -4,6 +4,7 @@ require 'thread'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../librarian'
+require_relative '../lib/simple_speaker'
 
 class DaemonJobControlTest < Minitest::Test
   class BlockingArgsDispatch < TestSupport::Fakes::ArgsDispatch
@@ -59,27 +60,11 @@ class DaemonJobControlTest < Minitest::Test
   end
 
   def test_thread_locals_restored_after_inline_child_execution
-    executor = Daemon.send(:instance_variable_get, :@executor)
-    executor&.kill
-    executor&.wait_for_termination
-    Daemon.send(:cleanup)
-    @environment.application.workers_pool_size = 1
-    @environment.container.workers_pool_size = 1
-    Daemon.send(:boot_framework_state)
+    configure_single_worker_daemon!
 
     parent_snapshots = {}
     child_snapshot = nil
     worker_thread = nil
-
-    capture_locals = lambda do |thread|
-      {
-        current_daemon: thread[:current_daemon],
-        parent: thread[:parent],
-        jid: thread[:jid],
-        queue_name: thread[:queue_name],
-        log_msg: thread[:log_msg]
-      }
-    end
 
     Librarian.stub(:run_command, lambda do |args, *_rest, &block|
       thread = Thread.current
@@ -87,11 +72,11 @@ class DaemonJobControlTest < Minitest::Test
 
       case args.first
       when 'parent'
-        parent_snapshots[:before] = capture_locals.call(thread)
+        parent_snapshots[:before] = capture_thread_locals(thread)
         child_job = Daemon.enqueue(args: ['child'], client: 'child-client', child: 1, parent_thread: thread)
-        parent_snapshots[:after] = capture_locals.call(thread)
+        parent_snapshots[:after] = capture_thread_locals(thread)
       when 'child'
-        child_snapshot = capture_locals.call(thread)
+        child_snapshot = capture_thread_locals(thread)
       end
 
       block&.call
@@ -107,5 +92,61 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal 'child-client', child_snapshot[:current_daemon]
     refute_same worker_thread, child_snapshot[:parent], 'child thread parent should not reference the worker thread itself'
     refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
+  end
+
+  def test_inline_child_logging_restores_parent_log_buffer
+    configure_single_worker_daemon!
+    @environment.application.speaker = SimpleSpeaker::Speaker.new
+
+    parent_log_state = {}
+    child_log_buffer = nil
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+
+      case args.first
+      when 'parent-log'
+        parent_log_state[:before] = thread[:log_msg]
+        Daemon.enqueue(args: ['child-log'], child: 1, parent_thread: thread)
+        parent_log_state[:after_child] = thread[:log_msg]
+        @environment.application.speaker.speak_up('parent output')
+        parent_log_state[:after_parent_log] = thread[:log_msg]
+      when 'child-log'
+        child_log_buffer = thread[:log_msg]
+        @environment.application.speaker.speak_up('child output')
+      end
+
+      block&.call
+    end) do
+      job = Daemon.enqueue(args: ['parent-log'])
+      job.future.value!
+    end
+
+    assert_nil parent_log_state[:before], 'expected parent thread to flush immediately before spawning child'
+    assert_kind_of String, child_log_buffer, 'expected child job to have a log buffer'
+    assert_nil parent_log_state[:after_child], 'expected parent thread log buffer to be cleared after child job'
+    assert_nil parent_log_state[:after_parent_log], 'expected parent to keep flushing immediately after child log output'
+  end
+
+  private
+
+  def configure_single_worker_daemon!
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+  end
+
+  def capture_thread_locals(thread)
+    {
+      current_daemon: thread[:current_daemon],
+      parent: thread[:parent],
+      jid: thread[:jid],
+      queue_name: thread[:queue_name],
+      log_msg: thread[:log_msg]
+    }
   end
 end
