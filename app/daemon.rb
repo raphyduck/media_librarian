@@ -645,7 +645,8 @@ class Daemon
         thread[:captured_output] = saved_thread_locals[:captured_output]
       end
       thread[:current_daemon] = saved_thread_locals[:current_daemon]
-      thread[:parent] = saved_thread_locals[:parent]
+      saved_parent = saved_thread_locals[:parent]
+      thread[:parent] = saved_parent.equal?(thread) ? nil : saved_parent
       thread[:jid] = saved_thread_locals[:jid]
       thread[:queue_name] = saved_thread_locals[:queue_name]
       unless child_log_buffer && saved_thread_locals[:log_msg].nil?

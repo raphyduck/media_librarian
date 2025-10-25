@@ -150,4 +150,39 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal "inner output\n", child_job.output
     refute_includes outer_job.output, 'inner output', 'child output should not leak into parent buffer'
   end
+
+  def test_restores_nil_parent_after_worker_seeded_with_self_parent
+    configure_single_worker_executor
+
+    worker_thread = nil
+    child_job = nil
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+      worker_thread ||= thread
+
+      case args.first
+      when 'parent'
+        child_job = Daemon.enqueue(args: ['child'], child: 1, parent_thread: thread)
+      end
+
+      block&.call
+    end) do
+      seed_job = Daemon.enqueue(args: ['seed'])
+      seed_job.future.value!
+
+      worker_thread[:parent] = worker_thread
+
+      parent_job = Daemon.enqueue(args: ['parent'])
+      parent_job.future.value!
+
+      assert_equal :finished, parent_job.status
+    end
+
+    refute_nil worker_thread, 'expected to capture worker thread from seed job'
+    refute_nil child_job, 'expected child job to be enqueued'
+    child_job.future.value!
+    assert_equal :finished, child_job.status
+    assert_nil worker_thread[:parent], 'expected worker thread parent to be cleared after jobs complete'
+  end
 end
