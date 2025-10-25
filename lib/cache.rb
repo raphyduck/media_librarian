@@ -110,7 +110,9 @@ class Cache
              end
     return object unless object.is_a?(Array) || object.is_a?(Hash)
     #TODO: Fix retore "Class" metadata
-    if object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
+    if object.is_a?(Array) && object.count == 2 && object[1] == 'circular_reference'
+      object = 'circular_reference'
+    elsif object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
       if object[0] == 'Hash'
         object = begin
                    eval(object[1])
