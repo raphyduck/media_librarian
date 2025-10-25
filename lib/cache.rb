@@ -68,25 +68,9 @@ class Cache
     visited ||= Set.new
     return to_hash_only.to_i == 0 ? [object.class.to_s, 'circular_reference'] : 'circular_reference' if visited.include?(object.__id__)
     visited.add(object.__id__)
-    obj = if object.is_a?(Thread)
-            object
-          else
-            begin
-              object.dup
-            rescue TypeError
-              begin
-                object.clone
-              rescue TypeError
-                object
-              end
-            end
-          end
-    if !obj.is_a?(Thread) && obj.respond_to?(:frozen?) && obj.frozen? && obj.respond_to?(:dup)
-      obj = begin
-              obj.dup
-            rescue TypeError
-              obj
-            end
+    obj = object.is_a?(Thread) ? object : safe_duplicate(object)
+    if !obj.is_a?(Thread) && obj.respond_to?(:frozen?) && obj.frozen?
+      obj = safe_duplicate(obj)
     end
     oclass = object.class.to_s
     if ([Proc] + blacklisted_type).include?(obj.class)
@@ -112,6 +96,24 @@ class Cache
   ensure
     visited&.delete(object.__id__)
   end
+
+  def self.safe_duplicate(obj)
+    method = if obj.respond_to?(:dup)
+               :dup
+             elsif obj.respond_to?(:clone, true)
+               :clone
+             end
+    return obj unless method
+    obj.__send__(method)
+  rescue TypeError, NoMethodError
+    return obj if method == :clone || !obj.respond_to?(:clone, true)
+    begin
+      obj.__send__(:clone)
+    rescue TypeError, NoMethodError
+      obj
+    end
+  end
+  private_class_method :safe_duplicate
 
   def self.object_unpack(object)
     object = begin
