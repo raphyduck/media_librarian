@@ -68,12 +68,16 @@ class Cache
     visited ||= Set.new
     return to_hash_only.to_i == 0 ? [object.class.to_s, 'circular_reference'] : 'circular_reference' if visited.include?(object.__id__)
     visited.add(object.__id__)
+    blacklist = [Proc, Method, UnboundMethod] + blacklisted_type
+    if blacklist.include?(object.class)
+      return object_pack("Illegal object type", to_hash_only, blacklisted_type, visited)
+    end
     obj = object.is_a?(Thread) ? object : safe_duplicate(object)
     if !obj.is_a?(Thread) && obj.respond_to?(:frozen?) && obj.frozen?
       obj = safe_duplicate(obj)
     end
     oclass = object.class.to_s
-    if ([Proc] + blacklisted_type).include?(obj.class)
+    if blacklist.include?(obj.class)
       return object_pack("Illegal object type", to_hash_only, blacklisted_type, visited)
     end
     if [String, Integer, Float, BigDecimal, NilClass, TrueClass, FalseClass].include?(obj.class)
