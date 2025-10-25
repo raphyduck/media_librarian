@@ -16,6 +16,7 @@ require 'base64'
 
 require_relative '../lib/logger'
 require_relative 'client'
+require_relative '../lib/thread_state'
 
 WEBrick::HTTPServlet::ProcHandler.class_eval do
   alias do_DELETE do_GET unless method_defined?(:do_DELETE)
@@ -615,38 +616,30 @@ class Daemon
     def execute_job(job)
       thread = Thread.current
       job.worker_thread = thread
-      saved_thread_locals = thread.keys.each_with_object({}) do |key, memo|
-        memo[key] = thread[key]
-      end
-      thread[:current_daemon] = job.client || saved_thread_locals[:current_daemon]
-      thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
-      thread[:jid] = job.id
-      thread[:queue_name] = job.queue
-      if job.child.to_i.positive?
-        thread[:log_msg] = String.new
-      end
-      captured_output = job.capture_output ? String.new : nil
-      thread[:captured_output] = captured_output if captured_output
-      LibraryBus.initialize_queue(thread)
-      app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
-      job.status = :running
-      job.started_at = Time.now
-      Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
-    ensure
-      job.output = captured_output.dup if captured_output
-      saved_thread_locals.each do |key, value|
-        case key
-        when :parent
-          thread[:parent] = value.equal?(thread) ? nil : value
-        when :log_msg
-          thread[:log_msg] = value
-        else
-          thread[key] = value
+      captured_output = nil
+
+      ThreadState.around(thread) do |snapshot|
+        thread[:current_daemon] = job.client || snapshot[:current_daemon]
+        thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
+        thread[:jid] = job.id
+        thread[:queue_name] = job.queue
+        thread[:log_msg] = String.new if job.child.to_i.positive?
+
+        captured_output = job.capture_output ? String.new : nil
+        thread[:captured_output] = captured_output if captured_output
+
+        LibraryBus.initialize_queue(thread)
+        app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
+        job.status = :running
+        job.started_at = Time.now
+
+        begin
+          Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
+        ensure
+          job.output = captured_output.dup if captured_output
         end
       end
-      (thread.keys - saved_thread_locals.keys).each do |key|
-        thread[key] = nil
-      end
+    ensure
       job.worker_thread = nil
     end
 
