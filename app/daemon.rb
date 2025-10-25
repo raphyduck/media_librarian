@@ -615,24 +615,15 @@ class Daemon
     def execute_job(job)
       thread = Thread.current
       job.worker_thread = thread
-      saved_thread_locals = {
-        current_daemon: thread[:current_daemon],
-        parent: thread[:parent],
-        jid: thread[:jid],
-        queue_name: thread[:queue_name],
-        log_msg: thread[:log_msg],
-        captured_output: thread[:captured_output]
-      }
+      saved_thread_locals = thread.keys.each_with_object({}) do |key, memo|
+        memo[key] = thread[key]
+      end
       thread[:current_daemon] = job.client || saved_thread_locals[:current_daemon]
       thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
       thread[:jid] = job.id
       thread[:queue_name] = job.queue
-      child_log_buffer = nil
-      child_log_buffer_inline = false
       if job.child.to_i.positive?
-        child_log_buffer = String.new
-        child_log_buffer_inline = job.parent_thread.equal?(thread)
-        thread[:log_msg] = child_log_buffer
+        thread[:log_msg] = String.new
       end
       captured_output = job.capture_output ? String.new : nil
       thread[:captured_output] = captured_output if captured_output
@@ -643,14 +634,18 @@ class Daemon
       Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
     ensure
       job.output = captured_output.dup if captured_output
-      thread[:captured_output] = saved_thread_locals[:captured_output] if captured_output
-      thread[:current_daemon] = saved_thread_locals[:current_daemon]
-      saved_parent = saved_thread_locals[:parent]
-      thread[:parent] = saved_parent.equal?(thread) ? nil : saved_parent
-      thread[:jid] = saved_thread_locals[:jid]
-      thread[:queue_name] = saved_thread_locals[:queue_name]
-      if child_log_buffer_inline || !(child_log_buffer && saved_thread_locals[:log_msg].nil?)
-        thread[:log_msg] = saved_thread_locals[:log_msg]
+      saved_thread_locals.each do |key, value|
+        case key
+        when :parent
+          thread[:parent] = value.equal?(thread) ? nil : value
+        when :log_msg
+          thread[:log_msg] = value
+        else
+          thread[key] = value
+        end
+      end
+      (thread.keys - saved_thread_locals.keys).each do |key|
+        thread[key] = nil
       end
       job.worker_thread = nil
     end

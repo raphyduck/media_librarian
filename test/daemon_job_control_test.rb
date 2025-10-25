@@ -110,6 +110,64 @@ class DaemonJobControlTest < Minitest::Test
     refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
   end
 
+  def test_inline_child_without_stubbed_run_command_preserves_parent_state
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    parent_snapshots = {}
+    child_job = nil
+
+    snapshot = lambda do |thread|
+      {
+        object: thread[:object],
+        block: thread[:block],
+        block_contents: thread[:block]&.dup,
+        start_time: thread[:start_time],
+        log_msg: thread[:log_msg],
+        email_msg: thread[:email_msg],
+        send_email: thread[:send_email]
+      }
+    end
+
+    parent_block = lambda do
+      thread = Thread.current
+      parent_snapshots[:before] = snapshot.call(thread)
+      @release_queue << nil
+      child_job = Daemon.enqueue(args: ['help'], child: 1, parent_thread: thread)
+      parent_snapshots[:after] = snapshot.call(thread)
+    end
+
+    @release_queue << nil
+    job = Daemon.enqueue(args: ['help'], &parent_block)
+    job.future.value!
+    child_job&.future&.value!
+
+    assert parent_snapshots[:before], 'expected to capture parent thread locals before inline child'
+    assert parent_snapshots[:after], 'expected to capture parent thread locals after inline child'
+    assert child_job, 'expected inline child job to be enqueued'
+
+    before = parent_snapshots[:before]
+    after = parent_snapshots[:after]
+
+    assert_equal before[:object], after[:object], 'parent thread object should remain unchanged'
+    assert_same before[:block], after[:block], 'parent thread block array should be preserved'
+    assert_equal before[:block_contents], after[:block_contents], 'parent thread block contents should remain unchanged'
+    assert_equal before[:start_time], after[:start_time], 'parent thread start time should remain unchanged'
+    assert_same before[:log_msg], after[:log_msg], 'parent log buffer should not be replaced'
+    assert_same before[:email_msg], after[:email_msg], 'parent email buffer should not be replaced'
+    assert_equal before[:send_email], after[:send_email], 'parent email flag should remain unchanged'
+
+    commands = @environment.application.args_dispatch.dispatched_commands
+    assert_equal 2, commands.length, 'expected both parent and child commands to run through ArgsDispatch'
+    assert_equal ['help'], commands.first[:command]
+    assert_equal ['help'], commands.last[:command]
+  end
+
   def test_nested_capture_output_preserves_parent_buffer
     executor = Daemon.send(:instance_variable_get, :@executor)
     executor&.kill
