@@ -58,7 +58,7 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal 'Cancelled', job.error
   end
 
-  def test_thread_locals_restored_after_inline_child_execution
+  def configure_single_worker_executor
     executor = Daemon.send(:instance_variable_get, :@executor)
     executor&.kill
     executor&.wait_for_termination
@@ -66,6 +66,12 @@ class DaemonJobControlTest < Minitest::Test
     @environment.application.workers_pool_size = 1
     @environment.container.workers_pool_size = 1
     Daemon.send(:boot_framework_state)
+
+    nil
+  end
+
+  def test_thread_locals_restored_after_inline_child_execution
+    configure_single_worker_executor
 
     parent_snapshots = {}
     child_snapshot = nil
@@ -107,5 +113,41 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal 'child-client', child_snapshot[:current_daemon]
     refute_same worker_thread, child_snapshot[:parent], 'child thread parent should not reference the worker thread itself'
     refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
+  end
+
+  def test_captured_output_restored_after_inline_child_execution
+    configure_single_worker_executor
+
+    outer_job = nil
+    child_job = nil
+    outer_buffer_ids = {}
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+      buffer = thread[:captured_output]
+
+      case args.first
+      when 'parent'
+        outer_buffer_ids[:before] = buffer&.object_id
+        buffer << "outer before child\n"
+        child_job = Daemon.enqueue(args: ['child'], child: 1, parent_thread: thread, capture_output: true)
+        outer_buffer_ids[:after] = thread[:captured_output]&.object_id
+        buffer << "outer after child\n"
+      when 'child'
+        buffer << "inner output\n"
+      end
+
+      block&.call
+    end) do
+      outer_job = Daemon.enqueue(args: ['parent'], capture_output: true)
+      outer_job.future.value!
+    end
+
+    refute_nil child_job, 'expected child job to be enqueued'
+    child_job.future.value! if child_job.future
+    assert_equal outer_buffer_ids[:before], outer_buffer_ids[:after], 'parent buffer should be restored after child job'
+    assert_equal "outer before child\nouter after child\n", outer_job.output
+    assert_equal "inner output\n", child_job.output
+    refute_includes outer_job.output, 'inner output', 'child output should not leak into parent buffer'
   end
 end

@@ -620,7 +620,8 @@ class Daemon
         parent: thread[:parent],
         jid: thread[:jid],
         queue_name: thread[:queue_name],
-        log_msg: thread[:log_msg]
+        log_msg: thread[:log_msg],
+        captured_output: thread[:captured_output]
       }
       thread[:current_daemon] = job.client || saved_thread_locals[:current_daemon]
       thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
@@ -639,8 +640,10 @@ class Daemon
       job.started_at = Time.now
       Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
     ensure
-      job.output = captured_output.dup if captured_output
-      thread[:captured_output] = nil if captured_output
+      if captured_output
+        job.output = captured_output.dup
+        thread[:captured_output] = saved_thread_locals[:captured_output]
+      end
       thread[:current_daemon] = saved_thread_locals[:current_daemon]
       thread[:parent] = saved_thread_locals[:parent]
       thread[:jid] = saved_thread_locals[:jid]
