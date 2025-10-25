@@ -38,4 +38,20 @@ class CacheObjectPackTest < Minitest::Test
     result = RealCache.object_pack(method(:test_pack_method_objects))
     assert_equal(['String', 'Illegal object type'], result)
   end
+
+  def test_pack_object_ignores_app_reference
+    application = Struct.new(:container).new
+    container = Struct.new(:application).new(application)
+    application.container = container
+
+    sample = Object.new
+    sample.instance_variable_set(:@app, container)
+    sample.instance_variable_set(:@value, 'payload')
+
+    result = RealCache.object_pack(sample)
+
+    assert_equal('Object', result.first)
+    assert_equal(['String', 'payload'], result.last['value'])
+    refute_includes(result.last.keys, 'app')
+  end
 end
