@@ -556,15 +556,16 @@ async function reloadScheduler() {
   }
 }
 
-async function restartDaemon() {
-  const button = document.getElementById('restart-daemon');
+async function controlDaemon({ path, buttonId, message }) {
+  const button = buttonId ? document.getElementById(buttonId) : null;
   if (button) {
     button.disabled = true;
   }
   try {
-    await fetchJson('/restart', { method: 'POST' });
-    showNotification('Redémarrage du démon en cours…');
-    stopAutoRefresh();
+    await fetchJson(path, { method: 'POST' });
+    if (message) {
+      showNotification(message);
+    }
     setAuthenticated(false);
   } catch (error) {
     showNotification(error.message, 'error');
@@ -573,6 +574,22 @@ async function restartDaemon() {
       button.disabled = false;
     }
   }
+}
+
+async function restartDaemon() {
+  await controlDaemon({
+    path: '/restart',
+    buttonId: 'restart-daemon',
+    message: 'Redémarrage du démon en cours…',
+  });
+}
+
+async function stopDaemon() {
+  await controlDaemon({
+    path: '/stop',
+    buttonId: 'stop-daemon',
+    message: 'Arrêt du démon en cours…',
+  });
 }
 
 const TAB_LOADERS = {
@@ -699,6 +716,7 @@ function setupTabs() {
 function setupEventListeners() {
   setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
+  document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
   document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
   document.getElementById('save-config').addEventListener('click', saveConfig);
