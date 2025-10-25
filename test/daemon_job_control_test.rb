@@ -4,6 +4,7 @@ require 'thread'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../librarian'
+require_relative '../lib/simple_speaker'
 
 class DaemonJobControlTest < Minitest::Test
   class BlockingArgsDispatch < TestSupport::Fakes::ArgsDispatch
@@ -148,5 +149,70 @@ class DaemonJobControlTest < Minitest::Test
     child_job.future.value!
     assert_equal :finished, child_job.status
     assert_nil worker_thread[:parent], 'expected worker thread parent to be cleared after jobs complete'
+  end
+
+  def test_inline_child_logging_restores_parent_immediate_flush
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+
+    @environment.application.speaker = SimpleSpeaker::Speaker.new
+    speaker = @environment.application.speaker
+    captured_output = []
+    speaker.define_singleton_method(:daemon_send) do |str|
+      captured_output << str.to_s
+    end
+
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    parent_log_states = {}
+    job = nil
+    child_status = nil
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+
+      case args.first
+      when 'parent'
+        parent_log_states[:before_child] = thread[:log_msg]
+        child_job = Daemon::Job.new(
+          id: Daemon.job_id,
+          queue: 'child',
+          args: ['child'],
+          task: 'child',
+          client: 'child-client',
+          env_flags: {},
+          parent_thread: thread,
+          child: 1,
+          status: :queued,
+          capture_output: false
+        )
+        child_result = Daemon.send(:execute_job, child_job)
+        Daemon.send(:finalize_job, child_job, child_result, nil)
+        child_status = child_job.status
+        parent_log_states[:after_child] = thread[:log_msg]
+        MediaLibrarian.app.speaker.speak_up('parent message')
+        parent_log_states[:after_log] = thread[:log_msg]
+      when 'child'
+        MediaLibrarian.app.speaker.speak_up('child message')
+        :child_result
+      end
+
+      block&.call
+    end) do
+      job = Daemon.enqueue(args: ['parent'])
+      job.future.value!
+    end
+
+    assert job, 'expected parent job to be enqueued'
+    assert_equal :finished, job.status
+    assert_equal :finished, child_status, 'expected child job to finish inline'
+    assert_nil parent_log_states[:before_child], 'expected parent log buffer to start nil'
+    assert_nil parent_log_states[:after_child], 'expected inline child to preserve nil parent log buffer'
+    assert_nil parent_log_states[:after_log], 'expected parent log buffer to remain nil after logging'
+    assert_includes captured_output, 'parent message', 'expected parent log message to flush immediately'
   end
 end

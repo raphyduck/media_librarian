@@ -627,8 +627,10 @@ class Daemon
       thread[:jid] = job.id
       thread[:queue_name] = job.queue
       child_log_buffer = nil
+      child_log_buffer_inline = false
       if job.child.to_i.positive?
         child_log_buffer = String.new
+        child_log_buffer_inline = job.parent_thread.equal?(thread)
         thread[:log_msg] = child_log_buffer
       end
       captured_output = job.capture_output ? String.new : nil
@@ -646,7 +648,7 @@ class Daemon
       thread[:parent] = saved_parent.equal?(thread) ? nil : saved_parent
       thread[:jid] = saved_thread_locals[:jid]
       thread[:queue_name] = saved_thread_locals[:queue_name]
-      unless child_log_buffer && saved_thread_locals[:log_msg].nil?
+      if child_log_buffer_inline || !(child_log_buffer && saved_thread_locals[:log_msg].nil?)
         thread[:log_msg] = saved_thread_locals[:log_msg]
       end
       job.worker_thread = nil
