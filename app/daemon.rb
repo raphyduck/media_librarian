@@ -615,11 +615,22 @@ class Daemon
     def execute_job(job)
       thread = Thread.current
       job.worker_thread = thread
-      thread[:current_daemon] = job.client || thread[:current_daemon]
-      thread[:parent] = job.parent_thread
+      saved_thread_locals = {
+        current_daemon: thread[:current_daemon],
+        parent: thread[:parent],
+        jid: thread[:jid],
+        queue_name: thread[:queue_name],
+        log_msg: thread[:log_msg]
+      }
+      thread[:current_daemon] = job.client || saved_thread_locals[:current_daemon]
+      thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
       thread[:jid] = job.id
       thread[:queue_name] = job.queue
-      thread[:log_msg] = String.new if job.child.to_i.positive?
+      child_log_buffer = nil
+      if job.child.to_i.positive?
+        child_log_buffer = String.new
+        thread[:log_msg] = child_log_buffer
+      end
       captured_output = job.capture_output ? String.new : nil
       thread[:captured_output] = captured_output if captured_output
       LibraryBus.initialize_queue(thread)
@@ -630,7 +641,13 @@ class Daemon
     ensure
       job.output = captured_output.dup if captured_output
       thread[:captured_output] = nil if captured_output
-      thread[:jid] = nil
+      thread[:current_daemon] = saved_thread_locals[:current_daemon]
+      thread[:parent] = saved_thread_locals[:parent]
+      thread[:jid] = saved_thread_locals[:jid]
+      thread[:queue_name] = saved_thread_locals[:queue_name]
+      unless child_log_buffer && saved_thread_locals[:log_msg].nil?
+        thread[:log_msg] = saved_thread_locals[:log_msg]
+      end
       job.worker_thread = nil
     end
 

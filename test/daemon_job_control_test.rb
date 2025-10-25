@@ -57,4 +57,55 @@ class DaemonJobControlTest < Minitest::Test
     assert_nil job.worker_thread
     assert_equal 'Cancelled', job.error
   end
+
+  def test_thread_locals_restored_after_inline_child_execution
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    parent_snapshots = {}
+    child_snapshot = nil
+    worker_thread = nil
+
+    capture_locals = lambda do |thread|
+      {
+        current_daemon: thread[:current_daemon],
+        parent: thread[:parent],
+        jid: thread[:jid],
+        queue_name: thread[:queue_name],
+        log_msg: thread[:log_msg]
+      }
+    end
+
+    Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+      thread = Thread.current
+      worker_thread ||= thread
+
+      case args.first
+      when 'parent'
+        parent_snapshots[:before] = capture_locals.call(thread)
+        child_job = Daemon.enqueue(args: ['child'], client: 'child-client', child: 1, parent_thread: thread)
+        parent_snapshots[:after] = capture_locals.call(thread)
+      when 'child'
+        child_snapshot = capture_locals.call(thread)
+      end
+
+      block&.call
+    end) do
+      job = Daemon.enqueue(args: ['parent'], client: 'parent-client')
+      job.future.value!
+    end
+
+    assert parent_snapshots[:before], 'expected parent job to capture thread locals before spawning child'
+    assert child_snapshot, 'expected child job to run'
+    assert_equal parent_snapshots[:before], parent_snapshots[:after], 'parent thread locals should be restored after child job'
+    assert_equal 'parent-client', parent_snapshots[:before][:current_daemon]
+    assert_equal 'child-client', child_snapshot[:current_daemon]
+    refute_same worker_thread, child_snapshot[:parent], 'child thread parent should not reference the worker thread itself'
+    refute_equal parent_snapshots[:before][:jid], child_snapshot[:jid]
+  end
 end
