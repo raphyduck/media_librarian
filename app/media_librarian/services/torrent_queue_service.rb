@@ -161,11 +161,10 @@ module MediaLibrarian
 
       def process_download_request(request)
         if request.torrent_type == 1 && request.nodl.zero?
-          file = File.open(request.path, 'r')
-          torrent = file.read
-          file.close
-          meta = BEncode.load(torrent, { ignore_trailing_junk: 1 })
-          meta_id = Digest::SHA1.hexdigest(meta['info'].bencode)
+          torrent = File.binread(request.path)
+          info = BEncode.load(torrent, { ignore_trailing_junk: 1 }).dig('info')
+          raise ArgumentError, "Missing torrent metadata for #{request.torrent_name}" unless info
+          meta_id = Digest::SHA1.hexdigest(info.bencode)
           Cache.queue_state_add_or_update('deluge_options', { request.torrent_name => request.options.merge({ info_hash: meta_id }) })
           download = { type: 1, type_str: 'file', file: torrent, filename: File.basename(request.path) }
         elsif request.nodl.zero?
