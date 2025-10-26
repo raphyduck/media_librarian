@@ -24,7 +24,15 @@ class TorznabTracker
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
     Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit}))[:rss][:channel][:item].each do |i|
       enclosure_url = i.dig(:enclosure, :@url) || i.dig(:enclosure, :url)
-      guid = i[:guid].is_a?(Hash) ? i[:guid][:__content__] || i[:guid][:content] : i[:guid]
+      guid = if i[:guid].is_a?(Hash)
+        guid_hash = i[:guid]
+        [:__content__, :content, :text, '__content__', 'content', 'text']
+          .lazy
+          .map { |key| guid_hash[key] }
+          .find { |value| !value.to_s.empty? }
+      else
+        i[:guid]
+      end
       download_fallback = guid.to_s.empty? ? i[:link] : guid
       download_url = enclosure_url.to_s.empty? ? download_fallback : enclosure_url
       details_url = i[:link].to_s.empty? ? download_fallback : i[:link]
