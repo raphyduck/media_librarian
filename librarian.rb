@@ -176,8 +176,10 @@ class Librarian
         end
 
         if proxy_internal.to_i.zero? && args.first.to_s.casecmp('daemon').zero?
-          fallback_internal = config[0]
-          proxy_internal = fallback_internal unless fallback_internal.nil?
+          # `daemon status` needs to execute in-process so it can call `Client.status`
+          # and stream the daemon snapshot output directly to the CLI. Other daemon
+          # subcommands should continue to be routed through the running daemon.
+          proxy_internal = 1 if args[1].to_s.casecmp('status').zero?
         end
       end
 
