@@ -3,6 +3,33 @@
 require 'test_helper'
 require_relative '../app/daemon'
 
+class FlippingJob
+  attr_reader :id, :queue, :created_at
+  attr_accessor :status, :finished_at
+
+  def initialize(id:, queue:, created_at: Time.now)
+    @id = id
+    @queue = queue
+    @created_at = created_at
+    @status = :running
+    @finished_at = nil
+    @toggled = false
+  end
+
+  def running?
+    return false if @toggled
+
+    @toggled = true
+    self.status = :finished
+    self.finished_at = Time.now
+    true
+  end
+
+  def finished?
+    !!finished_at || %i[finished failed cancelled].include?(status)
+  end
+end
+
 class DaemonStatusSnapshotTest < Minitest::Test
   def setup
     reset_librarian_state!
@@ -65,5 +92,22 @@ class DaemonStatusSnapshotTest < Minitest::Test
 
     child_payload = Daemon.send(:serialize_job, child_job)
     assert_equal 'parent', child_payload['parent_id']
+  end
+
+  def test_status_snapshot_prevents_double_counting_flipping_jobs
+    flipping_job = FlippingJob.new(id: 'flip', queue: 'alpha')
+    Daemon.instance_variable_set(:@jobs, { flipping_job.id => flipping_job })
+
+    snapshot = Daemon.status_snapshot
+
+    running_ids = snapshot[:running].map(&:id)
+    finished_ids = snapshot[:finished].map(&:id)
+    queued_ids = snapshot[:queued].map(&:id)
+
+    assert_equal(['flip'], snapshot[:jobs].map(&:id))
+    assert_equal 1, [running_ids.include?('flip'), finished_ids.include?('flip'), queued_ids.include?('flip')].count(true)
+    assert_empty(running_ids & finished_ids)
+    assert_empty(running_ids & queued_ids)
+    assert_empty(finished_ids & queued_ids)
   end
 end
