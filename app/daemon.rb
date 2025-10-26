@@ -473,10 +473,6 @@ class Daemon
       register_job(job)
       start_job(job)
       job
-    rescue Concurrent::RejectedExecutionError
-      job_registry.delete(job.id)
-      unregister_child(job)
-      raise
     end
 
     def schedule(scheduler)
@@ -600,7 +596,7 @@ class Daemon
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
       queue_slots = app.queue_slots.to_i
-      queue_capacity = queue_slots.positive? ? queue_slots : 1
+      queue_capacity = queue_slots.positive? ? queue_slots : 0
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
@@ -620,9 +616,10 @@ class Daemon
     end
 
     def start_job(job)
-      job.future = Concurrent::Promises.future_on(@executor) do
-        execute_job(job)
-      end
+      future = obtain_future(job)
+      return job unless future
+
+      job.future = future
       job.future.on_fulfillment! do |value|
         finalize_job(job, value, nil)
       end
@@ -630,6 +627,40 @@ class Daemon
         finalize_job(job, nil, reason)
       end
       job
+    end
+
+    def obtain_future(job)
+      loop do
+        return Concurrent::Promises.future_on(@executor) { execute_job(job) }
+      rescue Concurrent::RejectedExecutionError
+        return nil unless running?
+
+        wait_for_executor_capacity
+      end
+    end
+
+    def wait_for_executor_capacity
+      return unless @executor
+
+      while running? && executor_saturated?(@executor)
+        sleep(0.05)
+      end
+    end
+
+    def executor_saturated?(executor)
+      if executor.respond_to?(:remaining_capacity)
+        remaining = executor.remaining_capacity
+        return false if remaining.nil? || remaining == Float::INFINITY
+
+        remaining <= 0
+      elsif executor.respond_to?(:max_queue) && executor.respond_to?(:queue_length)
+        max_queue = executor.max_queue
+        return false unless max_queue && max_queue.positive?
+
+        executor.queue_length >= max_queue
+      else
+        false
+      end
     end
 
     def execute_job(job)
