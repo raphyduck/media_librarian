@@ -81,6 +81,7 @@ class Daemon
   CONTROL_CONTENT_TYPE = 'application/json'
   LOG_TAIL_LINES = 10_000
   SESSION_COOKIE_NAME = 'ml_session'
+  FINISHED_STATUSES = %w[finished failed cancelled].freeze
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -235,10 +236,23 @@ class Daemon
     end
 
     def status_snapshot
-      jobs = sort_jobs_by_queue(job_registry.values)
-      running = jobs.select(&:running?)
-      finished = jobs.select(&:finished?)
-      queued = jobs.reject { |job| job.running? || job.finished? }
+      jobs = sort_jobs_by_queue(job_registry.values.map(&:dup))
+      running = []
+      finished = []
+      queued = []
+
+      jobs.each do |job|
+        status = job_attribute(job, :status).to_s
+        finished_at = job_attribute(job, :finished_at)
+
+        if status == 'running' && finished_at.nil?
+          running << job
+        elsif finished_at || FINISHED_STATUSES.include?(status)
+          finished << job
+        else
+          queued << job
+        end
+      end
       {
         jobs: jobs,
         running: running,
@@ -250,9 +264,8 @@ class Daemon
 
     def build_snapshot_from_hashes(payload)
       jobs = sort_jobs_by_queue(extract_jobs_from(payload))
-      finished_statuses = %w[finished failed cancelled]
       running = jobs.select { |job| job[:status].to_s == 'running' }
-      finished = jobs.select { |job| finished_statuses.include?(job[:status].to_s) }
+      finished = jobs.select { |job| FINISHED_STATUSES.include?(job[:status].to_s) }
       queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
       {
         jobs: jobs,
