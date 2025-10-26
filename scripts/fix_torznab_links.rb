@@ -5,14 +5,8 @@ require 'bundler/setup'
 require_relative '../lib/media_librarian/application'
 require_relative '../lib/cache'
 
-SPACE_SUBSTITUTE = '\\. _\\-' unless defined?(SPACE_SUBSTITUTE)
-unless defined?(VALID_VIDEO_EXT)
-  fallback_video_ext = if defined?(EXTENSIONS_TYPE) && EXTENSIONS_TYPE.respond_to?(:[]) && EXTENSIONS_TYPE[:video]
-                         EXTENSIONS_TYPE[:video]
-                       else
-                         %w[mkv avi mp4 mpg m4v ts m2ts iso divx]
-                       end
-  VALID_VIDEO_EXT = "(.*)\\.(#{fallback_video_ext.join('|')})$"
+unless defined?(SPACE_SUBSTITUTE) && defined?(VALID_VIDEO_EXT) && defined?(BASIC_EP_MATCH)
+  require_relative '../init/global'
 end
 
 DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i

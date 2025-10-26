@@ -11,14 +11,35 @@ require_relative '../../lib/storage/db'
 class FixTorznabLinksScriptTest < Minitest::Test
   def setup
     reset_librarian_state!
-    @cache_stub = Cache if Object.const_defined?(:Cache)
+    @original_home = ENV['HOME']
+    @home_dir = Dir.mktmpdir('fix-torznab-links-home')
+    ENV['HOME'] = @home_dir
+
+    @original_application = MediaLibrarian.instance_variable_get(:@application) if MediaLibrarian.instance_variable_defined?(:@application)
+    if defined?(MediaLibrarian::Boot)
+      @original_boot_application = MediaLibrarian::Boot.instance_variable_get(:@application) if MediaLibrarian::Boot.instance_variable_defined?(:@application)
+      @original_boot_container = MediaLibrarian::Boot.instance_variable_get(:@container) if MediaLibrarian::Boot.instance_variable_defined?(:@container)
+    end
+
+    unless Object.const_defined?(:SPACE_SUBSTITUTE)
+      @defined_space_substitute = true
+      Object.const_set(:SPACE_SUBSTITUTE, '\\. _\\-')
+    end
+    unless Object.const_defined?(:VALID_VIDEO_EXT)
+      @defined_valid_video_ext = true
+      Object.const_set(:VALID_VIDEO_EXT, '(.*)\\.(mkv)$')
+    end
+    unless Object.const_defined?(:BASIC_EP_MATCH)
+      @defined_basic_ep_match = true
+      Object.const_set(:BASIC_EP_MATCH, 'S(\\d{2})E(\\d{2})')
+    end
+
+    @cache_stub = Object.const_get(:Cache) if Object.const_defined?(:Cache)
     Object.send(:remove_const, :Cache) if Object.const_defined?(:Cache)
-    @original_space_substitute = SPACE_SUBSTITUTE if Object.const_defined?(:SPACE_SUBSTITUTE)
-    Object.send(:remove_const, :SPACE_SUBSTITUTE) if Object.const_defined?(:SPACE_SUBSTITUTE)
-    @original_valid_video_ext = VALID_VIDEO_EXT if Object.const_defined?(:VALID_VIDEO_EXT)
-    Object.send(:remove_const, :VALID_VIDEO_EXT) if Object.const_defined?(:VALID_VIDEO_EXT)
     load File.expand_path('../../lib/cache.rb', __dir__)
+
     load File.expand_path('../../scripts/fix_torznab_links.rb', __dir__)
+
     @tmp_dir = Dir.mktmpdir('fix-torznab-links-test')
     @db_path = File.join(@tmp_dir, 'test.db')
     @speaker = TestSupport::Fakes::Speaker.new
@@ -28,22 +49,28 @@ class FixTorznabLinksScriptTest < Minitest::Test
       env_flags: {}
     )
     MediaLibrarian.application = @app
+    if defined?(MediaLibrarian::Boot)
+      MediaLibrarian::Boot.instance_variable_set(:@application, @app)
+      MediaLibrarian::Boot.instance_variable_set(:@container, nil)
+    end
   end
 
   def teardown
-    Object.send(:remove_const, :Cache) if Object.const_defined?(:Cache)
-    Object.const_set(:Cache, @cache_stub) if @cache_stub
-    Object.send(:remove_const, :SPACE_SUBSTITUTE) if Object.const_defined?(:SPACE_SUBSTITUTE)
-    if instance_variable_defined?(:@original_space_substitute)
-      Object.const_set(:SPACE_SUBSTITUTE, @original_space_substitute)
-    end
-    Object.send(:remove_const, :VALID_VIDEO_EXT) if Object.const_defined?(:VALID_VIDEO_EXT)
-    if instance_variable_defined?(:@original_valid_video_ext)
-      Object.const_set(:VALID_VIDEO_EXT, @original_valid_video_ext)
+    MediaLibrarian.instance_variable_set(:@application, @original_application)
+    if defined?(MediaLibrarian::Boot)
+      MediaLibrarian::Boot.instance_variable_set(:@application, @original_boot_application)
+      MediaLibrarian::Boot.instance_variable_set(:@container, @original_boot_container)
     end
     MediaLibrarian.application = nil
     @app&.db&.database&.disconnect
     FileUtils.remove_entry(@tmp_dir) if @tmp_dir && Dir.exist?(@tmp_dir)
+    ENV['HOME'] = @original_home if defined?(@original_home)
+    FileUtils.remove_entry(@home_dir) if defined?(@home_dir) && @home_dir && Dir.exist?(@home_dir)
+    Object.send(:remove_const, :Cache) if Object.const_defined?(:Cache)
+    Object.const_set(:Cache, @cache_stub) if defined?(@cache_stub) && @cache_stub
+    Object.send(:remove_const, :BASIC_EP_MATCH) if defined?(@defined_basic_ep_match) && Object.const_defined?(:BASIC_EP_MATCH)
+    Object.send(:remove_const, :VALID_VIDEO_EXT) if defined?(@defined_valid_video_ext) && Object.const_defined?(:VALID_VIDEO_EXT)
+    Object.send(:remove_const, :SPACE_SUBSTITUTE) if defined?(@defined_space_substitute) && Object.const_defined?(:SPACE_SUBSTITUTE)
   end
 
   def test_swaps_links_for_active_torrents
