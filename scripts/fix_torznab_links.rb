@@ -20,7 +20,8 @@ end
 
 fixed = 0
 
-db.get_rows('torrents').each do |row|
+db.get_rows('torrents', {}, { 'status >' => 0 }).each do |row|
+  next unless row[:status].to_i > 0
   attrs = begin
     Cache.object_unpack(row[:tattributes])
   rescue StandardError
@@ -34,8 +35,15 @@ db.get_rows('torrents').each do |row|
   next if link.empty? || torrent_link.empty?
   next unless download_url?(link) && !download_url?(torrent_link)
 
+  puts "---"
+  puts "Fixing '#{row[:name]}' (status=#{row[:status]})"
+  puts "  record: #{row.inspect}"
+  puts "  before: link=#{link.inspect}"
+  puts "          torrent_link=#{torrent_link.inspect}"
   attrs[:link], attrs[:torrent_link] = torrent_link, link
   db.update_rows('torrents', { tattributes: Cache.object_pack(attrs) }, { name: row[:name] })
+  puts "  after:  link=#{attrs[:link].inspect}"
+  puts "          torrent_link=#{attrs[:torrent_link].inspect}"
   fixed += 1
 end
 
