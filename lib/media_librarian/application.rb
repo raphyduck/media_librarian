@@ -126,6 +126,13 @@ module MediaLibrarian
       require 'mechanize' unless defined?(Mechanize)
       require 'deluge/rpc' unless defined?(Deluge::Rpc::Client)
       require 'mediainfo' unless defined?(MediaInfo)
+      unless Numeric.method_defined?(:days)
+        Numeric.class_eval do
+          def days
+            self * 86_400
+          end
+        end
+      end
       require_relative '../hash'
       require_relative '../array'
       require_relative '../file_utils'
