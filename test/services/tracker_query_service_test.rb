@@ -105,6 +105,10 @@ class TrackerQueryServiceTest < Minitest::Test
       assert_equal 'https://tracker.example/enclosure/1', first[:torrent_link]
       assert_equal 'https://tracker.example/details/2', second[:link]
       assert_equal 'https://tracker.example/download/2', second[:torrent_link]
+      assert_equal '10', first[:seeders]
+      assert_equal '2', first[:leechers]
+      assert_equal '5', second[:seeders]
+      assert_equal '1', second[:leechers]
     end
   ensure
     if app_defined
