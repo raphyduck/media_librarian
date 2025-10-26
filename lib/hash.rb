@@ -26,6 +26,27 @@ class Hash
     merge(h)
   end
 
+  unless method_defined?(:deep_merge)
+    def deep_merge(other_hash, &block)
+      dup.deep_merge!(other_hash, &block)
+    end
+
+    def deep_merge!(other_hash, &block)
+      return self unless other_hash.is_a?(Hash)
+
+      other_hash.each_pair do |key, value|
+        if key?(key) && self[key].is_a?(Hash) && value.is_a?(Hash)
+          self[key] = self[key].deep_merge(value, &block)
+        elsif key?(key) && block
+          self[key] = block.call(key, self[key], value)
+        else
+          self[key] = value
+        end
+      end
+      self
+    end
+  end
+
   # USAGE: Hash.from_xml(YOUR_XML_STRING)
   # modified from http://stackoverflow.com/questions/1230741/convert-a-nokogiri-document-to-a-ruby-hash/1231297#123129
 
