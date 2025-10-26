@@ -61,6 +61,19 @@ class StorageDbTest < Minitest::Test
     end
   end
 
+  def test_get_rows_supports_greater_than_filters
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      db.insert_row('torrents', { name: 'keep-me', status: 1 })
+      db.insert_row('torrents', { name: 'skip-me', status: 0 })
+
+      results = db.get_rows('torrents', {}, { 'status >' => 0 })
+
+      assert_equal ['keep-me'], results.map { |row| row[:name] }
+      db.database.disconnect
+    end
+  end
+
   def test_touch_rows_updates_timestamp
     with_stubbed_app do
       db = Storage::Db.new(@db_path)
