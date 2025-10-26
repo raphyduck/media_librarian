@@ -460,6 +460,10 @@ class Daemon
       register_job(job)
       start_job(job)
       job
+    rescue Concurrent::RejectedExecutionError
+      job_registry.delete(job.id)
+      unregister_child(job)
+      raise
     end
 
     def schedule(scheduler)
@@ -582,11 +586,13 @@ class Daemon
       @queue_limits = Concurrent::Hash.new
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
+      queue_slots = app.queue_slots.to_i
+      queue_capacity = queue_slots.positive? ? queue_slots : 1
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
-        max_queue: 0,
-        fallback_policy: :caller_runs
+        max_queue: queue_capacity,
+        fallback_policy: :abort
       )
     end
 
@@ -872,6 +878,8 @@ class Daemon
       else
         method_not_allowed(res, 'GET, POST')
       end
+    rescue Concurrent::RejectedExecutionError
+      error_response(res, status: 429, message: 'queue_full')
     rescue StandardError => e
       error_response(res, status: 422, message: e.message)
     end
