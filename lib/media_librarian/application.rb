@@ -126,11 +126,24 @@ module MediaLibrarian
       require 'mechanize' unless defined?(Mechanize)
       require 'deluge/rpc' unless defined?(Deluge::Rpc::Client)
       require 'mediainfo' unless defined?(MediaInfo)
-      unless Numeric.method_defined?(:days)
-        Numeric.class_eval do
-          def days
-            self * 86_400
-          end
+      Numeric.class_eval do
+        time_units = {
+          second: 1,
+          minute: 60,
+          hour: 3_600,
+          day: 86_400,
+          week: 604_800,
+          month: 2_592_000,
+          year: 31_536_000
+        }
+
+        time_units.each do |unit, multiplier|
+          define_method(unit) do
+            self * multiplier
+          end unless method_defined?(unit)
+
+          plural = "#{unit}s".to_sym
+          alias_method plural, unit unless method_defined?(plural)
         end
       end
       require_relative '../hash'
