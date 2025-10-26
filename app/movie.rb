@@ -72,8 +72,12 @@ class Movie
     when 'langsearch'
       result = Languages.get_code(opts['original_language'] || opts['language'])
     when 'name'
-      result = opts['original_title'] || opts['title']
-      result << " (#{year})" if Metadata.identify_release_year(result).to_i != year
+      base_name = opts['original_title'] || opts['title']
+      unless base_name
+        app.speaker.speak_up("Movie.extract_value missing title: #{opts.inspect}")
+        raise ArgumentError, 'Movie.extract_value missing title'
+      end
+      result = Metadata.identify_release_year(base_name).to_i != year ? "#{base_name} (#{year})" : base_name
     when 'released'
       result = opts['release_date'] || opts['premiered']
     when 'set'
