@@ -13,6 +13,10 @@ class FixTorznabLinksScriptTest < Minitest::Test
     reset_librarian_state!
     @cache_stub = Cache if Object.const_defined?(:Cache)
     Object.send(:remove_const, :Cache) if Object.const_defined?(:Cache)
+    @original_space_substitute = SPACE_SUBSTITUTE if Object.const_defined?(:SPACE_SUBSTITUTE)
+    Object.send(:remove_const, :SPACE_SUBSTITUTE) if Object.const_defined?(:SPACE_SUBSTITUTE)
+    @original_valid_video_ext = VALID_VIDEO_EXT if Object.const_defined?(:VALID_VIDEO_EXT)
+    Object.send(:remove_const, :VALID_VIDEO_EXT) if Object.const_defined?(:VALID_VIDEO_EXT)
     load File.expand_path('../../lib/cache.rb', __dir__)
     load File.expand_path('../../scripts/fix_torznab_links.rb', __dir__)
     @tmp_dir = Dir.mktmpdir('fix-torznab-links-test')
@@ -29,6 +33,14 @@ class FixTorznabLinksScriptTest < Minitest::Test
   def teardown
     Object.send(:remove_const, :Cache) if Object.const_defined?(:Cache)
     Object.const_set(:Cache, @cache_stub) if @cache_stub
+    Object.send(:remove_const, :SPACE_SUBSTITUTE) if Object.const_defined?(:SPACE_SUBSTITUTE)
+    if instance_variable_defined?(:@original_space_substitute)
+      Object.const_set(:SPACE_SUBSTITUTE, @original_space_substitute)
+    end
+    Object.send(:remove_const, :VALID_VIDEO_EXT) if Object.const_defined?(:VALID_VIDEO_EXT)
+    if instance_variable_defined?(:@original_valid_video_ext)
+      Object.const_set(:VALID_VIDEO_EXT, @original_valid_video_ext)
+    end
     MediaLibrarian.application = nil
     @app&.db&.database&.disconnect
     FileUtils.remove_entry(@tmp_dir) if @tmp_dir && Dir.exist?(@tmp_dir)
