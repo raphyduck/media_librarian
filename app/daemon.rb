@@ -617,7 +617,11 @@ class Daemon
 
     def start_job(job)
       future = obtain_future(job)
-      return job unless future
+      unless future
+        unregister_child(job)
+        @jobs.delete(job.id)
+        return job
+      end
 
       job.future = future
       job.future.on_fulfillment! do |value|
