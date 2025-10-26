@@ -2,6 +2,7 @@
 
 require_relative 'test_helper'
 require_relative '../app/client'
+require_relative '../app/daemon'
 
 class LibrarianCliTest < Minitest::Test
   def setup
@@ -31,12 +32,61 @@ class LibrarianCliTest < Minitest::Test
   def test_nested_command_invokes_dispatcher
     env = use_environment
 
-    librarian = Librarian.new(container: env.container, args: ['daemon', 'status'])
+    librarian = Librarian.new(container: env.container, args: ['daemon', 'start'])
     librarian.run!
 
     dispatches = env.application.args_dispatch.dispatched_commands
     assert_equal 1, dispatches.length
-    assert_equal ['daemon', 'status'], dispatches.first[:command]
+    assert_equal ['daemon', 'start'], dispatches.first[:command]
+  end
+
+  def test_daemon_status_cli_uses_status_snapshot_output
+    env = use_environment
+    MediaLibrarian.application = env.application
+    Daemon.configure(app: env.application)
+    Client.configure(app: env.application)
+
+    dispatcher = env.application.args_dispatch
+    def dispatcher.dispatch(app_name, command, actions, *_rest)
+      @dispatched_commands << { app: app_name, command: command.dup, actions: actions }
+      Daemon.status
+    end
+
+    librarian = Librarian.new(container: env.container, args: ['daemon', 'status'])
+
+    body = {
+      'jobs' => [{ 'id' => 'job-1', 'queue' => 'priority', 'status' => 'finished' }],
+      'running' => [],
+      'queued' => [],
+      'finished' => [{ 'id' => 'job-1' }],
+      'queues' => [{ 'queue' => 'priority', 'running' => 0, 'queued' => 0, 'finished' => 1, 'total' => 1 }],
+      'lock_time' => ''
+    }
+
+    fake_client = Minitest::Mock.new
+    fake_client.expect(:status, { 'status_code' => 200, 'body' => body })
+
+    original_fetch = Daemon.method(:fetch_function_config)
+
+    Daemon.stub(:running?, false) do
+      Daemon.stub(:fetch_function_config, ->(arguments) { arguments == ['daemon', 'status'] ? [1, 'priority'] : original_fetch.call(arguments) }) do
+        librarian.stub(:pid_status, ->(*) { :running }) do
+          Client.stub(:new, ->(*_) { fake_client }) do
+            librarian.run!
+          end
+        end
+      end
+    end
+
+    messages = env.application.speaker.messages
+    assert_includes messages, 'Total jobs: 1'
+    assert_includes messages, 'Queues: priority r:0 q:0 f:1'
+    assert_equal 1, dispatcher.dispatched_commands.length
+  ensure
+    fake_client.verify if defined?(fake_client)
+    MediaLibrarian.application = nil
+    remove_app_reference(Daemon)
+    remove_app_reference(Client)
   end
 
   def test_dependencies_are_isolated_per_container
@@ -141,5 +191,10 @@ class LibrarianCliTest < Minitest::Test
     env = build_stubbed_environment(**overrides)
     @environments << env
     env
+  end
+
+  def remove_app_reference(klass)
+    singleton = klass.singleton_class
+    singleton.remove_instance_variable(:@app) if singleton.instance_variable_defined?(:@app)
   end
 end

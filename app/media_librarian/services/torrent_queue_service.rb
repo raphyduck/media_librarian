@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'bencode'
+
 module MediaLibrarian
   module Services
     class TorrentDownloadRequest
