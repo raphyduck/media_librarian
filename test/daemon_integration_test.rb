@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'socket'
+require 'thread'
 require 'timeout'
 require 'yaml'
 require 'json'
@@ -298,6 +299,46 @@ class DaemonIntegrationTest < Minitest::Test
     end
   end
 
+  def test_control_endpoints_remain_responsive_when_worker_pool_full
+    dispatcher = BlockingArgsDispatch.new
+    boot_daemon_environment(args_dispatch: dispatcher) do
+      write_config(queue_slots: 1, workers_pool_size: 2)
+      settings = SimpleConfigMan.load_settings(nil, @environment.application.config_file, nil)
+      @environment.container.reload_config!(settings)
+    end
+
+    client = Client.new
+
+    2.times do
+      response = client.enqueue(['Library', 'noop'], wait: false)
+      assert_equal 200, response['status_code']
+      refute_nil response.dig('body', 'job', 'id')
+    end
+
+    dispatcher.wait_for_started(2)
+
+    third = client.enqueue(['Library', 'noop'], wait: false)
+    assert_equal 200, third['status_code']
+    refute_nil third.dig('body', 'job', 'id')
+
+    rejection = client.enqueue(['Library', 'noop'], wait: false)
+    assert_equal 429, rejection['status_code']
+    assert_equal 'queue_full', rejection.dig('body', 'error')
+
+    status_response = assert_control_responds_within { control_get('/status') }
+    assert_equal 200, status_response[:status_code]
+
+    stop_response = assert_control_responds_within { control_post('/stop') }
+    assert_equal 200, stop_response[:status_code]
+    assert_equal 'stopping', stop_response.dig(:body, 'status')
+
+    dispatcher.release_next
+    dispatcher.wait_for_started(3)
+    dispatcher.release_all
+
+    @daemon_thread.join if @daemon_thread
+  end
+
   def test_logout_revokes_session
     boot_daemon_environment
 
@@ -347,6 +388,54 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 'https', control_uri('/status').scheme
   end
 
+  class BlockingArgsDispatch < TestSupport::Fakes::ArgsDispatch
+    def initialize
+      super
+      @mutex = Mutex.new
+      @condition = ConditionVariable.new
+      @started = 0
+      @released = 0
+      @release_queue = Queue.new
+    end
+
+    def dispatch(*args, &block)
+      @mutex.synchronize do
+        @started += 1
+        @condition.broadcast
+      end
+      @release_queue.pop
+      super
+    ensure
+      @mutex.synchronize do
+        @released += 1
+      end
+    end
+
+    def wait_for_started(count, timeout: 5)
+      deadline = Time.now + timeout
+      @mutex.synchronize do
+        while @started < count
+          remaining = deadline - Time.now
+          raise Timeout::Error, 'jobs did not start before timeout' if remaining <= 0
+          @condition.wait(@mutex, remaining)
+        end
+      end
+    end
+
+    def release_next
+      @release_queue << true
+    end
+
+    def release_all
+      pending = nil
+      @mutex.synchronize do
+        pending = @started - @released
+      end
+      pending = 0 if pending.negative?
+      pending.times { @release_queue << true }
+    end
+  end
+
   private
 
   def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials, api_overrides: {}, **environment_overrides)
@@ -371,6 +460,14 @@ class DaemonIntegrationTest < Minitest::Test
 
     wait_for_http_ready
     authenticate_session if authenticate
+  end
+
+  def assert_control_responds_within(timeout: 1)
+    result = nil
+    Timeout.timeout(timeout) { result = yield }
+    result
+  rescue Timeout::Error
+    flunk("control endpoint did not respond within #{timeout} seconds")
   end
 
   def override_port(control_token: nil, credentials: default_credentials, api_overrides: {})
