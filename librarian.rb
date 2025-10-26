@@ -157,23 +157,49 @@ class Librarian
     end
 
     def route_cmd(args, internal = 0, task = 'exclusive', _max_pool_size = 1, queue = Thread.current[:jid], &block)
+      config = Array(Daemon.fetch_function_config(args))
+      proxy_internal = internal
+      direct_flag = internal
+
+      unless config.empty?
+        queue_from_config = config[1]
+        internal_from_config = config[2]
+
+        if proxy_internal.to_i.zero? && !internal_from_config.nil?
+          proxy_internal = internal_from_config
+          direct_flag = internal_from_config
+        end
+
+        if queue_from_config && (queue.nil? || queue == Thread.current[:jid])
+          queue = queue_from_config
+          task = queue_from_config if task == 'exclusive'
+        end
+
+        if proxy_internal.to_i.zero? && args.first.to_s.casecmp('daemon').zero?
+          # `daemon status` needs to execute in-process so it can call `Client.status`
+          # and stream the daemon snapshot output directly to the CLI. Other daemon
+          # subcommands should continue to be routed through the running daemon.
+          proxy_internal = 1 if args[1].to_s.casecmp('status').zero?
+        end
+      end
+
       if Daemon.running?
         Daemon.enqueue(
           args: args,
           queue: queue,
           task: task,
-          internal: internal,
+          internal: proxy_internal,
           client: Thread.current[:current_daemon],
           child: 1,
           env_flags: Daemon.dump_env_flags,
           parent_thread: Thread.current,
           &block
         )
-      elsif app.librarian.pid_status(app.pidfile) == :running && internal.to_i.zero?
+      elsif app.librarian.pid_status(app.pidfile) == :running && proxy_internal.to_i.zero?
         return if args.nil? || args.empty?
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
-        response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: internal)
+        response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: proxy_internal)
         status_code = response['status_code'].to_i
         body = response['body']
 
@@ -202,7 +228,7 @@ class Librarian
         app.librarian.load_requirements unless app.librarian.loaded?
         thread = Thread.current
         LibraryBus.initialize_queue(thread)
-        ThreadState.around(thread) { |_snapshot| run_command(args, internal) }
+        ThreadState.around(thread) { |_snapshot| run_command(args, direct_flag) }
       end
     end
 
