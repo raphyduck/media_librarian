@@ -32,7 +32,8 @@ module MediaLibrarian
           torrent = Cache.object_unpack(torrent_row[:tattributes])
           log_torrent_details(torrent, torrent_row) if Env.debug?
           tdid = (Time.now.to_f * 1000).to_i.to_s
-          url = torrent[:torrent_link] ? torrent[:torrent_link] : ''
+          url = torrent[:link].to_s
+          url = torrent[:torrent_link].to_s if url.empty?
           magnet = torrent[:magnet_link]
           options = build_download_options(torrent_row, torrent, tdid)
           Cache.queue_state_add_or_update('deluge_options', options)

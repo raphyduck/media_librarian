@@ -107,6 +107,10 @@ if defined?(Utils)
         value
       end
 
+      def parse_filename_template(template, _metadata)
+        template
+      end
+
       def check_if_active(*)
         true
       end
@@ -137,6 +141,10 @@ else
 
       def recursive_typify_keys(value)
         value
+      end
+
+      def parse_filename_template(template, _metadata)
+        template
       end
 
       def check_if_active(*)
@@ -275,6 +283,10 @@ module Cache
     end
 
     def object_pack(value, *_args)
+      value
+    end
+
+    def object_unpack(value, *_args)
       value
     end
   end
