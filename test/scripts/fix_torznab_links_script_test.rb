@@ -73,10 +73,10 @@ class FixTorznabLinksScriptTest < Minitest::Test
     Object.send(:remove_const, :SPACE_SUBSTITUTE) if defined?(@defined_space_substitute) && Object.const_defined?(:SPACE_SUBSTITUTE)
   end
 
-  def test_swaps_links_for_active_torrents
+  def test_swaps_detail_links_into_torrent_link
     attrs = {
-      link: 'https://example.com/download/1',
-      torrent_link: 'https://example.com/details/1'
+      link: 'https://example.com/details/1',
+      torrent_link: 'https://example.com/download/1'
     }
 
     packed = Cache.object_pack(attrs)
@@ -90,8 +90,8 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
     updated = @app.db.get_rows('torrents', { name: 'fix-me' }).first
     unpacked = Cache.object_unpack(updated[:tattributes])
-    assert_equal 'https://example.com/details/1', unpacked[:link]
-    assert_equal 'https://example.com/download/1', unpacked[:torrent_link]
+    assert_equal 'https://example.com/download/1', unpacked[:link]
+    assert_equal 'https://example.com/details/1', unpacked[:torrent_link]
 
     untouched = @app.db.get_rows('torrents', { name: 'skip-me' }).first
     assert_equal attrs[:link], Cache.object_unpack(untouched[:tattributes])[:link]
@@ -99,22 +99,25 @@ class FixTorznabLinksScriptTest < Minitest::Test
     assert_includes output.string, 'Fixed 1 torrent'
   end
 
-  def test_swaps_when_both_urls_look_like_downloads_but_only_one_is_torznab
+  def test_leaves_existing_download_links_alone
     attrs = {
-      link: 'https://tracker.example/engine/download_torrent?id=42',
-      torrent_link: 'http://jackett.local:9117/dl/tracker/?jackett_apikey=abc123&path=/foo.torrent'
+      link: 'https://example.com/download/2',
+      torrent_link: 'https://example.com/details/2'
     }
 
     packed = Cache.object_pack(attrs)
-    @app.db.insert_row('torrents', { name: 'needs-jackett-fix', status: 3, tattributes: packed })
+    @app.db.insert_row('torrents', { name: 'correct', status: 2, tattributes: packed })
 
-    fixed = fix_torznab_links(@app.db)
+    output = StringIO.new
+    fixed = fix_torznab_links(@app.db, out: output)
 
-    assert_equal 1, fixed
+    assert_equal 0, fixed
 
-    updated = @app.db.get_rows('torrents', { name: 'needs-jackett-fix' }).first
+    updated = @app.db.get_rows('torrents', { name: 'correct' }).first
     unpacked = Cache.object_unpack(updated[:tattributes])
-    assert_equal attrs[:torrent_link], unpacked[:link]
-    assert_equal attrs[:link], unpacked[:torrent_link]
+    assert_equal attrs[:link], unpacked[:link]
+    assert_equal attrs[:torrent_link], unpacked[:torrent_link]
+
+    assert_includes output.string, 'Fixed 0 torrents'
   end
 end
