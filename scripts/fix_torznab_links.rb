@@ -28,7 +28,8 @@ def fix_torznab_links(db, out: $stdout)
     before_link = attrs[:link].to_s.strip
     before_torrent = attrs[:torrent_link].to_s.strip
     next if before_link.empty? || before_torrent.empty?
-    next unless before_link.match?(DOWNLOAD_RX) && (!before_torrent.match?(DOWNLOAD_RX) || before_torrent.match?(DETAIL_RX))
+    next if before_link.match?(DOWNLOAD_RX)
+    next unless before_link.match?(DETAIL_RX) && before_torrent.match?(DOWNLOAD_RX)
 
     out.puts '---'
     out.puts "Fixing '#{row[:name]}' (status=#{row[:status]})"
