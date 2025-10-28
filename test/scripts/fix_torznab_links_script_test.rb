@@ -98,4 +98,23 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
     assert_includes output.string, 'Fixed 1 torrent'
   end
+
+  def test_swaps_when_both_urls_look_like_downloads_but_only_one_is_torznab
+    attrs = {
+      link: 'https://tracker.example/engine/download_torrent?id=42',
+      torrent_link: 'http://jackett.local:9117/dl/tracker/?jackett_apikey=abc123&path=/foo.torrent'
+    }
+
+    packed = Cache.object_pack(attrs)
+    @app.db.insert_row('torrents', { name: 'needs-jackett-fix', status: 3, tattributes: packed })
+
+    fixed = fix_torznab_links(@app.db)
+
+    assert_equal 1, fixed
+
+    updated = @app.db.get_rows('torrents', { name: 'needs-jackett-fix' }).first
+    unpacked = Cache.object_unpack(updated[:tattributes])
+    assert_equal attrs[:torrent_link], unpacked[:link]
+    assert_equal attrs[:link], unpacked[:torrent_link]
+  end
 end
