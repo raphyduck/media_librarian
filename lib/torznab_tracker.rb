@@ -45,8 +45,8 @@ class TorznabTracker
       result << {
           :name => i[:title],
           :size => i[:size],
-          :link => details_url,
-          :torrent_link => download_url,
+          :link => download_url,
+          :torrent_link => details_url,
           :magnet_link => '',
           :seeders => attrs['seeders'],
           :leechers => attrs['leechers'],
