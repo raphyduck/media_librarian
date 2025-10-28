@@ -81,6 +81,7 @@ class Daemon
   CONTROL_CONTENT_TYPE = 'application/json'
   LOG_TAIL_LINES = 10_000
   SESSION_COOKIE_NAME = 'ml_session'
+  FINISHED_STATUSES = %w[finished failed cancelled].freeze
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -235,10 +236,23 @@ class Daemon
     end
 
     def status_snapshot
-      jobs = sort_jobs_by_queue(job_registry.values)
-      running = jobs.select(&:running?)
-      finished = jobs.select(&:finished?)
-      queued = jobs.reject { |job| job.running? || job.finished? }
+      jobs = sort_jobs_by_queue(job_registry.values.map(&:dup))
+      running = []
+      finished = []
+      queued = []
+
+      jobs.each do |job|
+        status = job_attribute(job, :status).to_s
+        finished_at = job_attribute(job, :finished_at)
+
+        if status == 'running' && finished_at.nil?
+          running << job
+        elsif finished_at || FINISHED_STATUSES.include?(status)
+          finished << job
+        else
+          queued << job
+        end
+      end
       {
         jobs: jobs,
         running: running,
@@ -250,9 +264,8 @@ class Daemon
 
     def build_snapshot_from_hashes(payload)
       jobs = sort_jobs_by_queue(extract_jobs_from(payload))
-      finished_statuses = %w[finished failed cancelled]
       running = jobs.select { |job| job[:status].to_s == 'running' }
-      finished = jobs.select { |job| finished_statuses.include?(job[:status].to_s) }
+      finished = jobs.select { |job| FINISHED_STATUSES.include?(job[:status].to_s) }
       queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
       {
         jobs: jobs,
@@ -460,10 +473,6 @@ class Daemon
       register_job(job)
       start_job(job)
       job
-    rescue Concurrent::RejectedExecutionError
-      job_registry.delete(job.id)
-      unregister_child(job)
-      raise
     end
 
     def schedule(scheduler)
@@ -587,7 +596,7 @@ class Daemon
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
       queue_slots = app.queue_slots.to_i
-      queue_capacity = queue_slots.positive? ? queue_slots : 1
+      queue_capacity = queue_slots.positive? ? queue_slots : 0
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
@@ -607,9 +616,14 @@ class Daemon
     end
 
     def start_job(job)
-      job.future = Concurrent::Promises.future_on(@executor) do
-        execute_job(job)
+      future = obtain_future(job)
+      unless future
+        unregister_child(job)
+        @jobs.delete(job.id)
+        return job
       end
+
+      job.future = future
       job.future.on_fulfillment! do |value|
         finalize_job(job, value, nil)
       end
@@ -617,6 +631,40 @@ class Daemon
         finalize_job(job, nil, reason)
       end
       job
+    end
+
+    def obtain_future(job)
+      loop do
+        return Concurrent::Promises.future_on(@executor) { execute_job(job) }
+      rescue Concurrent::RejectedExecutionError
+        return nil unless running?
+
+        wait_for_executor_capacity
+      end
+    end
+
+    def wait_for_executor_capacity
+      return unless @executor
+
+      while running? && executor_saturated?(@executor)
+        sleep(0.05)
+      end
+    end
+
+    def executor_saturated?(executor)
+      if executor.respond_to?(:remaining_capacity)
+        remaining = executor.remaining_capacity
+        return false if remaining.nil? || remaining == Float::INFINITY
+
+        remaining <= 0
+      elsif executor.respond_to?(:max_queue) && executor.respond_to?(:queue_length)
+        max_queue = executor.max_queue
+        return false unless max_queue && max_queue.positive?
+
+        executor.queue_length >= max_queue
+      else
+        false
+      end
     end
 
     def execute_job(job)
