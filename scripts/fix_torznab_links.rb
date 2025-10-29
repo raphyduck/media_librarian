@@ -9,13 +9,14 @@ unless defined?(SPACE_SUBSTITUTE) && defined?(VALID_VIDEO_EXT) && defined?(BASIC
   require_relative '../init/global'
 end
 
-DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i
+DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|download_torrent|enclosure|getnzb|getTorrent|action=download)}i
 DETAIL_RX = /(details|view|info|torrent)/i
+TORZNAB_HINT_RX = /(jackett|torznab|apikey=)/i
 
 def fix_torznab_links(db, out: $stdout)
   fixed = 0
 
-  db.get_rows('torrents').each do |row|
+  db.get_rows('torrents', {}, { 'status >' => 0 }).each do |row|
     next unless row[:status].to_i.positive?
     attrs = begin
       Cache.object_unpack(row[:tattributes])

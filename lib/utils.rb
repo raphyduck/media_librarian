@@ -37,9 +37,39 @@ class Utils
   end
 
   def self.arguments_get(binding, cname, mname, max_depth = 1)
-    params = Object.const_get(cname).method(mname).parameters rescue nil
-    params = Object.const_get(cname).method(ExecutionHooks.alias_hook(mname)).parameters unless params.nil? || params != [[:rest, :args]]
-    params = Object.const_get(cname).instance_method(mname).parameters unless params && params != [[:rest]]
+    const = begin
+      cname.to_s.split('::').reject(&:empty?).inject(Object) { |mod, name| mod.const_get(name) }
+    rescue NameError
+      nil
+    end
+
+    if const.nil? && binding.is_a?(Binding)
+      owner = binding.eval('self') rescue nil
+      const = owner if owner.is_a?(Module)
+      const ||= owner.class if owner
+    end
+
+    params = begin
+      const&.method(mname)&.parameters
+    rescue NameError, NoMethodError
+      nil
+    end
+
+    if params.nil? || params == [[:rest, :args]]
+      params = begin
+        const&.method(ExecutionHooks.alias_hook(mname))&.parameters
+      rescue NameError, NoMethodError
+        params
+      end
+    end
+
+    unless params && params != [[:rest]]
+      params = begin
+        const&.instance_method(mname)&.parameters
+      rescue NameError
+        params
+      end
+    end
     regs, hashs = [], []
     i = -1
     params.each do |k, name|
