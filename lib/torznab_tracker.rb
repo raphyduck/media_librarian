@@ -3,6 +3,8 @@ require 'torznab/client'
 class TorznabTracker
   attr_accessor :config, :tracker, :name, :limit
 
+  TORRENT_FILE_RX = %r{(\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i
+
   def initialize(opts, name)
     @tracker = Torznab::Client.new(opts['api_url'], opts['api_key'])
     @config = opts
@@ -33,9 +35,11 @@ class TorznabTracker
       else
         i[:guid]
       end
-      download_fallback = guid.to_s.empty? ? i[:link] : guid
-      download_url = enclosure_url.to_s.empty? ? download_fallback : enclosure_url
-      details_url = i[:link].to_s.empty? ? download_fallback : i[:link]
+      candidates = [enclosure_url, guid, i[:link]].compact
+      download_url = candidates.find { |candidate| torrent_file_link?(candidate) }.to_s
+      magnet_url = candidates.find { |candidate| magnet_link?(candidate) }.to_s
+      detail_candidates = [i[:link], guid, enclosure_url].compact
+      details_url = detail_candidates.map(&:to_s).find { |candidate| !candidate.empty? && !magnet_link?(candidate) }.to_s
       attrs = Array(i[:attr]).each_with_object({}) do |attr, memo|
         next unless attr.respond_to?(:[])
         name = attr[:name] || attr['name']
@@ -45,9 +49,10 @@ class TorznabTracker
       result << {
           :name => i[:title],
           :size => i[:size],
-          :link => details_url,
+          :link => download_url,
           :torrent_link => download_url,
-          :magnet_link => '',
+          :details_link => details_url,
+          :magnet_link => magnet_url,
           :seeders => attrs['seeders'],
           :leechers => attrs['leechers'],
           :id => (Time.now.to_f * 1000).to_i.to_s,
@@ -59,6 +64,16 @@ class TorznabTracker
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
+  end
+
+  private
+
+  def torrent_file_link?(value)
+    value.to_s.match?(TORRENT_FILE_RX)
+  end
+
+  def magnet_link?(value)
+    value.to_s.match?(/\Amagnet:/i)
   end
 
 end

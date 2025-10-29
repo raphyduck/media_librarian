@@ -9,9 +9,7 @@ unless defined?(SPACE_SUBSTITUTE) && defined?(VALID_VIDEO_EXT) && defined?(BASIC
   require_relative '../init/global'
 end
 
-DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i
-DETAIL_RX = /(details|view|info|torrent)/i
-
+DOWNLOAD_RX = %r{(\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i
 def fix_torznab_links(db, out: $stdout)
   fixed = 0
 
@@ -27,8 +25,9 @@ def fix_torznab_links(db, out: $stdout)
     attrs = attrs.each_with_object({}) { |(k, v), memo| memo[k.respond_to?(:to_sym) ? k.to_sym : k] = v }
     before_link = attrs[:link].to_s.strip
     before_torrent = attrs[:torrent_link].to_s.strip
-    next if before_link.empty? || before_torrent.empty?
-    next unless before_link.match?(DOWNLOAD_RX) && (!before_torrent.match?(DOWNLOAD_RX) || before_torrent.match?(DETAIL_RX))
+    next if before_link.empty? && before_torrent.empty?
+    next unless before_torrent.match?(DOWNLOAD_RX)
+    next if before_link.match?(DOWNLOAD_RX)
 
     out.puts '---'
     out.puts "Fixing '#{row[:name]}' (status=#{row[:status]})"
@@ -36,11 +35,14 @@ def fix_torznab_links(db, out: $stdout)
     out.puts "  before: link=#{before_link.inspect}"
     out.puts "          torrent_link=#{before_torrent.inspect}"
 
-    attrs[:link], attrs[:torrent_link] = before_torrent, before_link
+    attrs[:details_link] ||= before_link if !before_link.empty? && !before_link.match?(/\Amagnet:/i)
+    attrs[:link] = before_torrent
+    attrs[:torrent_link] = before_torrent
     db.update_rows('torrents', { tattributes: Cache.object_pack(attrs) }, { name: row[:name] })
 
     out.puts "  after:  link=#{attrs[:link].inspect}"
     out.puts "          torrent_link=#{attrs[:torrent_link].inspect}"
+    out.puts "          details_link=#{attrs[:details_link].inspect}"
     fixed += 1
   end
 

@@ -75,27 +75,39 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
   def test_swaps_links_for_active_torrents
     attrs = {
-      link: 'https://example.com/download/1',
-      torrent_link: 'https://example.com/details/1'
+      link: 'https://example.com/details/1',
+      torrent_link: 'https://example.com/download/1'
     }
 
     packed = Cache.object_pack(attrs)
     @app.db.insert_row('torrents', { name: 'fix-me', status: 2, tattributes: packed })
     @app.db.insert_row('torrents', { name: 'skip-me', status: 0, tattributes: packed })
+    magnet_attrs = {
+      link: 'magnet:?xt=urn:btih:123',
+      torrent_link: 'https://example.com/download/2'
+    }
+    @app.db.insert_row('torrents', { name: 'magnet-me', status: 2, tattributes: Cache.object_pack(magnet_attrs) })
 
     output = StringIO.new
     fixed = fix_torznab_links(@app.db, out: output)
 
-    assert_equal 1, fixed
+    assert_equal 2, fixed
 
     updated = @app.db.get_rows('torrents', { name: 'fix-me' }).first
     unpacked = Cache.object_unpack(updated[:tattributes])
-    assert_equal 'https://example.com/details/1', unpacked[:link]
+    assert_equal 'https://example.com/download/1', unpacked[:link]
     assert_equal 'https://example.com/download/1', unpacked[:torrent_link]
+    assert_equal 'https://example.com/details/1', unpacked[:details_link]
+
+    magnet_row = @app.db.get_rows('torrents', { name: 'magnet-me' }).first
+    magnet = Cache.object_unpack(magnet_row[:tattributes])
+    assert_equal 'https://example.com/download/2', magnet[:link]
+    assert_equal 'https://example.com/download/2', magnet[:torrent_link]
+    assert_nil magnet[:details_link]
 
     untouched = @app.db.get_rows('torrents', { name: 'skip-me' }).first
     assert_equal attrs[:link], Cache.object_unpack(untouched[:tattributes])[:link]
 
-    assert_includes output.string, 'Fixed 1 torrent'
+    assert_includes output.string, 'Fixed 2 torrents'
   end
 end
