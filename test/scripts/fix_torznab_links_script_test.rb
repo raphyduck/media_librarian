@@ -75,8 +75,8 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
   def test_swaps_links_for_active_torrents
     attrs = {
-      link: 'https://example.com/download/1',
-      torrent_link: 'https://example.com/details/1'
+      link: 'https://example.com/details/1',
+      torrent_link: 'https://example.com/download/1'
     }
 
     packed = Cache.object_pack(attrs)
@@ -90,8 +90,8 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
     updated = @app.db.get_rows('torrents', { name: 'fix-me' }).first
     unpacked = Cache.object_unpack(updated[:tattributes])
-    assert_equal 'https://example.com/details/1', unpacked[:link]
-    assert_equal 'https://example.com/download/1', unpacked[:torrent_link]
+    assert_equal 'https://example.com/download/1', unpacked[:link]
+    assert_equal 'https://example.com/details/1', unpacked[:torrent_link]
 
     untouched = @app.db.get_rows('torrents', { name: 'skip-me' }).first
     assert_equal attrs[:link], Cache.object_unpack(untouched[:tattributes])[:link]
