@@ -33,7 +33,6 @@ module MediaLibrarian
           log_torrent_details(torrent, torrent_row) if Env.debug?
           tdid = (Time.now.to_f * 1000).to_i.to_s
           url = torrent[:link].to_s
-          url = torrent[:torrent_link].to_s if url.empty?
           magnet = torrent[:magnet_link]
           options = build_download_options(torrent_row, torrent, tdid)
           Cache.queue_state_add_or_update('deluge_options', options)
@@ -42,11 +41,19 @@ module MediaLibrarian
           tries = 5
           nodl = TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['no_download'].to_i
           speaker.speak_up("Will download torrent '#{torrent_row[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
-          if url.to_s != '' && nodl.zero?
-            path = TorrentSearch.get_torrent_file(tdid, url)
-          elsif magnet.to_s != '' && nodl.zero?
-            path = magnet
-            torrent_type = 2
+          if nodl.zero?
+            if magnet.to_s != ''
+              path = magnet
+              torrent_type = 2
+            elsif url.to_s.start_with?('magnet:')
+              path = url
+              torrent_type = 2
+            elsif url.to_s != ''
+              path = TorrentSearch.get_torrent_file(tdid, url)
+            else
+              speaker.speak_up 'no_download setting is activated for this tracker, please download manually.'
+              path = 'nodl'
+            end
           else
             speaker.speak_up 'no_download setting is activated for this tracker, please download manually.'
             path = 'nodl'

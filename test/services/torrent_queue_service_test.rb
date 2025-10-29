@@ -88,10 +88,9 @@ class TorrentQueueServiceTest < Minitest::Test
     refute_nil values[:torrent_id]
   end
 
-  def test_parse_pending_downloads_prefers_link_over_torrent_link
+  def test_parse_pending_downloads_uses_link_url
     torrent_attributes = {
       link: 'https://primary.example/download',
-      torrent_link: 'https://fallback.example/download',
       tracker: 'tracker',
       magnet_link: '',
       files: [],

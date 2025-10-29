@@ -12,13 +12,16 @@ class TorrentRss
     size = raw_size.match(/[\d\.]+/).to_s.to_d
     s_unit = raw_size.match(/\w{2}/).to_s
     size = size_unit_convert(size, s_unit)
-    tlink = detect_link(link.image || link.url)
+    download_source = link.image || link.url
+    tlink = detect_link(download_source)
+    download_link = tlink == 't' ? download_source : ''
+    magnet_link = tlink == 'm' ? download_source : ''
     {
         :name => link.title.to_s.force_encoding('utf-8'),
         :size => size,
-        :link => link.entry_id || link.url,
-        :torrent_link => tlink == 't' ? link.image || link.url : '',
-        :magnet_link => tlink == 'm' ? link.image || link.url : '',
+        :link => download_link.empty? ? magnet_link : download_link,
+        :torrent_link => link.entry_id || link.url,
+        :magnet_link => magnet_link,
         :seeders => (desc.match(/Seeders: (\d+)?/)[1] rescue 1),
         :leechers => (desc.match(/Leechers: (\d+)?/)[1] rescue 0),
         :id => link.title,
