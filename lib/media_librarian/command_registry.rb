@@ -40,6 +40,9 @@ module MediaLibrarian
           prevent_delete: ['TorrentClient', 'no_delete_torrent'],
           search: ['TorrentSearch', 'search_from_torrents']
         },
+        tracker: {
+          login: ['TrackerTools', 'login']
+        },
         usage: ['Librarian', 'help'],
         list_db: ['Utils', 'list_db'],
         flush_queues: ['TorrentClient', 'flush_queues', 1, 'torrenting'],

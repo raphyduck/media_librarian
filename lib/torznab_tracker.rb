@@ -1,6 +1,8 @@
 require 'torznab/client'
 
 class TorznabTracker
+  DOWNLOAD_URL_PATTERN = %r{/(?:download|dl)/}i
+
   attr_accessor :config, :tracker, :name, :limit
 
   def initialize(opts, name)

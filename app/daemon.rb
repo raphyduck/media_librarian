@@ -136,6 +136,8 @@ class Daemon
           app.speaker.speak_up('Shutting down')
         end
       end
+
+      exit if daemonized
     end
 
     def stop
