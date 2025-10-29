@@ -26,10 +26,13 @@ module MediaLibrarian
         @client = client
       end
 
+      DOWNLOAD_LINK_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|enclosure|getnzb|getTorrent|action=download)}i
+
       def parse_pending_downloads
         speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
         app.db.get_rows('torrents', { status: 2 }).each do |torrent_row|
           torrent = Cache.object_unpack(torrent_row[:tattributes])
+          ensure_download_link!(torrent, torrent_row)
           log_torrent_details(torrent, torrent_row) if Env.debug?
           tdid = (Time.now.to_f * 1000).to_i.to_s
           url = torrent[:link].to_s
@@ -198,6 +201,28 @@ module MediaLibrarian
       private
 
       attr_reader :client
+
+      def ensure_download_link!(torrent, torrent_row)
+        return if download_link?(torrent[:link])
+
+        download = torrent[:torrent_link]
+        return unless download_link?(download)
+
+        torrent[:details_link] ||= torrent[:link]
+        torrent[:link] = download
+        torrent[:torrent_link] = download
+        update_torrent_attributes(torrent_row[:name], torrent)
+      rescue StandardError => e
+        speaker.tell_error(e, Utils.arguments_dump(binding)) if Env.debug?
+      end
+
+      def download_link?(value)
+        value.to_s.match?(DOWNLOAD_LINK_RX)
+      end
+
+      def update_torrent_attributes(name, torrent)
+        app.db.update_rows('torrents', { tattributes: Cache.object_pack(torrent) }, { name: name })
+      end
 
       def log_torrent_details(torrent, torrent_row)
         speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
