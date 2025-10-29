@@ -81,6 +81,15 @@ class TrackerQueryServiceTest < Minitest::Test
             <attr name="seeders" value="5" />
             <attr name="leechers" value="1" />
           </item>
+          <item>
+            <title>Example Three</title>
+            <size>789</size>
+            <link>https://tracker.example/dl/3</link>
+            <comments>https://tracker.example/details/3</comments>
+            <guid>https://tracker.example/dl/3</guid>
+            <attr name="seeders" value="8" />
+            <attr name="leechers" value="0" />
+          </item>
         </channel>
       </rss>
     XML
@@ -100,15 +109,19 @@ class TrackerQueryServiceTest < Minitest::Test
       tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
       results = tracker.search('movies', 'query')
 
-      first, second = results
+      first, second, third = results
       assert_equal 'https://tracker.example/enclosure/1', first[:link]
       assert_equal 'https://tracker.example/details/1', first[:torrent_link]
       assert_equal 'https://tracker.example/download/2', second[:link]
       assert_equal 'https://tracker.example/details/2', second[:torrent_link]
+      assert_equal 'https://tracker.example/dl/3', third[:link]
+      assert_equal 'https://tracker.example/details/3', third[:torrent_link]
       assert_equal '10', first[:seeders]
       assert_equal '2', first[:leechers]
       assert_equal '5', second[:seeders]
       assert_equal '1', second[:leechers]
+      assert_equal '8', third[:seeders]
+      assert_equal '0', third[:leechers]
     end
   ensure
     if app_defined
