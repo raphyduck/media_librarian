@@ -101,9 +101,9 @@ class TrackerQueryServiceTest < Minitest::Test
       results = tracker.search('movies', 'query')
 
       first, second = results
-      assert_equal 'https://tracker.example/details/1', first[:link]
+      assert_equal 'https://tracker.example/enclosure/1', first[:link]
       assert_equal 'https://tracker.example/details/1', first[:torrent_link]
-      assert_equal 'https://tracker.example/details/2', second[:link]
+      assert_equal 'https://tracker.example/download/2', second[:link]
       assert_equal 'https://tracker.example/details/2', second[:torrent_link]
       assert_equal '10', first[:seeders]
       assert_equal '2', first[:leechers]
@@ -167,7 +167,7 @@ class TrackerQueryServiceTest < Minitest::Test
       tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
       results = tracker.search('movies', 'query')
 
-      assert_equal 'https://jackett.example/dl/1', results.first[:link]
+      assert_equal 'https://tracker.example/download/1', results.first[:link]
     end
   ensure
     if app_defined

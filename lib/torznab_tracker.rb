@@ -34,6 +34,8 @@ class TorznabTracker
         i[:guid]
       end
       link = i[:link]
+      download_fallback = guid.to_s.empty? ? link : guid
+      download_url = enclosure_url.to_s.empty? ? download_fallback : enclosure_url
       details_url = link.to_s.empty? ? guid : link
       attrs = Array(i[:attr]).each_with_object({}) do |attr, memo|
         next unless attr.respond_to?(:[])
@@ -44,7 +46,7 @@ class TorznabTracker
       result << {
           :name => i[:title],
           :size => i[:size],
-          :link => link,
+          :link => download_url,
           :torrent_link => details_url,
           :magnet_link => '',
           :seeders => attrs['seeders'],
