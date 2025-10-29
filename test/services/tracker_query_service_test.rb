@@ -131,4 +131,63 @@ class TrackerQueryServiceTest < Minitest::Test
     end
     environment&.cleanup
   end
+
+  def test_torznab_tracker_prefers_comments_for_details_links
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '100')]
+    )
+
+    xml = <<~XML
+      <rss>
+        <channel>
+          <item>
+            <title>Example</title>
+            <size>123</size>
+            <link>https://jackett.example/dl/1</link>
+            <guid>https://tracker.example/download/1</guid>
+            <attr name="seeders" value="10" />
+            <attr name="leechers" value="2" />
+          </item>
+          <item>
+            <title>Placeholder</title>
+            <size>456</size>
+            <link>https://tracker.example/details/2</link>
+            <guid>https://tracker.example/download/2</guid>
+            <attr name="seeders" value="5" />
+            <attr name="leechers" value="1" />
+          </item>
+        </channel>
+      </rss>
+    XML
+
+    fake_client = Struct.new(:caps, :xml) do
+      def get(_params)
+        xml
+      end
+    end.new(caps, xml)
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
+      results = tracker.search('movies', 'query')
+
+      assert_equal 'https://tracker.example/download/1', results.first[:link]
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
 end

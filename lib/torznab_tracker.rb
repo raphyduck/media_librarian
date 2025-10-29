@@ -35,18 +35,10 @@ class TorznabTracker
       else
         i[:guid]
       end
-      download_url = enclosure_url unless enclosure_url.to_s.empty?
-      download_url ||= [guid, i[:link]].find { |url| DOWNLOAD_URL_PATTERN.match?(url.to_s) }
-      download_url ||= guid unless guid.to_s.empty?
-      download_url ||= i[:link]
-
-      comments_url = i[:comments]
-      comments_url = nil if comments_url.to_s.empty?
-
-      details_url = comments_url
-      details_url ||= i[:link] unless DOWNLOAD_URL_PATTERN.match?(i[:link].to_s)
-      details_url ||= guid unless DOWNLOAD_URL_PATTERN.match?(guid.to_s)
-      details_url ||= download_url
+      link = i[:link]
+      download_fallback = guid.to_s.empty? ? link : guid
+      download_url = enclosure_url.to_s.empty? ? download_fallback : enclosure_url
+      details_url = link.to_s.empty? ? guid : link
       attrs = Array(i[:attr]).each_with_object({}) do |attr, memo|
         next unless attr.respond_to?(:[])
         name = attr[:name] || attr['name']
