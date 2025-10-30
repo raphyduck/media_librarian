@@ -871,10 +871,29 @@ class Daemon
         handle_config_request(req, res)
       end
 
+      @control_server.mount_proc('/templates') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_directory_request(req, res, '/templates', app.template_dir, template_mutex)
+      end
+
       @control_server.mount_proc('/scheduler') do |req, res|
         next unless require_authorization(req, res)
 
         handle_scheduler_request(req, res)
+      end
+
+      @control_server.mount_proc('/trackers') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_directory_request(
+          req,
+          res,
+          '/trackers',
+          app.tracker_dir,
+          tracker_mutex,
+          after_save: method(:rebuild_tracker_registry)
+        )
       end
 
       @control_server.mount_proc('/config/reload') do |req, res|
@@ -976,7 +995,36 @@ class Daemon
       handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
     end
 
-    def handle_file_request(req, res, path, mutex, allowed_methods)
+    def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
+      if req.path == base_path
+        return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+        files = mutex.synchronize do
+          if File.directory?(directory)
+            Dir.children(directory).select do |entry|
+              entry.end_with?('.yml') && File.file?(File.join(directory, entry))
+            end.sort
+          else
+            []
+          end
+        end
+
+        return json_response(res, body: { 'files' => files })
+      end
+
+      unless req.path.start_with?("#{base_path}/")
+        return error_response(res, status: 404, message: 'not_found')
+      end
+
+      return method_not_allowed(res, 'GET, PUT') unless %w[GET PUT].include?(req.request_method)
+
+      path = sanitize_yaml_path(req.path, base_path, directory)
+      return error_response(res, status: 404, message: 'not_found') unless path
+
+      handle_file_request(req, res, path, mutex, 'GET, PUT', after_save: after_save)
+    end
+
+    def handle_file_request(req, res, path, mutex, allowed_methods, after_save: nil)
       case req.request_method
       when 'GET'
         content = mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
@@ -1008,9 +1056,51 @@ class Daemon
           File.write(path, content)
         end
 
+        begin
+          after_save&.call
+        rescue StandardError => e
+          return error_response(res, status: 500, message: e.message)
+        end
+
         json_response(res, status: 204)
       else
         method_not_allowed(res, allowed_methods)
+      end
+    end
+
+    def sanitize_yaml_path(request_path, base_path, directory)
+      relative = request_path.sub(%r{^#{Regexp.escape(base_path)}/}, '')
+      return if relative.empty?
+
+      begin
+        decoded = WEBrick::HTTPUtils.unescape(relative)
+      rescue ArgumentError
+        return
+      end
+
+      return unless decoded.end_with?('.yml')
+
+      basename = File.basename(decoded)
+      return unless basename == decoded
+
+      File.join(directory, basename)
+    end
+
+    def rebuild_tracker_registry
+      application = MediaLibrarian.application if defined?(MediaLibrarian)
+      return unless application
+
+      container = application.respond_to?(:container) ? application.container : nil
+      return unless container
+
+      return unless container.respond_to?(:build_trackers, true)
+
+      trackers = container.send(:build_trackers)
+
+      if application.respond_to?(:trackers=)
+        application.trackers = trackers
+      elsif container.respond_to?(:trackers=)
+        container.trackers = trackers
       end
     end
 
@@ -1088,6 +1178,14 @@ class Daemon
 
     def scheduler_mutex
       @scheduler_mutex ||= Mutex.new
+    end
+
+    def template_mutex
+      @template_mutex ||= Mutex.new
+    end
+
+    def tracker_mutex
+      @tracker_mutex ||= Mutex.new
     end
 
     def scheduler_template_path

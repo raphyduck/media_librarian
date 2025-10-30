@@ -207,6 +207,66 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal new_template, fetched[:body].fetch('content')
   end
 
+  def test_template_endpoints_list_and_update_files
+    boot_daemon_environment do
+      create_yaml_file(@environment.application.template_dir, 'alpha.yml', 'value' => 'one')
+      create_yaml_file(@environment.application.template_dir, 'beta.yml', 'value' => 'two')
+    end
+
+    listing = control_get('/templates')
+    assert_equal 200, listing[:status_code]
+    assert_equal %w[alpha.yml beta.yml], listing[:body].fetch('files')
+
+    alpha_path = File.join(@environment.application.template_dir, 'alpha.yml')
+    original = File.read(alpha_path)
+
+    fetched = control_get('/templates/alpha.yml')
+    assert_equal 200, fetched[:status_code]
+    assert_equal original, fetched[:body].fetch('content')
+
+    updated_content = { 'value' => 'updated' }.to_yaml
+    updated = control_put('/templates/alpha.yml', body: { 'content' => updated_content })
+    assert_equal 204, updated[:status_code]
+    assert_equal updated_content, File.read(alpha_path)
+
+    refetched = control_get('/templates/alpha.yml')
+    assert_equal 200, refetched[:status_code]
+    assert_equal updated_content, refetched[:body].fetch('content')
+  end
+
+  def test_tracker_endpoint_updates_registry_after_save
+    boot_daemon_environment do
+      create_yaml_file(@environment.application.tracker_dir,
+                       'alpha.yml',
+                       'api_url' => 'https://tracker.test',
+                       'api_key' => 'initial')
+      @environment.container.trackers = { 'alpha' => { 'api_key' => 'initial' } }
+    end
+
+    list = control_get('/trackers')
+    assert_equal 200, list[:status_code]
+    assert_equal ['alpha.yml'], list[:body].fetch('files')
+
+    tracker_path = File.join(@environment.application.tracker_dir, 'alpha.yml')
+    original = File.read(tracker_path)
+
+    fetched = control_get('/trackers/alpha.yml')
+    assert_equal 200, fetched[:status_code]
+    assert_equal original, fetched[:body].fetch('content')
+
+    updated_yaml = { 'api_url' => 'https://tracker.test', 'api_key' => 'updated' }.to_yaml
+    response = control_put('/trackers/alpha.yml', body: { 'content' => updated_yaml })
+    assert_equal 204, response[:status_code]
+    assert_equal updated_yaml, File.read(tracker_path)
+
+    expected = YAML.safe_load(updated_yaml, aliases: true) || {}
+    assert_equal({ 'alpha' => expected }, @environment.container.trackers)
+
+    refetched = control_get('/trackers/alpha.yml')
+    assert_equal 200, refetched[:status_code]
+    assert_equal updated_yaml, refetched[:body].fetch('content')
+  end
+
   def test_dashboard_interface_is_served_at_root
     boot_daemon_environment
 
@@ -582,6 +642,11 @@ class DaemonIntegrationTest < Minitest::Test
         }
       }
     }.to_yaml
+  end
+
+  def create_yaml_file(directory, name, contents)
+    FileUtils.mkdir_p(directory)
+    File.write(File.join(directory, name), contents.to_yaml)
   end
 
   def default_credentials
