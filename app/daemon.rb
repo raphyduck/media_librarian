@@ -453,7 +453,7 @@ class Daemon
       end
     end
 
-    def enqueue(args:, queue: nil, task: nil, internal: 0, client: Thread.current[:current_daemon], child: 0, env_flags: nil, parent_thread: Thread.current, capture_output: false, &block)
+    def enqueue(args:, queue: nil, task: nil, internal: 0, client: Thread.current[:current_daemon], child: 0, env_flags: nil, parent_thread: Thread.current, capture_output: false, wait_for_capacity: true, &block)
       return unless running?
 
       queue_name = queue || task || args[0..1].join(' ')
@@ -473,7 +473,7 @@ class Daemon
         capture_output: capture_output
       )
       register_job(job)
-      start_job(job)
+      start_job(job, wait_for_capacity: wait_for_capacity)
       job
     end
 
@@ -617,8 +617,8 @@ class Daemon
       job_children[parent_jid] << job.id
     end
 
-    def start_job(job)
-      future = obtain_future(job)
+    def start_job(job, wait_for_capacity:)
+      future = obtain_future(job, wait_for_capacity: wait_for_capacity)
       unless future
         unregister_child(job)
         @jobs.delete(job.id)
@@ -633,13 +633,17 @@ class Daemon
         finalize_job(job, nil, reason)
       end
       job
+    rescue Concurrent::RejectedExecutionError
+      unregister_child(job)
+      @jobs.delete(job.id)
+      raise
     end
 
-    def obtain_future(job)
+    def obtain_future(job, wait_for_capacity:)
       loop do
         return Concurrent::Promises.future_on(@executor) { execute_job(job) }
       rescue Concurrent::RejectedExecutionError
-        return nil unless running?
+        raise unless wait_for_capacity && running?
 
         wait_for_executor_capacity
       end
@@ -922,6 +926,7 @@ class Daemon
         internal = payload['internal'] || 0
         queue = payload['queue']
         task = payload['task']
+        wait_for_capacity = truthy?(payload['wait_for_capacity'])
 
         job = enqueue(
           args: args,
@@ -931,7 +936,8 @@ class Daemon
           child: payload['child'].to_i,
           env_flags: payload['env_flags'],
           parent_thread: nil,
-          capture_output: payload.fetch('capture_output', false)
+          capture_output: payload.fetch('capture_output', false),
+          wait_for_capacity: wait_for_capacity
         )
 
         if wait && job&.future
