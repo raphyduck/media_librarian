@@ -9,7 +9,7 @@ unless defined?(SPACE_SUBSTITUTE) && defined?(VALID_VIDEO_EXT) && defined?(BASIC
   require_relative '../init/global'
 end
 
-DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|/dl/|download\.php|download_torrent|enclosure|getnzb|getTorrent|action=download)}i
+DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|download_torrent|enclosure|getnzb|getTorrent|action=download|://[^\s]+/dl/)}i
 DETAIL_RX = /(details|view|info|torrent)/i
 TORZNAB_HINT_RX = /(jackett|torznab|apikey=)/i
 
