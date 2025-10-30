@@ -144,6 +144,42 @@
             <textarea id="scheduler-editor" spellcheck="false" placeholder="Modèle YAML du scheduler"></textarea>
             <p class="hint" id="scheduler-hint">Modifiez le fichier du scheduler si un planificateur est configuré.</p>
           </section>
+
+          <section class="panel" id="templates-panel">
+            <div class="panel-header">
+              <h2>Templates</h2>
+              <div class="panel-tools">
+                <label for="templates-select">Fichier</label>
+                <select id="templates-select" name="template" disabled>
+                  <option value="">Aucun template disponible</option>
+                </select>
+                <div class="actions">
+                  <button id="reload-templates" type="button">Recharger</button>
+                  <button id="save-templates" type="button" class="primary">Sauvegarder</button>
+                </div>
+              </div>
+            </div>
+            <textarea id="templates-editor" spellcheck="false" placeholder="Template YAML"></textarea>
+            <p class="hint" id="templates-hint">Sélectionnez un template pour l'éditer.</p>
+          </section>
+
+          <section class="panel" id="trackers-panel">
+            <div class="panel-header">
+              <h2>Trackers</h2>
+              <div class="panel-tools">
+                <label for="trackers-select">Fichier</label>
+                <select id="trackers-select" name="tracker" disabled>
+                  <option value="">Aucun tracker disponible</option>
+                </select>
+                <div class="actions">
+                  <button id="reload-trackers" type="button">Recharger</button>
+                  <button id="save-trackers" type="button" class="primary">Sauvegarder</button>
+                </div>
+              </div>
+            </div>
+            <textarea id="trackers-editor" spellcheck="false" placeholder="Configuration YAML du tracker"></textarea>
+            <p class="hint" id="trackers-hint">Sélectionnez un tracker pour l'éditer.</p>
+          </section>
         </section>
       </div>
     </main>
