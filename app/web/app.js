@@ -6,9 +6,13 @@ const state = {
   dirty: {
     config: false,
     scheduler: false,
+    templates: false,
+    trackers: false,
   },
   isRefreshing: false,
 };
+
+const fileEditors = new Map();
 
 const API_BASE_PATH = (() => {
   const { pathname } = window.location;
@@ -66,10 +70,10 @@ function showNotification(message, kind = 'info') {
 
 function setEditorDirty(editorKey, dirty) {
   state.dirty[editorKey] = dirty;
-  const elementId = editorKey === 'config' ? 'config-editor' : 'scheduler-editor';
-  const editor = document.getElementById(elementId);
-  if (editor) {
-    editor.dataset.dirty = dirty ? 'true' : 'false';
+  const entry = fileEditors.get(editorKey);
+  const target = entry?.textarea;
+  if (target) {
+    target.dataset.dirty = dirty ? 'true' : 'false';
   }
 }
 
@@ -110,6 +114,458 @@ function startAutoRefresh() {
   }, 10000);
 }
 
+function normalizeEditorEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  return entries
+    .map((entry) => {
+      if (entry == null) {
+        return null;
+      }
+      if (typeof entry === 'string') {
+        const value = entry.trim();
+        if (!value) {
+          return null;
+        }
+        return { value, label: value };
+      }
+      if (typeof entry === 'object') {
+        const value = entry.value ?? entry.name ?? entry.id ?? entry.key ?? entry.filename;
+        if (!value) {
+          return null;
+        }
+        const label = entry.label ?? entry.name ?? entry.title ?? entry.display ?? entry.filename ?? value;
+        return { value: String(value), label: String(label) };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function pickSelection(entries, ...candidates) {
+  for (const candidate of candidates) {
+    const value = typeof candidate === 'string' ? candidate : '';
+    if (value && entries.some((entry) => entry.value === value)) {
+      return value;
+    }
+  }
+  return entries[0]?.value || '';
+}
+
+function extractEntries(data = {}) {
+  if (!data || typeof data !== 'object') {
+    return undefined;
+  }
+  const candidates = [data.entries, data.items, data.files, data.templates, data.trackers];
+  return candidates.find((value) => Array.isArray(value));
+}
+
+function registerFileEditor(key, options) {
+  const textarea = document.getElementById(options.textareaId);
+  if (!textarea) {
+    return null;
+  }
+  const select = options.selectId ? document.getElementById(options.selectId) : null;
+  const hint = options.hintId ? document.getElementById(options.hintId) : null;
+  const saveButton = options.saveButtonId ? document.getElementById(options.saveButtonId) : null;
+  const reloadButton = options.reloadButtonId ? document.getElementById(options.reloadButtonId) : null;
+
+  const editor = {
+    key,
+    textarea,
+    select,
+    hint,
+    saveButton,
+    reloadButton,
+    options,
+    current: '',
+    hasEntries: !select,
+    disabled: false,
+    defaultHint: hint ? hint.textContent : '',
+  };
+
+  editor.setDirty = (dirty) => setEditorDirty(key, dirty);
+  editor.isDirty = () => isEditorDirty(key);
+  editor.getSelection = () => (select ? select.value : '');
+
+  editor.updateSelectState = () => {
+    if (!select) {
+      return;
+    }
+    const hasOptions = editor.hasEntries && select.options.length > 0;
+    select.disabled = editor.disabled || !hasOptions;
+  };
+
+  editor.setEnabled = (enabled) => {
+    editor.disabled = !enabled;
+    textarea.disabled = !enabled;
+    if (saveButton) {
+      saveButton.disabled = !enabled;
+    }
+    if (reloadButton) {
+      reloadButton.disabled = !enabled;
+    }
+    editor.updateSelectState();
+  };
+
+  editor.applyEntries = (entries, selectedValue) => {
+    if (!select || entries === undefined) {
+      if (select && selectedValue) {
+        select.value = selectedValue;
+        editor.current = select.value;
+        editor.updateSelectState();
+      }
+      return;
+    }
+    const normalized = normalizeEditorEntries(entries);
+    select.innerHTML = '';
+    editor.hasEntries = normalized.length > 0;
+    if (!editor.hasEntries) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = options.emptyOptionLabel || 'Aucun fichier';
+      option.disabled = true;
+      option.selected = true;
+      select.appendChild(option);
+      editor.current = '';
+      editor.updateSelectState();
+      if (editor.hint && options.emptyHint) {
+        editor.hint.textContent = options.emptyHint;
+      }
+      return;
+    }
+    normalized.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      select.appendChild(option);
+    });
+    const desired = pickSelection(normalized, selectedValue, editor.current, options.defaultSelection);
+    select.value = desired;
+    editor.current = select.value;
+    editor.updateSelectState();
+  };
+
+  editor.applyContent = (content) => {
+    textarea.value = content || '';
+  };
+
+  editor.handleLoadSuccess = (data = {}) => {
+    const transformed = typeof options.transformResponse === 'function'
+      ? options.transformResponse(data, editor)
+      : {
+          content: data?.content ?? '',
+          entries: extractEntries(data),
+          selected:
+            data?.name ??
+            data?.selected ??
+            data?.template ??
+            data?.tracker ??
+            '',
+          hint: data?.hint,
+        };
+    editor.applyEntries(transformed.entries, transformed.selected);
+    editor.applyContent(transformed.content ?? '');
+    editor.setDirty(false);
+    const enableEditor = !options.disableWhenEmpty || editor.hasEntries;
+    editor.setEnabled(enableEditor);
+    if (editor.hint) {
+      const hintText = transformed.hint
+        ?? (editor.hasEntries ? options.successHint : options.emptyHint)
+        ?? editor.defaultHint;
+      if (hintText) {
+        editor.hint.textContent = hintText;
+      }
+    }
+    if (typeof options.afterLoad === 'function') {
+      options.afterLoad(editor, transformed, data);
+    }
+    editor.current = editor.getSelection();
+  };
+
+  editor.handleLoadError = (error) => {
+    if (options.disableOnError) {
+      editor.setEnabled(false);
+      editor.applyContent('');
+      editor.setDirty(false);
+      if (editor.hint) {
+        editor.hint.textContent = options.errorHint || error.message || editor.defaultHint;
+      }
+    }
+    if (typeof options.onLoadError === 'function') {
+      options.onLoadError(editor, error);
+    }
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  };
+
+  editor.buildPath = (action, selectionOverride) => {
+    if (typeof options.buildPath === 'function') {
+      return options.buildPath(action, editor);
+    }
+    const base =
+      action === 'reload'
+        ? options.reloadPath
+        : action === 'save'
+        ? options.savePath || options.loadPath
+        : options.loadPath;
+    if (!base) {
+      return '';
+    }
+    if (!select) {
+      return base;
+    }
+    const selection =
+      selectionOverride !== undefined ? selectionOverride : editor.getSelection();
+    if (!selection) {
+      return base;
+    }
+    const keys = Array.isArray(options.selectionKeys) && options.selectionKeys.length
+      ? options.selectionKeys
+      : [options.paramName || 'name'];
+    const query = new URLSearchParams();
+    keys.filter(Boolean).forEach((key) => {
+      query.set(key, selection);
+    });
+    const search = query.toString();
+    return search ? `${base}?${search}` : base;
+  };
+
+  editor.buildPayload = ({ includeContent = true, includeSelection = true } = {}) => {
+    const payload = {};
+    if (includeContent) {
+      payload.content = textarea.value;
+    }
+    if (includeSelection && select) {
+      const selection = editor.getSelection();
+      if (selection) {
+        const keys = Array.isArray(options.selectionKeys) && options.selectionKeys.length
+          ? options.selectionKeys
+          : [options.paramName || 'name'];
+        keys.filter(Boolean).forEach((key) => {
+          payload[key] = selection;
+        });
+      }
+    }
+    return typeof options.buildPayload === 'function'
+      ? options.buildPayload(payload, editor)
+      : payload;
+  };
+
+  editor.load = async ({ force = false, selection } = {}) => {
+    if (!force && editor.isDirty()) {
+      return;
+    }
+    const requestedSelection =
+      selection !== undefined ? selection : select ? editor.getSelection() : undefined;
+    const path = editor.buildPath('load', requestedSelection);
+    const isStale = () =>
+      Boolean(select) && requestedSelection !== undefined && select.value !== requestedSelection;
+    try {
+      const data = await fetchJson(path);
+      if (isStale()) {
+        return;
+      }
+      editor.handleLoadSuccess(data || {});
+    } catch (error) {
+      if (isStale()) {
+        return;
+      }
+      editor.handleLoadError(error);
+    }
+  };
+
+  editor.save = async () => {
+    try {
+      const payload = editor.buildPayload({ includeContent: true, includeSelection: true });
+      await fetchJson(editor.buildPath('save'), {
+        method: options.saveMethod || 'PUT',
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      showNotification(options.saveMessage || 'Fichier sauvegardé.');
+      editor.setDirty(false);
+      await editor.load({ force: true, selection: select ? editor.getSelection() : undefined });
+    } catch (error) {
+      if (state.authenticated) {
+        showNotification(error.message, 'error');
+      }
+    }
+  };
+
+  editor.reload = async () => {
+    if (!options.reloadPath) {
+      return;
+    }
+    try {
+      const includeSelection =
+        options.includeSelectionInReload ?? Boolean(select && editor.getSelection());
+      const payload = includeSelection
+        ? editor.buildPayload({ includeContent: false, includeSelection: true })
+        : null;
+      const init = { method: options.reloadMethod || 'POST' };
+      if (payload && Object.keys(payload).length) {
+        init.headers = new Headers({ 'Content-Type': 'application/json' });
+        init.body = JSON.stringify(payload);
+      }
+      await fetchJson(editor.buildPath('reload'), init);
+      showNotification(options.reloadMessage || 'Fichier rechargé.');
+      editor.setDirty(false);
+      await editor.load({ force: true, selection: select ? editor.getSelection() : undefined });
+    } catch (error) {
+      if (state.authenticated) {
+        showNotification(error.message, 'error');
+      }
+    }
+  };
+
+  editor.reset = () => {
+    editor.applyContent('');
+    editor.setDirty(false);
+    editor.current = '';
+    if (select) {
+      editor.applyEntries([], '');
+    }
+    if (editor.hint) {
+      editor.hint.textContent = editor.defaultHint;
+    }
+    const enabledByDefault =
+      options.initiallyEnabled !== false && (!options.disableWhenEmpty || editor.hasEntries);
+    editor.setEnabled(enabledByDefault);
+  };
+
+  textarea.addEventListener('input', () => editor.setDirty(true));
+  if (select) {
+    select.addEventListener('change', () => {
+      if (editor.isDirty()) {
+        select.value = editor.current || '';
+        showNotification(
+          'Sauvegardez ou annulez vos modifications avant de changer de fichier.',
+          'error'
+        );
+        return;
+      }
+      editor.current = editor.getSelection();
+      editor.load({ force: true, selection: editor.current });
+    });
+  }
+
+  fileEditors.set(key, editor);
+  editor.reset();
+  return editor;
+}
+
+function getEditor(key) {
+  return fileEditors.get(key);
+}
+
+async function loadEditor(key, options) {
+  const editor = getEditor(key);
+  if (editor) {
+    await editor.load(options);
+  }
+}
+
+async function saveEditor(key) {
+  const editor = getEditor(key);
+  if (editor) {
+    await editor.save();
+  }
+}
+
+async function reloadEditor(key) {
+  const editor = getEditor(key);
+  if (editor) {
+    await editor.reload();
+  }
+}
+
+function resetEditors() {
+  fileEditors.forEach((editor) => {
+    editor.reset();
+  });
+}
+
+function bindEditorAction(buttonId, key, action) {
+  const button = document.getElementById(buttonId);
+  if (!button) {
+    return;
+  }
+  button.addEventListener('click', async () => {
+    if (action === 'save') {
+      await saveEditor(key);
+    } else if (action === 'reload') {
+      await reloadEditor(key);
+    } else if (action === 'load') {
+      await loadEditor(key, { force: true });
+    }
+  });
+}
+
+function setupFileEditors() {
+  registerFileEditor('config', {
+    textareaId: 'config-editor',
+    loadPath: '/config',
+    savePath: '/config',
+    reloadPath: '/config/reload',
+    saveButtonId: 'save-config',
+    reloadButtonId: 'reload-config',
+    saveMessage: 'Configuration sauvegardée.',
+    reloadMessage: 'Configuration rechargée.',
+  });
+
+  registerFileEditor('scheduler', {
+    textareaId: 'scheduler-editor',
+    loadPath: '/scheduler',
+    savePath: '/scheduler',
+    reloadPath: '/scheduler/reload',
+    saveButtonId: 'save-scheduler',
+    reloadButtonId: 'reload-scheduler',
+    hintId: 'scheduler-hint',
+    successHint: 'Modifiez le fichier du scheduler si un planificateur est configuré.',
+    errorHint: 'Aucun scheduler configuré ou erreur lors du chargement.',
+    saveMessage: 'Scheduler sauvegardé.',
+    reloadMessage: 'Scheduler rechargé.',
+    disableOnError: true,
+  });
+
+  registerFileEditor('templates', {
+    textareaId: 'templates-editor',
+    selectId: 'templates-select',
+    loadPath: '/templates',
+    savePath: '/templates',
+    reloadPath: '/templates/reload',
+    saveButtonId: 'save-templates',
+    reloadButtonId: 'reload-templates',
+    hintId: 'templates-hint',
+    emptyOptionLabel: 'Aucun template disponible',
+    emptyHint: 'Aucun template disponible.',
+    saveMessage: 'Template sauvegardé.',
+    reloadMessage: 'Template rechargé.',
+    disableWhenEmpty: true,
+    selectionKeys: ['name', 'template'],
+  });
+
+  registerFileEditor('trackers', {
+    textareaId: 'trackers-editor',
+    selectId: 'trackers-select',
+    loadPath: '/trackers',
+    savePath: '/trackers',
+    reloadPath: '/trackers/reload',
+    saveButtonId: 'save-trackers',
+    reloadButtonId: 'reload-trackers',
+    hintId: 'trackers-hint',
+    emptyOptionLabel: 'Aucun tracker disponible',
+    emptyHint: 'Aucun tracker disponible.',
+    saveMessage: 'Fichier tracker sauvegardé.',
+    reloadMessage: 'Fichier tracker rechargé.',
+    disableWhenEmpty: true,
+    selectionKeys: ['name', 'tracker'],
+  });
+}
+
 function setAuthenticated(authenticated, username = '') {
   state.authenticated = authenticated;
   state.username = authenticated ? username : '';
@@ -132,16 +588,7 @@ function setAuthenticated(authenticated, username = '') {
     usernameLabel.textContent = '';
     stopAutoRefresh();
     setActiveTab('jobs', { skipLoad: true });
-    setEditorDirty('config', false);
-    setEditorDirty('scheduler', false);
-    const configEditor = document.getElementById('config-editor');
-    const schedulerEditor = document.getElementById('scheduler-editor');
-    if (configEditor) {
-      configEditor.value = '';
-    }
-    if (schedulerEditor) {
-      schedulerEditor.value = '';
-    }
+    resetEditors();
   }
 }
 
@@ -431,129 +878,20 @@ async function loadLogs() {
   }
 }
 
-async function loadConfig({ force = false } = {}) {
-  const editor = document.getElementById('config-editor');
-  if (!editor) {
-    return;
-  }
-  if (!force && isEditorDirty('config')) {
-    return;
-  }
-  try {
-    const data = await fetchJson('/config');
-    if (!force && isEditorDirty('config')) {
-      return;
-    }
-    editor.value = data.content || '';
-    setEditorDirty('config', false);
-  } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  }
-}
-
-async function loadScheduler({ force = false } = {}) {
-  const editor = document.getElementById('scheduler-editor');
-  const hint = document.getElementById('scheduler-hint');
-  if (!editor || !hint) {
-    return;
-  }
-  if (!force && isEditorDirty('scheduler')) {
-    return;
-  }
-  try {
-    const data = await fetchJson('/scheduler');
-    editor.disabled = false;
-    document.getElementById('save-scheduler').disabled = false;
-    document.getElementById('reload-scheduler').disabled = false;
-    if (!force && isEditorDirty('scheduler')) {
-      return;
-    }
-    editor.value = data.content || '';
-    hint.textContent = 'Modifiez le fichier du scheduler si un planificateur est configuré.';
-    setEditorDirty('scheduler', false);
-  } catch (error) {
-    editor.value = '';
-    editor.disabled = true;
-    document.getElementById('save-scheduler').disabled = true;
-    document.getElementById('reload-scheduler').disabled = true;
-    hint.textContent = "Aucun scheduler configuré ou erreur lors du chargement.";
-    setEditorDirty('scheduler', false);
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  }
-}
-
-async function loadConfigTab(options = {}) {
-  await loadConfig(options);
+async function loadConfigurationTab(options = {}) {
+  await loadEditor('config', options);
   if (!state.authenticated) {
     return;
   }
-  await loadScheduler(options);
-}
-
-async function saveConfig() {
-  const content = document.getElementById('config-editor').value;
-  try {
-    await fetchJson('/config', {
-      method: 'PUT',
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ content }),
-    });
-    showNotification('Configuration sauvegardée.');
-    setEditorDirty('config', false);
-    await loadConfig({ force: true });
-  } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
+  await loadEditor('scheduler', options);
+  if (!state.authenticated) {
+    return;
   }
-}
-
-async function saveScheduler() {
-  const content = document.getElementById('scheduler-editor').value;
-  try {
-    await fetchJson('/scheduler', {
-      method: 'PUT',
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ content }),
-    });
-    showNotification('Scheduler sauvegardé.');
-    setEditorDirty('scheduler', false);
-    await loadScheduler({ force: true });
-  } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
+  await loadEditor('templates', options);
+  if (!state.authenticated) {
+    return;
   }
-}
-
-async function reloadConfig() {
-  try {
-    await fetchJson('/config/reload', { method: 'POST' });
-    showNotification('Configuration rechargée.');
-    setEditorDirty('config', false);
-    await loadConfig({ force: true });
-  } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  }
-}
-
-async function reloadScheduler() {
-  try {
-    await fetchJson('/scheduler/reload', { method: 'POST' });
-    showNotification('Scheduler rechargé.');
-    setEditorDirty('scheduler', false);
-    await loadScheduler({ force: true });
-  } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  }
+  await loadEditor('trackers', options);
 }
 
 async function controlDaemon({ path, buttonId, message }) {
@@ -595,7 +933,7 @@ async function stopDaemon() {
 const TAB_LOADERS = {
   jobs: () => loadStatus(),
   logs: () => loadLogs(),
-  config: (options = {}) => loadConfigTab(options),
+  config: (options = {}) => loadConfigurationTab(options),
 };
 
 async function refreshActiveTab(options = {}) {
@@ -622,7 +960,7 @@ async function refreshAll(options = {}) {
     if (!state.authenticated) {
       return;
     }
-    await loadConfigTab(options);
+    await loadConfigurationTab(options);
   } finally {
     state.isRefreshing = false;
   }
@@ -719,27 +1057,21 @@ function setupEventListeners() {
   document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
   document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
-  document.getElementById('save-config').addEventListener('click', saveConfig);
-  document.getElementById('save-scheduler').addEventListener('click', saveScheduler);
-  document.getElementById('reload-config').addEventListener('click', reloadConfig);
-  document.getElementById('reload-scheduler').addEventListener('click', reloadScheduler);
+  bindEditorAction('save-config', 'config', 'save');
+  bindEditorAction('reload-config', 'config', 'reload');
+  bindEditorAction('save-scheduler', 'scheduler', 'save');
+  bindEditorAction('reload-scheduler', 'scheduler', 'reload');
+  bindEditorAction('save-templates', 'templates', 'save');
+  bindEditorAction('reload-templates', 'templates', 'reload');
+  bindEditorAction('save-trackers', 'trackers', 'save');
+  bindEditorAction('reload-trackers', 'trackers', 'reload');
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
-
-  const configEditor = document.getElementById('config-editor');
-  const schedulerEditor = document.getElementById('scheduler-editor');
-  if (configEditor) {
-    configEditor.addEventListener('input', () => setEditorDirty('config', true));
-  }
-  if (schedulerEditor) {
-    schedulerEditor.addEventListener('input', () => setEditorDirty('scheduler', true));
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupFileEditors();
   setupEventListeners();
-  setEditorDirty('config', false);
-  setEditorDirty('scheduler', false);
   setActiveTab(state.activeTab, { skipLoad: true });
   updateConnectionHint();
   bootstrapSession();
