@@ -49,7 +49,7 @@ module MediaLibrarian
               path = url
               torrent_type = 2
             elsif url.to_s != ''
-              path = TorrentSearch.get_torrent_file(tdid, url)
+              path = TorrentSearch.get_torrent_file(tdid, url, tracker: torrent[:tracker])
             else
               speaker.speak_up 'no_download setting is activated for this tracker, please download manually.'
               path = 'nodl'

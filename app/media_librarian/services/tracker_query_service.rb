@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require 'yaml'
+
+require_relative 'tracker_login_service'
+
 module MediaLibrarian
   module Services
     class TrackerSearchRequest
@@ -29,6 +33,8 @@ module MediaLibrarian
     end
 
     class TrackerQueryService < BaseService
+      LoginRequiredError = Class.new(StandardError)
+
       def get_results(request)
         tries ||= 3
         results = []
@@ -98,17 +104,26 @@ module MediaLibrarian
         category && category != '' && app.config[type] && app.config[type]['site_specific_kw'] && app.config[type]['site_specific_kw'][category] ? " #{app.config[type]['site_specific_kw'][category]}" : ''
       end
 
-      def get_torrent_file(did, url, destination_folder = app.temp_dir)
+      def get_torrent_file(did, url, destination_folder = app.temp_dir, tracker: nil)
         return did if Env.pretend?
         path = "#{destination_folder}/#{did}.torrent"
         FileUtils.rm(path) if File.exist?(path)
         url = @base_url + '/' + url if url.start_with?('/')
+        metadata = tracker_login_metadata(tracker)
+        agent = metadata ? tracker_login_service.ensure_session(tracker) : app.mechanizer
+        retried_login = false
         begin
           tries ||= 3
-          app.mechanizer.get(url).save(path)
+          page = agent.get(url)
+          raise LoginRequiredError if metadata && login_redirect?(page, metadata)
+          page.save(path)
         rescue StandardError => e
-          if (tries -= 1) >= 0
-            sleep 1
+          if metadata && !retried_login && login_retryable?(e)
+            agent = tracker_login_service.login(tracker)
+            retried_login = true
+            retry
+          elsif (tries -= 1) >= 0
+            sleep 1 unless metadata && login_retryable?(e)
             retry
           else
             raise e
@@ -124,26 +139,44 @@ module MediaLibrarian
         if app.trackers[tracker]
           app.trackers[tracker].search(search_category, keyword)
         else
-          TorrentRss.links(tracker)
+          TorrentRss.links(tracker, tracker: rss_tracker_identifier(tracker))
         end
       end
 
-      def parse_tracker_sources(sources)
+      def parse_tracker_sources(sources, rss_tracker_lookup = nil, rss_context: false)
+        rss_tracker_lookup ||= begin
+          @rss_tracker_lookup = {}
+        end
+
         case sources
         when String
           [sources]
         when Hash
-          sources.map do |tracker, nested|
-            if tracker == 'rss'
-              parse_tracker_sources(nested)
-            else
-              tracker
+          if rss_context && rss_hash_with_url?(sources)
+            feed_url = rss_entry_url(sources)
+            tracker_id = extract_rss_tracker_identifier(sources)
+            rss_tracker_lookup[feed_url] = tracker_id if tracker_id
+            [feed_url]
+          else
+            sources.map do |tracker, nested|
+              if tracker == 'rss'
+                parse_tracker_sources(nested, rss_tracker_lookup, rss_context: true)
+              elsif rss_context
+                feed_url = rss_entry_url({ tracker => nested })
+                tracker_id = extract_rss_tracker_identifier(nested)
+                rss_tracker_lookup[feed_url] = tracker_id if tracker_id
+                feed_url
+              else
+                tracker
+              end
             end
           end
         when Array
           sources.map do |source|
-            parse_tracker_sources(source)
+            parse_tracker_sources(source, rss_tracker_lookup, rss_context: rss_context)
           end
+        else
+          []
         end.flatten
       end
 
@@ -188,6 +221,62 @@ module MediaLibrarian
         end
         download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
         download_criteria.merge(post_actions)
+      end
+
+      def tracker_login_metadata(tracker)
+        return if tracker.to_s.strip.empty?
+
+        path = File.join(app.tracker_dir, "#{tracker}.login.yml")
+        return unless File.exist?(path)
+
+        YAML.safe_load(File.read(path), aliases: true) || {}
+      end
+
+      def tracker_login_service
+        @tracker_login_service ||= TrackerLoginService.new(app: app, speaker: speaker)
+      end
+
+      def rss_tracker_identifier(feed_url)
+        (@rss_tracker_lookup || {})[feed_url]
+      end
+
+      def rss_hash_with_url?(value)
+        value.is_a?(Hash) && (value.key?('url') || value.key?(:url))
+      end
+
+      def rss_entry_url(entry)
+        return entry['url'] if entry.is_a?(Hash) && entry['url']
+        return entry[:url] if entry.is_a?(Hash) && entry[:url]
+
+        if entry.is_a?(Hash)
+          key, value = entry.first
+          return rss_entry_url(value) if rss_hash_with_url?(value)
+
+          key
+        else
+          entry
+        end
+      end
+
+      def extract_rss_tracker_identifier(options)
+        return unless options.is_a?(Hash)
+
+        options['tracker'] || options[:tracker]
+      end
+
+      def login_redirect?(page, metadata)
+        login_url = metadata['login_url'].to_s
+        return false if login_url.empty?
+
+        page_uri = page.respond_to?(:uri) ? page.uri : nil
+        page_uri && page_uri.to_s.start_with?(login_url)
+      end
+
+      def login_retryable?(error)
+        return true if error.is_a?(LoginRequiredError)
+        return error.response_code.to_s == '401' if defined?(Mechanize::ResponseCodeError) && error.is_a?(Mechanize::ResponseCodeError)
+
+        false
       end
     end
   end

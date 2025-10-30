@@ -14,7 +14,7 @@ unless defined?(TorrentSearch)
         {}
       end
 
-      def get_torrent_file(*)
+      def get_torrent_file(*, **)
         ''
       end
     end
@@ -132,7 +132,7 @@ class TorrentQueueServiceTest < Minitest::Test
       Cache.stub(:object_unpack, ->(_value) { torrent_attributes }) do
         Cache.stub(:queue_state_add_or_update, nil) do
           TorrentSearch.stub(:get_tracker_config, ->(*_) { { 'no_download' => '0' } }) do
-            TorrentSearch.stub(:get_torrent_file, ->(_tdid, url) { captured_urls << url; 'downloaded.torrent' }) do
+            TorrentSearch.stub(:get_torrent_file, ->(_tdid, url, *_rest, **) { captured_urls << url; 'downloaded.torrent' }) do
               service.stub(:process_download_request, ->(request) { processed_paths << request.path; true }) do
                 service.parse_pending_downloads
               end
