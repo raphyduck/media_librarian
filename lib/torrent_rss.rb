@@ -1,7 +1,10 @@
+require_relative '../app/media_librarian/services/base_service'
+require_relative '../app/media_librarian/services/tracker_login_service'
+
 class TorrentRss
 
-  def self.links(url, limit = NUMBER_OF_LINKS)
-    generate_links(url, limit)
+  def self.links(url, limit = NUMBER_OF_LINKS, tracker: nil)
+    generate_links(url, limit, tracker: tracker)
   end
 
   private
@@ -38,9 +41,9 @@ class TorrentRss
     end
   end
 
-  def self.generate_links(url, limit = NUMBER_OF_LINKS)
+  def self.generate_links(url, limit = NUMBER_OF_LINKS, tracker: nil)
     links = []
-    get_rows(url).each { |link| l = crawl_link(link, url); links << l unless l.nil? }
+    get_rows(url, tracker: tracker).each { |link| l = crawl_link(link, url); links << l unless l.nil? }
     links.first(limit)
   rescue Net::OpenTimeout, SocketError, Errno::EPIPE
     []
@@ -49,10 +52,29 @@ class TorrentRss
     []
   end
 
-  def self.get_rows(url)
-    (Feedjira.parse(MediaLibrarian.app.mechanizer.get(url).body)).entries || []
+  def self.get_rows(url, tracker: nil)
+    agent = tracker_agent(tracker)
+    (Feedjira.parse(agent.get(url).body)).entries || []
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, "TorrentRss.new('#{url}').get_rows")
+  end
+
+  def self.tracker_agent(tracker)
+    metadata_path = tracker_metadata_path(tracker)
+    return MediaLibrarian.app.mechanizer unless metadata_path && File.exist?(metadata_path)
+
+    tracker_login_service.ensure_session(tracker)
+  end
+
+  def self.tracker_metadata_path(tracker)
+    return if tracker.to_s.strip.empty?
+
+    File.join(MediaLibrarian.app.tracker_dir, "#{tracker}.login.yml")
+  end
+
+  def self.tracker_login_service
+    @tracker_login_service ||= MediaLibrarian::Services::TrackerLoginService
+                                  .new(app: MediaLibrarian.app, speaker: MediaLibrarian.app.speaker)
   end
 
   def self.size_unit_convert(size, s_unit)

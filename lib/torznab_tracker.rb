@@ -39,6 +39,10 @@ class TorznabTracker
       download_fallback = guid.to_s.empty? ? link : guid
       download_url = enclosure_url.to_s.empty? ? download_fallback : enclosure_url
       details_url = link.to_s.empty? ? guid : link
+      comments_url = i[:comments]
+      if comments_url && !comments_url.to_s.empty? && details_url.to_s.match?(DOWNLOAD_URL_PATTERN)
+        details_url = comments_url
+      end
       attrs = Array(i[:attr]).each_with_object({}) do |attr, memo|
         next unless attr.respond_to?(:[])
         name = attr[:name] || attr['name']

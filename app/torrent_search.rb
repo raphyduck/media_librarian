@@ -75,8 +75,8 @@ class TorrentSearch
     tracker_query_service.get_site_keywords(type, category)
   end
 
-  def self.get_torrent_file(did, url, destination_folder = app.temp_dir)
-    tracker_query_service.get_torrent_file(did, url, destination_folder)
+  def self.get_torrent_file(did, url, destination_folder = app.temp_dir, tracker: nil)
+    tracker_query_service.get_torrent_file(did, url, destination_folder, tracker: tracker)
   end
 
   def self.get_trackers(sources)
