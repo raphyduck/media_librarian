@@ -14,6 +14,14 @@ require_relative '../../lib/media_librarian/application'
 require_relative '../../lib/hash'
 require_relative '../../lib/torznab_tracker'
 
+unless defined?(TorrentRss)
+  class TorrentRss
+    def self.links(*, **)
+      []
+    end
+  end
+end
+
 class TrackerQueryServiceTest < Minitest::Test
   FakeMechanizePage = Struct.new(:uri, :body_content, keyword_init: true) do
     attr_reader :saved_paths
@@ -82,6 +90,21 @@ class TrackerQueryServiceTest < Minitest::Test
     assert_includes trackers, 'tracker_c'
   end
 
+  def test_parse_tracker_sources_records_rss_tracker_identifier
+    feed_url = 'https://secure.example/rss'
+    sources = {
+      'rss' => [
+        { feed_url => { 'tracker' => 'secure' } }
+      ]
+    }
+
+    trackers = @service.parse_tracker_sources(sources)
+
+    assert_includes trackers, feed_url
+    lookup = @service.instance_variable_get(:@rss_tracker_lookup)
+    assert_equal 'secure', lookup[feed_url]
+  end
+
   def test_get_trackers_defaults_to_registered_trackers
     trackers = { 'alpha' => Minitest::Mock.new }
     @app.trackers = trackers
@@ -89,6 +112,25 @@ class TrackerQueryServiceTest < Minitest::Test
     result = @service.get_trackers(nil)
 
     assert_equal ['alpha'], result
+  end
+
+  def test_launch_search_uses_rss_tracker_identifier
+    feed_url = 'https://secure.example/rss'
+    sources = {
+      'rss' => [
+        { feed_url => { 'tracker' => 'secure' } }
+      ]
+    }
+
+    @service.parse_tracker_sources(sources)
+
+    TorrentRss.stub(:links, ->(url, *_args, tracker: nil) {
+      assert_equal feed_url, url
+      assert_equal 'secure', tracker
+      []
+    }) do
+      @service.launch_search(feed_url, 'movies', 'keyword')
+    end
   end
 
   def test_torznab_tracker_uses_details_and_download_links

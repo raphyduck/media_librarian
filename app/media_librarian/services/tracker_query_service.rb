@@ -139,26 +139,44 @@ module MediaLibrarian
         if app.trackers[tracker]
           app.trackers[tracker].search(search_category, keyword)
         else
-          TorrentRss.links(tracker)
+          TorrentRss.links(tracker, tracker: rss_tracker_identifier(tracker))
         end
       end
 
-      def parse_tracker_sources(sources)
+      def parse_tracker_sources(sources, rss_tracker_lookup = nil, rss_context: false)
+        rss_tracker_lookup ||= begin
+          @rss_tracker_lookup = {}
+        end
+
         case sources
         when String
           [sources]
         when Hash
-          sources.map do |tracker, nested|
-            if tracker == 'rss'
-              parse_tracker_sources(nested)
-            else
-              tracker
+          if rss_context && rss_hash_with_url?(sources)
+            feed_url = rss_entry_url(sources)
+            tracker_id = extract_rss_tracker_identifier(sources)
+            rss_tracker_lookup[feed_url] = tracker_id if tracker_id
+            [feed_url]
+          else
+            sources.map do |tracker, nested|
+              if tracker == 'rss'
+                parse_tracker_sources(nested, rss_tracker_lookup, rss_context: true)
+              elsif rss_context
+                feed_url = rss_entry_url({ tracker => nested })
+                tracker_id = extract_rss_tracker_identifier(nested)
+                rss_tracker_lookup[feed_url] = tracker_id if tracker_id
+                feed_url
+              else
+                tracker
+              end
             end
           end
         when Array
           sources.map do |source|
-            parse_tracker_sources(source)
+            parse_tracker_sources(source, rss_tracker_lookup, rss_context: rss_context)
           end
+        else
+          []
         end.flatten
       end
 
@@ -216,6 +234,34 @@ module MediaLibrarian
 
       def tracker_login_service
         @tracker_login_service ||= TrackerLoginService.new(app: app, speaker: speaker)
+      end
+
+      def rss_tracker_identifier(feed_url)
+        (@rss_tracker_lookup || {})[feed_url]
+      end
+
+      def rss_hash_with_url?(value)
+        value.is_a?(Hash) && (value.key?('url') || value.key?(:url))
+      end
+
+      def rss_entry_url(entry)
+        return entry['url'] if entry.is_a?(Hash) && entry['url']
+        return entry[:url] if entry.is_a?(Hash) && entry[:url]
+
+        if entry.is_a?(Hash)
+          key, value = entry.first
+          return rss_entry_url(value) if rss_hash_with_url?(value)
+
+          key
+        else
+          entry
+        end
+      end
+
+      def extract_rss_tracker_identifier(options)
+        return unless options.is_a?(Hash)
+
+        options['tracker'] || options[:tracker]
       end
 
       def login_redirect?(page, metadata)
