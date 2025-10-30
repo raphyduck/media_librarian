@@ -120,4 +120,24 @@ class FixTorznabLinksScriptTest < Minitest::Test
 
     assert_includes output.string, 'Fixed 0 torrents'
   end
+
+  def test_swaps_tracker_download_with_jackett_dl
+    attrs = {
+      link: 'https://www.yggtorrent.top/engine/download_torrent?id=1234',
+      torrent_link: 'http://localhost:9117/dl/abcd?jackett_apikey=sekret'
+    }
+
+    packed = Cache.object_pack(attrs)
+    @app.db.insert_row('torrents', { name: 'jackett', status: 2, tattributes: packed })
+
+    output = StringIO.new
+    fixed = fix_torznab_links(@app.db, out: output)
+
+    assert_equal 1, fixed
+
+    updated = @app.db.get_rows('torrents', { name: 'jackett' }).first
+    unpacked = Cache.object_unpack(updated[:tattributes])
+    assert_equal attrs[:torrent_link], unpacked[:link]
+    assert_equal attrs[:link], unpacked[:torrent_link]
+  end
 end

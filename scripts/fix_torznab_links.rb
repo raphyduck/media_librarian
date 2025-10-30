@@ -9,7 +9,7 @@ unless defined?(SPACE_SUBSTITUTE) && defined?(VALID_VIDEO_EXT) && defined?(BASIC
   require_relative '../init/global'
 end
 
-DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|download\.php|download_torrent|enclosure|getnzb|getTorrent|action=download)}i
+DOWNLOAD_RX = %r{(magnet:|\.torrent(\?.*)?\z|/download\b|/dl/|download\.php|download_torrent|enclosure|getnzb|getTorrent|action=download)}i
 DETAIL_RX = /(details|view|info|torrent)/i
 TORZNAB_HINT_RX = /(jackett|torznab|apikey=)/i
 
@@ -30,7 +30,7 @@ def fix_torznab_links(db, out: $stdout)
     before_torrent = attrs[:torrent_link].to_s.strip
     next if before_link.empty? || before_torrent.empty?
     next unless before_torrent.match?(DOWNLOAD_RX)
-    next if before_link.match?(DOWNLOAD_RX)
+    next if before_link.match?(DOWNLOAD_RX) && !before_torrent.match?(TORZNAB_HINT_RX)
     next unless before_link.match?(DETAIL_RX)
 
     out.puts '---'
