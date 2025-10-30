@@ -126,7 +126,7 @@ module TestSupport
 
     class StubContainer
       attr_reader :application
-      attr_accessor :config, :workers_pool_size, :queue_slots
+      attr_accessor :config, :workers_pool_size, :queue_slots, :trackers
 
       def initialize(application:)
         @application = application
@@ -134,6 +134,7 @@ module TestSupport
         daemon_config = @config.fetch('daemon', {})
         @workers_pool_size = daemon_config['workers_pool_size'] || application.workers_pool_size
         @queue_slots = daemon_config['queue_slots'] || application.queue_slots
+        @trackers = {}
       end
 
       def reload_api_option!
@@ -151,6 +152,18 @@ module TestSupport
         application.workers_pool_size = @workers_pool_size
         application.queue_slots = @queue_slots
         self
+      end
+
+      def build_trackers
+        return {} unless File.directory?(application.tracker_dir)
+
+        Dir.each_child(application.tracker_dir).each_with_object({}) do |filename, memo|
+          path = File.join(application.tracker_dir, filename)
+          next unless File.file?(path) && filename.end_with?('.yml')
+
+          tracker_name = filename.sub(/\.yml\z/, '')
+          memo[tracker_name] = YAML.safe_load(File.read(path), aliases: true) || {}
+        end
       end
     end
   end
