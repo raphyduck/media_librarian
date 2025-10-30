@@ -301,7 +301,7 @@ function registerFileEditor(key, options) {
     }
   };
 
-  editor.buildPath = (action) => {
+  editor.buildPath = (action, selectionOverride) => {
     if (typeof options.buildPath === 'function') {
       return options.buildPath(action, editor);
     }
@@ -314,8 +314,12 @@ function registerFileEditor(key, options) {
     if (!base) {
       return '';
     }
-    const selection = editor.getSelection();
-    if (!selection || !select) {
+    if (!select) {
+      return base;
+    }
+    const selection =
+      selectionOverride !== undefined ? selectionOverride : editor.getSelection();
+    if (!selection) {
       return base;
     }
     const keys = Array.isArray(options.selectionKeys) && options.selectionKeys.length
@@ -350,14 +354,25 @@ function registerFileEditor(key, options) {
       : payload;
   };
 
-  editor.load = async ({ force = false } = {}) => {
+  editor.load = async ({ force = false, selection } = {}) => {
     if (!force && editor.isDirty()) {
       return;
     }
+    const requestedSelection =
+      selection !== undefined ? selection : select ? editor.getSelection() : undefined;
+    const path = editor.buildPath('load', requestedSelection);
+    const isStale = () =>
+      Boolean(select) && requestedSelection !== undefined && select.value !== requestedSelection;
     try {
-      const data = await fetchJson(editor.buildPath('load'));
+      const data = await fetchJson(path);
+      if (isStale()) {
+        return;
+      }
       editor.handleLoadSuccess(data || {});
     } catch (error) {
+      if (isStale()) {
+        return;
+      }
       editor.handleLoadError(error);
     }
   };
@@ -372,7 +387,7 @@ function registerFileEditor(key, options) {
       });
       showNotification(options.saveMessage || 'Fichier sauvegardé.');
       editor.setDirty(false);
-      await editor.load({ force: true });
+      await editor.load({ force: true, selection: select ? editor.getSelection() : undefined });
     } catch (error) {
       if (state.authenticated) {
         showNotification(error.message, 'error');
@@ -398,7 +413,7 @@ function registerFileEditor(key, options) {
       await fetchJson(editor.buildPath('reload'), init);
       showNotification(options.reloadMessage || 'Fichier rechargé.');
       editor.setDirty(false);
-      await editor.load({ force: true });
+      await editor.load({ force: true, selection: select ? editor.getSelection() : undefined });
     } catch (error) {
       if (state.authenticated) {
         showNotification(error.message, 'error');
@@ -433,7 +448,7 @@ function registerFileEditor(key, options) {
         return;
       }
       editor.current = editor.getSelection();
-      editor.load({ force: true });
+      editor.load({ force: true, selection: editor.current });
     });
   }
 
