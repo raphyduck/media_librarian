@@ -184,7 +184,8 @@ module MediaLibrarian
           expires = cookie[:expires] || cookie['expires']
           mechanize_cookie.expires = expires.is_a?(Numeric) ? Time.at(expires) : expires if expires
           mechanize_cookie.secure = cookie[:secure] || cookie['secure'] || false
-          mechanize_cookie.httponly = cookie[:httpOnly] || cookie['httpOnly'] || false
+          http_only = cookie[:httpOnly] || cookie['httpOnly'] || false
+          mechanize_cookie.instance_variable_set(:@httponly, http_only)
           agent.cookie_jar.add(target_uri, mechanize_cookie)
         end
       end
