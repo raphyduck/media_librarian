@@ -21,7 +21,7 @@ gem 'poltergeist', :require => false
 gem 'rexml', :require => false
 gem 'rsync', :git => 'https://github.com/raphyduck/ruby-rsync.git', :require => false
 gem 'simple_speaker', '~>0.3.0', :require => false
-#gem "selenium-webdriver", :require => false
+gem "selenium-webdriver", require: false
 gem 'sqlite3', '1.5.3', :require => false
 gem 'streamio-ffmpeg', :require => false
 gem 'titleize', :require => false

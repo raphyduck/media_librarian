@@ -62,6 +62,17 @@ This program is made to answer my various needs for automation in the management
 
 The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `conf.yml`.
 
+### Tracker logins that require a real browser
+
+Some trackers now require interactive authentication flows that break automated form submissions. When that happens you can flag
+the corresponding login metadata with `browser_login: true` (stored in `~/.medialibrarian/trackers/<tracker>.login.yml`). The
+login command will launch a Selenium WebDriver instance, open the configured `login_url` in a real browser, and pause until you
+confirm the login is complete (the prompt is skipped when running with `--no-prompt`). The captured browser cookies are injected
+into the Mechanize agent and saved via the regular cookie cache so subsequent searches reuse the authenticated session.
+
+The feature relies on the `selenium-webdriver` gem and an actual browser driver (`geckodriver`/Firefox by default, override with
+`browser_driver` in the metadata). Make sure the matching browser and driver binary are installed and available on your `PATH`.
+
 ## Contrôle HTTP et interface web
 
 Le démon expose un serveur HTTP léger (WEBrick) permettant de piloter les jobs, consulter les logs et éditer les fichiers de configuration YAML. Une interface web statique est disponible à l'adresse racine `/` et consomme les endpoints JSON (`/status`, `/logs`, `/config`, `/scheduler`).
