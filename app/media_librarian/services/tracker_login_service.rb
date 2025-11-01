@@ -3,6 +3,7 @@
 require 'yaml'
 require 'mechanize'
 require 'fileutils'
+require 'uri'
 
 module MediaLibrarian
   module Services
@@ -11,6 +12,8 @@ module MediaLibrarian
 
       def login(tracker_name, no_prompt: 0)
         metadata = load_metadata(tracker_name)
+        return browser_login(tracker_name, metadata, no_prompt) if metadata['browser_login']
+
         agent = build_agent(metadata)
         load_cookies(agent, tracker_name)
         page = agent.get(metadata.fetch('login_url'))
@@ -46,6 +49,26 @@ module MediaLibrarian
         raise ArgumentError, "Missing login metadata for #{tracker_name}" unless File.exist?(path)
 
         YAML.safe_load(File.read(path), aliases: true) || {}
+      end
+
+      def browser_login(tracker_name, metadata, no_prompt)
+        agent = build_agent(metadata)
+        require 'selenium-webdriver'
+
+        driver = nil
+        driver = Selenium::WebDriver.for((metadata['browser_driver'] || 'firefox').to_sym)
+        begin
+          no_prompt = no_prompt.to_i
+          driver.navigate.to(metadata.fetch('login_url'))
+          speaker.ask_if_needed('Press enter once the browser login is complete.', no_prompt)
+          merge_browser_cookies(driver, agent, metadata)
+        ensure
+          driver.quit if driver
+        end
+
+        cache_session(tracker_name, agent)
+        persist_cookies(agent, tracker_name)
+        agent
       end
 
       def build_agent(metadata)
@@ -139,6 +162,31 @@ module MediaLibrarian
       def persist_cookies(agent, tracker_name)
         FileUtils.mkdir_p(app.tracker_dir)
         agent.cookie_jar.save(cookie_path(tracker_name))
+      end
+
+      def merge_browser_cookies(driver, agent, metadata)
+        target_uri = begin
+          uri = URI(driver.current_url)
+          uri = URI(metadata.fetch('login_url')) unless uri.host
+          uri
+        rescue URI::InvalidURIError
+          URI(metadata.fetch('login_url'))
+        end
+
+        driver.manage.all_cookies.each do |cookie|
+          name = cookie[:name] || cookie['name']
+          value = cookie[:value] || cookie['value']
+          next if blank?(name)
+
+          mechanize_cookie = Mechanize::Cookie.new(name, value)
+          mechanize_cookie.domain = cookie[:domain] || cookie['domain'] || target_uri.host
+          mechanize_cookie.path = cookie[:path] || cookie['path'] || '/'
+          expires = cookie[:expires] || cookie['expires']
+          mechanize_cookie.expires = expires.is_a?(Numeric) ? Time.at(expires) : expires if expires
+          mechanize_cookie.secure = cookie[:secure] || cookie['secure'] || false
+          mechanize_cookie.httponly = cookie[:httpOnly] || cookie['httpOnly'] || false
+          agent.cookie_jar.add(target_uri, mechanize_cookie)
+        end
       end
 
       def load_cookies(agent, tracker_name)
