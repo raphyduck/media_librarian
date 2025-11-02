@@ -293,14 +293,31 @@ class TorrentSearch
     if torrent[:in_db]
       app.db.update_rows('torrents', {:status => torrent[:download_now], :waiting_until => waiting_until}, {:name => torrent[:name]})
     else
-      app.db.insert_row('torrents', {
-          :identifier => torrent[:identifier],
-          :identifiers => torrent[:identifiers],
-          :name => torrent[:name],
-          :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
-          :waiting_until => waiting_until,
-          :status => torrent[:download_now]
-      }, 1)
+      tattributes = Cache.object_pack(
+        torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }
+      )
+      torrent_values = {
+        :identifier => torrent[:identifier],
+        :identifiers => torrent[:identifiers],
+        :name => torrent[:name],
+        :tattributes => tattributes,
+        :waiting_until => waiting_until,
+        :status => torrent[:download_now]
+      }
+      app.db.insert_row(
+        'torrents',
+        torrent_values,
+        {
+          :target => :name,
+          :update => {
+            :identifier => torrent_values[:identifier],
+            :identifiers => torrent_values[:identifiers],
+            :tattributes => torrent_values[:tattributes],
+            :waiting_until => torrent_values[:waiting_until],
+            :status => torrent_values[:status]
+          }
+        }
+      )
     end
     if torrent[:download_now] == 2
       remove_others.each do |tname|

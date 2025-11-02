@@ -67,7 +67,14 @@ module Storage
 
     def insert_row(table, values, or_replace = 0)
       dataset = dataset_for(table)
-      dataset = dataset.insert_conflict(:replace) if or_replace.to_i.positive?
+      dataset =
+        if or_replace.is_a?(Hash)
+          dataset.insert_conflict(or_replace)
+        elsif or_replace.to_i.positive?
+          dataset.insert_conflict(:replace)
+        else
+          dataset
+        end
       prepared = prepare_values(table, values)
       sql = dataset.insert_sql(prepared)
       run_write(table, sql) { dataset.insert(prepared) }
