@@ -136,6 +136,45 @@ class LibrarianCliTest < Minitest::Test
     refute_includes env.application.speaker.messages, 'Command dispatched to daemon'
   end
 
+  def test_remote_daemon_job_output_is_displayed_and_capture_requested
+    env = use_environment
+    librarian = Librarian.new(container: env.container, args: [])
+
+    response = {
+      'status_code' => 200,
+      'body' => { 'job' => { 'id' => 'job-42', 'output' => 'Hello from daemon' } }
+    }
+    captured = {}
+
+    fake_client = Class.new do
+      def initialize(response, captured)
+        @response = response
+        @captured = captured
+      end
+
+      def enqueue(args, **kwargs)
+        @captured[:args] = args
+        @captured[:kwargs] = kwargs
+        @response
+      end
+    end.new(response, captured)
+
+    Daemon.stub(:running?, false) do
+      librarian.stub(:pid_status, ->(*) { :running }) do
+        Client.stub(:new, ->(*) { fake_client }) do
+          Librarian.route_cmd(['help'])
+        end
+      end
+    end
+
+    assert_equal ['help'], captured[:args]
+    assert_equal true, captured[:kwargs][:capture_output]
+
+    messages = env.application.speaker.messages
+    assert_includes messages, 'Hello from daemon'
+    assert_includes messages, 'Job job-42 completed'
+  end
+
   def test_direct_route_cmd_restores_parent_thread_state
     env = use_environment
     old_application = MediaLibrarian.application

@@ -199,7 +199,14 @@ class Librarian
         return if args.nil? || args.empty?
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting to get an execution slot')
-        response = Client.new.enqueue(args, wait: true, queue: queue, task: task, internal: proxy_internal)
+        response = Client.new.enqueue(
+          args,
+          wait: true,
+          queue: queue,
+          task: task,
+          internal: proxy_internal,
+          capture_output: true
+        )
         status_code = response['status_code'].to_i
         body = response['body']
 
