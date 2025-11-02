@@ -247,6 +247,7 @@ class Librarian
     def run_command(cmd, direct = 0, object = '', &block)
       original_cmd = Array(cmd).dup
       cmd = sanitize_arguments(original_cmd)
+      sanitized_cmd = cmd.dup
 
       if direct.to_i.zero? && cmd.empty?
         notify_missing_command(original_cmd)
@@ -262,7 +263,7 @@ class Librarian
           a = cmd.shift
 
           if cli_direct_invocation?(m)
-            action = find_action(original_cmd)
+            action = find_action(sanitized_cmd)
             raise NameError, "Unknown command '#{original_cmd.first(2).join(' ')}'" unless action
 
             app.args_dispatch.launch(MediaLibrarian::APP_NAME, action, cmd, original_cmd.first(2).join(' '), app.template_dir)
