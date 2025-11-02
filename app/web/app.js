@@ -325,12 +325,19 @@ function registerFileEditor(key, options) {
     const keys = Array.isArray(options.selectionKeys) && options.selectionKeys.length
       ? options.selectionKeys
       : [options.paramName || 'name'];
-    const query = new URLSearchParams();
-    keys.filter(Boolean).forEach((key) => {
-      query.set(key, selection);
-    });
-    const search = query.toString();
-    return search ? `${base}?${search}` : base;
+    if (typeof window !== 'undefined' && typeof window.buildEditorSelectionPath === 'function') {
+      return window.buildEditorSelectionPath(base, selection, action, keys);
+    }
+    if (action === 'reload') {
+      const query = new URLSearchParams();
+      keys.filter(Boolean).forEach((key) => {
+        query.set(key, selection);
+      });
+      const search = query.toString();
+      return search ? `${base}?${search}` : base;
+    }
+    const separator = base.endsWith('/') ? '' : '/';
+    return `${base}${separator}${encodeURIComponent(selection)}`;
   };
 
   editor.buildPayload = ({ includeContent = true, includeSelection = true } = {}) => {
