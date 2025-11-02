@@ -260,7 +260,7 @@ class Librarian
         if direct.to_i > 0
           m = cmd.shift
           a = cmd.shift
-          p = resolve_constant(m).method(a.to_sym)
+          p = Object.const_get(m).method(a.to_sym)
           cmd.nil? ? p.call : p.call(*cmd)
         else
           app.speaker.speak_up(String.new('Running command: '), 0)
@@ -295,20 +295,6 @@ class Librarian
       end
 
       sanitized
-    end
-
-    def resolve_constant(name)
-      Object.const_get(name)
-    rescue NameError => original_error
-      normalized = name.to_s.split('::').map do |part|
-        part.split('_').map { |segment| segment.capitalize }.join
-      end.join('::')
-      begin
-        return Object.const_get(normalized) if normalized != name
-      rescue NameError
-        nil
-      end
-      raise original_error
     end
 
     def notify_missing_command(original_cmd)
