@@ -300,7 +300,7 @@ class TorrentSearch
           :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
           :waiting_until => waiting_until,
           :status => torrent[:download_now]
-      })
+      }, 1)
     end
     if torrent[:download_now] == 2
       remove_others.each do |tname|
