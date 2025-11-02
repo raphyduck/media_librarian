@@ -292,11 +292,11 @@ class TorrentSearch
     end
     attributes = {
         :identifier => torrent[:identifier],
-        :identifiers => torrent[:identifiers],
         :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
         :waiting_until => waiting_until,
         :status => torrent[:download_now]
     }
+    attributes[:identifiers] = torrent[:identifiers] unless torrent[:identifiers].nil?
     selector = {:name => torrent[:name]}
     if torrent[:in_db] || app.db.get_rows('torrents', selector).first
       app.db.update_rows('torrents', attributes, selector)
