@@ -241,6 +241,7 @@ module FileUtils
     def search_folder(folder, filter_criteria = {})
       MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
       filter_criteria = {} if filter_criteria.nil?
+      return [] unless folder && File.directory?(folder)
       search_folder = []
       Find.find(folder).each do |path|
         path = File.absolute_path(path)

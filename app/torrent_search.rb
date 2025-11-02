@@ -290,17 +290,18 @@ class TorrentSearch
       app.speaker.speak_up("Adding torrent #{torrent[:name]} on #{torrent[:tracker]} to the torrents to download")
       torrent[:download_now] = 2
     end
-    if torrent[:in_db]
-      app.db.update_rows('torrents', {:status => torrent[:download_now], :waiting_until => waiting_until}, {:name => torrent[:name]})
+    attributes = {
+        :identifier => torrent[:identifier],
+        :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
+        :waiting_until => waiting_until,
+        :status => torrent[:download_now]
+    }
+    attributes[:identifiers] = torrent[:identifiers] unless torrent[:identifiers].nil?
+    selector = {:name => torrent[:name]}
+    if torrent[:in_db] || app.db.get_rows('torrents', selector).first
+      app.db.update_rows('torrents', attributes, selector)
     else
-      app.db.insert_row('torrents', {
-          :identifier => torrent[:identifier],
-          :identifiers => torrent[:identifiers],
-          :name => torrent[:name],
-          :tattributes => Cache.object_pack(torrent.select { |k, _| ![:identifier, :identifiers, :name, :download_now].include?(k) }),
-          :waiting_until => waiting_until,
-          :status => torrent[:download_now]
-      })
+      app.db.insert_row('torrents', attributes.merge(:name => torrent[:name]))
     end
     if torrent[:download_now] == 2
       remove_others.each do |tname|
