@@ -260,8 +260,16 @@ class Librarian
         if direct.to_i > 0
           m = cmd.shift
           a = cmd.shift
-          p = Object.const_get(m).method(a.to_sym)
-          cmd.nil? ? p.call : p.call(*cmd)
+
+          if cli_direct_invocation?(m)
+            action = find_action(original_cmd)
+            raise NameError, "Unknown command '#{original_cmd.first(2).join(' ')}'" unless action
+
+            app.args_dispatch.launch(MediaLibrarian::APP_NAME, action, cmd, original_cmd.first(2).join(' '), app.template_dir)
+          else
+            p = resolve_constant(m).method(a.to_sym)
+            cmd.empty? ? p.call : p.call(*cmd)
+          end
         else
           app.speaker.speak_up(String.new('Running command: '), 0)
           app.speaker.speak_up("#{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
@@ -296,6 +304,39 @@ class Librarian
 
       sanitized
     end
+
+    def resolve_constant(name)
+      return name if name.is_a?(Module)
+
+      const_name = name.to_s
+
+      Object.const_get(const_name)
+    rescue NameError
+      normalized = const_name.split('::').map do |segment|
+        segment.split('_').map { |part| part.capitalize }.join
+      end.join('::')
+
+      Object.const_get(normalized)
+    end
+    private :resolve_constant
+
+    def cli_direct_invocation?(token)
+      token.to_s.match?(/\A[a-z]/)
+    end
+    private :cli_direct_invocation?
+
+    def find_action(tokens)
+      names = Array(tokens).take_while { |arg| arg.to_s !~ /^-/ }
+      return nil if names.empty?
+
+      config = command_registry.actions
+      names.each do |segment|
+        entry = config[segment.to_sym] if config
+        return entry unless entry.is_a?(Hash)
+        config = entry
+      end
+    end
+    private :find_action
 
     def notify_missing_command(original_cmd)
       return unless original_cmd.any?
