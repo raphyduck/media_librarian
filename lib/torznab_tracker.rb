@@ -24,7 +24,9 @@ class TorznabTracker
       cat = @tracker.caps.categories.select { |c| c.name.downcase.include?('tv') }.map { |c| c.id }
     end
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
-    Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit}))[:rss][:channel][:item].each do |i|
+    response = Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit}))
+    items = Array(response.dig(:rss, :channel, :item))
+    items.each do |i|
       enclosure_url = i.dig(:enclosure, :@url) || i.dig(:enclosure, :url)
       guid = if i[:guid].is_a?(Hash)
         guid_hash = i[:guid]
