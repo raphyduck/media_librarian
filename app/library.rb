@@ -370,7 +370,7 @@ class Library
     app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|
-        if i.to_s != '' && identifiers.join.include?(i) && !fs.empty? && !fs.map { |obj| obj[:name] if obj[:type] == 'file' }.compact.include?(file[:name])
+        if i.to_s != '' && identifiers.join.include?(i.to_s) && !fs.empty? && !fs.map { |obj| obj[:name] if obj[:type] == 'file' }.compact.include?(file[:name])
           Utils.lock_block("file_handling_found_#{i}") do
             ok = false
             fs.uniq.each do |f|
