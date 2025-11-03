@@ -488,6 +488,7 @@ class Library
       files = media_list[cache_name].dup
       files.keep_if { |k, f| !k.is_a?(Symbol) && !(f[:files].map { |x| x[:name] } & raw_filtered.flatten).empty? }
     end
+    app.speaker.speak_up("Finished processing folder #{folder}.")
     return files || media_list[cache_name]
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding))

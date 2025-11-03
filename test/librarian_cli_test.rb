@@ -224,6 +224,50 @@ class LibrarianCliTest < Minitest::Test
     (thread.keys - original.keys).each { |key| thread[key] = nil }
   end
 
+  def test_direct_handle_completed_download_dispatches_email_when_buffered
+    env = use_environment
+    old_application = MediaLibrarian.application
+    MediaLibrarian.application = env.application
+    Librarian.configure(app: env.application)
+    Librarian.new(container: env.container, args: [])
+
+    library_defined = defined?(Library)
+    Object.const_set(:Library, Class.new) unless library_defined
+    Library.configure(app: env.application) if Library.respond_to?(:configure)
+
+    env.application.email = {}
+
+    captured = []
+    Env.stub(:email_notif?, ->(*) { true }) do
+      Report.stub(:sent_out, ->(subject, thread, *rest) {
+        captured << {
+          subject: subject,
+          send_email: thread[:send_email],
+          email_msg: thread[:email_msg].dup,
+          direct: thread[:direct]
+        }
+      }) do
+        Library.stub(:handle_completed_download, ->(*_) {
+          thread = Thread.current
+          thread[:email_msg] << 'Ready for email'
+          thread[:send_email] = 1
+          :ok
+        }) do
+          Librarian.route_cmd(['Library', 'handle_completed_download'], 1)
+        end
+      end
+    end
+
+    assert_equal 1, captured.length
+    record = captured.first
+    assert_equal 1, record[:send_email]
+    assert_includes record[:email_msg], 'Ready for email'
+    assert_equal 1, record[:direct]
+  ensure
+    MediaLibrarian.application = old_application
+    Object.send(:remove_const, :Library) unless library_defined
+  end
+
   private
 
   def use_environment(**overrides)
