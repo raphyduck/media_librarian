@@ -370,7 +370,7 @@ class Librarian
       if thread[:block].is_a?(Array) && !thread[:block].empty?
         thread[:block].reverse_each { |b| b.call rescue nil }
       end
-      Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif? && thread[:direct].to_i.zero?
+      Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif?
       if thread[:parent]
         Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
       end
