@@ -60,7 +60,14 @@ class LibrarianCliTest < Minitest::Test
       'queued' => [],
       'finished' => [{ 'id' => 'job-1' }],
       'queues' => [{ 'queue' => 'priority', 'running' => 0, 'queued' => 0, 'finished' => 1, 'total' => 1 }],
-      'lock_time' => ''
+      'lock_time' => '',
+      'started_at' => Time.now.utc.iso8601,
+      'uptime_seconds' => 12.5,
+      'resources' => {
+        'cpu_time_seconds' => 1.5,
+        'cpu_percent' => 20.0,
+        'rss_mb' => 42.0
+      }
     }
 
     fake_client = Minitest::Mock.new

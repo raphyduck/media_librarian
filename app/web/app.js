@@ -663,6 +663,80 @@ function formatDate(value) {
   }
 }
 
+function formatDuration(seconds) {
+  if (seconds == null) {
+    return null;
+  }
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total < 0) {
+    return null;
+  }
+  let remaining = Math.floor(total);
+  const segments = [];
+  const units = [
+    { size: 86400, label: 'j' },
+    { size: 3600, label: 'h' },
+    { size: 60, label: 'm' },
+  ];
+  units.forEach(({ size, label }) => {
+    const value = Math.floor(remaining / size);
+    if (value > 0 || segments.length) {
+      segments.push(`${value}${label}`);
+      remaining -= value * size;
+    }
+  });
+  segments.push(`${remaining}s`);
+  return segments.slice(0, 3).join(' ');
+}
+
+function formatNumber(value, maximumFractionDigits = 1) {
+  if (value == null) {
+    return null;
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+  return number.toLocaleString('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  });
+}
+
+function updateJobMetrics(snapshot = {}) {
+  const container = document.getElementById('jobs-metrics');
+  if (!container) {
+    return;
+  }
+  const resources =
+    snapshot && typeof snapshot.resources === 'object' && snapshot.resources !== null
+      ? snapshot.resources
+      : {};
+  const uptime = formatDuration(snapshot.uptime_seconds);
+  const cpuPercent = formatNumber(resources.cpu_percent);
+  const cpuTime = formatNumber(resources.cpu_time_seconds, 1);
+  const rss = formatNumber(resources.rss_mb);
+  const parts = [];
+  if (uptime) {
+    parts.push(`Uptime\u00a0: ${uptime}`);
+  }
+  if (cpuPercent || cpuTime) {
+    const cpuParts = [];
+    if (cpuPercent) {
+      cpuParts.push(`${cpuPercent}%`);
+    }
+    if (cpuTime) {
+      cpuParts.push(`${cpuTime}\u00a0s`);
+    }
+    parts.push(`CPU\u00a0: ${cpuParts.join(' ')}`);
+  }
+  if (rss) {
+    parts.push(`RAM\u00a0: ${rss}\u00a0Mo`);
+  }
+  container.innerHTML = parts.map((text) => `<span>${text}</span>`).join('');
+  container.hidden = parts.length === 0;
+}
+
 function renderJobs(data = {}) {
   const finishedStatuses = new Set(['finished', 'failed', 'cancelled']);
   const asArray = (value) => (Array.isArray(value) ? value : []);
@@ -866,6 +940,7 @@ function renderLogs(logs = {}) {
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
+    updateJobMetrics(data);
     renderJobs(data);
   } catch (error) {
     if (state.authenticated) {
