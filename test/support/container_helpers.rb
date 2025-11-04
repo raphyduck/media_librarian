@@ -198,6 +198,16 @@ module TestSupport
         :dispatched
       end
 
+      def launch(app_name, action, args, *_rest)
+        @dispatched_commands << { app: app_name, command: args.dup, actions: action }
+        constant_name, method_name = action
+
+        return :launched unless constant_name == 'Daemon'
+
+        constant = Object.const_get(constant_name)
+        constant.public_send(method_name, *args)
+      end
+
       def show_available(app_name, actions)
         @shown_actions << { app: app_name, actions: actions }
         :shown

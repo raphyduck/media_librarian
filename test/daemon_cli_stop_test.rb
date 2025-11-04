@@ -116,6 +116,42 @@ class DaemonCliStopTest < Minitest::Test
     Daemon.instance_variable_set(:@running, nil)
   end
 
+  def test_cli_route_executes_stop_inline_when_pidfile_running
+    librarian = Librarian.new(container: @environment.container, args: [])
+
+    Daemon.instance_variable_set(:@running, nil)
+
+    response = { 'status_code' => 200, 'body' => { 'status' => 'stopping' } }
+    fake_client = Class.new do
+      attr_reader :stop_calls
+
+      def initialize(response)
+        @response = response
+        @stop_calls = 0
+      end
+
+      def stop
+        @stop_calls += 1
+        @response
+      end
+
+      def enqueue(*)
+        raise 'Client#enqueue should not be called for daemon stop'
+      end
+    end.new(response)
+
+    Client.stub(:new, ->(*_) { fake_client }) do
+      Daemon.stub(:running?, false) do
+        librarian.stub(:pid_status, ->(_pidfile) { :running }) do
+          Librarian.route_cmd(%w[daemon stop])
+        end
+      end
+    end
+
+    assert_includes @environment.application.speaker.messages, 'Stop command sent to daemon'
+    assert_equal 1, fake_client.stop_calls
+  end
+
   private
 
   def remove_app_reference(klass)
