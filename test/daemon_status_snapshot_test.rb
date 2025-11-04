@@ -38,11 +38,15 @@ class DaemonStatusSnapshotTest < Minitest::Test
     Daemon.configure(app: @environment.application)
     Daemon.instance_variable_set(:@jobs, {})
     Daemon.instance_variable_set(:@job_children, Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new })
+    Daemon.instance_variable_set(:@daemon_started_at, nil)
+    Daemon.instance_variable_set(:@process_memory, nil)
   end
 
   def teardown
     Daemon.instance_variable_set(:@jobs, nil)
     Daemon.instance_variable_set(:@job_children, nil)
+    Daemon.instance_variable_set(:@daemon_started_at, nil)
+    Daemon.instance_variable_set(:@process_memory, nil)
     MediaLibrarian.application = nil
     @environment.cleanup if @environment
   end
@@ -92,6 +96,10 @@ class DaemonStatusSnapshotTest < Minitest::Test
 
     child_payload = Daemon.send(:serialize_job, child_job)
     assert_equal 'parent', child_payload['parent_id']
+
+    assert_kind_of Hash, snapshot[:resources]
+    assert snapshot.key?(:started_at)
+    assert snapshot.key?(:uptime_seconds)
   end
 
   def test_status_snapshot_prevents_double_counting_flipping_jobs
@@ -109,5 +117,53 @@ class DaemonStatusSnapshotTest < Minitest::Test
     assert_empty(running_ids & finished_ids)
     assert_empty(running_ids & queued_ids)
     assert_empty(finished_ids & queued_ids)
+  end
+
+  def test_status_snapshot_includes_daemon_metrics
+    now = Time.now.utc
+    Daemon.instance_variable_set(:@daemon_started_at, now - 10)
+
+    fake_memory = Struct.new(:mb).new(256.5)
+
+    snapshot = nil
+    Daemon.stub(:process_cpu_time, 5.0) do
+      Daemon.stub(:process_memory, fake_memory) do
+        Time.stub(:now, now) do
+          snapshot = Daemon.status_snapshot
+        end
+      end
+    end
+
+    assert_in_delta 10.0, snapshot[:uptime_seconds], 1e-6
+    assert_in_delta 5.0, snapshot[:resources]['cpu_time_seconds'], 1e-6
+    assert_in_delta 50.0, snapshot[:resources]['cpu_percent'], 1e-6
+    assert_in_delta 256.5, snapshot[:resources]['rss_mb'], 1e-6
+    assert_in_delta((now - 10).to_f, snapshot[:started_at].to_f, 1e-6)
+  end
+
+  def test_build_snapshot_from_hashes_restores_metadata
+    now = Time.now.utc
+    payload = {
+      'jobs' => [],
+      'running' => [],
+      'queued' => [],
+      'finished' => [],
+      'queues' => [],
+      'started_at' => now.iso8601,
+      'uptime_seconds' => 42.5,
+      'resources' => {
+        'cpu_time_seconds' => 3.2,
+        'cpu_percent' => 12.5,
+        'rss_mb' => 128.4
+      }
+    }
+
+    snapshot = Daemon.send(:build_snapshot_from_hashes, payload)
+
+    assert_kind_of Time, snapshot[:started_at]
+    assert_in_delta 42.5, snapshot[:uptime_seconds], 1e-6
+    assert_equal 3.2, snapshot[:resources]['cpu_time_seconds']
+    assert_equal 12.5, snapshot[:resources]['cpu_percent']
+    assert_equal 128.4, snapshot[:resources]['rss_mb']
   end
 end

@@ -13,6 +13,7 @@ require 'bcrypt'
 require 'yaml'
 require 'fileutils'
 require 'base64'
+require 'get_process_mem'
 
 require_relative '../lib/logger'
 require_relative 'client'
@@ -255,13 +256,15 @@ class Daemon
           queued << job
         end
       end
-      {
+      snapshot = {
         jobs: jobs,
         running: running,
         queued: queued,
         finished: finished,
         queues: queue_metrics_for(running: running, queued: queued, finished: finished)
       }
+      snapshot.merge!(status_metadata)
+      snapshot
     end
 
     def build_snapshot_from_hashes(payload)
@@ -269,13 +272,92 @@ class Daemon
       running = jobs.select { |job| job[:status].to_s == 'running' }
       finished = jobs.select { |job| FINISHED_STATUSES.include?(job[:status].to_s) }
       queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
-      {
+      snapshot = {
         jobs: jobs,
         running: running,
         queued: queued,
         finished: finished,
         queues: queue_metrics_for(running: running, queued: queued, finished: finished)
       }
+      snapshot.merge!(status_metadata_from_payload(payload))
+      snapshot
+    end
+
+    def status_metadata
+      started_at = daemon_started_at
+      now = Time.now.utc
+      uptime = started_at ? [now - started_at, 0.0].max : nil
+      {
+        started_at: started_at,
+        uptime_seconds: uptime,
+        resources: build_resource_metrics(uptime)
+      }
+    end
+
+    def status_metadata_from_payload(payload)
+      return { started_at: nil, uptime_seconds: nil, resources: {} } unless payload.is_a?(Hash)
+
+      started_at = payload['started_at'] || payload[:started_at]
+      uptime = payload['uptime_seconds'] || payload[:uptime_seconds]
+      resources = payload['resources'] || payload[:resources]
+
+      {
+        started_at: coerce_time(started_at),
+        uptime_seconds: uptime,
+        resources: stringify_resource_keys(resources)
+      }
+    end
+
+    def stringify_resource_keys(value)
+      return {} unless value.is_a?(Hash)
+
+      value.each_with_object({}) do |(key, metric), memo|
+        memo[key.to_s] = metric
+      end
+    end
+
+    def build_resource_metrics(uptime_seconds)
+      cpu_time = process_cpu_time
+      cpu_percent =
+        if uptime_seconds.nil?
+          nil
+        elsif uptime_seconds.positive?
+          (cpu_time / uptime_seconds) * 100.0
+        else
+          0.0
+        end
+      {
+        'cpu_time_seconds' => cpu_time,
+        'cpu_percent' => cpu_percent,
+        'rss_mb' => process_memory.mb
+      }
+    end
+
+    def daemon_started_at
+      @daemon_started_at
+    end
+
+    def process_cpu_time
+      Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
+    rescue Errno::EINVAL
+      0.0
+    end
+
+    def process_memory
+      @process_memory ||= GetProcessMem.new
+    end
+
+    def coerce_time(value)
+      case value
+      when String
+        Time.parse(value)
+      when Time
+        value
+      else
+        nil
+      end
+    rescue ArgumentError
+      nil
     end
 
     def extract_jobs_from(body)
@@ -792,6 +874,7 @@ class Daemon
       @api_token = resolve_api_token(opts)
       @auth_config = normalize_auth_config(opts['auth'])
       @session_revocations = Concurrent::Hash.new
+      @daemon_started_at = Time.now.utc
       port = opts['listen_port'] || 8888
       address = opts['bind_address'] || '127.0.0.1'
 
@@ -836,6 +919,8 @@ class Daemon
 
         snapshot = status_snapshot
         jobs = snapshot[:jobs].map { |job| serialize_job(job) }
+        started_at = snapshot[:started_at]
+        resources = snapshot[:resources]
 
         json_response(
           res,
@@ -845,7 +930,10 @@ class Daemon
             'queued' => snapshot[:queued].map { |job| serialize_job(job) },
             'finished' => snapshot[:finished].map { |job| serialize_job(job) },
             'queues' => snapshot[:queues],
-            'lock_time' => Utils.lock_time_get
+            'lock_time' => Utils.lock_time_get,
+            'started_at' => started_at&.iso8601,
+            'uptime_seconds' => snapshot[:uptime_seconds],
+            'resources' => resources.is_a?(Hash) ? resources : {}
           }
         )
       end
