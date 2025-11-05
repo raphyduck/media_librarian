@@ -680,7 +680,7 @@ class Daemon
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
       queue_slots = app.queue_slots.to_i
-      queue_capacity = queue_slots.positive? ? queue_slots : 0
+      queue_capacity = queue_slots.positive? ? queue_slots : nil
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
@@ -735,20 +735,25 @@ class Daemon
       return unless @executor
 
       while running? && executor_saturated?(@executor)
+        if @executor.respond_to?(:max_queue)
+          max_queue = @executor.max_queue
+          break if max_queue.nil? || max_queue.negative?
+        end
         sleep(0.05)
       end
     end
 
     def executor_saturated?(executor)
+      max_queue = executor.respond_to?(:max_queue) ? executor.max_queue : nil
+      bounded_queue = !max_queue.nil? && max_queue >= 0
+
       if executor.respond_to?(:remaining_capacity)
         remaining = executor.remaining_capacity
         return false if remaining.nil? || remaining == Float::INFINITY
+        return false unless bounded_queue
 
         remaining <= 0
-      elsif executor.respond_to?(:max_queue) && executor.respond_to?(:queue_length)
-        max_queue = executor.max_queue
-        return false unless max_queue && max_queue.positive?
-
+      elsif bounded_queue && executor.respond_to?(:queue_length)
         executor.queue_length >= max_queue
       else
         false
