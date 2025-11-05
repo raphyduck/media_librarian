@@ -359,6 +359,37 @@ class DaemonIntegrationTest < Minitest::Test
     end
   end
 
+  def test_queue_slots_zero_allows_waiting_jobs_to_start
+    dispatcher = BlockingArgsDispatch.new
+    boot_daemon_environment(args_dispatch: dispatcher) do
+      write_config(queue_slots: 0, workers_pool_size: 2)
+      settings = SimpleConfigMan.load_settings(nil, @environment.application.config_file, nil)
+      @environment.container.reload_config!(settings)
+    end
+
+    client = Client.new
+    job_ids = []
+
+    2.times do
+      response = client.enqueue(['Library', 'noop'], wait: false)
+      assert_equal 200, response['status_code']
+      job_ids << response.dig('body', 'job', 'id')
+    end
+
+    dispatcher.wait_for_started(2)
+
+    third = client.enqueue(['Library', 'noop'], wait: false)
+    assert_equal 200, third['status_code']
+    third_id = third.dig('body', 'job', 'id')
+    refute_nil third_id
+
+    dispatcher.release_next
+    dispatcher.wait_for_started(3)
+
+    dispatcher.release_all
+    (job_ids + [third_id]).compact.each { |jid| wait_for_job(jid) }
+  end
+
   def test_control_endpoints_remain_responsive_when_worker_pool_full
     dispatcher = BlockingArgsDispatch.new
     boot_daemon_environment(args_dispatch: dispatcher) do
