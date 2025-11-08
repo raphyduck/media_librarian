@@ -83,6 +83,7 @@ class Daemon
   LOG_TAIL_LINES = 10_000
   SESSION_COOKIE_NAME = 'ml_session'
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
+  INLINE_EXECUTED = Object.new
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -515,7 +516,18 @@ class Daemon
         children = job_children[thread[:jid]]
         break if children.nil? || children.empty?
 
-        sleep 1
+        waited = false
+        children.each do |child_id|
+          future = job_registry[child_id]&.future
+          next unless future
+
+          future.wait(0.05)
+          waited = true
+        end
+        next if waited
+
+        Thread.pass
+        sleep(0.05)
       end
     end
 
@@ -701,7 +713,10 @@ class Daemon
 
     def start_job(job, wait_for_capacity:)
       future = obtain_future(job, wait_for_capacity: wait_for_capacity)
-      unless future
+      case future
+      when INLINE_EXECUTED
+        return job
+      when nil
         unregister_child(job)
         @jobs.delete(job.id)
         return job
@@ -722,6 +737,11 @@ class Daemon
     end
 
     def obtain_future(job, wait_for_capacity:)
+      if inline_child_job?(job)
+        execute_inline(job)
+        return INLINE_EXECUTED
+      end
+
       loop do
         return Concurrent::Promises.future_on(@executor) { execute_job(job) }
       rescue Concurrent::RejectedExecutionError
@@ -729,6 +749,49 @@ class Daemon
 
         wait_for_executor_capacity
       end
+    end
+
+    def inline_child_job?(job)
+      return false unless job.child.to_i.positive?
+
+      parent_thread = job.parent_thread
+      parent_thread&.equal?(Thread.current) && executor_busy?
+    end
+
+    def executor_busy?
+      executor = @executor
+      return false unless executor
+
+      busy_threads = false
+      if executor.respond_to?(:max_length) && executor.respond_to?(:scheduled_task_count) && executor.respond_to?(:completed_task_count)
+        max_threads = executor.max_length.to_i
+        if max_threads.positive?
+          running = executor.scheduled_task_count - executor.completed_task_count
+          running -= executor.queue_length.to_i if executor.respond_to?(:queue_length)
+          busy_threads = running >= max_threads
+        end
+      end
+
+      saturated_queue = false
+      if executor.respond_to?(:remaining_capacity)
+        remaining = executor.remaining_capacity
+        saturated_queue = remaining && remaining != Float::INFINITY && remaining <= 0
+      end
+
+      busy_threads || saturated_queue
+    end
+
+    def execute_inline(job)
+      value = nil
+      error = nil
+
+      begin
+        value = execute_job(job)
+      rescue StandardError => e
+        error = e
+      end
+
+      finalize_job(job, value, error)
     end
 
     def wait_for_executor_capacity

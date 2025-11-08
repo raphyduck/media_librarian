@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'thread'
+require 'timeout'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../librarian'
@@ -203,7 +204,7 @@ class DaemonJobControlTest < Minitest::Test
     end
 
     refute_nil child_job, 'expected child job to be enqueued'
-    child_job.future.value!
+    child_job.future&.value!
     assert_equal "outer start\nouter end\n", outer_output
     assert_equal "inner body\n", child_job.output
     assert_same outer_thread, child_thread, 'expected child job to run inline on the outer worker thread'
@@ -245,7 +246,7 @@ class DaemonJobControlTest < Minitest::Test
 
     refute_nil worker_thread, 'expected to capture worker thread from seed job'
     refute_nil child_job, 'expected child job to be enqueued'
-    child_job.future.value!
+    child_job.future&.value!
     assert_equal :finished, child_job.status
     assert_nil worker_thread[:parent], 'expected worker thread parent to be cleared after jobs complete'
   end
@@ -313,5 +314,38 @@ class DaemonJobControlTest < Minitest::Test
     assert_nil parent_log_states[:after_child], 'expected inline child to preserve nil parent log buffer'
     assert_nil parent_log_states[:after_log], 'expected parent log buffer to remain nil after logging'
     assert_includes captured_output, 'parent message', 'expected parent log message to flush immediately'
+  end
+
+  def test_consolidate_children_runs_child_inline_with_single_worker
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    child_job = nil
+    parent_job = nil
+
+    Timeout.timeout(2) do
+      Librarian.stub(:run_command, lambda do |args, *_rest, &block|
+        case args.first
+        when 'parent'
+          child_job = Daemon.enqueue(args: ['child'], child: 1, parent_thread: Thread.current)
+          Daemon.consolidate_children(Thread.current)
+        end
+
+        block&.call
+      end) do
+        parent_job = Daemon.enqueue(args: ['parent'])
+        parent_job.future.value!
+      end
+    end
+
+    assert parent_job, 'expected parent job to be enqueued'
+    assert_equal :finished, parent_job.status
+    assert child_job, 'expected child job to be enqueued'
+    assert_equal :finished, child_job.status
   end
 end
