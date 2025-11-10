@@ -374,9 +374,10 @@ class Librarian
       if thread[:block].is_a?(Array) && !thread[:block].empty?
         thread[:block].reverse_each { |b| b.call rescue nil }
       end
-      Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread) if Env.email_notif?
       if thread[:parent]
         Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
+      elsif Env.email_notif?
+        Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread)
       end
       Daemon.clear_waiting_worker(thread, thread_value, object, 1)
     end
