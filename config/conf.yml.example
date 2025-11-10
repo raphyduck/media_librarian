@@ -2,7 +2,7 @@
 preferred_languages: fr en
 daemon:
   workers_pool_size: 4
-  queue_slots: 4
+  queue_slots: 4 # Deprecated; the worker queue is unbounded.
 deluge:
   host: host
   username: username
