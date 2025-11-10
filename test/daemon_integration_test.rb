@@ -390,7 +390,7 @@ class DaemonIntegrationTest < Minitest::Test
     (job_ids + [third_id]).compact.each { |jid| wait_for_job(jid) }
   end
 
-  def test_control_endpoints_remain_responsive_when_worker_pool_full
+  def test_control_endpoints_remain_responsive_with_unbounded_queue
     dispatcher = BlockingArgsDispatch.new
     boot_daemon_environment(args_dispatch: dispatcher) do
       write_config(queue_slots: 1, workers_pool_size: 2)
@@ -399,22 +399,23 @@ class DaemonIntegrationTest < Minitest::Test
     end
 
     client = Client.new
+    job_ids = []
 
-    2.times do
+    6.times do
       response = client.enqueue(['Library', 'noop'], wait: false)
       assert_equal 200, response['status_code']
-      refute_nil response.dig('body', 'job', 'id')
+      job_id = response.dig('body', 'job', 'id')
+      refute_nil job_id
+      job_ids << job_id
     end
 
     dispatcher.wait_for_started(2)
+    assert_operator job_ids.size, :>, MediaLibrarian.application.queue_slots.to_i
 
-    third = client.enqueue(['Library', 'noop'], wait: false)
-    assert_equal 200, third['status_code']
-    refute_nil third.dig('body', 'job', 'id')
-
-    rejection = client.enqueue(['Library', 'noop'], wait: false)
-    assert_equal 429, rejection['status_code']
-    assert_equal 'queue_full', rejection.dig('body', 'error')
+    (job_ids.size - 2).times do |index|
+      dispatcher.release_next
+      dispatcher.wait_for_started(3 + index)
+    end
 
     status_response = assert_control_responds_within { control_get('/status') }
     assert_equal 200, status_response[:status_code]
@@ -423,8 +424,6 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 200, stop_response[:status_code]
     assert_equal 'stopping', stop_response.dig(:body, 'status')
 
-    dispatcher.release_next
-    dispatcher.wait_for_started(3)
     dispatcher.release_all
 
     @daemon_thread.join if @daemon_thread
@@ -612,11 +611,12 @@ class DaemonIntegrationTest < Minitest::Test
     end
   end
 
-  def wait_for_job(job_id)
+  def wait_for_job(job_id, acceptable_statuses: ['finished'])
     Timeout.timeout(10) do
       loop do
         response = Client.new.job_status(job_id)
-        if response['status_code'] == 200 && response.dig('body', 'status') == 'finished'
+        status = response.dig('body', 'status')
+        if response['status_code'] == 200 && acceptable_statuses.include?(status)
           break
         end
         sleep 0.05

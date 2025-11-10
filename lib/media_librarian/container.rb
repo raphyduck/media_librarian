@@ -109,7 +109,7 @@ module MediaLibrarian
 
       daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
-      store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
+      store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true) # retained for backwards compatibility
 
       store(:trackers, build_trackers)
 
@@ -140,7 +140,7 @@ module MediaLibrarian
 
       daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
-      store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true)
+      store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true) # retained for backwards compatibility
     end
 
     def build_trackers

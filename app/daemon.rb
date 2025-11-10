@@ -691,12 +691,10 @@ class Daemon
       @queue_limits = Concurrent::Hash.new
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
-      queue_slots = app.queue_slots.to_i
-      queue_capacity = queue_slots.positive? ? queue_slots : nil
+      # Retain queue_slots for configuration compatibility; the queue is now unbounded.
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
-        max_queue: queue_capacity,
         fallback_policy: :abort
       )
     end
