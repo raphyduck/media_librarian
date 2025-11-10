@@ -140,13 +140,49 @@ class Metadata
     tt = detect_real_title(target_title.strip, category, 0, 0)
     tt = StringUtils.clean_search(tt)
     t = StringUtils.clean_search(t)
-    m = t.match(
+    regex_match = t.match(
       Regexp.new(
         "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
         Regexp::IGNORECASE)
-    ) && ep_match && Utils.match_release_year(target_year, year)
+    )
+    fallback_match = regex_match || tokens_match_with_optional_numbers?(t, tt)
+    m = fallback_match && ep_match && Utils.match_release_year(target_year, year)
     MediaLibrarian.app.speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
     m
+  end
+
+  def self.tokens_match_with_optional_numbers?(title, target)
+    t_tokens = title.to_s.downcase.split(/\s+/).reject(&:empty?)
+    tt_tokens = target.to_s.downcase.split(/\s+/).reject(&:empty?)
+    i = j = 0
+    while i < t_tokens.length && j < tt_tokens.length
+      a = t_tokens[i]
+      b = tt_tokens[j]
+      if a == b
+        i += 1
+        j += 1
+      elsif optional_number_token?(a) && !optional_number_token?(b)
+        i += 1
+      elsif optional_number_token?(b) && !optional_number_token?(a)
+        j += 1
+      else
+        return false
+      end
+    end
+    while i < t_tokens.length
+      return false unless optional_number_token?(t_tokens[i])
+      i += 1
+    end
+    while j < tt_tokens.length
+      return false unless optional_number_token?(tt_tokens[j])
+      j += 1
+    end
+    !t_tokens.empty? && !tt_tokens.empty?
+  end
+
+  def self.optional_number_token?(token)
+    return false if token.to_s.empty?
+    token.match?(/\A\d+\z/) || %w[i ii iii iv v vi vii viii ix x xi xii xiii xiv xv xvi xvii xviii xix xx].include?(token.downcase)
   end
 
   def self.media_add(item_name, type, full_name, identifiers, attrs = {}, file_attrs = {}, file = {}, data = {})
