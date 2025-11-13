@@ -40,6 +40,18 @@ class LibrarianTerminateCommandTest < Minitest::Test
     assert_equal parent, sent_out_calls.first.last
   end
 
+  def test_inline_child_threads_skip_email_delivery
+    inline_child = build_thread(object: 'inline-child', child_job: 1)
+
+    Env.stub(:email_notif?, ->(*) { true }) do
+      Daemon.stub(:merge_notifications, ->(*) { flunk('inline child should not merge notifications') }) do
+        Report.stub(:sent_out, ->(*) { flunk('inline child should not send email') }) do
+          Librarian.terminate_command(inline_child, 'inline-value', inline_child[:object])
+        end
+      end
+    end
+  end
+
   private
 
   def build_thread(**attrs)
@@ -50,7 +62,8 @@ class LibrarianTerminateCommandTest < Minitest::Test
       block: [],
       start_time: Time.now,
       object: 'job',
-      jid: 'jid'
+      jid: 'jid',
+      child_job: 0
     }
 
     FakeThread.new(defaults.merge(attrs))
