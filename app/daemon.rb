@@ -832,6 +832,7 @@ class Daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
         thread[:log_msg] = String.new if job.child.to_i.positive?
+        thread[:child_job] = job.child.to_i.positive? ? 1 : 0
 
         captured_output = job.capture_output ? String.new : nil
         thread[:captured_output] = captured_output if captured_output

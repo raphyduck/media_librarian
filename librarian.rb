@@ -145,6 +145,7 @@ class Librarian
       thread[:start_time] = Time.now
       thread[:direct] = direct
       thread[:block] = [block]
+      thread[:child_job] = 0
       thread[:is_active] = 1
     end
 
@@ -376,6 +377,8 @@ class Librarian
       end
       if thread[:parent]
         Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
+      elsif thread[:child_job].to_i.positive?
+        # Inline child jobs share the parent's thread, so email delivery should be deferred
       elsif Env.email_notif?
         Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread)
       end
