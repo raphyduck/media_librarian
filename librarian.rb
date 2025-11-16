@@ -145,7 +145,12 @@ class Librarian
       thread[:start_time] = Time.now
       thread[:direct] = direct
       thread[:block] = [block]
-      thread[:child_job] = 0
+      existing_child_flag = thread[:child_job]
+      thread[:child_job] = if existing_child_flag && existing_child_flag.to_i.positive?
+        1
+      else
+        0
+      end
       thread[:is_active] = 1
     end
 
@@ -375,10 +380,12 @@ class Librarian
       if thread[:block].is_a?(Array) && !thread[:block].empty?
         thread[:block].reverse_each { |b| b.call rescue nil }
       end
-      if thread[:parent]
-        Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
-      elsif thread[:child_job].to_i.positive?
-        # Inline child jobs share the parent's thread, so email delivery should be deferred
+      if thread[:child_job].to_i.positive?
+        if thread[:parent]
+          Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
+        else
+          # Inline child jobs share the parent's thread, so email delivery should be deferred
+        end
       elsif Env.email_notif?
         Report.sent_out("#{'[DEBUG]' if Env.debug?(thread)}#{object || thread[:object]}", thread)
       end
