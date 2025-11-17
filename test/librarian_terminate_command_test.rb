@@ -19,8 +19,8 @@ class LibrarianTerminateCommandTest < Minitest::Test
 
   def test_child_threads_defer_email_delivery_to_parent
     parent = build_thread(object: 'parent job', jid: 'parent-jid')
-    child_one = build_thread(object: 'child-one', parent: parent, jid: 'child-jid-1')
-    child_two = build_thread(object: 'child-two', parent: parent, jid: 'child-jid-2')
+    child_one = build_thread(object: 'child-one', parent: parent, jid: 'child-jid-1', child_job: 1)
+    child_two = build_thread(object: 'child-two', parent: parent, jid: 'child-jid-2', child_job: 1)
 
     sent_out_calls = []
     merged_children = []
@@ -50,6 +50,34 @@ class LibrarianTerminateCommandTest < Minitest::Test
         end
       end
     end
+  end
+
+  def test_parent_threads_still_send_email_for_non_child_jobs
+    parent = build_thread(object: 'scheduler-parent')
+    scheduled_job = build_thread(object: 'scheduled-job', parent: parent, child_job: 0)
+
+    sent_out_calls = []
+
+    Env.stub(:email_notif?, ->(*) { true }) do
+      Daemon.stub(:merge_notifications, ->(*) { flunk('non-child jobs should not merge notifications into parent') }) do
+        Report.stub(:sent_out, ->(subject, thread) { sent_out_calls << [subject, thread] }) do
+          Librarian.terminate_command(scheduled_job, 'scheduled-value', scheduled_job[:object])
+        end
+      end
+    end
+
+    assert_equal 1, sent_out_calls.size
+    subject, thread = sent_out_calls.first
+    assert_match(/scheduled-job/, subject)
+    assert_equal scheduled_job, thread
+  end
+
+  def test_init_thread_preserves_child_job_flag
+    child_thread = build_thread(child_job: 1)
+
+    Librarian.init_thread(child_thread, child_thread[:object], child_thread[:direct]) { nil }
+
+    assert_equal 1, child_thread[:child_job]
   end
 
   private
