@@ -216,7 +216,9 @@ class TraktAgent
   def self.refresh_trakt_token
     return unless MediaLibrarian.app.trakt && MediaLibrarian.app.trakt_account
 
-    token = MediaLibrarian.app.trakt.account.access_token
+    # Refresh the token via the account helper, then persist the full token hash
+    MediaLibrarian.app.trakt.account.access_token
+    token = MediaLibrarian.app.trakt.token
     persist_trakt_token(token)
     token
   rescue StandardError => e
