@@ -47,6 +47,21 @@ class ReportTest < Minitest::Test
     end
   end
 
+  def test_sent_out_delivers_when_content_is_present
+    thread = Thread.current
+    thread[:email_msg] = "Scheduled results"
+    thread[:send_email] = 0
+
+    Librarian.new(container: @environment.container, args: [])
+
+    assert_sends_email(subject: 'Scheduled task', body: thread[:email_msg]) do
+      Report.sent_out('Scheduled task', thread)
+    end
+  ensure
+    thread[:email_msg] = nil
+    thread[:send_email] = nil
+  end
+
   private
 
   def assert_sends_email(subject:, body:)
