@@ -47,6 +47,36 @@ class ReportTest < Minitest::Test
     end
   end
 
+  def test_sent_out_delivers_when_send_flag_is_enabled
+    thread = Thread.current
+    thread[:email_msg] = "Scheduled results"
+    thread[:send_email] = 1
+
+    Librarian.new(container: @environment.container, args: [])
+
+    assert_sends_email(subject: 'Scheduled task', body: thread[:email_msg]) do
+      Report.sent_out('Scheduled task', thread)
+    end
+  ensure
+    thread[:email_msg] = nil
+    thread[:send_email] = nil
+  end
+
+  def test_sent_out_skips_when_send_flag_is_disabled
+    thread = Thread.current
+    thread[:email_msg] = "Healthy torrent check"
+    thread[:send_email] = 0
+
+    Librarian.new(container: @environment.container, args: [])
+
+    assert_no_email_delivered do
+      Report.sent_out('Scheduled task', thread)
+    end
+  ensure
+    thread[:email_msg] = nil
+    thread[:send_email] = nil
+  end
+
   private
 
   def assert_sends_email(subject:, body:)
@@ -59,5 +89,12 @@ class ReportTest < Minitest::Test
     expected_subject = Report.formatted_subject(subject)
     assert_equal expected_subject, mail.subject
     assert_includes mail.text_part.body.decoded, body
+  end
+
+  def assert_no_email_delivered
+    yield
+
+    deliveries = Mail::TestMailer.deliveries
+    assert_equal 0, deliveries.size, 'Expected no email to be delivered'
   end
 end
