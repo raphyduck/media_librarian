@@ -928,8 +928,8 @@ class Daemon
     def start_trakt_timer
       return unless defined?(TraktAgent)
 
-      @trakt_timer = Concurrent::TimerTask.new(execution_interval: 3700) do
-        TraktAgent.get_trakt_token
+      @trakt_timer = Concurrent::TimerTask.new(execution_interval: 3300) do
+        TraktAgent.refresh_trakt_token
       rescue StandardError => e
         app.speaker.tell_error(e, 'Trakt refresh failure')
       end

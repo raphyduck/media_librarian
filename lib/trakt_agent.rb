@@ -210,14 +210,26 @@ class TraktAgent
   end
 
   def self.get_trakt_token
+    refresh_trakt_token
+  end
+
+  def self.refresh_trakt_token
     return unless MediaLibrarian.app.trakt && MediaLibrarian.app.trakt_account
 
-    token = MediaLibrarian.app.trakt.access_token
-    MediaLibrarian.app.db.insert_row('trakt_auth', token.merge({ account: MediaLibrarian.app.trakt_account }), 1) if token
+    token = MediaLibrarian.app.trakt.account.access_token
+    persist_trakt_token(token)
+    token
   rescue StandardError => e
-    MediaLibrarian.app.speaker.tell_error(e, 'TraktAgent.get_trakt_token')
+    MediaLibrarian.app.speaker.tell_error(e, 'TraktAgent.refresh_trakt_token')
     nil
   end
+
+  def self.persist_trakt_token(token)
+    return unless token
+
+    MediaLibrarian.app.db.insert_row('trakt_auth', token.merge({ account: MediaLibrarian.app.trakt_account }), 1)
+  end
+  private_class_method :persist_trakt_token
 
   def self.remove_from_list(items, list = 'watchlist', type = 'movies')
     MediaLibrarian.app.speaker.speak_up "Cleaning trakt list '#{list}' (type #{type}, #{items.count} elements)" if Env.debug?
