@@ -35,8 +35,11 @@ class Report
   end
 
   def self.sent_out(email_subject, t = Thread.current, content = '')
-    email_content = content.to_s.empty? ? (t || Thread.current)[:email_msg].to_s : content.to_s
-    return if app.email.nil? || email_content.empty?
+    thread_context = t || Thread.current
+    email_content = content.to_s.empty? ? thread_context[:email_msg].to_s : content.to_s
+    send_email_flag = content.to_s.empty? ? thread_context[:send_email].to_i : 1
+
+    return if app.email.nil? || email_content.empty? || send_email_flag <= 0
 
     Librarian.route_cmd(['Report', 'push_email', email_subject, email_content], 1, 'email', 1, 'priority')
     Librarian.reset_notifications(t) if t
