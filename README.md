@@ -62,6 +62,10 @@ This program is made to answer my various needs for automation in the management
 
 The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `conf.yml`.
 
+### Trakt integration
+
+`TraktAgent` is now a thin shim that forwards dynamic API calls via `method_missing`. Legacy helpers for list management and automated watchlist/collection curation have been retired. Features such as the calendar rely on locally persisted watchlist entries instead of pulling Trakt lists directly.
+
 ### Tracker logins that require a real browser
 
 Some trackers now require interactive authentication flows that break automated form submissions. When that happens you can flag

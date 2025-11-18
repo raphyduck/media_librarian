@@ -33,7 +33,7 @@ kodi:
   username: username
   password: password
 trakt:
-  account_id: account_id
+  account_id: account_id # Used for metadata lookups; list automation is retired
   client_id: client_id
   client_secret: client_secret
 tmdb:

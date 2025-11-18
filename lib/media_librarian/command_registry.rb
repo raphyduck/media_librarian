@@ -29,7 +29,6 @@ module MediaLibrarian
           compare_remote_files: ['Library', 'compare_remote_files'],
           create_custom_list: ['Library', 'create_custom_list'],
           fetch_media_box: ['Library', 'fetch_media_box'],
-          get_media_list_size: ['Library', 'get_media_list_size'],
           handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
           import_csv: ['ListStore', 'import_csv'],
           process_folder: ['Library', 'process_folder']
