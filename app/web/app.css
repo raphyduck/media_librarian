@@ -414,3 +414,132 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.calendar-actions {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.calendar-actions select {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.65);
+  color: inherit;
+}
+
+.calendar-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.calendar-filters label {
+  font-weight: 600;
+}
+
+.calendar-filters select,
+.calendar-filters input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.6);
+  color: inherit;
+}
+
+.calendar-filters select[multiple] {
+  min-height: 4.5rem;
+}
+
+.calendar-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.calendar-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.calendar-group {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.calendar-group h3 {
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #e5e7eb;
+}
+
+.calendar-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.calendar-item {
+  padding: 0.75rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calendar-item header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.calendar-item h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.calendar-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.calendar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  color: #e0ecff;
+  font-size: 0.85rem;
+}
+
+.calendar-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.calendar-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.calendar-actions-row button {
+  margin-left: auto;
+}
