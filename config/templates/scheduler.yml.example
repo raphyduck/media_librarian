@@ -4,6 +4,12 @@ periodic:
     execution: 3600
     every: 1 minutes
     args:
+  calendar_feed_refresh:
+    command: calendar.refresh_feed
+    every: 12 hours
+    args:
+      days: 45
+      limit: 200
 continuous:
   task1:
     command: library.fetch_media_box

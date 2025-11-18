@@ -43,6 +43,9 @@ module MediaLibrarian
         tracker: {
           login: ['TrackerTools', 'login']
         },
+        calendar: {
+          refresh_feed: ['CalendarFeed', 'refresh_feed']
+        },
         usage: ['Librarian', 'help'],
         list_db: ['Utils', 'list_db'],
         flush_queues: ['TorrentClient', 'flush_queues', 1, 'torrenting'],
