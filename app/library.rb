@@ -455,7 +455,7 @@ class Library
             :move_completed => (destination[category] || File.dirname(DEFAULT_MEDIA_DESTINATION[category])) }
         )
       end
-    when 'filesystem', 'trakt', 'lists'
+    when 'filesystem', 'trakt', 'lists', 'download_list'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
         app.speaker.speak_up(id) #REMOVEME
