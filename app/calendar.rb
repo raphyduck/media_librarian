@@ -3,6 +3,8 @@
 require 'set'
 require 'time'
 
+require_relative '../lib/watchlist_store'
+
 class Calendar
   include MediaLibrarian::AppContainerSupport
 
@@ -46,23 +48,14 @@ class Calendar
   end
 
   def build_entries
-    movies = fetch_entries('movies')
-    shows = fetch_entries('shows')
-    (movies + shows).compact
-  end
+    WatchlistStore.fetch.filter_map do |entry|
+      type = normalize_entry_type(entry)
+      next unless type
 
-  def fetch_entries(type)
-    watchlist = safe_trakt_list('watchlist', type)
-    downloaded_ids = build_downloaded_index(type)
-    watchlist.filter_map do |item|
-      payload = extract_payload(item, type)
-      next unless payload
-
-      ids = payload['ids'] || {}
+      metadata = normalize_metadata(entry)
+      ids = extract_ids(metadata)
       medium = load_medium(type, ids)
       next unless medium
-
-      release_date = parse_date(type == 'movies' ? medium.release_date : medium.first_aired)
 
       {
         type: type == 'movies' ? 'movie' : 'show',
@@ -72,22 +65,50 @@ class Calendar
         language: medium.language,
         country: medium.country,
         imdb_rating: safe_rating(medium),
-        release_date: release_date,
-        downloaded: downloaded?(downloaded_ids, ids),
+        release_date: release_date_from(metadata, medium, type),
+        downloaded: downloaded_from(metadata),
         in_interest_list: true,
         ids: ids
       }
     end
   end
 
+  def normalize_entry_type(entry)
+    raw = entry[:type] || entry['type']
+    return unless raw
+
+    value = raw.to_s.downcase
+    return 'movies' if value.start_with?('movie')
+    return 'shows' if value.start_with?('show')
+  end
+
+  def normalize_metadata(entry)
+    metadata = entry[:metadata] || entry['metadata'] || {}
+    metadata.is_a?(Hash) ? metadata : {}
+  end
+
+  def extract_ids(metadata)
+    ids = metadata[:ids] || metadata['ids'] || {}
+    ids.is_a?(Hash) ? ids : {}
+  end
+
+  def release_date_from(metadata, medium, type)
+    raw = metadata[:release_date] || metadata['release_date']
+    raw ||= metadata[:first_aired] || metadata['first_aired']
+    raw ||= type == 'movies' ? medium.release_date : medium.first_aired
+    parse_date(raw)
+  end
+
+  def downloaded_from(metadata)
+    return !!metadata[:downloaded] if metadata.key?(:downloaded)
+    return !!metadata['downloaded'] if metadata.key?('downloaded')
+
+    !!metadata[:downloaded_at] || !!metadata['downloaded_at']
+  end
+
   def safe_rating(medium)
     value = medium.respond_to?(:rating) ? medium.rating : nil
     value.to_f if value
-  end
-
-  def extract_payload(item, type)
-    key = type == 'movies' ? 'movie' : 'show'
-    item[key] || item[type] || item
   end
 
   def load_medium(type, ids)
@@ -103,30 +124,6 @@ class Calendar
     Time.parse(value.to_s)
   rescue ArgumentError
     nil
-  end
-
-  def safe_trakt_list(list_name, type)
-    TraktAgent.list(list_name, type)
-  rescue StandardError
-    []
-  end
-
-  def build_downloaded_index(type)
-    safe_trakt_list('collection', type).filter_map do |item|
-      payload = extract_payload(item, type)
-      payload && payload['ids']
-    end.map { |ids| normalize_ids(ids) }
-  end
-
-  def normalize_ids(ids)
-    return [] unless ids.respond_to?(:values)
-
-    ids.values.compact.map(&:to_s).reject(&:empty?)
-  end
-
-  def downloaded?(downloaded_ids, ids)
-    current_ids = normalize_ids(ids)
-    downloaded_ids.any? { |values| !(values & current_ids).empty? }
   end
 
   def apply_filters(entries, filters)

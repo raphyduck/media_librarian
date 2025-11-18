@@ -87,15 +87,6 @@ class Library
     Quality.sort_media_files(dup_files, {}, medium[:language], medium[:type])
   end
 
-  def self.get_media_list_size(list: [], folder: {}, type_filter: '')
-    request = MediaLibrarian::Services::MediaListSizeRequest.new(
-      list: list,
-      folder: folder,
-      type_filter: type_filter
-    )
-    list_management_service.get_media_list_size(request)
-  end
-
   def self.get_search_list(source_type, category, source, no_prompt = 0)
     request = MediaLibrarian::Services::SearchListRequest.new(
       source_type: source_type,
@@ -375,7 +366,6 @@ class Library
             ok = false
             fs.uniq.each do |f|
               app.speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." # if Env.debug?
-              ok = TraktAgent.remove_from_list([f[:trakt_obj]], f[:trakt_list], f[:trakt_type]) if f[:type] == 'trakt'
               ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
               ok = app.db.delete_rows('media_lists',{:list_name => f[:list_name], :type => f[:obj_type], :title => f[:obj_title], :year => f[:obj_year], :url => f[:obj_url]}) if f[:type] == 'lists'
             end
@@ -472,7 +462,6 @@ class Library
               if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
                 search_list[id][:files] << ae unless source_type == 'filesystem'
               elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-                TraktAgent.remove_from_list([search_list[id][:trakt_obj]], source['list_name'], category) if search_list[id][:trakt_obj]
                 search_list.delete(id)
               end
             end

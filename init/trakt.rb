@@ -33,7 +33,14 @@ if trakt_config.is_a?(Hash)
                             speaker: app.speaker,
                             token: token_row
                           })
-    TraktAgent.get_trakt_token
+
+    begin
+      app.trakt.account.access_token
+      token = app.trakt.token
+      app.db.insert_row('trakt_auth', token.merge({ account: app.trakt_account }), 1) if token
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'Trakt token initialization')
+    end
   end
 else
   app.speaker.speak_up('Skipping Trakt integration because no configuration is available.', 0)

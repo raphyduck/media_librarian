@@ -2,7 +2,7 @@
 
 require 'test_helper'
 require 'ostruct'
-require_relative '../../lib/trakt_agent'
+require_relative '../../lib/watchlist_store'
 require_relative '../../app/movie'
 require_relative '../../app/tv_series'
 require_relative '../../app/calendar'
@@ -21,18 +21,10 @@ class CalendarTest < Minitest::Test
   end
 
   def test_filters_by_genre_type_and_download_flag
-    trakt_stub = lambda do |name, type|
-      case [name, type]
-      when ['watchlist', 'movies']
-        [{ 'movie' => { 'ids' => { 'imdb' => 'tt-movie' } } }]
-      when ['watchlist', 'shows']
-        [{ 'show' => { 'ids' => { 'imdb' => 'tt-show' } } }]
-      when ['collection', 'movies']
-        [{ 'movie' => { 'ids' => { 'imdb' => 'tt-movie' } } }]
-      else
-        []
-      end
-    end
+    watchlist_entries = [
+      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-movie' }, downloaded: true } },
+      { type: 'shows', metadata: { ids: { 'imdb' => 'tt-show' } } }
+    ]
 
     movie = OpenStruct.new(
       name: 'Alpha',
@@ -54,7 +46,7 @@ class CalendarTest < Minitest::Test
       first_aired: Time.utc(2021, 6, 1)
     )
 
-    TraktAgent.stub(:list, trakt_stub) do
+    WatchlistStore.stub(:fetch, watchlist_entries) do
       Movie.stub(:movie_get, ->(*_) { ['', movie] }) do
         TvSeries.stub(:tv_show_get, ->(*_) { ['', show] }) do
           calendar = Calendar.new(app: @environment.application)
@@ -72,14 +64,10 @@ class CalendarTest < Minitest::Test
   end
 
   def test_paginates_and_sorts_by_release_date
-    trakt_stub = lambda do |name, type|
-      return [] unless name == 'watchlist' && type == 'movies'
-
-      [
-        { 'movie' => { 'ids' => { 'imdb' => 'tt-1' } } },
-        { 'movie' => { 'ids' => { 'imdb' => 'tt-2' } } }
-      ]
-    end
+    watchlist_entries = [
+      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-1' } } },
+      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-2' } } }
+    ]
 
     first = OpenStruct.new(
       name: 'First',
@@ -101,7 +89,7 @@ class CalendarTest < Minitest::Test
       release_date: Time.utc(2019, 1, 1)
     )
 
-    TraktAgent.stub(:list, trakt_stub) do
+    WatchlistStore.stub(:fetch, watchlist_entries) do
       call_count = 0
       Movie.stub(:movie_get, lambda do |ids, *|
         call_count += 1

@@ -113,7 +113,6 @@ class Daemon
 
             start_scheduler(scheduler) if scheduler
             start_quit_timer
-            start_trakt_timer
             start_control_server
 
             wait_for_shutdown
@@ -925,17 +924,6 @@ class Daemon
     def start_quit_timer
       @quit_timer = Concurrent::TimerTask.new(execution_interval: 1) { quit }
       @quit_timer.execute
-    end
-
-    def start_trakt_timer
-      return unless defined?(TraktAgent)
-
-      @trakt_timer = Concurrent::TimerTask.new(execution_interval: 3300) do
-        TraktAgent.refresh_trakt_token
-      rescue StandardError => e
-        app.speaker.tell_error(e, 'Trakt refresh failure')
-      end
-      @trakt_timer.execute
     end
 
     def start_control_server
