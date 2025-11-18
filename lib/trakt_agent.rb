@@ -23,15 +23,6 @@ class TraktAgent
                             })
   end
 
-  def self.get_history(type, trakt_id = '')
-    h = with_rate_limit { MediaLibrarian.app.trakt.list.get_history(type, trakt_id) }
-    return [] if h.is_a?(Hash) && h['error']
-    h
-  rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    []
-  end
-
   def self.get_watched(type, complete = 0)
     MediaLibrarian.app.speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
     get_watched = BusVariable.new('get_watched', Vash)

@@ -421,10 +421,9 @@ class Library
             :move_completed => (destination[category] || File.dirname(DEFAULT_MEDIA_DESTINATION[category])) }
         )
       end
-    when 'filesystem', 'trakt', 'lists'
+    when 'filesystem', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
-        app.speaker.speak_up(id) #REMOVEME
         next if id.is_a?(Symbol)
         case category
         when 'movies'
@@ -435,10 +434,9 @@ class Library
           else
             already_exists = get_duplicates(existing_files[category][id], 1)
             already_exists.each do |ae|
-              if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
+              if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, 'y').to_s == 'y'
                 search_list[id][:files] << ae unless source_type == 'filesystem'
               elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-                TraktAgent.remove_from_list([search_list[id][:trakt_obj]], source['list_name'], category) if search_list[id][:trakt_obj]
                 search_list.delete(id)
               end
             end
