@@ -1006,6 +1006,12 @@ class Daemon
         )
       end
 
+      @control_server.mount_proc('/calendar') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_request(req, res)
+      end
+
       @control_server.mount_proc('/stop') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1144,6 +1150,12 @@ class Daemon
       end
 
       json_response(res, body: { 'logs' => logs })
+    end
+
+    def handle_calendar_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      json_response(res, body: { 'calendar' => [] })
     end
 
     def handle_config_request(req, res)

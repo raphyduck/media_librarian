@@ -1038,8 +1038,10 @@ function readCalendarFilters() {
         .filter(Boolean)
     : [];
 
-  const ratingMin = Number(document.getElementById('calendar-rating-min')?.value);
-  const ratingMax = Number(document.getElementById('calendar-rating-max')?.value);
+  const ratingMinRaw = document.getElementById('calendar-rating-min')?.value || '';
+  const ratingMaxRaw = document.getElementById('calendar-rating-max')?.value || '';
+  const ratingMin = ratingMinRaw === '' ? '' : Number(ratingMinRaw);
+  const ratingMax = ratingMaxRaw === '' ? '' : Number(ratingMaxRaw);
   filters.ratingMin = Number.isFinite(ratingMin) ? ratingMin : '';
   filters.ratingMax = Number.isFinite(ratingMax) ? ratingMax : '';
 
