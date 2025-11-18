@@ -15,6 +15,7 @@ class Movie
     name: :name,
     genres: :genres,
     country: :country,
+    rating: :rating,
     set: :set,
     alt_titles: :alt_titles,
     data_source: :data_source

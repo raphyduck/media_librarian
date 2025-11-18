@@ -1019,6 +1019,12 @@ class Daemon
         handle_restart_request(req, res)
       end
 
+      @control_server.mount_proc('/calendar') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_request(req, res)
+      end
+
       @control_server.mount_proc('/logs') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1133,6 +1139,36 @@ class Daemon
       return {} if req.body.nil? || req.body.empty?
 
       JSON.parse(req.body)
+    end
+
+    def handle_calendar_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      filters = {
+        type: req.query['type'],
+        genres: normalize_list_param(req.query['genres']),
+        imdb_min: req.query['imdb_min'],
+        imdb_max: req.query['imdb_max'],
+        language: req.query['language'],
+        country: req.query['country'],
+        downloaded: req.query['downloaded'],
+        interest: req.query['interest'],
+        sort: req.query['sort'],
+        page: req.query['page'],
+        per_page: req.query['per_page']
+      }
+
+      calendar = Calendar.new(app: app)
+      json_response(res, body: calendar.entries(filters))
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def normalize_list_param(value)
+      return [] if value.nil?
+      return value if value.is_a?(Array)
+
+      value.to_s.split(',').map(&:strip)
     end
 
     def handle_logs_request(req, res)
