@@ -51,6 +51,16 @@
           Logs
         </button>
         <button
+          id="tab-calendar"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="calendar"
+        >
+          Calendrier
+        </button>
+        <button
           id="tab-config"
           class="tab-button"
           type="button"
@@ -114,6 +124,57 @@
               </div>
             </div>
             <div id="logs-container" class="logs"></div>
+          </section>
+        </section>
+
+        <section
+          class="tab-panel"
+          data-tab="calendar"
+          role="tabpanel"
+          aria-labelledby="tab-calendar"
+          hidden
+        >
+          <section class="panel" id="calendar-panel">
+            <div class="panel-header">
+              <h2>Calendrier</h2>
+              <div class="actions calendar-actions">
+                <label for="calendar-view">Vue</label>
+                <select id="calendar-view" name="view">
+                  <option value="week">Semaine</option>
+                  <option value="month">Mois</option>
+                </select>
+                <button id="refresh-calendar" type="button">Actualiser</button>
+              </div>
+            </div>
+
+            <div class="calendar-filters" aria-label="Filtres calendrier">
+              <label for="calendar-type">Type</label>
+              <select id="calendar-type" name="type">
+                <option value="">Tous</option>
+                <option value="movie">Films</option>
+                <option value="show">Séries</option>
+              </select>
+
+              <label for="calendar-genres">Genres</label>
+              <select id="calendar-genres" name="genres" multiple></select>
+
+              <label for="calendar-rating-min">Note IMDB (min/max)</label>
+              <div class="calendar-range">
+                <input id="calendar-rating-min" name="rating-min" type="number" step="0.1" min="0" max="10" />
+                <span>–</span>
+                <input id="calendar-rating-max" name="rating-max" type="number" step="0.1" min="0" max="10" />
+              </div>
+
+              <label for="calendar-language">Langue</label>
+              <input id="calendar-language" name="language" type="text" />
+
+              <label for="calendar-country">Pays</label>
+              <input id="calendar-country" name="country" type="text" />
+            </div>
+
+            <div id="calendar-content" class="calendar-content">
+              <p class="hint">Aucun contenu calendrier pour le moment.</p>
+            </div>
           </section>
         </section>
 

@@ -11,6 +11,17 @@ const state = {
     trackers: false,
   },
   isRefreshing: false,
+  calendar: {
+    view: 'week',
+    filters: {
+      type: '',
+      genres: [],
+      ratingMin: '',
+      ratingMax: '',
+      language: '',
+      country: '',
+    },
+  },
 };
 
 const fileEditors = new Map();
@@ -938,6 +949,379 @@ function renderLogs(logs = {}) {
   });
 }
 
+function pickEntryValue(entry, keys) {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+  return keys.map((key) => entry[key]).find((value) => value !== undefined && value !== null) ?? null;
+}
+
+function normalizeCalendarEntries(data = {}) {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  const candidates = [data.entries, data.items, data.results, data.calendar];
+  const entries = candidates.find(Array.isArray);
+  return Array.isArray(entries) ? entries : [];
+}
+
+function extractGenres(entry) {
+  const raw = pickEntryValue(entry, ['genres', 'genre', 'tags', 'categories']);
+  if (!raw) {
+    return [];
+  }
+  const normalized = Array.isArray(raw) ? raw : String(raw).split(/[,;]/);
+  return normalized
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => value.toLowerCase())
+    .filter(Boolean);
+}
+
+function resolveCalendarDate(entry) {
+  const raw = pickEntryValue(entry, [
+    'date',
+    'release_date',
+    'air_date',
+    'airing_at',
+    'first_aired',
+    'on',
+  ]);
+  if (!raw) {
+    return null;
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function updateCalendarGenres(entries) {
+  const select = document.getElementById('calendar-genres');
+  if (!select) {
+    return;
+  }
+  const previous = new Set(state.calendar.filters.genres);
+  const available = new Set();
+  entries.forEach((entry) => {
+    extractGenres(entry).forEach((genre) => available.add(genre));
+  });
+  if (!available.size) {
+    if (!select.options.length) {
+      const option = document.createElement('option');
+      option.disabled = true;
+      option.value = '';
+      option.textContent = 'Aucun genre détecté';
+      select.appendChild(option);
+    }
+    return;
+  }
+  select.innerHTML = '';
+  Array.from(available)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((genre) => {
+      const option = document.createElement('option');
+      option.value = genre;
+      option.textContent = genre;
+      option.selected = previous.has(genre);
+      select.appendChild(option);
+    });
+}
+
+function readCalendarFilters() {
+  const filters = state.calendar.filters;
+  const viewSelect = document.getElementById('calendar-view');
+  state.calendar.view = viewSelect?.value || 'week';
+
+  filters.type = (document.getElementById('calendar-type')?.value || '').toLowerCase();
+  const genreSelect = document.getElementById('calendar-genres');
+  filters.genres = genreSelect
+    ? Array.from(genreSelect.selectedOptions)
+        .map((option) => option.value)
+        .filter(Boolean)
+    : [];
+
+  const ratingMinRaw = document.getElementById('calendar-rating-min')?.value || '';
+  const ratingMaxRaw = document.getElementById('calendar-rating-max')?.value || '';
+  const ratingMin = ratingMinRaw === '' ? '' : Number(ratingMinRaw);
+  const ratingMax = ratingMaxRaw === '' ? '' : Number(ratingMaxRaw);
+  filters.ratingMin = Number.isFinite(ratingMin) ? ratingMin : '';
+  filters.ratingMax = Number.isFinite(ratingMax) ? ratingMax : '';
+
+  filters.language = (document.getElementById('calendar-language')?.value || '').trim();
+  filters.country = (document.getElementById('calendar-country')?.value || '').trim();
+  return filters;
+}
+
+function entryMatchesFilters(entry, filters) {
+  const type = (pickEntryValue(entry, ['type', 'kind', 'category']) || '').toString().toLowerCase();
+  if (filters.type && filters.type !== type) {
+    return false;
+  }
+
+  if (filters.genres.length) {
+    const genres = extractGenres(entry);
+    const matches = filters.genres.some((genre) => genres.includes(genre));
+    if (!matches) {
+      return false;
+    }
+  }
+
+  const rating = Number(pickEntryValue(entry, ['imdb_rating', 'rating', 'score']));
+  if (filters.ratingMin !== '' && !Number.isFinite(rating)) {
+    return false;
+  }
+  if (filters.ratingMin !== '' && rating < filters.ratingMin) {
+    return false;
+  }
+  if (filters.ratingMax !== '' && !Number.isFinite(rating)) {
+    return false;
+  }
+  if (filters.ratingMax !== '' && rating > filters.ratingMax) {
+    return false;
+  }
+
+  const language = (pickEntryValue(entry, ['language', 'lang', 'original_language']) || '').toString().toLowerCase();
+  if (filters.language && !language.includes(filters.language.toLowerCase())) {
+    return false;
+  }
+
+  const countryRaw = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
+  const countries = Array.isArray(countryRaw)
+    ? countryRaw.map((value) => String(value || '').toLowerCase())
+    : String(countryRaw || '').toLowerCase();
+  if (filters.country && !countries.toString().includes(filters.country.toLowerCase())) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildCalendarGroups(entries, view) {
+  const groups = new Map();
+  const startOfWeek = (date) => {
+    const copy = new Date(date);
+    const weekday = (copy.getDay() + 6) % 7;
+    copy.setHours(0, 0, 0, 0);
+    copy.setDate(copy.getDate() - weekday);
+    return copy;
+  };
+
+  entries.forEach((entry) => {
+    const date = resolveCalendarDate(entry);
+    const key = date
+      ? view === 'month'
+        ? `${date.getFullYear()}-${date.getMonth()}`
+        : startOfWeek(date).toISOString()
+      : 'no-date';
+    if (!groups.has(key)) {
+      const label = (() => {
+        if (!date) return 'Sans date';
+        if (view === 'month') {
+          return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(date);
+        }
+        const start = startOfWeek(date);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        const format = (value) =>
+          new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(value);
+        return `Semaine du ${format(start)} au ${format(end)}`;
+      })();
+      groups.set(key, { label, sortKey: date ? date.getTime() : Number.POSITIVE_INFINITY, items: [] });
+    }
+    groups.get(key).items.push({ entry, date });
+  });
+
+  return Array.from(groups.values()).sort((a, b) => a.sortKey - b.sortKey);
+}
+
+function makeCalendarBadge(text) {
+  const span = document.createElement('span');
+  span.className = 'calendar-badge';
+  span.textContent = text;
+  return span;
+}
+
+function resolveIdentifier(entry) {
+  return (
+    pickEntryValue(entry, ['id', 'slug', 'imdb_id', 'tmdb_id', 'tvdb_id'])
+      || pickEntryValue(entry, ['title', 'name'])
+  );
+}
+
+function isDownloaded(entry) {
+  const flag = pickEntryValue(entry, ['downloaded', 'is_downloaded', 'download_status', 'status']);
+  if (typeof flag === 'string') {
+    return flag.toLowerCase().includes('download');
+  }
+  return Boolean(flag);
+}
+
+function isInWatchlist(entry) {
+  const flag = pickEntryValue(entry, ['in_watchlist', 'watchlist', 'on_watchlist', 'listed']);
+  if (typeof flag === 'string') {
+    return flag.toLowerCase().includes('watch');
+  }
+  return Boolean(flag);
+}
+
+async function addToWatchlist(entry, button) {
+  const payload = {
+    id: resolveIdentifier(entry),
+    type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
+    title: pickEntryValue(entry, ['title', 'name']) || '',
+  };
+  if (!payload.id && !payload.title) {
+    showNotification("Impossible d'ajouter cet élément.", 'error');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    await fetchJson('/watchlist', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification('Ajouté à la liste d’intérêt.');
+    await loadCalendar({ preserveFilters: true });
+  } catch (error) {
+    showNotification(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function renderCalendar(data = {}) {
+  const container = document.getElementById('calendar-content');
+  if (!container) {
+    return;
+  }
+  const entries = normalizeCalendarEntries(data);
+  updateCalendarGenres(entries);
+  const filters = readCalendarFilters();
+  const filtered = entries.filter((entry) => entryMatchesFilters(entry, filters));
+  if (!filtered.length) {
+    container.innerHTML = '<p class="hint">Aucune sortie ne correspond aux filtres.</p>';
+    return;
+  }
+
+  const groups = buildCalendarGroups(filtered, state.calendar.view);
+  const fragments = groups.map((group) => {
+    const wrapper = document.createElement('article');
+    wrapper.className = 'calendar-group';
+    const title = document.createElement('h3');
+    title.textContent = group.label;
+    wrapper.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'calendar-items';
+    group.items
+      .sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))
+      .forEach(({ entry, date }) => {
+        const item = document.createElement('article');
+        item.className = 'calendar-item';
+
+        const header = document.createElement('header');
+        const titleEl = document.createElement('h4');
+        titleEl.textContent = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+        const dateLabel = document.createElement('span');
+        dateLabel.className = 'calendar-meta';
+        dateLabel.textContent = date
+          ? new Intl.DateTimeFormat('fr-FR', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            }).format(date)
+          : 'Date inconnue';
+        header.append(titleEl, dateLabel);
+        item.appendChild(header);
+
+        const badges = document.createElement('div');
+        badges.className = 'calendar-badges';
+        const type = pickEntryValue(entry, ['type', 'kind', 'category']);
+        if (type) {
+          badges.appendChild(makeCalendarBadge(type));
+        }
+        const rating = pickEntryValue(entry, ['imdb_rating', 'rating', 'score']);
+        if (rating !== undefined && rating !== null && rating !== '') {
+          badges.appendChild(makeCalendarBadge(`IMDb ${rating}`));
+        }
+        const genres = extractGenres(entry);
+        if (genres.length) {
+          badges.appendChild(makeCalendarBadge(genres.slice(0, 3).join(', ')));
+        }
+        if (isDownloaded(entry)) {
+          badges.appendChild(makeCalendarBadge('Téléchargé'));
+        }
+        if (isInWatchlist(entry)) {
+          badges.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
+        }
+        if (badges.childElementCount) {
+          item.appendChild(badges);
+        }
+
+        const metaSegments = [];
+        const language = pickEntryValue(entry, ['language', 'lang', 'original_language']);
+        const country = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
+        if (language) {
+          metaSegments.push(`Langue: ${language}`);
+        }
+        if (country) {
+          metaSegments.push(`Pays: ${country}`);
+        }
+        if (metaSegments.length) {
+          const meta = document.createElement('div');
+          meta.className = 'calendar-meta';
+          meta.textContent = metaSegments.join(' · ');
+          item.appendChild(meta);
+        }
+
+        if (!isInWatchlist(entry)) {
+          const actions = document.createElement('div');
+          actions.className = 'calendar-actions-row';
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = 'Ajouter à la liste d’intérêt';
+          button.addEventListener('click', () => addToWatchlist(entry, button));
+          actions.appendChild(button);
+          item.appendChild(actions);
+        }
+
+        list.appendChild(item);
+      });
+
+    wrapper.appendChild(list);
+    return wrapper;
+  });
+
+  container.replaceChildren(...fragments);
+}
+
+async function loadCalendar(options = {}) {
+  if (!state.authenticated) {
+    return;
+  }
+  const filters = readCalendarFilters();
+  const search = new URLSearchParams();
+  if (filters.type) search.set('type', filters.type);
+  if (filters.genres.length) search.set('genres', filters.genres.join(','));
+  if (filters.ratingMin !== '') search.set('imdb_min', filters.ratingMin);
+  if (filters.ratingMax !== '') search.set('imdb_max', filters.ratingMax);
+  if (filters.language) search.set('language', filters.language);
+  if (filters.country) search.set('country', filters.country);
+  const path = `/calendar${search.toString() ? `?${search.toString()}` : ''}`;
+  try {
+    const data = await fetchJson(path);
+    renderCalendar(data || {});
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+}
+
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
@@ -1155,6 +1539,7 @@ const TAB_LOADERS = {
   jobs: () => loadStatus(),
   logs: () => loadLogs(),
   config: (options = {}) => loadConfigurationTab(options),
+  calendar: (options = {}) => loadCalendar(options),
 };
 
 async function refreshActiveTab(options = {}) {
@@ -1272,6 +1657,29 @@ function setupTabs() {
   });
 }
 
+function setupCalendarEvents() {
+  const refresh = document.getElementById('refresh-calendar');
+  if (refresh) {
+    refresh.addEventListener('click', () => loadCalendar({ preserveFilters: true }));
+  }
+  const ids = [
+    'calendar-view',
+    'calendar-type',
+    'calendar-genres',
+    'calendar-rating-min',
+    'calendar-rating-max',
+    'calendar-language',
+    'calendar-country',
+  ];
+  ids
+    .map((id) => document.getElementById(id))
+    .filter(Boolean)
+    .forEach((input) => {
+      const event = input.tagName === 'SELECT' ? 'change' : 'input';
+      input.addEventListener(event, () => loadCalendar({ preserveFilters: true }));
+    });
+}
+
 function setupEventListeners() {
   setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
@@ -1303,6 +1711,7 @@ function setupEventListeners() {
   }
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
+  setupCalendarEvents();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
