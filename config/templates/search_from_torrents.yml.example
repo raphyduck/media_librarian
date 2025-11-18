@@ -42,6 +42,10 @@ filter_sources:
     existing_folder:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'
+  download_list:
+    existing_folder:
+      movies: '/folder/of/movies'
+      shows: '/folder/of/tvseries'
 category: shows
 search_category: optional_can_be_one_of_movies_shows
 no_prompt: 0
