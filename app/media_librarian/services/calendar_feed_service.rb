@@ -54,7 +54,7 @@ module MediaLibrarian
         release_date = parse_date(entry[:release_date])
         return unless release_date && date_range.cover?(release_date)
 
-        source = entry[:source].to_s.strip
+        source = entry[:source].to_s.strip.downcase
         external_id = entry[:external_id].to_s.strip
         title = entry[:title].to_s.strip
         media_type = entry[:media_type].to_s.strip
@@ -126,6 +126,22 @@ module MediaLibrarian
             api_key: tmdb_config['api_key'],
             language: tmdb_config['language'] || tmdb_config['languages'],
             region: tmdb_config['region'],
+            speaker: speaker
+          )
+        end
+        imdb_config = app.config['imdb']
+        if imdb_config.is_a?(Hash)
+          providers << ImdbCalendarProvider.new(
+            user: imdb_config['user'],
+            list: imdb_config['list'],
+            speaker: speaker
+          )
+        end
+        trakt_config = app.config['trakt']
+        if trakt_config.is_a?(Hash)
+          providers << TraktCalendarProvider.new(
+            client_id: trakt_config['client_id'],
+            client_secret: trakt_config['client_secret'],
             speaker: speaker
           )
         end
@@ -245,6 +261,136 @@ module MediaLibrarian
 
           Date.parse(value.to_s)
         rescue ArgumentError
+          nil
+        end
+      end
+
+      class ImdbCalendarProvider
+        attr_reader :source
+
+        def initialize(user:, list:, speaker: nil, fetcher: nil)
+          @user = user.to_s
+          @list = list.to_s
+          @speaker = speaker
+          @fetcher = fetcher
+          @source = 'imdb'
+        end
+
+        def available?
+          !@user.empty? && !@list.empty?
+        end
+
+        def upcoming(date_range:, limit: 100)
+          return [] unless available?
+
+          fetch_entries(date_range, limit)
+            .filter_map { |entry| normalize_entry(entry, date_range) }
+            .first(limit)
+        end
+
+        private
+
+        def fetch_entries(date_range, limit)
+          return [] unless @fetcher
+
+          @fetcher.call(date_range: date_range, limit: limit)
+        rescue StandardError => e
+          @speaker&.tell_error(e, 'Calendar IMDb fetch failed')
+          []
+        end
+
+        def normalize_entry(entry, date_range)
+          release_date = parse_date(entry[:release_date])
+          return unless release_date && date_range.cover?(release_date)
+
+          external_id = entry[:external_id].to_s.strip
+          title = entry[:title].to_s.strip
+          media_type = entry[:media_type].to_s.strip
+          return if external_id.empty? || title.empty? || media_type.empty?
+
+          {
+            source: source,
+            external_id: external_id,
+            title: title,
+            media_type: media_type,
+            genres: Array(entry[:genres]).compact.map(&:to_s),
+            languages: Array(entry[:languages]).compact.map(&:to_s),
+            countries: Array(entry[:countries]).compact.map(&:to_s),
+            rating: entry[:rating] ? entry[:rating].to_f : nil,
+            release_date: release_date
+          }
+        end
+
+        def parse_date(value)
+          return value if value.is_a?(Date)
+
+          Date.parse(value.to_s)
+        rescue StandardError
+          nil
+        end
+      end
+
+      class TraktCalendarProvider
+        attr_reader :source
+
+        def initialize(client_id:, client_secret:, speaker: nil, fetcher: nil)
+          @client_id = client_id.to_s
+          @client_secret = client_secret.to_s
+          @speaker = speaker
+          @fetcher = fetcher
+          @source = 'trakt'
+        end
+
+        def available?
+          !@client_id.empty? && !@client_secret.empty?
+        end
+
+        def upcoming(date_range:, limit: 100)
+          return [] unless available?
+
+          fetch_entries(date_range, limit)
+            .filter_map { |entry| normalize_entry(entry, date_range) }
+            .first(limit)
+        end
+
+        private
+
+        def fetch_entries(date_range, limit)
+          return [] unless @fetcher
+
+          @fetcher.call(date_range: date_range, limit: limit)
+        rescue StandardError => e
+          @speaker&.tell_error(e, 'Calendar Trakt fetch failed')
+          []
+        end
+
+        def normalize_entry(entry, date_range)
+          release_date = parse_date(entry[:release_date])
+          return unless release_date && date_range.cover?(release_date)
+
+          external_id = entry[:external_id].to_s.strip
+          title = entry[:title].to_s.strip
+          media_type = entry[:media_type].to_s.strip
+          return if external_id.empty? || title.empty? || media_type.empty?
+
+          {
+            source: source,
+            external_id: external_id,
+            title: title,
+            media_type: media_type,
+            genres: Array(entry[:genres]).compact.map(&:to_s),
+            languages: Array(entry[:languages]).compact.map(&:to_s),
+            countries: Array(entry[:countries]).compact.map(&:to_s),
+            rating: entry[:rating] ? entry[:rating].to_f : nil,
+            release_date: release_date
+          }
+        end
+
+        def parse_date(value)
+          return value if value.is_a?(Date)
+
+          Date.parse(value.to_s)
+        rescue StandardError
           nil
         end
       end
