@@ -348,4 +348,77 @@ class DaemonJobControlTest < Minitest::Test
     assert child_job, 'expected child job to be enqueued'
     assert_equal :finished, child_job.status
   end
+
+  def test_scheduled_job_after_child_sends_email_instead_of_merging
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+
+    @environment.application.workers_pool_size = 1
+    @environment.container.workers_pool_size = 1
+    Daemon.send(:boot_framework_state)
+
+    merges = []
+    sent = []
+    parent_thread = Thread.current
+    parent_thread[:jid] = 'parent-job'
+
+    Librarian.stub(
+      :run_command,
+      lambda do |args, *_rest, &block|
+        Librarian.send(:init_thread, Thread.current, args.first)
+        block&.call
+        Librarian.send(:run_termination, Thread.current, "#{args.first}-value", args.first)
+      end
+    ) do
+      Env.stub(:email_notif?, ->(*) { true }) do
+        Daemon.stub(:merge_notifications, ->(child, parent) { merges << [child[:jid], parent[:jid]] }) do
+          Report.stub(:sent_out, ->(subject, thread) { sent << [subject, thread[:jid]] }) do
+            child_job = Daemon::Job.new(
+              id: 'child-job',
+              queue: 'alpha',
+              args: ['child'],
+              task: 'child',
+              internal: 0,
+              client: 'client',
+              env_flags: {},
+              parent_thread: parent_thread,
+              child: 1,
+              status: :queued,
+              capture_output: false
+            )
+
+            scheduled_job = Daemon::Job.new(
+              id: 'scheduled-job',
+              queue: 'alpha',
+              args: ['scheduled'],
+              task: 'scheduled',
+              internal: 0,
+              client: 'client',
+              env_flags: {},
+              child: 0,
+              status: :queued,
+              capture_output: false
+            )
+
+            [child_job, scheduled_job].each { |job| Daemon.send(:register_job, job) }
+
+            worker = Thread.new do
+              [child_job, scheduled_job].each do |job|
+                Daemon.send(:execute_job, job)
+              end
+            end
+
+            worker.join
+          end
+        end
+      end
+    end
+
+    assert_equal [['child-job', 'parent-job']], merges
+    assert_equal [['scheduled', 'scheduled-job']], sent
+  ensure
+    Daemon.send(:cleanup)
+  end
 end
