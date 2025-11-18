@@ -243,6 +243,11 @@ class TorrentSearch
   def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0, grab_all: 0)
     search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
+      unless %w[search filesystem trakt lists download_list].include?(t.to_s)
+        app.speaker.speak_up "Unknown filter source '#{t}', skipping"
+        next
+      end
+
       slist, elist = Library.process_filter_sources(source_type: t, source: s, category: category, no_prompt: no_prompt, destination: destination, qualities: qualities)
       search_list.merge!(slist)
       existing_files.merge!(elist)

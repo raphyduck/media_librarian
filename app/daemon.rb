@@ -16,6 +16,7 @@ require 'base64'
 require 'get_process_mem'
 
 require_relative '../lib/logger'
+require_relative '../lib/list_store'
 require_relative 'client'
 require_relative '../lib/thread_state'
 
@@ -1019,6 +1020,12 @@ class Daemon
         handle_restart_request(req, res)
       end
 
+      @control_server.mount_proc('/calendar') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_request(req, res)
+      end
+
       @control_server.mount_proc('/logs') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1054,6 +1061,12 @@ class Daemon
           tracker_mutex,
           after_save: method(:rebuild_tracker_registry)
         )
+      end
+
+      @control_server.mount_proc('/download_list') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_download_list_request(req, res)
       end
 
       @control_server.mount_proc('/config/reload') do |req, res|
@@ -1135,6 +1148,36 @@ class Daemon
       JSON.parse(req.body)
     end
 
+    def handle_calendar_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      filters = {
+        type: req.query['type'],
+        genres: normalize_list_param(req.query['genres']),
+        imdb_min: req.query['imdb_min'],
+        imdb_max: req.query['imdb_max'],
+        language: req.query['language'],
+        country: req.query['country'],
+        downloaded: req.query['downloaded'],
+        interest: req.query['interest'],
+        sort: req.query['sort'],
+        page: req.query['page'],
+        per_page: req.query['per_page']
+      }
+
+      calendar = Calendar.new(app: app)
+      json_response(res, body: calendar.entries(filters))
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def normalize_list_param(value)
+      return [] if value.nil?
+      return value if value.is_a?(Array)
+
+      value.to_s.split(',').map(&:strip)
+    end
+
     def handle_logs_request(req, res)
       return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
 
@@ -1148,6 +1191,52 @@ class Daemon
 
     def handle_config_request(req, res)
       handle_file_request(req, res, app.config_file, config_mutex, 'GET, PUT')
+    end
+
+    def handle_download_list_request(req, res)
+      list_name = (req.query['list_name'] || 'download_list').to_s
+      case req.request_method
+      when 'GET'
+        entries = ListStore.fetch_list(list_name)
+        json_response(res, body: { 'entries' => entries, 'list_name' => list_name })
+      when 'POST'
+        payload = parse_payload(req)
+        list_name = (payload['list_name'] || list_name).to_s
+        title = payload['title'].to_s.strip
+        return error_response(res, status: 422, message: 'missing_title') if title.empty?
+
+        type = Utils.regularise_media_type((payload['type'] || 'movies').to_s)
+        ListStore.upsert_item(
+          list_name: list_name,
+          title: title,
+          type: type,
+          year: payload['year'],
+          alt_titles: payload['alt_titles'],
+          url: payload['url'],
+          imdb: payload['imdb'],
+          tmdb: payload['tmdb']
+        )
+        json_response(res, body: { 'status' => 'ok', 'list_name' => list_name })
+      when 'DELETE'
+        payload = parse_payload(req)
+        list_name = (payload['list_name'] || list_name).to_s
+        title = payload['title'] || req.query['title']
+        return error_response(res, status: 422, message: 'missing_title') if title.to_s.strip.empty?
+
+        removed = ListStore.delete_item(
+          list_name: list_name,
+          title: title,
+          year: payload['year'] || req.query['year'],
+          type: payload['type'] || req.query['type']
+        )
+        json_response(res, body: { 'removed' => removed.to_i, 'list_name' => list_name })
+      else
+        method_not_allowed(res, 'GET, POST, DELETE')
+      end
+    rescue JSON::ParserError => e
+      error_response(res, status: 422, message: e.message)
+    rescue StandardError => e
+      error_response(res, status: 422, message: e.message)
     end
 
     def handle_scheduler_request(req, res)
