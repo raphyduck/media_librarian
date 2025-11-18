@@ -357,6 +357,8 @@ class Librarian
     def run_termination(thread, thread_value, object = nil)
       thread[:end_time] = Time.now
       thread[:is_active] = 0
+      child_job_override = thread[:child_job_override]
+      thread[:child_job] = child_job_override.to_i if !child_job_override.nil?
       Daemon.clear_waiting_worker(thread, thread_value, object)
       terminate_command(thread, thread_value, object)
     end
