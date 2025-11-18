@@ -3,6 +3,7 @@ const state = {
   username: '',
   autoRefresh: null,
   activeTab: 'jobs',
+  downloadListName: 'download_list',
   dirty: {
     config: false,
     scheduler: false,
@@ -960,6 +961,143 @@ async function loadLogs() {
   }
 }
 
+function currentDownloadListName() {
+  const input = document.getElementById('download-list-name');
+  const value = input?.value?.trim();
+  const resolved = value || state.downloadListName || 'download_list';
+  if (input && value !== resolved) {
+    input.value = resolved;
+  }
+  state.downloadListName = resolved;
+  return resolved;
+}
+
+function renderDownloadList(entries = []) {
+  const tbody = document.getElementById('download-list-rows');
+  const emptyHint = document.getElementById('download-list-empty');
+  if (!tbody || !emptyHint) {
+    return;
+  }
+
+  tbody.innerHTML = '';
+  const normalized = Array.isArray(entries) ? entries : [];
+  if (!normalized.length) {
+    emptyHint.classList.remove('hidden');
+    return;
+  }
+  emptyHint.classList.add('hidden');
+
+  normalized.forEach((entry) => {
+    const row = document.createElement('tr');
+    const title = entry.title || entry['title'] || '';
+    const type = entry.type || entry['type'] || '';
+    const year = entry.year || entry['year'] || '';
+    const imdb = entry.imdb || entry['imdb'] || '';
+    const tmdb = entry.tmdb || entry['tmdb'] || '';
+    const url = entry.url || entry['url'] || '';
+
+    const cells = [
+      { text: title || '—' },
+      { text: type || '—' },
+      { text: year || '—' },
+      { text: imdb || '—' },
+      { text: tmdb || '—' },
+      url ? { link: url } : { text: '—' },
+    ];
+
+    cells.forEach((value) => {
+      const cell = document.createElement('td');
+      if (value.link) {
+        const link = document.createElement('a');
+        link.href = value.link;
+        link.target = '_blank';
+        link.rel = 'noreferrer noopener';
+        link.textContent = 'Lien';
+        cell.appendChild(link);
+      } else {
+        cell.textContent = value.text || '—';
+      }
+      row.appendChild(cell);
+    });
+
+    const actionsCell = document.createElement('td');
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.textContent = 'Supprimer';
+    removeButton.addEventListener('click', () => removeDownloadListEntry(title, year, type));
+    actionsCell.appendChild(removeButton);
+    row.appendChild(actionsCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+async function loadDownloadList() {
+  if (!state.authenticated) {
+    return;
+  }
+  const listName = currentDownloadListName();
+  try {
+    const data = await fetchJson(`/download_list?list_name=${encodeURIComponent(listName)}`);
+    state.downloadListName = data?.list_name || listName;
+    renderDownloadList(data?.entries || []);
+  } catch (error) {
+    showNotification(error.message, 'error');
+  }
+}
+
+async function addDownloadListEntry(event) {
+  event.preventDefault();
+  const form = event.target;
+  const payload = {
+    list_name: currentDownloadListName(),
+    title: form.title.value.trim(),
+    type: form.type.value,
+    year: form.year.value || null,
+    imdb: form.imdb.value.trim(),
+    tmdb: form.tmdb.value.trim(),
+    url: form.url.value.trim(),
+  };
+
+  if (!payload.title) {
+    showNotification('Merci de renseigner un titre.', 'error');
+    return;
+  }
+
+  try {
+    await fetchJson('/download_list', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification('Média ajouté à la liste.');
+    form.reset();
+    form.type.value = payload.type;
+    await loadDownloadList();
+  } catch (error) {
+    showNotification(error.message, 'error');
+  }
+}
+
+async function removeDownloadListEntry(title, year, type) {
+  if (!title) {
+    return;
+  }
+  const listName = currentDownloadListName();
+  const payload = { list_name: listName, title, year, type };
+  try {
+    await fetchJson(`/download_list?list_name=${encodeURIComponent(listName)}`, {
+      method: 'DELETE',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification(`« ${title} » retiré de la liste.`);
+    await loadDownloadList();
+  } catch (error) {
+    showNotification(error.message, 'error');
+  }
+}
+
 async function loadConfigurationTab(options = {}) {
   await loadEditor('config', options);
   if (!state.authenticated) {
@@ -974,6 +1112,7 @@ async function loadConfigurationTab(options = {}) {
     return;
   }
   await loadEditor('trackers', options);
+  await loadDownloadList();
 }
 
 async function controlDaemon({ path, buttonId, message }) {
@@ -1147,6 +1286,21 @@ function setupEventListeners() {
   bindEditorAction('reload-templates', 'templates', 'reload');
   bindEditorAction('save-trackers', 'trackers', 'save');
   bindEditorAction('reload-trackers', 'trackers', 'reload');
+  const downloadForm = document.getElementById('download-list-form');
+  if (downloadForm) {
+    downloadForm.addEventListener('submit', addDownloadListEntry);
+  }
+  const downloadName = document.getElementById('download-list-name');
+  if (downloadName) {
+    downloadName.addEventListener('change', () => {
+      currentDownloadListName();
+      loadDownloadList();
+    });
+  }
+  const refreshDownload = document.getElementById('refresh-download-list');
+  if (refreshDownload) {
+    refreshDownload.addEventListener('click', loadDownloadList);
+  }
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
 }

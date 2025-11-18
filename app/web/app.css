@@ -199,6 +199,62 @@ main {
   font-weight: 600;
 }
 
+.download-list-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.download-list-form .grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.download-list-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.download-list-form input,
+.download-list-form select {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(17, 24, 39, 0.6);
+  color: inherit;
+}
+
+.download-list-table {
+  margin-top: 0.5rem;
+}
+
+.download-list-table .table-wrapper {
+  overflow-x: auto;
+}
+
+.download-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.download-list-table th,
+.download-list-table td {
+  padding: 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.download-list-table td a {
+  color: var(--accent);
+}
+
+.download-list-table .actions button {
+  margin: 0;
+}
+
 select {
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
