@@ -212,6 +212,12 @@ module SimpleConfigMan
     'daemon' => {
       'workers_pool_size' => 2,
       'queue_slots' => 2
+    },
+    'calendar' => {
+      'refresh_every' => '12 hours',
+      'refresh_days' => 45,
+      'refresh_limit' => 200,
+      'providers' => 'imdb|trakt|tmdb'
     }
   }.freeze
 

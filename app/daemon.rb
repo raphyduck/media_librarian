@@ -590,8 +590,8 @@ class Daemon
 
           case type
           when 'periodic'
-            frequency = Utils.timeperiod_to_sec(params['every']).to_i
-            next unless should_run_periodic?(task, frequency)
+            frequency = task_frequency(task, params)
+            next unless frequency.positive? && should_run_periodic?(task, frequency)
 
             queue_name = fetch_function_config(args)[1] || task
             queue_limits[queue_name] = limit
@@ -1946,6 +1946,34 @@ class Daemon
 
     def queue_limits
       @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def task_frequency(task, params)
+      return calendar_refresh_frequency(params) if calendar_refresh_task?(params)
+
+      Utils.timeperiod_to_sec(params['every']).to_i
+    end
+
+    def calendar_refresh_frequency(params)
+      fallback = Utils.timeperiod_to_sec(params['every']).to_i
+      config = calendar_config
+      return fallback unless config
+
+      override = config['refresh_every']
+      return fallback if override.to_s.strip.empty?
+
+      seconds = Utils.timeperiod_to_sec(override.to_s).to_i
+      seconds.positive? ? seconds : fallback
+    end
+
+    def calendar_refresh_task?(params)
+      params.is_a?(Hash) && params['command'].to_s == 'calendar.refresh_feed'
+    end
+
+    def calendar_config
+      config = app.config if app.respond_to?(:config)
+      section = config.is_a?(Hash) ? config['calendar'] : nil
+      section.is_a?(Hash) ? section : nil
     end
 
     def determine_queue_limit(params)
