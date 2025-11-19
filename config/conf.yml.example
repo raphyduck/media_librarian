@@ -25,14 +25,14 @@ email:
 ffmpeg_settings:
   crf: 22
   preset: medium
-imdb:
-  user: user
-  list: list
 calendar:
   refresh_every: 12 hours
-  refresh_days: 45
+  window_past_days: 0
+  window_future_days: 45
   refresh_limit: 200
   providers: imdb|trakt|tmdb
+# imdb:
+#   enabled: false # Optional toggle; remove or set to false to disable the IMDb feed
 kodi:
   host: http://host:port
   username: username

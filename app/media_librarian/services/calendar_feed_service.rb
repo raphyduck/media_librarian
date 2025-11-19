@@ -158,44 +158,65 @@ module MediaLibrarian
       end
 
       def default_providers
-        return [] unless app&.config
+        config = app&.config
+        config = {} unless config.respond_to?(:[])
 
-        providers = []
-        tmdb_config = app.config['tmdb']
-        if tmdb_config.is_a?(Hash)
-          providers << TmdbCalendarProvider.new(
-            api_key: tmdb_config['api_key'],
-            language: tmdb_config['language'] || tmdb_config['languages'],
-            region: tmdb_config['region'],
-            speaker: speaker
+        [
+          build_tmdb_provider(config['tmdb']),
+          build_imdb_provider(config['imdb']),
+          build_trakt_provider(config['trakt'])
+        ].compact.select(&:available?)
+      end
+
+      def build_tmdb_provider(config)
+        return unless config.is_a?(Hash)
+
+        TmdbCalendarProvider.new(
+          api_key: config['api_key'],
+          language: config['language'] || config['languages'],
+          region: config['region'],
+          speaker: speaker
+        )
+      end
+
+      def build_imdb_provider(config)
+        return unless imdb_provider_enabled?(config)
+
+        ImdbCalendarProvider.new(
+          speaker: speaker,
+          fetcher: build_imdb_fetcher
+        )
+      end
+
+      def build_trakt_provider(config)
+        return unless config.is_a?(Hash)
+
+        TraktCalendarProvider.new(
+          client_id: config['client_id'],
+          client_secret: config['client_secret'],
+          speaker: speaker,
+          fetcher: build_trakt_fetcher(
+            config['client_id'],
+            config['client_secret'],
+            config['access_token']
           )
-        end
-        imdb_config = app.config['imdb']
-        if imdb_config.is_a?(Hash)
-          providers << ImdbCalendarProvider.new(
-            speaker: speaker,
-            fetcher: build_imdb_fetcher
-          )
-        end
-        trakt_config = app.config['trakt']
-        if trakt_config.is_a?(Hash)
-          providers << TraktCalendarProvider.new(
-            client_id: trakt_config['client_id'],
-            client_secret: trakt_config['client_secret'],
-            speaker: speaker,
-            fetcher: build_trakt_fetcher(
-              trakt_config['client_id'],
-              trakt_config['client_secret'],
-              trakt_config['access_token']
-            )
-          )
-        end
-        providers.compact.select(&:available?)
+        )
       end
 
       def build_imdb_fetcher
         lambda do |date_range:, limit:|
           fetch_imdb_global_feed.first(limit)
+        end
+      end
+
+      def imdb_provider_enabled?(config)
+        case config
+        when nil
+          true
+        when Hash
+          config.fetch('enabled', true)
+        else
+          !!config
         end
       end
 
