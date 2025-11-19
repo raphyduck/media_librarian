@@ -153,6 +153,12 @@
                   <option value="week">Semaine</option>
                   <option value="month">Mois</option>
                 </select>
+                <div class="calendar-window-tools" aria-label="Navigation calendrier">
+                  <button id="calendar-prev" type="button" aria-label="Fenêtre précédente">◀</button>
+                  <input id="calendar-start-date" name="start_date" type="date" aria-label="Date de début" />
+                  <span id="calendar-window-label" class="calendar-window-label" aria-live="polite"></span>
+                  <button id="calendar-next" type="button" aria-label="Fenêtre suivante">▶</button>
+                </div>
                 <button id="refresh-calendar" type="button">Actualiser</button>
               </div>
             </div>
@@ -347,6 +353,7 @@
     <div id="notification" role="status" aria-live="polite"></div>
 
     <script src="path_utils.js" defer></script>
+    <script src="calendar_window.js" defer></script>
     <script src="app.js" defer></script>
   </body>
 </html>
