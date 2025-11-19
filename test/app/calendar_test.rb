@@ -1,10 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
-require 'ostruct'
 require_relative '../../lib/watchlist_store'
-require_relative '../../app/movie'
-require_relative '../../app/tv_series'
 require_relative '../../app/calendar'
 
 class CalendarTest < Minitest::Test
@@ -20,89 +17,93 @@ class CalendarTest < Minitest::Test
     @environment.cleanup if @environment
   end
 
-  def test_filters_by_genre_type_and_download_flag
-    watchlist_entries = [
-      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-movie' }, downloaded: true } },
-      { type: 'shows', metadata: { ids: { 'imdb' => 'tt-show' } } }
-    ]
+  def test_filters_by_genre_type_and_interest_flag
+    db = stub_calendar_rows([
+      {
+        source: 'tmdb',
+        external_id: 'movie-1',
+        title: 'Alpha',
+        media_type: 'movie',
+        genres: ['Drama'],
+        languages: ['en'],
+        countries: ['US'],
+        rating: 7.2,
+        release_date: '2020-01-01'
+      },
+      {
+        source: 'tmdb',
+        external_id: 'show-1',
+        title: 'Bravo',
+        media_type: 'show',
+        genres: ['Comedy'],
+        languages: ['fr'],
+        countries: ['FR'],
+        rating: 8.0,
+        release_date: '2021-06-01'
+      }
+    ])
 
-    movie = OpenStruct.new(
-      name: 'Alpha',
-      year: 2020,
-      genres: ['Drama'],
-      language: 'en',
-      country: 'US',
-      rating: 7.2,
-      release_date: Time.utc(2020, 1, 1)
-    )
+    WatchlistStore.stub(:fetch, [{ external_id: 'movie-1', type: 'movies', metadata: {} }]) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(type: 'movie', genres: ['Drama'], interest: 'true')
 
-    show = OpenStruct.new(
-      name: 'Bravo',
-      year: 2021,
-      genres: ['Comedy'],
-      language: 'fr',
-      country: 'FR',
-      rating: 8.0,
-      first_aired: Time.utc(2021, 6, 1)
-    )
-
-    WatchlistStore.stub(:fetch, watchlist_entries) do
-      Movie.stub(:movie_get, ->(*_) { ['', movie] }) do
-        TvSeries.stub(:tv_show_get, ->(*_) { ['', show] }) do
-          calendar = Calendar.new(app: @environment.application)
-          result = calendar.entries(type: 'movie', genres: ['Drama'], downloaded: 'true')
-
-          assert_equal 1, result[:total]
-          entry = result[:entries].first
-          assert_equal 'Alpha', entry[:title]
-          assert entry[:downloaded]
-          assert entry[:in_interest_list]
-          assert_equal 'movie', entry[:type]
-        end
-      end
+      assert_equal 1, result[:total]
+      entry = result[:entries].first
+      assert_equal 'Alpha', entry[:title]
+      assert entry[:in_interest_list]
+      assert_equal %w[en], entry[:languages]
+      assert_equal 'movie', entry[:type]
     end
+
+    db.verify
   end
 
   def test_paginates_and_sorts_by_release_date
-    watchlist_entries = [
-      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-1' } } },
-      { type: 'movies', metadata: { ids: { 'imdb' => 'tt-2' } } }
-    ]
+    db = stub_calendar_rows([
+      {
+        source: 'tmdb',
+        external_id: 'movie-1',
+        title: 'First',
+        media_type: 'movie',
+        release_date: '2018-01-01'
+      },
+      {
+        source: 'tmdb',
+        external_id: 'movie-2',
+        title: 'Second',
+        media_type: 'movie',
+        release_date: '2019-01-01'
+      }
+    ])
 
-    first = OpenStruct.new(
-      name: 'First',
-      year: 2018,
-      genres: [],
-      language: 'en',
-      country: 'US',
-      rating: 7.0,
-      release_date: Time.utc(2018, 1, 1)
-    )
+    WatchlistStore.stub(:fetch, []) do
+      calendar = Calendar.new(app: @environment.application)
+      page_two = calendar.entries(sort: 'desc', per_page: 1, page: 2)
 
-    second = OpenStruct.new(
-      name: 'Second',
-      year: 2019,
-      genres: [],
-      language: 'en',
-      country: 'US',
-      rating: 7.5,
-      release_date: Time.utc(2019, 1, 1)
-    )
+      assert_equal 2, page_two[:total]
+      assert_equal 2, page_two[:total_pages]
+      assert_equal ['First'], page_two[:entries].map { |entry| entry[:title] }
+    end
 
-    WatchlistStore.stub(:fetch, watchlist_entries) do
-      call_count = 0
-      Movie.stub(:movie_get, lambda do |ids, *|
-        call_count += 1
-        ids['imdb'] == 'tt-1' ? ['', first] : ['', second]
-      end) do
-        calendar = Calendar.new(app: @environment.application)
-        page_two = calendar.entries(sort: 'desc', per_page: 1, page: 2)
+    db.verify
+  end
 
-        assert_equal 2, page_two[:total]
-        assert_equal 2, page_two[:total_pages]
-        assert_equal ['First'], page_two[:entries].map { |entry| entry[:title] }
-        assert_equal 2, call_count
+  private
+
+  def stub_calendar_rows(rows)
+    db = Minitest::Mock.new
+    db.expect(:get_rows, rows, [:calendar_entries])
+    attach_db(db)
+    db
+  end
+
+  def attach_db(db)
+    singleton = @environment.application.singleton_class
+    unless @environment.application.respond_to?(:db)
+      singleton.class_eval do
+        attr_accessor :db
       end
     end
+    @environment.application.db = db
   end
 end
