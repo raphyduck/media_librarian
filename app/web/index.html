@@ -61,6 +61,16 @@
           Calendrier
         </button>
         <button
+          id="tab-downloads"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="downloads"
+        >
+          Intérêts
+        </button>
+        <button
           id="tab-config"
           class="tab-button"
           type="button"
@@ -244,7 +254,15 @@
             <textarea id="trackers-editor" spellcheck="false" placeholder="Configuration YAML du tracker"></textarea>
             <p class="hint" id="trackers-hint">Sélectionnez un tracker pour l'éditer.</p>
           </section>
+        </section>
 
+        <section
+          class="tab-panel"
+          data-tab="downloads"
+          role="tabpanel"
+          aria-labelledby="tab-downloads"
+          hidden
+        >
           <section class="panel" id="download-list-panel">
             <div class="panel-header">
               <h2>Liste d'intérêt</h2>
