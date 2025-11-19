@@ -79,6 +79,10 @@ module TestSupport
         File.write(@api_config_file, default_api_option.to_yaml)
       end
 
+      def config
+        container&.config || {}
+      end
+
       def api_option
         @api_option
       end

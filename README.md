@@ -79,11 +79,19 @@ trakt:
   client_id: YOUR_TRAKT_CLIENT_ID
   client_secret: YOUR_TRAKT_CLIENT_SECRET
   access_token: OPTIONAL_OAUTH_TOKEN
+
+calendar:
+  refresh_every: 12 hours      # Scheduler interval (e.g. "6h", "1 day")
+  refresh_days: 45             # Size of the window fetched on each run
+  refresh_limit: 200           # Maximum number of entries persisted per refresh
+  providers: imdb|trakt|tmdb   # Pipe/comma/space separated list or array of sources to enable
 ```
 
 The IMDb fetcher reads the CSV export for the configured user/list pair and extracts release dates, genres, and ratings. Make sure the account is public or that you have access to the list via a logged-in session when generating the cookie jar used by the daemon.
 
 Trakt access requires an API application; `client_id`/`client_secret` identify the app and the calendar endpoints live under `https://api.trakt.tv/calendars/all/...`. Public calendars work with only the client id, but supplying an OAuth `access_token` allows the service to reuse authenticated calls if you later point it at user-specific scopes.
+
+The `calendar` section controls when and how `calendar.refresh_feed` runs. `refresh_every` overrides the scheduler interval so the daemon automatically re-hydrates the calendar at the requested cadence, while `refresh_days`/`refresh_limit` define the rolling window and cap the persisted entries. `providers` can be specified as a delimited string (`imdb|trakt|tmdb`, `imdb trakt`, etc.) or as a YAML array, and only the enabled fetchers are queried on each refresh.
 
 ### Tracker logins that require a real browser
 

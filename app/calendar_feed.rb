@@ -1,14 +1,29 @@
 # frozen_string_literal: true
 
 require 'date'
+require_relative 'media_librarian/services/base_service'
+require_relative 'media_librarian/services/calendar_feed_service'
 
 class CalendarFeed
   include MediaLibrarian::AppContainerSupport
 
-  def self.refresh_feed(days: MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS, limit: 100, sources: nil)
-    window = days.to_i
-    date_range = Date.today..(Date.today + window)
-    calendar_service.refresh(date_range: date_range, limit: limit.to_i, sources: normalize_sources(sources))
+  DEFAULT_REFRESH_LIMIT = 100
+
+  def self.refresh_feed(days: nil, limit: nil, sources: nil)
+    config = calendar_config
+    window_days = positive_integer(days) ||
+                  positive_integer(config['refresh_days']) ||
+                  MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS
+    max_entries = positive_integer(limit) ||
+                  positive_integer(config['refresh_limit']) ||
+                  DEFAULT_REFRESH_LIMIT
+    provider_list = normalize_sources(sources || config['providers'] || config['provider'])
+    provider_list = nil if provider_list&.empty?
+
+    today = Date.today
+    date_range = today..(today + window_days)
+
+    calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
   end
 
   def self.calendar_service
@@ -18,8 +33,21 @@ class CalendarFeed
   def self.normalize_sources(value)
     return nil if value.nil?
 
-    Array(value).flat_map { |src| src.to_s.split(',') }
+    Array(value).flat_map { |src| src.to_s.split(MediaLibrarian::Services::CalendarFeedService::SOURCES_SEPARATOR) }
                 .map { |src| src.strip.downcase }
                 .reject(&:empty?)
+  end
+
+  def self.calendar_config
+    config = app.respond_to?(:config) ? app.config : nil
+    section = config.is_a?(Hash) ? config['calendar'] : nil
+    section.is_a?(Hash) ? section : {}
+  end
+
+  def self.positive_integer(value)
+    return nil if value.nil?
+
+    number = value.to_i
+    number.positive? ? number : nil
   end
 end

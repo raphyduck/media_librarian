@@ -10,6 +10,7 @@ module MediaLibrarian
   module Services
     class CalendarFeedService < BaseService
       DEFAULT_WINDOW_DAYS = 30
+      SOURCES_SEPARATOR = /[\s,|]+/.freeze
 
       def initialize(app: self.class.app, speaker: nil, file_system: nil, db: nil, providers: nil)
         super(app: app, speaker: speaker, file_system: file_system)
@@ -77,9 +78,10 @@ module MediaLibrarian
       def normalize_sources(value)
         return nil if value.nil?
 
-        Array(value).flat_map { |src| src.to_s.split(',') }
-                    .map { |src| src.strip.downcase }
-                    .reject(&:empty?)
+        tokens = Array(value).flat_map { |src| src.to_s.split(SOURCES_SEPARATOR) }
+                              .map { |src| src.strip.downcase }
+                              .reject(&:empty?)
+        tokens.empty? ? nil : tokens
       end
 
       def parse_date(value)
