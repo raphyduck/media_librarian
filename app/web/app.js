@@ -1496,6 +1496,9 @@ async function loadConfigurationTab(options = {}) {
     return;
   }
   await loadEditor('trackers', options);
+}
+
+async function loadDownloadsTab() {
   await loadDownloadList();
 }
 
@@ -1540,6 +1543,7 @@ const TAB_LOADERS = {
   logs: () => loadLogs(),
   config: (options = {}) => loadConfigurationTab(options),
   calendar: (options = {}) => loadCalendar(options),
+  downloads: () => loadDownloadsTab(),
 };
 
 async function refreshActiveTab(options = {}) {
@@ -1567,6 +1571,10 @@ async function refreshAll(options = {}) {
       return;
     }
     await loadConfigurationTab(options);
+    if (!state.authenticated) {
+      return;
+    }
+    await loadDownloadsTab();
   } finally {
     state.isRefreshing = false;
   }
