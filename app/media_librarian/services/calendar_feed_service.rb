@@ -5,6 +5,7 @@ require 'net/http'
 require 'uri'
 require 'date'
 require 'cgi'
+require 'themoviedb'
 
 module MediaLibrarian
   module Services
@@ -449,16 +450,16 @@ module MediaLibrarian
       end
 
       class TmdbCalendarProvider
-        API_HOST = 'api.themoviedb.org'
-
         attr_reader :source
 
-        def initialize(api_key:, language: 'en', region: 'US', speaker: nil)
+        def initialize(api_key:, language: 'en', region: 'US', speaker: nil, client: Tmdb)
           @api_key = api_key.to_s
           @language = language.to_s.empty? ? 'en' : language.to_s
           @region = region.to_s.empty? ? 'US' : region.to_s
           @speaker = speaker
+          @client = client
           @source = 'tmdb'
+          configure_client
         end
 
         def available?
@@ -468,23 +469,35 @@ module MediaLibrarian
         def upcoming(date_range:, limit: 100)
           return [] unless available?
 
-          movies = fetch_collection('/3/movie/upcoming', date_range, limit, :movie)
-          shows = fetch_collection('/3/tv/on_the_air', date_range, limit, :tv)
+          movies = fetch_titles('/movie/upcoming', :movie, date_range, limit)
+          remaining = [limit - movies.length, 0].max
+          shows = fetch_titles('/tv/on_the_air', :tv, date_range, remaining)
           (movies + shows).first(limit)
         end
 
         private
 
-        attr_reader :language, :region
+        attr_reader :language, :region, :client
 
-        def fetch_collection(path, date_range, limit, kind)
+        def configure_client
+          return unless available?
+          return unless client.const_defined?(:Api)
+
+          client::Api.key(@api_key)
+          client::Api.language(language)
+          client::Api.config[:region] = region if region
+        end
+
+        def fetch_titles(path, kind, date_range, limit)
+          return [] if limit.to_i <= 0
+
           page = 1
           results = []
           loop do
-            payload = get_json(path, page: page)
-            break unless payload.is_a?(Hash) && payload['results'].is_a?(Array)
+            payload = fetch_page(path, page)
+            break unless payload
 
-            payload['results'].each do |item|
+            Array(payload['results']).each do |item|
               release_date = release_from(item, kind)
               next unless release_date && date_range.cover?(release_date)
 
@@ -501,13 +514,24 @@ module MediaLibrarian
           results
         end
 
+        def fetch_page(path, page)
+          search = client::Search.new(path)
+          search.filter(page: page)
+          search.fetch_response
+        rescue StandardError => e
+          report_error(e, "Calendar TMDB fetch failed for #{path}")
+          nil
+        end
+
         def release_from(item, kind)
           parse_date(kind == :movie ? item['release_date'] : item['first_air_date'])
         end
 
         def fetch_details(kind, id)
-          path = kind == :movie ? "/3/movie/#{id}" : "/3/tv/#{id}"
-          get_json(path)
+          (kind == :movie ? client::Movie : client::TV).detail(id)
+        rescue StandardError => e
+          report_error(e, "Calendar TMDB detail fetch failed for #{kind} #{id}")
+          nil
         end
 
         def build_entry(details, kind, release_date)
@@ -538,30 +562,16 @@ module MediaLibrarian
           prod.empty? ? origins : prod
         end
 
-        def get_json(path, **query)
-          uri = URI::HTTPS.build(host: API_HOST, path: path, query: build_query(query))
-          response = Net::HTTP.get_response(uri)
-          return unless response.is_a?(Net::HTTPSuccess)
-
-          JSON.parse(response.body)
-        rescue StandardError => e
-          @speaker&.tell_error(e, "Calendar TMDB fetch failed for #{uri}") if defined?(uri)
-          nil
-        end
-
-        def build_query(query)
-          params = { api_key: @api_key, language: language }
-          params[:region] = region unless region.to_s.empty?
-          params.merge!(query.compact)
-          URI.encode_www_form(params)
-        end
-
         def parse_date(value)
           return nil if value.to_s.strip.empty?
 
           Date.parse(value.to_s)
         rescue ArgumentError
           nil
+        end
+
+        def report_error(error, message)
+          @speaker&.tell_error(error, message)
         end
       end
 
