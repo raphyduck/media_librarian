@@ -194,10 +194,11 @@ module MediaLibrarian
       end
 
       def default_providers
-        return [] unless app&.config
+        config = app&.config
+        return [] unless config.respond_to?(:[])
 
         providers = []
-        tmdb_config = app.config['tmdb']
+        tmdb_config = config['tmdb']
         if tmdb_config.is_a?(Hash)
           providers << TmdbCalendarProvider.new(
             api_key: tmdb_config['api_key'],
@@ -206,14 +207,14 @@ module MediaLibrarian
             speaker: speaker
           )
         end
-        imdb_config = app.config['imdb']
-        if imdb_config.is_a?(Hash)
+        imdb_config = config['imdb']
+        if imdb_provider_enabled?(imdb_config)
           providers << ImdbCalendarProvider.new(
             speaker: speaker,
             fetcher: build_imdb_fetcher
           )
         end
-        trakt_config = app.config['trakt']
+        trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
           providers << TraktCalendarProvider.new(
             client_id: trakt_config['client_id'],
@@ -232,6 +233,17 @@ module MediaLibrarian
       def build_imdb_fetcher
         lambda do |date_range:, limit:|
           fetch_imdb_global_feed.first(limit)
+        end
+      end
+
+      def imdb_provider_enabled?(config)
+        case config
+        when nil
+          true
+        when Hash
+          config.fetch('enabled', true)
+        else
+          !!config
         end
       end
 

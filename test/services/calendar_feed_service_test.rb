@@ -193,6 +193,36 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_includes sources, 'trakt'
   end
 
+  def test_imdb_provider_enabled_with_empty_configuration
+    config = { 'imdb' => {} }
+    app = Struct.new(:config, :db).new(config, @db)
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+    sources = service.send(:default_providers).map(&:source)
+    assert_includes sources, 'imdb'
+  end
+
+  def test_imdb_provider_enabled_when_configuration_absent
+    config = {}
+    app = Struct.new(:config, :db).new(config, @db)
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+    sources = service.send(:default_providers).map(&:source)
+    assert_includes sources, 'imdb'
+  end
+
+  def test_imdb_provider_can_be_disabled
+    config = { 'imdb' => { 'enabled' => false } }
+    app = Struct.new(:config, :db).new(config, @db)
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+    sources = service.send(:default_providers).map(&:source)
+    refute_includes sources, 'imdb'
+  end
+
   def test_normalization_downcases_sources
     date = Date.today + 1
     tmdb_provider = FakeProvider.new([

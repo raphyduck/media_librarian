@@ -13,9 +13,12 @@ class CalendarFeed
     config = calendar_config
     future_days = positive_integer(days) ||
                   positive_integer(config['future_days']) ||
+                  positive_integer(config['window_future_days']) ||
                   positive_integer(config['refresh_days']) ||
                   MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS
-    past_days = positive_integer(config['past_days']) || 0
+    past_days = positive_integer(config['past_days']) ||
+                positive_integer(config['window_past_days']) ||
+                0
     max_entries = positive_integer(limit) ||
                   positive_integer(config['refresh_limit']) ||
                   DEFAULT_REFRESH_LIMIT
