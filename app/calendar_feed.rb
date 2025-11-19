@@ -11,9 +11,11 @@ class CalendarFeed
 
   def self.refresh_feed(days: nil, limit: nil, sources: nil)
     config = calendar_config
-    window_days = positive_integer(days) ||
+    future_days = positive_integer(days) ||
+                  positive_integer(config['future_days']) ||
                   positive_integer(config['refresh_days']) ||
                   MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS
+    past_days = positive_integer(config['past_days']) || 0
     max_entries = positive_integer(limit) ||
                   positive_integer(config['refresh_limit']) ||
                   DEFAULT_REFRESH_LIMIT
@@ -21,7 +23,7 @@ class CalendarFeed
     provider_list = nil if provider_list&.empty?
 
     today = Date.today
-    date_range = today..(today + window_days)
+    date_range = (today - past_days)..(today + future_days)
 
     calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
   end

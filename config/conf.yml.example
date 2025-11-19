@@ -30,7 +30,8 @@ imdb:
   list: list
 calendar:
   refresh_every: 12 hours
-  refresh_days: 45
+  future_days: 45
+  past_days: 14
   refresh_limit: 200
   providers: imdb|trakt|tmdb
 kodi:

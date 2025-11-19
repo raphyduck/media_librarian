@@ -135,6 +135,48 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'working', rows.first[:source]
   end
 
+  def test_refresh_inserts_past_entries
+    past_date = Date.today - 3
+    future_date = Date.today + 4
+    provider = FakeProvider.new([
+      base_entry.merge(external_id: 'past', title: 'Past Movie', release_date: past_date),
+      base_entry.merge(external_id: 'future', title: 'Future Movie', release_date: future_date)
+    ])
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    window = (Date.today - 5)..(Date.today + 5)
+    service.refresh(date_range: window, limit: 10)
+
+    rows = @db.get_rows(:calendar_entries)
+    ids = rows.map { |row| row[:external_id] }
+    assert_includes ids, 'past'
+    assert_includes ids, 'future'
+    assert_equal past_date.iso8601, rows.find { |row| row[:external_id] == 'past' }[:release_date]
+    assert_equal future_date.iso8601, rows.find { |row| row[:external_id] == 'future' }[:release_date]
+  end
+
+  def test_refresh_prunes_entries_outside_window
+    stale_past = base_entry.merge(external_id: 'stale-past', release_date: Date.today - 30)
+    stale_future = base_entry.merge(external_id: 'stale-future', release_date: Date.today + 60)
+    @db.insert_row(:calendar_entries, stale_past)
+    @db.insert_row(:calendar_entries, stale_future)
+
+    provider = FakeProvider.new([
+      base_entry.merge(external_id: 'inside', title: 'Inside Window', release_date: Date.today - 1)
+    ])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    window = (Date.today - 5)..(Date.today + 5)
+    service.refresh(date_range: window, limit: 10)
+
+    rows = @db.get_rows(:calendar_entries)
+    ids = rows.map { |row| row[:external_id] }
+    assert_includes ids, 'inside'
+    refute_includes ids, 'stale-past'
+    refute_includes ids, 'stale-future'
+  end
+
   def test_default_providers_come_from_config
     config = {
       'tmdb' => { 'api_key' => '123', 'language' => 'en', 'region' => 'US' },

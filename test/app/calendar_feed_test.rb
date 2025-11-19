@@ -21,13 +21,14 @@ class CalendarFeedTest < Minitest::Test
       'daemon' => { 'workers_pool_size' => 1, 'queue_slots' => 1 },
       'calendar' => {
         'refresh_every' => '6 hours',
-        'refresh_days' => 15,
+        'future_days' => 15,
+        'past_days' => 5,
         'refresh_limit' => 80,
         'providers' => 'imdb|tmdb'
       }
     )
 
-    expected_range = today..(today + 15)
+    expected_range = (today - 5)..(today + 15)
     calls = []
     service = Object.new
     service.define_singleton_method(:refresh) do |**kwargs|

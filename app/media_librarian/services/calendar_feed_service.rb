@@ -21,8 +21,10 @@ module MediaLibrarian
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
-        normalized = collect_entries(date_range, limit, normalize_sources(sources))
+        range = date_range.is_a?(Range) ? date_range : default_date_range
+        normalized = collect_entries(range, limit, normalize_sources(sources))
         persist_entries(normalized)
+        prune_entries(range)
         normalized
       end
 
@@ -52,22 +54,24 @@ module MediaLibrarian
           fetched
         end
 
-        collected.map { |entry| normalize_entry(entry, date_range) }
-                 .compact
-                 .uniq { |entry| [entry[:source], entry[:external_id]] }
-                 .first(limit)
+        normalized = collected.filter_map { |entry| normalize_entry(entry) }
+                               .uniq { |entry| [entry[:source], entry[:external_id]] }
+        in_range = filter_entries_by_range(normalized, date_range)
+        return in_range.first(limit) if in_range.length >= limit
+
+        (in_range + (normalized - in_range)).first(limit)
       end
 
       def default_date_range
         today = Date.today
-        today..(today + DEFAULT_WINDOW_DAYS)
+        (today - DEFAULT_WINDOW_DAYS)..(today + DEFAULT_WINDOW_DAYS)
       end
 
-      def normalize_entry(entry, date_range)
+      def normalize_entry(entry)
         return unless entry.is_a?(Hash)
 
         release_date = parse_date(entry[:release_date])
-        return unless release_date && date_range.cover?(release_date)
+        return unless release_date
 
         source = entry[:source].to_s.strip.downcase
         external_id = entry[:external_id].to_s.strip
@@ -86,6 +90,38 @@ module MediaLibrarian
           rating: entry[:rating] ? entry[:rating].to_f : nil,
           release_date: release_date
         }
+      end
+
+      def filter_entries_by_range(entries, date_range)
+        start_date, end_date = date_range_bounds(date_range)
+        return entries unless start_date || end_date
+
+        entries.select do |entry|
+          release_date = entry[:release_date]
+          next false unless release_date
+
+          (start_date.nil? || release_date >= start_date) &&
+            (end_date.nil? || release_date <= end_date)
+        end
+      end
+
+      def prune_entries(date_range)
+        return unless db
+
+        start_date, end_date = date_range_bounds(date_range)
+        db.delete_rows(:calendar_entries, {}, 'release_date <' => start_date) if start_date
+        db.delete_rows(:calendar_entries, {}, 'release_date >' => end_date) if end_date
+      end
+
+      def date_range_bounds(range)
+        return [nil, nil] unless range.is_a?(Range)
+
+        start_date = parse_date(range.begin)
+        end_date = parse_date(range.end)
+        end_date = end_date - 1 if range.exclude_end? && end_date
+        [start_date, end_date]
+      rescue StandardError
+        [nil, nil]
       end
 
       def normalize_sources(value)
