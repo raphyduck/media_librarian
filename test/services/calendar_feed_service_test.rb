@@ -138,7 +138,7 @@ class CalendarFeedServiceTest < Minitest::Test
   def test_default_providers_come_from_config
     config = {
       'tmdb' => { 'api_key' => '123', 'language' => 'en', 'region' => 'US' },
-      'imdb' => { 'user' => 'user', 'list' => 'watchlist' },
+      'imdb' => {},
       'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' }
     }
     app = Struct.new(:config, :db).new(config, @db)
@@ -157,7 +157,7 @@ class CalendarFeedServiceTest < Minitest::Test
       base_entry.merge(source: 'TMDB', external_id: 'tmdb-1', title: 'TMDB Title')
     ], source: 'TMDB')
     imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
-      user: 'user', list: 'list', speaker: @speaker,
+      speaker: @speaker,
       fetcher: ->(**_) { [{ external_id: 'imdb-1', title: 'IMDb Title', media_type: 'movie', release_date: date }] }
     )
     trakt_provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
@@ -179,28 +179,76 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
   end
 
-  def test_imdb_provider_fetches_remote_list
-    csv = <<~CSV
-      position,const,created,modified,description,Title,Title type,Directors,You rated,IMDb Rating,Runtime (mins),Year,Genres,Num Votes,Release Date (month/day/year),URL
-      1,tt0111161,2020-01-01,2020-01-01,,The Shawshank Redemption,Feature Film,,,9.3,142,1994,Drama,1000,#{(Date.today + 1).strftime('%m/%d/%Y')},https://www.imdb.com/title/tt0111161/
-    CSV
-    requests = []
-    imdb_response = http_ok(csv)
+  def test_imdb_provider_fetches_global_feed
+    movie_date = Date.today + 1
+    show_date = Date.today + 2
+    movie_items = [
+      {
+        'id' => 'tt0111161',
+        'titleText' => { 'text' => 'The Shawshank Redemption' },
+        'titleType' => { 'text' => 'Feature Film' },
+        'releaseDate' => { 'year' => movie_date.year, 'month' => movie_date.month, 'day' => movie_date.day },
+        'genres' => { 'genres' => [{ 'text' => 'Drama' }] }
+      }
+    ]
+    show_items = [
+      {
+        'id' => 'tt7654321',
+        'titleText' => { 'text' => 'New Series' },
+        'titleType' => { 'text' => 'TV Series' },
+        'releaseDate' => { 'year' => show_date.year, 'month' => show_date.month, 'day' => show_date.day },
+        'genres' => { 'genres' => [{ 'text' => 'Sci-Fi' }] }
+      }
+    ]
 
-    Net::HTTP.stub(:get_response, ->(uri) { requests << uri.to_s; imdb_response }) do
-      config = { 'imdb' => { 'user' => 'ur123', 'list' => 'ls456' } }
+    responses = {
+      'https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm' => http_ok(imdb_calendar_payload(movie_items)),
+      'https://www.imdb.com/calendar/?type=TV&ref_=rlm' => http_ok(imdb_calendar_payload(show_items))
+    }
+    requests = []
+
+    Net::HTTP.stub(:get_response, ->(uri) { requests << uri.to_s; responses.fetch(uri.to_s) }) do
+      config = { 'imdb' => {} }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+      assert_includes service.send(:providers).map(&:source), 'imdb'
 
       service.refresh(date_range: Date.today..(Date.today + 5), limit: 5, sources: ['imdb'])
     end
 
-    refute_empty requests
-    row = @db.get_rows(:calendar_entries, { source: 'imdb' }).first
-    refute_nil row
-    assert_equal 'tt0111161', row[:external_id]
-    assert_equal 'movie', row[:media_type]
-    assert_equal ['Drama'], row[:genres]
+    assert_equal ['https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm', 'https://www.imdb.com/calendar/?type=TV&ref_=rlm'], requests
+    rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:external_id] }
+    assert_equal 2, rows.count
+    assert_equal 'movie', rows.first[:media_type]
+    assert_equal ['Drama'], rows.first[:genres]
+    assert_equal 'show', rows.last[:media_type]
+    assert_equal ['Sci-Fi'], rows.last[:genres]
+  end
+
+  def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
+    date = Date.today + 2
+    imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
+      speaker: @speaker,
+      fetcher: ->(**_) { [] }
+    )
+    tmdb_entries = [
+      base_entry.merge(source: 'tmdb', external_id: 'tmdb-1', title: 'Fallback Movie', release_date: date)
+    ]
+    tmdb_provider = FakeProvider.new(tmdb_entries, source: 'tmdb')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(
+      app: nil,
+      speaker: @speaker,
+      db: @db,
+      providers: [imdb_provider, tmdb_provider]
+    )
+
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 5, sources: ['imdb'])
+
+    rows = @db.get_rows(:calendar_entries)
+    assert_equal 1, rows.count
+    assert_equal 'tmdb', rows.first[:source]
+    assert_equal 1, tmdb_provider.calls.count
   end
 
   def test_trakt_provider_fetches_remote_calendar
@@ -321,5 +369,26 @@ class CalendarFeedServiceTest < Minitest::Test
     response.instance_variable_set(:@read, true)
     response.instance_variable_set(:@body, body)
     response
+  end
+
+  def imdb_calendar_payload(items)
+    json = {
+      'props' => {
+        'pageProps' => {
+          'contentData' => {
+            'items' => items
+          }
+        }
+      }
+    }
+
+    <<~HTML
+      <html>
+        <head></head>
+        <body>
+          <script id="__NEXT_DATA__" type="application/json">#{JSON.dump(json)}</script>
+        </body>
+      </html>
+    HTML
   end
 end

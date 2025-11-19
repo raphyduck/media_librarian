@@ -4,7 +4,7 @@ require 'json'
 require 'net/http'
 require 'uri'
 require 'date'
-require 'csv'
+require 'cgi'
 
 module MediaLibrarian
   module Services
@@ -29,6 +29,11 @@ module MediaLibrarian
 
       attr_reader :db, :providers
 
+      IMDB_GLOBAL_FEEDS = [
+        { url: 'https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm', media_type: 'movie' },
+        { url: 'https://www.imdb.com/calendar/?type=TV&ref_=rlm', media_type: 'show' }
+      ].freeze
+
       def calendar_table_available?
         db && db.table_exists?(:calendar_entries)
       end
@@ -37,11 +42,19 @@ module MediaLibrarian
         active_providers = select_providers(sources)
         return [] if active_providers.empty?
 
-        active_providers.flat_map { |provider| safe_fetch(provider, date_range, limit) }
-                        .map { |entry| normalize_entry(entry, date_range) }
-                        .compact
-                        .uniq { |entry| [entry[:source], entry[:external_id]] }
-                        .first(limit)
+        collected = active_providers.flat_map do |provider|
+          fetched = safe_fetch(provider, date_range, limit)
+          if provider.source == 'imdb' && fetched.empty?
+            fallback = fallback_provider('tmdb', active_providers)
+            fetched = safe_fetch(fallback, date_range, limit) if fallback
+          end
+          fetched
+        end
+
+        collected.map { |entry| normalize_entry(entry, date_range) }
+                 .compact
+                 .uniq { |entry| [entry[:source], entry[:external_id]] }
+                 .first(limit)
       end
 
       def default_date_range
@@ -134,6 +147,14 @@ module MediaLibrarian
         end
       end
 
+      def fallback_provider(name, excluded)
+        return nil unless name
+
+        providers.find do |provider|
+          provider.source == name && !excluded.include?(provider)
+        end
+      end
+
       def default_providers
         return [] unless app&.config
 
@@ -150,10 +171,8 @@ module MediaLibrarian
         imdb_config = app.config['imdb']
         if imdb_config.is_a?(Hash)
           providers << ImdbCalendarProvider.new(
-            user: imdb_config['user'],
-            list: imdb_config['list'],
             speaker: speaker,
-            fetcher: build_imdb_fetcher(imdb_config['user'], imdb_config['list'])
+            fetcher: build_imdb_fetcher
           )
         end
         trakt_config = app.config['trakt']
@@ -172,59 +191,150 @@ module MediaLibrarian
         providers.compact.select(&:available?)
       end
 
-      def build_imdb_fetcher(user, list)
-        return nil if user.to_s.empty? || list.to_s.empty?
-
+      def build_imdb_fetcher
         lambda do |date_range:, limit:|
-          fetch_imdb_list(user: user, list: list)
-            .first(limit)
+          fetch_imdb_global_feed.first(limit)
         end
       end
 
-      def fetch_imdb_list(user:, list:)
-        uri = URI::HTTPS.build(host: 'www.imdb.com', path: "/user/#{user}/list/#{list}/export")
+      def fetch_imdb_global_feed
+        IMDB_GLOBAL_FEEDS.flat_map do |feed|
+          fetch_imdb_feed(feed[:url], feed[:media_type])
+        end
+      end
+
+      def fetch_imdb_feed(url, media_type)
+        uri = URI.parse(url)
         response = Net::HTTP.get_response(uri)
         return [] unless response.is_a?(Net::HTTPSuccess)
 
-        parse_imdb_csv(response.body)
+        parse_imdb_feed(response.body, media_type)
       rescue StandardError => e
         speaker&.tell_error(e, "Calendar IMDb fetch failed for #{uri}") if defined?(uri)
         []
       end
 
-      def parse_imdb_csv(csv_data)
-        return [] if csv_data.to_s.strip.empty?
+      def parse_imdb_feed(html, media_type)
+        items = extract_imdb_items(html)
+        items.filter_map { |item| build_imdb_entry(item, media_type) }
+      end
 
-        CSV.new(csv_data, headers: true).filter_map do |row|
-          external_id = row['const']
-          title = row['Title']
-          release_date = parse_date(row['Release Date (month/day/year)'])
-          next if external_id.to_s.strip.empty? || title.to_s.strip.empty?
+      def extract_imdb_items(html)
+        data = extract_imdb_json(html)
+        return [] unless data.is_a?(Hash)
 
-          {
-            external_id: external_id,
-            title: title,
-            media_type: imdb_media_type(row['Title type']),
-            genres: split_list(row['Genres']),
-            languages: [],
-            countries: [],
-            rating: safe_float(row['IMDb Rating']),
-            release_date: release_date
-          }
+        possible_paths = [
+          %w[props pageProps contentData items],
+          %w[props pageProps contentData calendarData],
+          %w[props pageProps pageData contentData items],
+          %w[props pageProps pageData contentData listItems],
+          %w[pageProps contentData items],
+          %w[data items],
+          %w[items]
+        ]
+
+        possible_paths.each do |path|
+          result = dig_path(data, path)
+          return Array(result) if result
         end
+
+        []
+      end
+
+      def extract_imdb_json(html)
+        return if html.to_s.empty?
+
+        script = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(?<json>.*?)<\/script>/m)
+        return JSON.parse(CGI.unescapeHTML(script[:json])) if script
+
+        react = html.match(/IMDbReactInitialState.push\((?<json>\{.*\})\);/m)
+        return JSON.parse(react[:json]) if react
+      rescue JSON::ParserError
+        nil
+      end
+
+      def dig_path(data, path)
+        path.reduce(data) do |memo, key|
+          break unless memo.is_a?(Hash)
+
+          memo[key]
+        end
+      end
+
+      def build_imdb_entry(item, fallback_media_type)
+        release_date = parse_imdb_release_date(item['releaseDate'] || item['release'])
+        return unless release_date
+
+        external_id = imdb_external_id(item)
+        title = imdb_title(item)
+        return if external_id.to_s.strip.empty? || title.to_s.strip.empty?
+
+        {
+          external_id: external_id,
+          title: title,
+          media_type: imdb_media_type(imdb_media_type_value(item, fallback_media_type)),
+          genres: imdb_text_list(item.dig('genres', 'genres')),
+          languages: imdb_text_list(item['spokenLanguages']),
+          countries: imdb_text_list(item['countriesOfOrigin']),
+          rating: safe_float(item.dig('ratingsSummary', 'aggregateRating')),
+          release_date: release_date
+        }
+      end
+
+      def imdb_external_id(item)
+        raw = item['id'] || item['const'] || item.dig('title', 'id')
+        return raw unless raw.is_a?(String)
+
+        match = raw.match(/(tt\d+)/)
+        match ? match[1] : raw
+      end
+
+      def imdb_title(item)
+        item.dig('titleText', 'text') ||
+          item.dig('originalTitleText', 'text') ||
+          item['title']
+      end
+
+      def imdb_media_type_value(item, fallback)
+        item.dig('titleType', 'text') ||
+          item.dig('titleType', 'id') ||
+          fallback
+      end
+
+      def imdb_text_list(entries)
+        Array(entries).filter_map do |entry|
+          case entry
+          when Hash
+            entry['text'] || entry['value'] || entry['id'] || entry.dig('name', 'text')
+          else
+            entry
+          end
+        end.map { |value| value.to_s.strip }.reject(&:empty?)
+      end
+
+      def parse_imdb_release_date(value)
+        case value
+        when Hash
+          year = value['year'] || value[:year]
+          month = value['month'] || value[:month] || 1
+          day = value['day'] || value[:day] || 1
+          return nil unless year
+
+          Date.new(year.to_i, month.to_i, day.to_i)
+        else
+          parse_date(value)
+        end
+      rescue StandardError
+        nil
       end
 
       def imdb_media_type(value)
         case value.to_s.strip.downcase
-        when 'tv series', 'tv mini-series', 'tv episode'
+        when 'tv series', 'tv mini-series', 'tv episode', 'tv', 'show', 'tv show', 'series'
           'show'
         else
           'movie'
         end
-      end
-
-      def split_list(value)
-        value.to_s.split(',').map { |item| item.strip }.reject(&:empty?)
       end
 
       def safe_float(value)
@@ -444,16 +554,14 @@ module MediaLibrarian
       class ImdbCalendarProvider
         attr_reader :source
 
-        def initialize(user:, list:, speaker: nil, fetcher: nil)
-          @user = user.to_s
-          @list = list.to_s
+        def initialize(speaker: nil, fetcher: nil)
           @speaker = speaker
           @fetcher = fetcher
           @source = 'imdb'
         end
 
         def available?
-          !@user.empty? && !@list.empty?
+          !@fetcher.nil?
         end
 
         def upcoming(date_range:, limit: 100)
