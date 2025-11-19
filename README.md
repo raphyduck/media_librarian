@@ -74,7 +74,7 @@ The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued acc
 calendar:
   refresh_every: 12 hours        # Scheduler interval (e.g. "6h", "1 day")
   refresh_on_start: true         # Prime the table on daemon boot when it's empty
-  window_past_days: 3            # How far back from today to keep entries
+  window_past_days: 30           # How far back from today to keep entries
   window_future_days: 45         # How far into the future to fetch releases
   refresh_limit: 200             # Maximum number of entries persisted per refresh
   providers: imdb|trakt|tmdb     # Pipe/comma/space separated list or array of sources to enable

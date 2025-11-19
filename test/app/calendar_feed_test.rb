@@ -29,7 +29,7 @@ class CalendarFeedTest < Minitest::Test
       }
     )
 
-    expected_range = today..(today + 15)
+    expected_range = (today - 15)..(today + 15)
     calls = []
     service = Object.new
     service.define_singleton_method(:refresh) do |**kwargs|
@@ -75,5 +75,30 @@ class CalendarFeedTest < Minitest::Test
     assert_equal 1, calls.length
     assert_equal expected_range, calls.first[:date_range]
     assert_equal 50, calls.first[:limit]
+  end
+
+  def test_refresh_feed_defaults_span_past_and_future
+    today = Date.new(2024, 2, 1)
+    @environment.container.reload_config!('daemon' => { 'workers_pool_size' => 1, 'queue_slots' => 1 })
+
+    expected_range = (today - MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS)..
+                     (today + MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS)
+    calls = []
+    service = Object.new
+    service.define_singleton_method(:refresh) do |**kwargs|
+      calls << kwargs
+      []
+    end
+
+    CalendarFeed.stub(:calendar_service, service) do
+      Date.stub(:today, today) do
+        CalendarFeed.refresh_feed
+      end
+    end
+
+    assert_equal 1, calls.length
+    assert_equal expected_range, calls.first[:date_range]
+    assert_equal CalendarFeed::DEFAULT_REFRESH_LIMIT, calls.first[:limit]
+    assert_nil calls.first[:sources]
   end
 end
