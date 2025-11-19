@@ -10,22 +10,24 @@ class CalendarFeed
   DEFAULT_REFRESH_LIMIT = 100
 
   def self.refresh_feed(days: nil, limit: nil, sources: nil)
-    config = calendar_config
-    future_days = positive_integer(days) ||
-                  positive_integer(config['window_future_days']) ||
-                  positive_integer(config['refresh_days']) ||
-                  MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS
-    past_days = positive_integer(config['window_past_days']) || 0
-    max_entries = positive_integer(limit) ||
-                  positive_integer(config['refresh_limit']) ||
-                  DEFAULT_REFRESH_LIMIT
-    provider_list = normalize_sources(sources || config['providers'] || config['provider'])
-    provider_list = nil if provider_list&.empty?
+    refresh_mutex.synchronize do
+      config = calendar_config
+      future_days = positive_integer(days) ||
+                    positive_integer(config['window_future_days']) ||
+                    positive_integer(config['refresh_days']) ||
+                    MediaLibrarian::Services::CalendarFeedService::DEFAULT_WINDOW_DAYS
+      past_days = positive_integer(config['window_past_days']) || 0
+      max_entries = positive_integer(limit) ||
+                    positive_integer(config['refresh_limit']) ||
+                    DEFAULT_REFRESH_LIMIT
+      provider_list = normalize_sources(sources || config['providers'] || config['provider'])
+      provider_list = nil if provider_list&.empty?
 
-    today = Date.today
-    date_range = (today - past_days)..(today + future_days)
+      today = Date.today
+      date_range = (today - past_days)..(today + future_days)
 
-    calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
+      calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
+    end
   end
 
   def self.calendar_service
@@ -44,6 +46,10 @@ class CalendarFeed
     config = app.respond_to?(:config) ? app.config : nil
     section = config.is_a?(Hash) ? config['calendar'] : nil
     section.is_a?(Hash) ? section : {}
+  end
+
+  def self.refresh_mutex
+    @refresh_mutex ||= Mutex.new
   end
 
   def self.positive_integer(value)

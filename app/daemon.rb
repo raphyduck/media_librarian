@@ -18,6 +18,7 @@ require 'get_process_mem'
 require_relative '../lib/logger'
 require_relative '../lib/list_store'
 require_relative 'client'
+require_relative 'calendar_feed'
 require_relative '../lib/thread_state'
 
 WEBrick::HTTPServlet::ProcHandler.class_eval do
@@ -114,6 +115,7 @@ class Daemon
             start_scheduler(scheduler) if scheduler
             start_quit_timer
             start_control_server
+            bootstrap_calendar_feed_if_needed
 
             wait_for_shutdown
           rescue StandardError => e
@@ -1968,6 +1970,36 @@ class Daemon
 
     def calendar_refresh_task?(params)
       params.is_a?(Hash) && params['command'].to_s == 'calendar.refresh_feed'
+    end
+
+    def bootstrap_calendar_feed_if_needed
+      return unless calendar_bootstrap_enabled?
+      return unless calendar_entries_empty?
+
+      CalendarFeed.refresh_feed
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    end
+
+    def calendar_bootstrap_enabled?
+      config = calendar_config
+      return true unless config.is_a?(Hash) && config.key?('refresh_on_start')
+
+      truthy?(config['refresh_on_start'])
+    end
+
+    def calendar_entries_empty?
+      db = app.respond_to?(:db) ? app.db : nil
+      return false unless db && db.respond_to?(:database)
+      return false if db.respond_to?(:table_exists?) && !db.table_exists?(:calendar_entries)
+
+      dataset = db.database && db.database.respond_to?(:[]) ? db.database[:calendar_entries] : nil
+      return false unless dataset && dataset.respond_to?(:first)
+
+      dataset.first.nil?
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      false
     end
 
     def calendar_config
