@@ -494,7 +494,7 @@ module MediaLibrarian
           page = 1
           results = []
           loop do
-            payload = fetch_page(path, page)
+            payload = fetch_page(path, kind, page)
             break unless payload
 
             Array(payload['results']).each do |item|
@@ -514,10 +514,18 @@ module MediaLibrarian
           results
         end
 
-        def fetch_page(path, page)
-          search = client::Search.new(path)
-          search.filter(page: page)
-          search.fetch_response
+        def fetch_page(path, kind, page)
+          payload =
+            case kind
+            when :movie
+              client::Movie.upcoming(page)
+            when :tv
+              client::TV.on_the_air(page)
+            else
+              raise ArgumentError, "Unsupported kind: #{kind}"
+            end
+
+          payload
         rescue StandardError => e
           report_error(e, "Calendar TMDB fetch failed for #{path}")
           nil
