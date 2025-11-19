@@ -1151,6 +1151,8 @@ class Daemon
         downloaded: req.query['downloaded'],
         interest: req.query['interest'],
         sort: req.query['sort'],
+        start_date: calendar_start_date(req.query),
+        end_date: calendar_end_date(req.query),
         page: req.query['page'],
         per_page: req.query['per_page']
       }
@@ -1166,6 +1168,37 @@ class Daemon
       return value if value.is_a?(Array)
 
       value.to_s.split(',').map(&:strip)
+    end
+
+    def calendar_start_date(query)
+      explicit = parse_calendar_time(query['start_date'])
+      return explicit if explicit
+
+      window = calendar_window_length(query)
+      offset = query.fetch('offset', 0).to_i
+      base = Time.now.utc
+      Time.utc(base.year, base.month, base.day) + offset * window * 86_400
+    end
+
+    def calendar_end_date(query)
+      explicit = parse_calendar_time(query['end_date'])
+      return explicit if explicit
+
+      start_date = calendar_start_date(query)
+      start_date + (calendar_window_length(query) - 1) * 86_400
+    end
+
+    def calendar_window_length(query)
+      window = query.fetch('window', 0).to_i
+      window.positive? ? window : 7
+    end
+
+    def parse_calendar_time(value)
+      return if value.nil? || value.to_s.strip.empty?
+
+      Time.parse(value.to_s)
+    rescue ArgumentError
+      nil
     end
 
     def handle_logs_request(req, res)

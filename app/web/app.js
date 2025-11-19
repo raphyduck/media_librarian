@@ -24,6 +24,10 @@ const state = {
   },
 };
 
+const calendarWindow = typeof createCalendarWindowManager === 'function'
+  ? createCalendarWindowManager({ windowLengthForView: (view) => (view === 'month' ? 30 : 7) })
+  : null;
+
 const fileEditors = new Map();
 
 const API_BASE_PATH = (() => {
@@ -1051,6 +1055,52 @@ function readCalendarFilters() {
   return filters;
 }
 
+function resolveCalendarWindow(options = {}) {
+  const view = state.calendar.view || 'week';
+  if (!calendarWindow) {
+    return null;
+  }
+  if (options.resetWindow) {
+    return calendarWindow.reset(view);
+  }
+  if (options.startDate) {
+    return calendarWindow.setStart(view, options.startDate);
+  }
+  if (options.offsetDelta) {
+    return calendarWindow.shift(view, options.offsetDelta);
+  }
+  return calendarWindow.current(view);
+}
+
+function formatCalendarDate(date) {
+  if (!date) {
+    return '';
+  }
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function updateCalendarWindowDisplay(range) {
+  if (!range) {
+    return;
+  }
+  const label = document.getElementById('calendar-window-label');
+  if (label) {
+    const formatter = new Intl.DateTimeFormat('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    label.textContent = `${formatter.format(range.start)} – ${formatter.format(range.end)}`;
+  }
+  const startInput = document.getElementById('calendar-start-date');
+  if (startInput) {
+    startInput.value = formatCalendarDate(range.start);
+  }
+}
+
 function entryMatchesFilters(entry, filters) {
   const type = (pickEntryValue(entry, ['type', 'kind', 'category']) || '').toString().toLowerCase();
   if (filters.type && filters.type !== type) {
@@ -1304,6 +1354,8 @@ async function loadCalendar(options = {}) {
     return;
   }
   const filters = readCalendarFilters();
+  const range = resolveCalendarWindow(options);
+  updateCalendarWindowDisplay(range);
   const search = new URLSearchParams();
   if (filters.type) search.set('type', filters.type);
   if (filters.genres.length) search.set('genres', filters.genres.join(','));
@@ -1311,6 +1363,12 @@ async function loadCalendar(options = {}) {
   if (filters.ratingMax !== '') search.set('imdb_max', filters.ratingMax);
   if (filters.language) search.set('language', filters.language);
   if (filters.country) search.set('country', filters.country);
+  if (range) {
+    search.set('start_date', formatCalendarDate(range.start));
+    search.set('end_date', formatCalendarDate(range.end));
+    search.set('window', range.days);
+    search.set('offset', range.offset);
+  }
   const path = `/calendar${search.toString() ? `?${search.toString()}` : ''}`;
   try {
     const data = await fetchJson(path);
@@ -1670,8 +1728,11 @@ function setupCalendarEvents() {
   if (refresh) {
     refresh.addEventListener('click', () => loadCalendar({ preserveFilters: true }));
   }
+  const calendarView = document.getElementById('calendar-view');
+  if (calendarView) {
+    calendarView.addEventListener('change', () => loadCalendar({ preserveFilters: true, resetWindow: true }));
+  }
   const ids = [
-    'calendar-view',
     'calendar-type',
     'calendar-genres',
     'calendar-rating-min',
@@ -1686,6 +1747,14 @@ function setupCalendarEvents() {
       const event = input.tagName === 'SELECT' ? 'change' : 'input';
       input.addEventListener(event, () => loadCalendar({ preserveFilters: true }));
     });
+  wireCalendarNavigation(
+    {
+      previous: document.getElementById('calendar-prev'),
+      next: document.getElementById('calendar-next'),
+      dateInput: document.getElementById('calendar-start-date'),
+    },
+    (options) => loadCalendar(options),
+  );
 }
 
 function setupEventListeners() {

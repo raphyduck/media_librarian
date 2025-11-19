@@ -26,8 +26,12 @@ class CalendarEntriesRepository
   private
 
   def apply_filters(entries, filters)
+    start_date = parse_time(filters[:start_date])
+    end_date = parse_time(filters[:end_date])
+
     entries.select do |entry|
-      type_match?(entry, filters[:type]) &&
+      release_date_match?(entry[:release_date], start_date, end_date) &&
+        type_match?(entry, filters[:type]) &&
         genres_match?(entry, filters[:genres]) &&
         rating_match?(entry, filters[:imdb_min], filters[:imdb_max]) &&
         language_match?(entry, filters[:language]) &&
@@ -70,6 +74,15 @@ class CalendarEntriesRepository
     return true if language.to_s.empty?
 
     entry[:language].to_s.casecmp?(language.to_s)
+  end
+
+  def release_date_match?(release_date, start_date, end_date)
+    return true unless start_date || end_date
+    return false unless release_date
+
+    after_start = start_date.nil? || release_date >= start_date
+    before_end = end_date.nil? || release_date <= end_date
+    after_start && before_end
   end
 
   def country_match?(entry, country)
