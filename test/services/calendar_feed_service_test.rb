@@ -210,50 +210,63 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
   end
 
-  def test_imdb_provider_fetches_global_feed
+  def test_imdb_provider_fetches_via_imdb_party_client
     movie_date = Date.today + 1
     show_date = Date.today + 2
-    movie_items = [
+    date_range = Date.today..(Date.today + 5)
+    calendar_items = [
       {
         'id' => 'tt0111161',
         'titleText' => { 'text' => 'The Shawshank Redemption' },
         'titleType' => { 'text' => 'Feature Film' },
-        'releaseDate' => { 'year' => movie_date.year, 'month' => movie_date.month, 'day' => movie_date.day },
-        'genres' => { 'genres' => [{ 'text' => 'Drama' }] }
-      }
-    ]
-    show_items = [
+        'releaseDate' => movie_date,
+        'genres' => { 'genres' => [{ 'text' => 'Drama' }] },
+        'spokenLanguages' => [{ 'text' => 'English' }],
+        'countriesOfOrigin' => [{ 'text' => 'United States' }],
+        'ratingsSummary' => { 'aggregateRating' => 9.3 }
+      },
       {
         'id' => 'tt7654321',
         'titleText' => { 'text' => 'New Series' },
         'titleType' => { 'text' => 'TV Series' },
-        'releaseDate' => { 'year' => show_date.year, 'month' => show_date.month, 'day' => show_date.day },
-        'genres' => { 'genres' => [{ 'text' => 'Sci-Fi' }] }
+        'releaseDate' => show_date,
+        'genres' => { 'genres' => [{ 'text' => 'Sci-Fi' }] },
+        'spokenLanguages' => [{ 'text' => 'French' }],
+        'countriesOfOrigin' => [{ 'text' => 'Canada' }],
+        'ratingsSummary' => { 'aggregateRating' => 7.5 }
       }
     ]
 
-    responses = {
-      'https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm' => http_ok(imdb_calendar_payload(movie_items)),
-      'https://www.imdb.com/calendar/?type=TV&ref_=rlm' => http_ok(imdb_calendar_payload(show_items))
-    }
-    requests = []
+    client = Object.new
+    client.define_singleton_method(:calendar_calls) { @calendar_calls ||= [] }
+    client.define_singleton_method(:respond_to?) do |method_name, include_all = false|
+      method_name == :calendar || super(method_name, include_all)
+    end
+    client.define_singleton_method(:calendar) do |date_range:, limit:|
+      calendar_calls << { date_range: date_range, limit: limit }
+      calendar_items
+    end
 
-    Net::HTTP.stub(:get_response, ->(uri) { requests << uri.to_s; responses.fetch(uri.to_s) }) do
+    ImdbParty::Imdb.stub :new, client do
       config = { 'imdb' => {} }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
       assert_includes service.send(:providers).map(&:source), 'imdb'
 
-      service.refresh(date_range: Date.today..(Date.today + 5), limit: 5, sources: ['imdb'])
+      service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
     end
 
-    assert_equal ['https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm', 'https://www.imdb.com/calendar/?type=TV&ref_=rlm'], requests
+    assert_equal [{ date_range: date_range, limit: 5 }], client.calendar_calls
     rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:external_id] }
     assert_equal 2, rows.count
     assert_equal 'movie', rows.first[:media_type]
     assert_equal ['Drama'], rows.first[:genres]
+    assert_equal ['English'], rows.first[:languages]
+    assert_equal ['United States'], rows.first[:countries]
     assert_equal 'show', rows.last[:media_type]
     assert_equal ['Sci-Fi'], rows.last[:genres]
+    assert_equal ['French'], rows.last[:languages]
+    assert_equal ['Canada'], rows.last[:countries]
   end
 
   def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
@@ -386,31 +399,4 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
-  def http_ok(body)
-    response = Net::HTTPOK.new('1.1', '200', 'OK')
-    response.instance_variable_set(:@read, true)
-    response.instance_variable_set(:@body, body)
-    response
-  end
-
-  def imdb_calendar_payload(items)
-    json = {
-      'props' => {
-        'pageProps' => {
-          'contentData' => {
-            'items' => items
-          }
-        }
-      }
-    }
-
-    <<~HTML
-      <html>
-        <head></head>
-        <body>
-          <script id="__NEXT_DATA__" type="application/json">#{JSON.dump(json)}</script>
-        </body>
-      </html>
-    HTML
-  end
 end

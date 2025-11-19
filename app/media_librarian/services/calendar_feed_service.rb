@@ -1,11 +1,8 @@
 # frozen_string_literal: true
 
-require 'json'
-require 'net/http'
-require 'uri'
 require 'date'
-require 'cgi'
 require 'themoviedb'
+require 'imdb_party'
 
 module MediaLibrarian
   module Services
@@ -30,11 +27,6 @@ module MediaLibrarian
       private
 
       attr_reader :db, :providers
-
-      IMDB_GLOBAL_FEEDS = [
-        { url: 'https://www.imdb.com/calendar/?type=MOVIE&ref_=rlm', media_type: 'movie' },
-        { url: 'https://www.imdb.com/calendar/?type=TV&ref_=rlm', media_type: 'show' }
-      ].freeze
 
       def calendar_table_available?
         db && db.table_exists?(:calendar_entries)
@@ -196,8 +188,12 @@ module MediaLibrarian
       end
 
       def build_imdb_fetcher
+        client = ImdbParty::Imdb.new
+
         lambda do |date_range:, limit:|
-          fetch_imdb_global_feed.first(limit)
+          return [] unless client.respond_to?(:calendar)
+
+          Array(client.calendar(date_range: date_range, limit: limit)).first(limit)
         end
       end
 
@@ -210,137 +206,6 @@ module MediaLibrarian
         else
           !!config
         end
-      end
-
-      def fetch_imdb_global_feed
-        IMDB_GLOBAL_FEEDS.flat_map do |feed|
-          fetch_imdb_feed(feed[:url], feed[:media_type])
-        end
-      end
-
-      def fetch_imdb_feed(url, media_type)
-        uri = URI.parse(url)
-        response = Net::HTTP.get_response(uri)
-        return [] unless response.is_a?(Net::HTTPSuccess)
-
-        parse_imdb_feed(response.body, media_type)
-      rescue StandardError => e
-        speaker&.tell_error(e, "Calendar IMDb fetch failed for #{uri}") if defined?(uri)
-        []
-      end
-
-      def parse_imdb_feed(html, media_type)
-        items = extract_imdb_items(html)
-        items.filter_map { |item| build_imdb_entry(item, media_type) }
-      end
-
-      def extract_imdb_items(html)
-        data = extract_imdb_json(html)
-        return [] unless data.is_a?(Hash)
-
-        possible_paths = [
-          %w[props pageProps contentData items],
-          %w[props pageProps contentData calendarData],
-          %w[props pageProps pageData contentData items],
-          %w[props pageProps pageData contentData listItems],
-          %w[pageProps contentData items],
-          %w[data items],
-          %w[items]
-        ]
-
-        possible_paths.each do |path|
-          result = dig_path(data, path)
-          return Array(result) if result
-        end
-
-        []
-      end
-
-      def extract_imdb_json(html)
-        return if html.to_s.empty?
-
-        script = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(?<json>.*?)<\/script>/m)
-        return JSON.parse(CGI.unescapeHTML(script[:json])) if script
-
-        react = html.match(/IMDbReactInitialState.push\((?<json>\{.*\})\);/m)
-        return JSON.parse(react[:json]) if react
-      rescue JSON::ParserError
-        nil
-      end
-
-      def dig_path(data, path)
-        path.reduce(data) do |memo, key|
-          break unless memo.is_a?(Hash)
-
-          memo[key]
-        end
-      end
-
-      def build_imdb_entry(item, fallback_media_type)
-        release_date = parse_imdb_release_date(item['releaseDate'] || item['release'])
-        return unless release_date
-
-        external_id = imdb_external_id(item)
-        title = imdb_title(item)
-        return if external_id.to_s.strip.empty? || title.to_s.strip.empty?
-
-        {
-          external_id: external_id,
-          title: title,
-          media_type: imdb_media_type(imdb_media_type_value(item, fallback_media_type)),
-          genres: imdb_text_list(item.dig('genres', 'genres')),
-          languages: imdb_text_list(item['spokenLanguages']),
-          countries: imdb_text_list(item['countriesOfOrigin']),
-          rating: safe_float(item.dig('ratingsSummary', 'aggregateRating')),
-          release_date: release_date
-        }
-      end
-
-      def imdb_external_id(item)
-        raw = item['id'] || item['const'] || item.dig('title', 'id')
-        return raw unless raw.is_a?(String)
-
-        match = raw.match(/(tt\d+)/)
-        match ? match[1] : raw
-      end
-
-      def imdb_title(item)
-        item.dig('titleText', 'text') ||
-          item.dig('originalTitleText', 'text') ||
-          item['title']
-      end
-
-      def imdb_media_type_value(item, fallback)
-        item.dig('titleType', 'text') ||
-          item.dig('titleType', 'id') ||
-          fallback
-      end
-
-      def imdb_text_list(entries)
-        Array(entries).filter_map do |entry|
-          case entry
-          when Hash
-            entry['text'] || entry['value'] || entry['id'] || entry.dig('name', 'text')
-          else
-            entry
-          end
-        end.map { |value| value.to_s.strip }.reject(&:empty?)
-      end
-
-      def parse_imdb_release_date(value)
-        case value
-        when Hash
-          year = value['year'] || value[:year]
-          month = value['month'] || value[:month] || 1
-          day = value['day'] || value[:day] || 1
-          return nil unless year
-
-          Date.new(year.to_i, month.to_i, day.to_i)
-        else
-          parse_date(value)
-        end
-      rescue StandardError
-        nil
       end
 
       def imdb_media_type(value)
@@ -588,10 +453,105 @@ module MediaLibrarian
         def fetch_entries(date_range, limit)
           return [] unless @fetcher
 
-          @fetcher.call(date_range: date_range, limit: limit)
+          Array(@fetcher.call(date_range: date_range, limit: limit))
+            .filter_map { |record| build_entry(record) }
         rescue StandardError => e
           @speaker&.tell_error(e, 'Calendar IMDb fetch failed')
           []
+        end
+
+        def build_entry(record)
+          {
+            external_id: imdb_external_id(record),
+            title: imdb_title(record),
+            media_type: imdb_media_type(record),
+            genres: imdb_list(record, :genres, :genre, %i[genres genres]),
+            languages: imdb_list(record, :languages, :spoken_languages, :spokenLanguages),
+            countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
+            rating: imdb_rating(record),
+            release_date: imdb_release_date(record)
+          }
+        end
+
+        def imdb_release_date(record)
+          value = record_value(record, :release_date, :releaseDate, %i[release date])
+          parse_date(value)
+        rescue StandardError
+          nil
+        end
+
+        def imdb_external_id(record)
+          raw = record_value(record, :external_id, :imdb_id, :id, %i[title id])
+          return raw unless raw.is_a?(String)
+
+          raw[%r{tt\d+}] || raw
+        end
+
+        def imdb_title(record)
+          record_value(
+            record,
+            :title,
+            :titleText,
+            %i[titleText text],
+            %i[title_text text],
+            :originalTitleText,
+            %i[originalTitleText text],
+            %i[original_title_text text]
+          )
+        end
+
+        def imdb_media_type(record)
+          type = record_value(record, :media_type, :type, :title_type, %i[titleType id], %i[titleType text])
+          normalized = type.to_s.downcase
+          return 'movie' if normalized.include?('movie') || normalized.include?('film')
+          return 'show' if normalized.include?('tv') || normalized.include?('series') || normalized.include?('show')
+
+          normalized.empty? ? 'movie' : normalized
+        end
+
+        def imdb_list(record, *keys)
+          value = record_value(record, *keys)
+          value = value['genres'] || value[:genres] if value.is_a?(Hash) && (value.key?('genres') || value.key?(:genres))
+          Array(value).filter_map do |entry|
+            case entry
+            when Hash
+              entry[:text] || entry['text'] || entry[:value] || entry['value'] || entry[:id] || entry['id'] || entry.dig(:name, :text) || entry.dig('name', 'text')
+            else
+              entry
+            end
+          end.map { |item| item.to_s.strip }.reject(&:empty?)
+        end
+
+        def imdb_rating(record)
+          rating = record_value(record, :rating, %i[ratings_summary aggregate_rating], %i[ratingsSummary aggregateRating])
+          return rating.to_f if rating
+
+          nil
+        end
+
+        def record_value(record, *keys)
+          keys.compact.each do |key|
+            value =
+              if key.is_a?(Array)
+                key.reduce(record) { |memo, part| memo_value(memo, part) }
+              else
+                memo_value(record, key)
+              end
+
+            return value unless value.nil?
+          end
+
+          nil
+        end
+
+        def memo_value(record, key)
+          return unless record
+
+          if record.is_a?(Hash)
+            record[key] || record[key.to_s] || record[key.to_sym]
+          elsif record.respond_to?(key)
+            record.public_send(key)
+          end
         end
 
         def normalize_entry(entry, date_range)
