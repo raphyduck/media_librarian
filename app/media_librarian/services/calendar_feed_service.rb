@@ -4,6 +4,7 @@ require 'json'
 require 'net/http'
 require 'uri'
 require 'date'
+require 'csv'
 
 module MediaLibrarian
   module Services
@@ -88,8 +89,25 @@ module MediaLibrarian
         when Time, DateTime
           value.to_date
         else
-          Date.parse(value.to_s)
+          parse_date_string(value.to_s)
         end
+      rescue ArgumentError
+        nil
+      end
+
+      def parse_date_string(raw)
+        value = raw.to_s.strip
+        return nil if value.empty?
+
+        Date.parse(value)
+      rescue ArgumentError
+        parse_slash_date(value)
+      end
+
+      def parse_slash_date(value)
+        return nil unless value.match?(%r{\A\d{1,2}/\d{1,2}/\d{4}\z})
+
+        Date.strptime(value, '%m/%d/%Y')
       rescue ArgumentError
         nil
       end
@@ -134,7 +152,8 @@ module MediaLibrarian
           providers << ImdbCalendarProvider.new(
             user: imdb_config['user'],
             list: imdb_config['list'],
-            speaker: speaker
+            speaker: speaker,
+            fetcher: build_imdb_fetcher(imdb_config['user'], imdb_config['list'])
           )
         end
         trakt_config = app.config['trakt']
@@ -142,10 +161,167 @@ module MediaLibrarian
           providers << TraktCalendarProvider.new(
             client_id: trakt_config['client_id'],
             client_secret: trakt_config['client_secret'],
-            speaker: speaker
+            speaker: speaker,
+            fetcher: build_trakt_fetcher(
+              trakt_config['client_id'],
+              trakt_config['client_secret'],
+              trakt_config['access_token']
+            )
           )
         end
         providers.compact.select(&:available?)
+      end
+
+      def build_imdb_fetcher(user, list)
+        return nil if user.to_s.empty? || list.to_s.empty?
+
+        lambda do |date_range:, limit:|
+          fetch_imdb_list(user: user, list: list)
+            .first(limit)
+        end
+      end
+
+      def fetch_imdb_list(user:, list:)
+        uri = URI::HTTPS.build(host: 'www.imdb.com', path: "/user/#{user}/list/#{list}/export")
+        response = Net::HTTP.get_response(uri)
+        return [] unless response.is_a?(Net::HTTPSuccess)
+
+        parse_imdb_csv(response.body)
+      rescue StandardError => e
+        speaker&.tell_error(e, "Calendar IMDb fetch failed for #{uri}") if defined?(uri)
+        []
+      end
+
+      def parse_imdb_csv(csv_data)
+        return [] if csv_data.to_s.strip.empty?
+
+        CSV.new(csv_data, headers: true).filter_map do |row|
+          external_id = row['const']
+          title = row['Title']
+          release_date = parse_date(row['Release Date (month/day/year)'])
+          next if external_id.to_s.strip.empty? || title.to_s.strip.empty?
+
+          {
+            external_id: external_id,
+            title: title,
+            media_type: imdb_media_type(row['Title type']),
+            genres: split_list(row['Genres']),
+            languages: [],
+            countries: [],
+            rating: safe_float(row['IMDb Rating']),
+            release_date: release_date
+          }
+        end
+      end
+
+      def imdb_media_type(value)
+        case value.to_s.strip.downcase
+        when 'tv series', 'tv mini-series', 'tv episode'
+          'show'
+        else
+          'movie'
+        end
+      end
+
+      def split_list(value)
+        value.to_s.split(',').map { |item| item.strip }.reject(&:empty?)
+      end
+
+      def safe_float(value)
+        return nil if value.to_s.strip.empty?
+
+        Float(value)
+      rescue ArgumentError, TypeError
+        nil
+      end
+
+      def build_trakt_fetcher(client_id, client_secret, token)
+        return nil if client_id.to_s.empty? || client_secret.to_s.empty?
+
+        lambda do |date_range:, limit:|
+          fetch_trakt_entries(
+            client_id: client_id,
+            token: token,
+            date_range: date_range,
+            limit: limit
+          )
+        end
+      end
+
+      def fetch_trakt_entries(client_id:, token:, date_range:, limit:)
+        start_date = (date_range.first || Date.today)
+        end_date = (date_range.last || start_date)
+        days = [(end_date - start_date).to_i + 1, 1].max
+
+        movies = trakt_request("/calendars/all/movies/#{start_date}/#{days}", client_id: client_id, token: token)
+        shows = trakt_request("/calendars/all/shows/#{start_date}/#{days}", client_id: client_id, token: token)
+
+        (parse_trakt_movies(movies) + parse_trakt_shows(shows)).first(limit)
+      end
+
+      def trakt_request(path, client_id:, token:)
+        uri = URI::HTTPS.build(host: 'api.trakt.tv', path: path)
+        request = Net::HTTP::Get.new(uri)
+        request['Content-Type'] = 'application/json'
+        request['trakt-api-version'] = '2'
+        request['trakt-api-key'] = client_id.to_s
+        request['Authorization'] = "Bearer #{token}" unless token.to_s.strip.empty?
+
+        response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+          http.request(request)
+        end
+        return JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
+
+        []
+      rescue StandardError => e
+        speaker&.tell_error(e, "Calendar Trakt fetch failed for #{path}")
+        []
+      end
+
+      def parse_trakt_movies(payload)
+        Array(payload).filter_map do |item|
+          movie = item['movie'] || {}
+          release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
+          build_trakt_entry(movie, 'movie', release_date)
+        end
+      end
+
+      def parse_trakt_shows(payload)
+        Array(payload).filter_map do |item|
+          show = item['show'] || {}
+          release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
+          build_trakt_entry(show, 'show', release_date)
+        end
+      end
+
+      def build_trakt_entry(record, media_type, release_date)
+        return unless release_date
+
+        external_id = trakt_external_id(record)
+        title = record['title'].to_s
+        return if external_id.to_s.empty? || title.empty?
+
+        {
+          external_id: external_id,
+          title: title,
+          media_type: media_type,
+          genres: Array(record['genres']).compact.map(&:to_s),
+          languages: wrap_string(record['language']),
+          countries: wrap_string(record['country']),
+          rating: safe_float(record['rating']),
+          release_date: release_date
+        }
+      end
+
+      def trakt_external_id(record)
+        ids = record['ids'] || {}
+        ids['imdb'] || ids['slug'] || ids['tmdb']&.to_s || ids['tvdb']&.to_s || ids['trakt']&.to_s
+      end
+
+      def wrap_string(value)
+        return [] if value.to_s.strip.empty?
+
+        [value.to_s]
       end
 
       class TmdbCalendarProvider
