@@ -359,46 +359,25 @@ module MediaLibrarian
         nil
       end
 
-      def build_trakt_fetcher(client_id, client_secret, token)
+      def build_trakt_fetcher(client_id, client_secret, _token)
         return nil if client_id.to_s.empty? || client_secret.to_s.empty?
 
         lambda do |date_range:, limit:|
-          fetch_trakt_entries(
-            client_id: client_id,
-            token: token,
-            date_range: date_range,
-            limit: limit
-          )
+          fetch_trakt_entries(date_range: date_range, limit: limit)
         end
       end
 
-      def fetch_trakt_entries(client_id:, token:, date_range:, limit:)
+      def fetch_trakt_entries(date_range:, limit:)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        movies = trakt_request("/calendars/all/movies/#{start_date}/#{days}", client_id: client_id, token: token)
-        shows = trakt_request("/calendars/all/shows/#{start_date}/#{days}", client_id: client_id, token: token)
+        movies = TraktAgent.calendars__all_movies(start_date, days) || []
+        shows = TraktAgent.calendars__all_shows(start_date, days) || []
 
         (parse_trakt_movies(movies) + parse_trakt_shows(shows)).first(limit)
-      end
-
-      def trakt_request(path, client_id:, token:)
-        uri = URI::HTTPS.build(host: 'api.trakt.tv', path: path)
-        request = Net::HTTP::Get.new(uri)
-        request['Content-Type'] = 'application/json'
-        request['trakt-api-version'] = '2'
-        request['trakt-api-key'] = client_id.to_s
-        request['Authorization'] = "Bearer #{token}" unless token.to_s.strip.empty?
-
-        response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
-          http.request(request)
-        end
-        return JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
-
-        []
       rescue StandardError => e
-        speaker&.tell_error(e, "Calendar Trakt fetch failed for #{path}")
+        speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         []
       end
 

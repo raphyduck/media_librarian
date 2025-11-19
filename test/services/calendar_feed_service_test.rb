@@ -8,6 +8,7 @@ require_relative 'service_test_helper'
 require_relative '../../app/media_librarian/services/base_service'
 require_relative '../../app/media_librarian/services/calendar_feed_service'
 require_relative '../../lib/storage/db'
+require_relative '../../lib/trakt_agent'
 
 class CalendarFeedServiceTest < Minitest::Test
   class FakeProvider
@@ -313,30 +314,20 @@ class CalendarFeedServiceTest < Minitest::Test
       }
     ]
 
-    movie_path = "/calendars/all/movies/#{start_date}/#{days}"
-    show_path = "/calendars/all/shows/#{start_date}/#{days}"
-    responses = {
-      movie_path => http_ok(JSON.dump(movie_payload)),
-      show_path => http_ok(JSON.dump(show_payload))
-    }
-    requests = []
+    movie_calls = []
+    show_calls = []
 
-    fake_http = Class.new do
-      def initialize(responses, requests)
-        @responses = responses
-        @requests = requests
+    TraktAgent.stub(:method_missing, lambda { |name, *args|
+      case name
+      when :calendars__all_movies
+        movie_calls << args
+        movie_payload
+      when :calendars__all_shows
+        show_calls << args
+        show_payload
+      else
+        super(name, *args)
       end
-
-      def request(req)
-        @requests << req.path
-        @responses.fetch(req.path)
-      end
-    end
-
-    Net::HTTP.stub(:start, ->(host, port = nil, *args, **kwargs, &block) {
-      raise "unexpected host #{host}" unless host == 'api.trakt.tv'
-
-      block.call(fake_http.new(responses, requests))
     }) do
       config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' } }
       app = Struct.new(:config, :db).new(config, @db)
@@ -345,7 +336,8 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
     end
 
-    assert_equal [movie_path, show_path].sort, requests.sort
+    assert_equal [[start_date, days]], movie_calls
+    assert_equal [[start_date, days]], show_calls
     rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
     assert_equal 2, rows.count
     movie = rows.find { |row| row[:media_type] == 'movie' }
