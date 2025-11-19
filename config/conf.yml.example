@@ -27,6 +27,7 @@ ffmpeg_settings:
   preset: medium
 calendar:
   refresh_every: 12 hours
+  refresh_on_start: true
   window_past_days: 0
   window_future_days: 45
   refresh_limit: 200

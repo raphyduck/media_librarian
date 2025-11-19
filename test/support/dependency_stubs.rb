@@ -215,6 +215,7 @@ module SimpleConfigMan
     },
     'calendar' => {
       'refresh_every' => '12 hours',
+      'refresh_on_start' => true,
       'refresh_days' => 45,
       'refresh_limit' => 200,
       'providers' => 'imdb|trakt|tmdb'

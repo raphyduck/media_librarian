@@ -73,6 +73,7 @@ The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued acc
 ```yaml
 calendar:
   refresh_every: 12 hours        # Scheduler interval (e.g. "6h", "1 day")
+  refresh_on_start: true         # Prime the table on daemon boot when it's empty
   window_past_days: 3            # How far back from today to keep entries
   window_future_days: 45         # How far into the future to fetch releases
   refresh_limit: 200             # Maximum number of entries persisted per refresh
@@ -90,7 +91,7 @@ trakt:
 #   enabled: false               # Optional toggle if you want to skip the IMDb feed entirely
 ```
 
-`refresh_every` overrides the scheduler interval so the daemon automatically re-hydrates the calendar at the requested cadence. `window_past_days` and `window_future_days` define the rolling window of dates that will be fetched on each run (`refresh_days` remains a backward-compatible alias for the future window), while `refresh_limit` caps the number of entries persisted per refresh. `providers` can be specified as a delimited string (`imdb|trakt|tmdb`, `imdb trakt`, etc.) or as a YAML array, and only the enabled fetchers are queried on each refresh.
+`refresh_every` overrides the scheduler interval so the daemon automatically re-hydrates the calendar at the requested cadence. `window_past_days` and `window_future_days` define the rolling window of dates that will be fetched on each run (`refresh_days` remains a backward-compatible alias for the future window), while `refresh_limit` caps the number of entries persisted per refresh. `refresh_on_start` ensures the daemon performs an immediate refresh when the calendar table is empty (set it to `false` to disable that bootstrap). `providers` can be specified as a delimited string (`imdb|trakt|tmdb`, `imdb trakt`, etc.) or as a YAML array, and only the enabled fetchers are queried on each refresh.
 
 The IMDb fetcher now uses the public release calendar and does not require per-user configuration. Leave the `imdb` block out of `conf.yml` (or set `imdb.enabled: false`) to disable it entirely. Trakt access still requires an API application; `client_id`/`client_secret` identify the app and the calendar endpoints live under `https://api.trakt.tv/calendars/all/...`. Public calendars work with only the client id, but supplying an OAuth `access_token` allows the service to reuse authenticated calls if you later point it at user-specific scopes.
 
