@@ -281,7 +281,7 @@ module MediaLibrarian
       def parse_trakt_movies(payload)
         Array(payload).filter_map do |item|
           movie = item['movie'] || {}
-          release_date = parse_date(item['release_date'] || item['first_aired'])
+          release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
           build_trakt_entry(movie, 'movie', release_date)
         end
       end

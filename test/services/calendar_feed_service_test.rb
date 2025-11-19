@@ -210,7 +210,7 @@ class CalendarFeedServiceTest < Minitest::Test
     days = (end_date - start_date).to_i + 1
     movie_payload = [
       {
-        'release_date' => (start_date + 1).to_s,
+        'released' => (start_date + 1).to_s,
         'movie' => {
           'title' => 'Trakt Movie',
           'ids' => { 'slug' => 'trakt-movie' },
