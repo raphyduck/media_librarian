@@ -66,6 +66,25 @@ The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued acc
 
 `TraktAgent` is now a thin shim that forwards dynamic API calls via `method_missing`. Legacy helpers for list management and automated watchlist/collection curation have been retired. Features such as the calendar rely on locally persisted watchlist entries instead of pulling Trakt lists directly.
 
+### Calendar feed configuration
+
+`CalendarFeedService` can hydrate the `calendar_entries` table from multiple sources. Provide the credentials in `~/.medialibrarian/conf.yml` to enable each fetcher:
+
+```yaml
+imdb:
+  user: ur123456   # IMDb user id (starts with "ur")
+  list: ls123456789  # The list id (starts with "ls") whose CSV export is queried
+
+trakt:
+  client_id: YOUR_TRAKT_CLIENT_ID
+  client_secret: YOUR_TRAKT_CLIENT_SECRET
+  access_token: OPTIONAL_OAUTH_TOKEN
+```
+
+The IMDb fetcher reads the CSV export for the configured user/list pair and extracts release dates, genres, and ratings. Make sure the account is public or that you have access to the list via a logged-in session when generating the cookie jar used by the daemon.
+
+Trakt access requires an API application; `client_id`/`client_secret` identify the app and the calendar endpoints live under `https://api.trakt.tv/calendars/all/...`. Public calendars work with only the client id, but supplying an OAuth `access_token` allows the service to reuse authenticated calls if you later point it at user-specific scopes.
+
 ### Tracker logins that require a real browser
 
 Some trackers now require interactive authentication flows that break automated form submissions. When that happens you can flag

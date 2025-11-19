@@ -179,6 +179,105 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
   end
 
+  def test_imdb_provider_fetches_remote_list
+    csv = <<~CSV
+      position,const,created,modified,description,Title,Title type,Directors,You rated,IMDb Rating,Runtime (mins),Year,Genres,Num Votes,Release Date (month/day/year),URL
+      1,tt0111161,2020-01-01,2020-01-01,,The Shawshank Redemption,Feature Film,,,9.3,142,1994,Drama,1000,#{(Date.today + 1).strftime('%m/%d/%Y')},https://www.imdb.com/title/tt0111161/
+    CSV
+    requests = []
+    imdb_response = http_ok(csv)
+
+    Net::HTTP.stub(:get_response, ->(uri) { requests << uri.to_s; imdb_response }) do
+      config = { 'imdb' => { 'user' => 'ur123', 'list' => 'ls456' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: Date.today..(Date.today + 5), limit: 5, sources: ['imdb'])
+    end
+
+    refute_empty requests
+    row = @db.get_rows(:calendar_entries, { source: 'imdb' }).first
+    refute_nil row
+    assert_equal 'tt0111161', row[:external_id]
+    assert_equal 'movie', row[:media_type]
+    assert_equal ['Drama'], row[:genres]
+  end
+
+  def test_trakt_provider_fetches_remote_calendar
+    start_date = Date.today
+    end_date = start_date + 5
+    date_range = start_date..end_date
+    days = (end_date - start_date).to_i + 1
+    movie_payload = [
+      {
+        'release_date' => (start_date + 1).to_s,
+        'movie' => {
+          'title' => 'Trakt Movie',
+          'ids' => { 'slug' => 'trakt-movie' },
+          'genres' => ['drama'],
+          'language' => 'en',
+          'country' => 'us',
+          'rating' => 7.3
+        }
+      }
+    ]
+    show_payload = [
+      {
+        'first_aired' => (start_date + 2).to_s,
+        'show' => {
+          'title' => 'Trakt Show',
+          'ids' => { 'slug' => 'trakt-show' },
+          'genres' => ['sci-fi'],
+          'language' => 'en',
+          'country' => 'gb',
+          'rating' => 8.1
+        }
+      }
+    ]
+
+    movie_path = "/calendars/all/movies/#{start_date}/#{days}"
+    show_path = "/calendars/all/shows/#{start_date}/#{days}"
+    responses = {
+      movie_path => http_ok(JSON.dump(movie_payload)),
+      show_path => http_ok(JSON.dump(show_payload))
+    }
+    requests = []
+
+    fake_http = Class.new do
+      def initialize(responses, requests)
+        @responses = responses
+        @requests = requests
+      end
+
+      def request(req)
+        @requests << req.path
+        @responses.fetch(req.path)
+      end
+    end
+
+    Net::HTTP.stub(:start, ->(host, port = nil, *args, **kwargs, &block) {
+      raise "unexpected host #{host}" unless host == 'api.trakt.tv'
+
+      block.call(fake_http.new(responses, requests))
+    }) do
+      config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+    end
+
+    assert_equal [movie_path, show_path].sort, requests.sort
+    rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
+    assert_equal 2, rows.count
+    movie = rows.find { |row| row[:media_type] == 'movie' }
+    show = rows.find { |row| row[:media_type] == 'show' }
+    assert_equal ['drama'], movie[:genres]
+    assert_equal ['en'], movie[:languages]
+    assert_equal ['gb'], show[:countries]
+    assert_equal ['sci-fi'], show[:genres]
+  end
+
   private
 
   def base_entry
@@ -215,5 +314,12 @@ class CalendarFeedServiceTest < Minitest::Test
       index %i[source external_id], unique: true
       index :release_date
     end
+  end
+
+  def http_ok(body)
+    response = Net::HTTPOK.new('1.1', '200', 'OK')
+    response.instance_variable_set(:@read, true)
+    response.instance_variable_set(:@body, body)
+    response
   end
 end
