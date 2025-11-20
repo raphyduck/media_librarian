@@ -29,6 +29,8 @@ class TraktAgent
     calendars_client = MediaLibrarian.app.trakt
     if calendars_client&.respond_to?(:calendars)
       calendars = calendars_client.calendars
+      all_method = "all_#{type}".to_sym
+      return calendars.public_send(all_method, start_date, days) if calendars.respond_to?(all_method)
       return calendars.public_send(type, start_date, days) if calendars.respond_to?(type)
     end
 
