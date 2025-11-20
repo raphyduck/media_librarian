@@ -245,11 +245,13 @@ module MediaLibrarian
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        movies = validate_trakt_payload(TraktAgent.calendars__all_movies(start_date, days), 'Calendar Trakt movies payload')
-        shows = validate_trakt_payload(TraktAgent.calendars__all_shows(start_date, days), 'Calendar Trakt shows payload')
-        return [] unless movies && shows
+        movies = TraktAgent.calendars__all_movies(start_date, days)
+        shows = TraktAgent.calendars__all_shows(start_date, days)
 
-        (parse_trakt_movies(movies) + parse_trakt_shows(shows)).first(limit)
+        parsed_movies = parse_trakt_movies(movies)
+        parsed_shows = parse_trakt_shows(shows)
+
+        (parsed_movies + parsed_shows).first(limit)
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         []
