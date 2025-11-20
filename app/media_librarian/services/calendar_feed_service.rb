@@ -375,18 +375,10 @@ module MediaLibrarian
           results
         end
 
-        def fetch_page(path, kind, page)
-          payload =
-            case kind
-            when :movie
-              client::Movie.upcoming(page)
-            when :tv
-              client::TV.on_the_air(page)
-            else
-              raise ArgumentError, "Unsupported kind: #{kind}"
-            end
-
-          payload
+        def fetch_page(path, _kind, page)
+          search = client::Search.new(path)
+          search.filter(page: page) if page
+          search.fetch_response
         rescue StandardError => e
           report_error(e, "Calendar TMDB fetch failed for #{path}")
           nil
