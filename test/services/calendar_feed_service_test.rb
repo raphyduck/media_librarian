@@ -331,23 +331,20 @@ class CalendarFeedServiceTest < Minitest::Test
     movie_calls = []
     show_calls = []
 
-    TraktAgent.stub(:method_missing, lambda { |name, *args|
-      case name
-      when :calendars__all_movies
-        movie_calls << args
-        movie_payload
-      when :calendars__all_shows
-        show_calls << args
-        show_payload
-      else
-        super(name, *args)
-      end
-    }) do
-      config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' } }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+    TraktAgent.stub(
+      :calendars__all_movies,
+      ->(start_date, days) { movie_calls << [start_date, days]; movie_payload }
+    ) do
+      TraktAgent.stub(
+        :calendars__all_shows,
+        ->(start_date, days) { show_calls << [start_date, days]; show_payload }
+      ) do
+        config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' } }
+        app = Struct.new(:config, :db).new(config, @db)
+        service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
 
-      service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+        service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+      end
     end
 
     assert_equal [[start_date, days]], movie_calls
