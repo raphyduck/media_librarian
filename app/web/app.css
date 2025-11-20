@@ -548,10 +548,43 @@ button:disabled {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
   display: grid;
-  gap: 0.35rem;
+  grid-template-columns: 110px 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
 }
 
-.calendar-item header {
+.calendar-media {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(255, 255, 255, 0.06));
+  min-height: 150px;
+}
+
+.calendar-media img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.calendar-media-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #cbd5e1;
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+
+.calendar-body {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.calendar-body header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;

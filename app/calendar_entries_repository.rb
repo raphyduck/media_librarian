@@ -138,6 +138,8 @@ class CalendarEntriesRepository
     genres = normalize_list(row[:genres] || row['genres'])
     languages = normalize_list(row[:languages] || row['languages'])
     countries = normalize_list(row[:countries] || row['countries'])
+    poster_url = normalize_url(row[:poster_url] || row['poster_url'])
+    backdrop_url = normalize_url(row[:backdrop_url] || row['backdrop_url'])
     ids = normalize_ids(row[:ids] || row['ids'])
     ids = build_default_ids(row, ids) if ids.empty?
 
@@ -154,6 +156,8 @@ class CalendarEntriesRepository
       release_date: release_date,
       downloaded: !!(row[:downloaded] || row['downloaded']),
       in_interest_list: !!(row[:in_interest_list] || row['in_interest_list']),
+      poster_url: poster_url,
+      backdrop_url: backdrop_url,
       ids: ids,
       source: (row[:source] || row['source']).to_s,
       external_id: (row[:external_id] || row['external_id']).to_s
@@ -180,6 +184,11 @@ class CalendarEntriesRepository
     else
       []
     end
+  end
+
+  def normalize_url(value)
+    url = value.to_s.strip
+    url.empty? ? nil : url
   end
 
   def parse_rating(value)

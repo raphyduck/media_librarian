@@ -77,6 +77,8 @@ module MediaLibrarian
           languages: Array(entry[:languages]).compact.map(&:to_s),
           countries: Array(entry[:countries]).compact.map(&:to_s),
           rating: entry[:rating] ? entry[:rating].to_f : nil,
+          poster_url: normalize_url(entry[:poster_url] || entry[:poster]),
+          backdrop_url: normalize_url(entry[:backdrop_url] || entry[:backdrop]),
           release_date: release_date
         }
       end
@@ -118,6 +120,11 @@ module MediaLibrarian
         Date.strptime(value, '%m/%d/%Y')
       rescue ArgumentError
         nil
+      end
+
+      def normalize_url(value)
+        url = value.to_s.strip
+        url.empty? ? nil : url
       end
 
       def persist_entries(entries)
@@ -263,28 +270,38 @@ module MediaLibrarian
         end
       end
 
-      def build_trakt_entry(record, media_type, release_date)
-        return unless release_date
+        def build_trakt_entry(record, media_type, release_date)
+          return unless release_date
 
-        external_id = trakt_external_id(record)
-        title = record['title'].to_s
-        return if external_id.to_s.empty? || title.empty?
+          external_id = trakt_external_id(record)
+          title = record['title'].to_s
+          return if external_id.to_s.empty? || title.empty?
 
-        {
-          external_id: external_id,
-          title: title,
-          media_type: media_type,
-          genres: Array(record['genres']).compact.map(&:to_s),
-          languages: wrap_string(record['language']),
-          countries: wrap_string(record['country']),
-          rating: safe_float(record['rating']),
-          release_date: release_date
-        }
-      end
+          {
+            external_id: external_id,
+            title: title,
+            media_type: media_type,
+            genres: Array(record['genres']).compact.map(&:to_s),
+            languages: wrap_string(record['language']),
+            countries: wrap_string(record['country']),
+            rating: safe_float(record['rating']),
+            poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
+            backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
+            release_date: release_date
+          }
+        end
 
       def trakt_external_id(record)
         ids = record['ids'] || {}
         ids['imdb'] || ids['slug'] || ids['tmdb']&.to_s || ids['tvdb']&.to_s || ids['trakt']&.to_s
+      end
+
+      def trakt_image(record, *paths)
+        paths.filter_map do |path|
+          value = path.reduce(record) { |memo, key| memo.respond_to?(:[]) ? memo[key] || memo[key&.to_sym] : nil }
+          value = value[:full] || value['full'] if value.is_a?(Hash)
+          value.to_s.strip unless value.to_s.strip.empty?
+        end.first
       end
 
       def wrap_string(value)
@@ -397,6 +414,8 @@ module MediaLibrarian
             languages: extract_languages(details),
             countries: extract_countries(details),
             rating: details['vote_average'],
+            poster_url: image_url(details['poster_path'], 'w342'),
+            backdrop_url: image_url(details['backdrop_path'], 'w780'),
             release_date: release_date
           }
         end
@@ -420,6 +439,12 @@ module MediaLibrarian
           Date.parse(value.to_s)
         rescue ArgumentError
           nil
+        end
+
+        def image_url(path, size)
+          return nil if path.to_s.strip.empty?
+
+          "https://image.tmdb.org/t/p/#{size}#{path}"
         end
 
         def report_error(error, message)
@@ -469,6 +494,8 @@ module MediaLibrarian
             languages: imdb_list(record, :languages, :spoken_languages, :spokenLanguages),
             countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
             rating: imdb_rating(record),
+            poster_url: imdb_image(record),
+            backdrop_url: imdb_image(record, :backdrop),
             release_date: imdb_release_date(record)
           }
         end
@@ -554,6 +581,15 @@ module MediaLibrarian
           end
         end
 
+        def imdb_image(record, key = nil)
+          value = record_value(record, key || :primaryImage, :primary_image, %i[primaryImage url], %i[primary_image url],
+                                %i[image url], :image)
+          url = value.is_a?(Hash) ? value[:url] || value['url'] : value
+          url = url[:url] || url['url'] if url.is_a?(Hash)
+          url = url.to_s.strip
+          url.empty? ? nil : url
+        end
+
         def normalize_entry(entry, date_range)
           release_date = parse_date(entry[:release_date])
           return unless release_date && date_range.cover?(release_date)
@@ -572,6 +608,8 @@ module MediaLibrarian
             languages: Array(entry[:languages]).compact.map(&:to_s),
             countries: Array(entry[:countries]).compact.map(&:to_s),
             rating: entry[:rating] ? entry[:rating].to_f : nil,
+            poster_url: imdb_image(entry, :poster_url),
+            backdrop_url: imdb_image(entry, :backdrop_url),
             release_date: release_date
           }
         end
@@ -637,6 +675,8 @@ module MediaLibrarian
             languages: Array(entry[:languages]).compact.map(&:to_s),
             countries: Array(entry[:countries]).compact.map(&:to_s),
             rating: entry[:rating] ? entry[:rating].to_f : nil,
+            poster_url: entry[:poster_url],
+            backdrop_url: entry[:backdrop_url],
             release_date: release_date
           }
         end
