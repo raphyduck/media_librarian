@@ -375,10 +375,22 @@ module MediaLibrarian
           results
         end
 
-        def fetch_page(path, _kind, page)
-          search = client::Search.new(path)
-          search.filter(page: page) if page
-          search.fetch_response
+        def fetch_page(path, kind, page)
+          case kind
+          when :movie
+            return client::Movie.upcoming(page) if client.const_defined?(:Movie) &&
+                                                   client::Movie.respond_to?(:upcoming)
+          when :tv
+            return client::TV.on_the_air(page) if client.const_defined?(:TV) &&
+                                                 client::TV.respond_to?(:on_the_air)
+          end
+
+          params = { page: page }.compact
+          if client.const_defined?(:Api) && client::Api.respond_to?(:request)
+            return client::Api.request(path, params)
+          end
+
+          raise ArgumentError, "Unsupported TMDB fetch for #{path}"
         rescue StandardError => e
           report_error(e, "Calendar TMDB fetch failed for #{path}")
           nil
