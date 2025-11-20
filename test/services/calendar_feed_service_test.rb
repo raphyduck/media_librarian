@@ -65,6 +65,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'movie', rows.first[:media_type]
     assert_equal 'Test Show', rows.last[:title]
     assert_equal %w[en fr], rows.last[:languages]
+    assert_equal 'https://example.test/poster.jpg', rows.first[:poster_url]
   end
 
   def test_refresh_replaces_duplicates
@@ -373,6 +374,8 @@ class CalendarFeedServiceTest < Minitest::Test
       languages: ['en'],
       countries: ['US'],
       rating: 7.1,
+      poster_url: 'https://example.test/poster.jpg',
+      backdrop_url: 'https://example.test/backdrop.jpg',
       release_date: Date.today + 1
     }
   end
@@ -389,6 +392,8 @@ class CalendarFeedServiceTest < Minitest::Test
       Text :genres
       Text :languages
       Text :countries
+      String :poster_url, size: 500
+      String :backdrop_url, size: 500
       Float :rating
       Date :release_date
       DateTime :created_at

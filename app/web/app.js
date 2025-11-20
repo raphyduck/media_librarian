@@ -1273,9 +1273,29 @@ function renderCalendar(data = {}) {
         const item = document.createElement('article');
         item.className = 'calendar-item';
 
+        const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+        const mediaUrl = pickEntryValue(entry, ['poster_url', 'poster', 'backdrop_url', 'backdrop']);
+        const media = document.createElement('div');
+        media.className = 'calendar-media';
+        if (mediaUrl) {
+          const img = document.createElement('img');
+          img.loading = 'lazy';
+          img.src = mediaUrl;
+          img.alt = `${titleText} - visuel`;
+          media.appendChild(img);
+        } else {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'calendar-media-fallback';
+          placeholder.textContent = titleText.charAt(0) || '?';
+          media.appendChild(placeholder);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'calendar-body';
+
         const header = document.createElement('header');
         const titleEl = document.createElement('h4');
-        titleEl.textContent = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+        titleEl.textContent = titleText;
         const dateLabel = document.createElement('span');
         dateLabel.className = 'calendar-meta';
         dateLabel.textContent = date
@@ -1286,7 +1306,7 @@ function renderCalendar(data = {}) {
             }).format(date)
           : 'Date inconnue';
         header.append(titleEl, dateLabel);
-        item.appendChild(header);
+        body.appendChild(header);
 
         const badges = document.createElement('div');
         badges.className = 'calendar-badges';
@@ -1309,7 +1329,7 @@ function renderCalendar(data = {}) {
           badges.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
         }
         if (badges.childElementCount) {
-          item.appendChild(badges);
+          body.appendChild(badges);
         }
 
         const metaSegments = [];
@@ -1325,7 +1345,7 @@ function renderCalendar(data = {}) {
           const meta = document.createElement('div');
           meta.className = 'calendar-meta';
           meta.textContent = metaSegments.join(' · ');
-          item.appendChild(meta);
+          body.appendChild(meta);
         }
 
         if (!isInWatchlist(entry)) {
@@ -1336,9 +1356,10 @@ function renderCalendar(data = {}) {
           button.textContent = 'Ajouter à la liste d’intérêt';
           button.addEventListener('click', () => addToWatchlist(entry, button));
           actions.appendChild(button);
-          item.appendChild(actions);
+          body.appendChild(actions);
         }
 
+        item.append(media, body);
         list.appendChild(item);
       });
 
