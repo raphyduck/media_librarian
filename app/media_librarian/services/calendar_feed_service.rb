@@ -245,17 +245,23 @@ module MediaLibrarian
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        movies = TraktAgent.calendars__all_movies(start_date, days) || []
-        shows = TraktAgent.calendars__all_shows(start_date, days) || []
+        movies = TraktAgent.calendars__all_movies(start_date, days)
+        shows = TraktAgent.calendars__all_shows(start_date, days)
 
-        (parse_trakt_movies(movies) + parse_trakt_shows(shows)).first(limit)
+        parsed_movies = parse_trakt_movies(movies)
+        parsed_shows = parse_trakt_shows(shows)
+
+        (parsed_movies + parsed_shows).first(limit)
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         []
       end
 
       def parse_trakt_movies(payload)
-        Array(payload).filter_map do |item|
+        items = validate_trakt_payload(payload, 'Calendar Trakt movies payload')
+        return [] unless items
+
+        items.filter_map do |item|
           movie = item['movie'] || {}
           release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
           build_trakt_entry(movie, 'movie', release_date)
@@ -263,11 +269,22 @@ module MediaLibrarian
       end
 
       def parse_trakt_shows(payload)
-        Array(payload).filter_map do |item|
+        items = validate_trakt_payload(payload, 'Calendar Trakt shows payload')
+        return [] unless items
+
+        items.filter_map do |item|
           show = item['show'] || {}
           release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
           build_trakt_entry(show, 'show', release_date)
         end
+      end
+
+      def validate_trakt_payload(payload, context)
+        items = Array(payload)
+        return items if items.all?(Hash)
+
+        speaker&.tell_error(StandardError.new('Invalid Trakt payload format'), context)
+        nil
       end
 
         def build_trakt_entry(record, media_type, release_date)
