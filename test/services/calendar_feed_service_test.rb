@@ -359,6 +359,20 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['sci-fi'], show[:genres]
   end
 
+  def test_tmdb_fetch_page_handles_movies_and_shows_without_argument_errors
+    client = fake_tmdb_client
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    movie_page = provider.send(:fetch_page, '/movie/upcoming', :movie, 1)
+    tv_page = provider.send(:fetch_page, '/tv/on_the_air', :tv, 2)
+
+    assert_equal 3, movie_page['total_pages']
+    assert_equal 3, tv_page['total_pages']
+    assert_equal [['/tv/on_the_air', { page: 2 }]], client::Api.requests
+  end
+
   private
 
   def base_entry
@@ -398,6 +412,58 @@ class CalendarFeedServiceTest < Minitest::Test
 
       index %i[source external_id], unique: true
       index :release_date
+    end
+  end
+
+  def fake_tmdb_client
+    Module.new do
+      api_mod = Module.new do
+        class << self
+          attr_accessor :requests
+
+          def key(*)
+            nil
+          end
+
+          def language(*)
+            nil
+          end
+
+          def config
+            @config ||= {}
+          end
+
+          def request(path, params = {})
+            self.requests ||= []
+            self.requests << [path, params]
+            { 'results' => [], 'total_pages' => 3 }
+          end
+        end
+      end
+
+      movie_mod = Module.new do
+        def self.upcoming
+          { 'results' => [], 'total_pages' => 3 }
+        end
+
+        def self.detail(*)
+          {}
+        end
+      end
+
+      tv_mod = Module.new do
+        def self.on_the_air
+          { 'results' => [], 'total_pages' => 3 }
+        end
+
+        def self.detail(*)
+          {}
+        end
+      end
+
+      const_set(:Api, api_mod)
+      const_set(:Movie, movie_mod)
+      const_set(:TV, tv_mod)
     end
   end
 
