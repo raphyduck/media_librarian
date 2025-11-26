@@ -380,7 +380,7 @@ module MediaLibrarian
               release_date = release_from(item, kind)
               next unless release_date && date_range.cover?(release_date)
 
-              details = fetch_details(kind, item['id'])
+              details = fetch_details(kind, value_from(item, :id))
               next unless details
 
               results << build_entry(details, kind, release_date)
@@ -418,7 +418,17 @@ module MediaLibrarian
         end
 
         def release_from(item, kind)
-          parse_date(kind == :movie ? item['release_date'] : item['first_air_date'])
+          parse_date(value_from(item, kind == :movie ? :release_date : :first_air_date))
+        end
+
+        def value_from(item, *keys)
+          keys.each do |key|
+            return item.public_send(key) if item.respond_to?(key)
+            return item.public_send(key.to_s) if item.respond_to?(key.to_s)
+            return item[key] if item.respond_to?(:[]) && item[key]
+            return item[key.to_s] if item.respond_to?(:[]) && item[key.to_s]
+          end
+          nil
         end
 
         def fetch_details(kind, id)
