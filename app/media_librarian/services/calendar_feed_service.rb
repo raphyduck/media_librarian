@@ -404,7 +404,7 @@ module MediaLibrarian
         end
 
         def fetch_page(path, kind, page, params = {})
-          if page.to_i == 1 && params.empty?
+          if page.to_i == 1
             case kind
             when :movie
               return client::Movie.upcoming if path == '/movie/upcoming' && client.const_defined?(:Movie) &&
