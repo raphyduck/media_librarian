@@ -1,5 +1,6 @@
 require 'json'
 require 'net/http'
+require 'openssl'
 
 class TraktAgent
   def self.calendars__all_movies(start_date, days)
@@ -57,7 +58,7 @@ class TraktAgent
     request['trakt-api-key'] = client_id
     request['Authorization'] = "Bearer #{access_token}" unless access_token.empty?
 
-    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, ssl_context: build_ssl_context(config)) do |http|
       http.request(request)
     end
 
@@ -67,5 +68,20 @@ class TraktAgent
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.calendar_http_#{type}")
     nil
+  end
+
+  def self.build_ssl_context(config)
+    context = OpenSSL::SSL::SSLContext.new
+    context.verify_mode = OpenSSL::SSL::VERIFY_PEER
+    context.cert_store = build_cert_store(config)
+    context
+  end
+
+  def self.build_cert_store(config)
+    store = OpenSSL::X509::Store.new
+    ca_path = config['ca_path'].to_s
+    ca_path.empty? ? store.set_default_paths : store.add_path(ca_path)
+    store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK_ALL unless config['disable_crl_checks']
+    store
   end
 end
