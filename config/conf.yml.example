@@ -43,7 +43,8 @@ trakt:
   client_id: client_id
   client_secret: client_secret
   ca_path: /path/to/ca-certificates # Optional override; defaults to system trust store
-  disable_crl_checks: false # Set to true only if your environment lacks CRL support
+  enable_crl_checks: false # Opt-in CRL checking; will fall back if unsupported
+  disable_crl_checks: false # Legacy override to forcefully disable CRL checks
 tmdb:
   api_key: api_key
 tvdb:
