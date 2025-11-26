@@ -375,7 +375,8 @@ module MediaLibrarian
             payload = fetch_page(path, kind, page)
             break unless payload
 
-            Array(payload['results']).each do |item|
+            items = payload.is_a?(Array) ? payload : Array(payload['results'])
+            items.each do |item|
               release_date = release_from(item, kind)
               next unless release_date && date_range.cover?(release_date)
 
@@ -387,7 +388,8 @@ module MediaLibrarian
             end
 
             page += 1
-            break if page > payload.fetch('total_pages', 1).to_i
+            total_pages = payload.is_a?(Hash) ? payload.fetch('total_pages', 1).to_i : 1
+            break if page > total_pages
           end
           results
         end
