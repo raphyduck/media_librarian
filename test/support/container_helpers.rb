@@ -37,6 +37,8 @@ module TestSupport
                   :env_flags, :config_dir, :config_file, :config_example,
                   :tracker_dir, :api_config_file
 
+      attr_accessor :trakt
+
       def initialize(root:, speaker:, args_dispatch:)
         @root = root
         @loader = NullLoader.new
