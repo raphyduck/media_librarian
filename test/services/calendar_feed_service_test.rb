@@ -373,6 +373,49 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal [['/tv/on_the_air', { page: 2 }]], client::Api.requests
   end
 
+  def test_tmdb_fetch_titles_accepts_array_payloads_without_total_pages
+    client = Module.new do
+      movie_mod = Module.new do
+        class << self
+          attr_accessor :detail_calls
+        end
+
+        def self.upcoming
+          [
+            { 'id' => 10, 'release_date' => (Date.today + 1).to_s },
+            { 'id' => 11, 'release_date' => (Date.today + 2).to_s }
+          ]
+        end
+
+        def self.detail(id)
+          self.detail_calls ||= []
+          self.detail_calls << id
+          {
+            'id' => id,
+            'title' => "Array Movie #{id}",
+            'genres' => [],
+            'languages' => [],
+            'spoken_languages' => [],
+            'origin_country' => [],
+            'production_countries' => []
+          }
+        end
+      end
+
+      const_set(:Movie, movie_mod)
+    end
+
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    date_range = Date.today..(Date.today + 7)
+    results = provider.send(:fetch_titles, '/movie/upcoming', :movie, date_range, 10)
+
+    assert_equal ['Array Movie 10', 'Array Movie 11'], results.map { |entry| entry[:title] }
+    assert_equal [10, 11], client::Movie.detail_calls
+  end
+
   private
 
   def base_entry
