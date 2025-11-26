@@ -395,18 +395,25 @@ module MediaLibrarian
         end
 
         def fetch_page(path, kind, page)
+          params = { page: page }.compact
+
           if page.to_i == 1
-            case kind
-            when :movie
-              return client::Movie.upcoming if client.const_defined?(:Movie) &&
-                                               client::Movie.respond_to?(:upcoming)
-            when :tv
-              return client::TV.on_the_air if client.const_defined?(:TV) &&
-                                               client::TV.respond_to?(:on_the_air)
-            end
+            first_page =
+              begin
+                case kind
+                when :movie
+                  client::Movie.upcoming if client.const_defined?(:Movie) &&
+                                            client::Movie.respond_to?(:upcoming)
+                when :tv
+                  client::TV.on_the_air if client.const_defined?(:TV) &&
+                                           client::TV.respond_to?(:on_the_air)
+                end
+              rescue StandardError
+                nil
+              end
+            return first_page if first_page
           end
 
-          params = { page: page }.compact
           if client.const_defined?(:Api) && client::Api.respond_to?(:request)
             return client::Api.request(path, params)
           end
