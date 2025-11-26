@@ -81,7 +81,23 @@ class TraktAgent
     store = OpenSSL::X509::Store.new
     ca_path = config['ca_path'].to_s
     ca_path.empty? ? store.set_default_paths : store.add_path(ca_path)
-    store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK_ALL unless config['disable_crl_checks']
+    crl_enabled = config['enable_crl_checks'] && !config['disable_crl_checks']
+
+    if crl_enabled
+      begin
+        store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK_ALL
+      rescue StandardError => e
+        warn_crl_disabled("CRL checks disabled: #{e.message}")
+      end
+    elsif config['disable_crl_checks'] || config.key?('enable_crl_checks')
+      warn_crl_disabled('CRL checks disabled by configuration')
+    end
+
     store
+  end
+
+  def self.warn_crl_disabled(message)
+    speaker = MediaLibrarian.app&.speaker
+    speaker&.speak_up(message) || warn(message)
   end
 end

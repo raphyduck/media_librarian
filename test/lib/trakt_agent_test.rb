@@ -23,9 +23,13 @@ class TraktAgentTest < Minitest::Test
     super
   end
 
-  def test_https_fallback_uses_ssl_context_and_crl_checks
+  def test_https_fallback_uses_ssl_context_and_crl_checks_when_enabled
     stores = []
-    @environment.container.reload_config!('trakt' => { 'client_id' => 'client', 'access_token' => 'token' })
+    @environment.container.reload_config!('trakt' => {
+      'client_id' => 'client',
+      'access_token' => 'token',
+      'enable_crl_checks' => true
+    })
 
     captured_context = nil
     Net::HTTP.stub :start, http_stub(captured_context_proc: ->(ctx) { captured_context = ctx }) do
@@ -40,6 +44,25 @@ class TraktAgentTest < Minitest::Test
     store = stores.first
     assert store.default_paths_set
     assert_equal OpenSSL::X509::V_FLAG_CRL_CHECK_ALL, store.flag_value
+  end
+
+  def test_https_calendar_fetch_succeeds_without_crl_checks
+    stores = []
+    @environment.container.reload_config!('trakt' => { 'client_id' => 'client', 'access_token' => 'token' })
+
+    captured_context = nil
+    Net::HTTP.stub :start, http_stub(captured_context_proc: ->(ctx) { captured_context = ctx }) do
+      OpenSSL::X509::Store.stub :new, -> { build_instrumented_store(stores) } do
+        assert_equal [], TraktAgent.fetch_calendar_from_http(:shows, Date.new(2024, 1, 1), 1)
+      end
+    end
+
+    refute_nil captured_context
+    assert_equal OpenSSL::SSL::VERIFY_PEER, captured_context.verify_mode
+
+    store = stores.first
+    assert store.default_paths_set
+    assert_nil store.flag_value
   end
 
   def test_allows_disabling_crl_checks_with_custom_ca_path
