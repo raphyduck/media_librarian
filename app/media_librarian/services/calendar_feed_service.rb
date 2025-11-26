@@ -347,9 +347,9 @@ module MediaLibrarian
         def upcoming(date_range:, limit: 100)
           return [] unless available?
 
-          movies = fetch_titles('/movie/upcoming', :movie, date_range, limit)
+          movies = fetch_titles_for(:movie, date_range, limit)
           remaining = [limit - movies.length, 0].max
-          shows = fetch_titles('/tv/on_the_air', :tv, date_range, remaining)
+          shows = fetch_titles_for(:tv, date_range, remaining)
           (movies + shows).first(limit)
         end
 
@@ -366,13 +366,22 @@ module MediaLibrarian
           client::Api.config[:region] = region if region
         end
 
-        def fetch_titles(path, kind, date_range, limit)
+        def fetch_titles_for(kind, date_range, limit)
+          fetch_paths(kind, date_range).each_with_object([]) do |path, results|
+            break results if results.length >= limit
+
+            needed = limit - results.length
+            results.concat(fetch_titles(path, kind, date_range, needed, date_params(kind, date_range)))
+          end
+        end
+
+        def fetch_titles(path, kind, date_range, limit, params = {})
           return [] if limit.to_i <= 0
 
           page = 1
           results = []
           loop do
-            payload = fetch_page(path, kind, page)
+            payload = fetch_page(path, kind, page, params)
             break unless payload
 
             items = payload.is_a?(Array) ? payload : Array(payload['results'])
@@ -394,19 +403,23 @@ module MediaLibrarian
           results
         end
 
-        def fetch_page(path, kind, page)
-          if page.to_i == 1
+        def fetch_page(path, kind, page, params = {})
+          if page.to_i == 1 && params.empty?
             case kind
             when :movie
-              return client::Movie.upcoming if client.const_defined?(:Movie) &&
+              return client::Movie.upcoming if path == '/movie/upcoming' && client.const_defined?(:Movie) &&
                                                client::Movie.respond_to?(:upcoming)
+              return client::Movie.now_playing if path == '/movie/now_playing' && client.const_defined?(:Movie) &&
+                                                  client::Movie.respond_to?(:now_playing)
             when :tv
-              return client::TV.on_the_air if client.const_defined?(:TV) &&
+              return client::TV.on_the_air if path == '/tv/on_the_air' && client.const_defined?(:TV) &&
                                                client::TV.respond_to?(:on_the_air)
+              return client::TV.airing_today if path == '/tv/airing_today' && client.const_defined?(:TV) &&
+                                                  client::TV.respond_to?(:airing_today)
             end
           end
 
-          params = { page: page }.compact
+          params = { page: page }.merge(params || {}).compact
           if client.const_defined?(:Api) && client::Api.respond_to?(:request)
             return client::Api.request(path, params)
           end
@@ -419,6 +432,41 @@ module MediaLibrarian
 
         def release_from(item, kind)
           parse_date(value_from(item, kind == :movie ? :release_date : :first_air_date))
+        end
+
+        def fetch_paths(kind, date_range)
+          today = Date.today
+          range_start = date_range.first || today
+          range_end = date_range.last || today
+          paths = []
+
+          if range_start < today
+            paths << (kind == :movie ? '/movie/now_playing' : '/tv/airing_today')
+            paths << (kind == :movie ? '/discover/movie' : '/discover/tv')
+          end
+
+          paths << (kind == :movie ? '/movie/upcoming' : '/tv/on_the_air') if range_end >= today
+          paths.uniq
+        end
+
+        def date_params(kind, date_range)
+          start_date = date_range.first
+          end_date = date_range.last
+          return {} unless start_date && end_date
+
+          if kind == :movie
+            {
+              'primary_release_date.gte': start_date.to_s,
+              'primary_release_date.lte': end_date.to_s,
+              'release_date.gte': start_date.to_s,
+              'release_date.lte': end_date.to_s
+            }
+          else
+            {
+              'first_air_date.gte': start_date.to_s,
+              'first_air_date.lte': end_date.to_s
+            }
+          end
         end
 
         def value_from(item, *keys)
