@@ -63,24 +63,38 @@ class TraktAgentTest < Minitest::Test
     start_date = Date.new(2024, 1, 1)
     days = 2
 
-    fetcher = Class.new do
+    calendar = Class.new do
       attr_reader :calls
 
       def initialize
         @calls = []
       end
 
-      def calendar(type:, start_date:, days:)
-        @calls << [type, start_date, days]
+      def movies(start_date, days)
+        @calls << [start_date, days]
         :from_calendar_method
       end
     end.new
+
+    fetcher = Class.new do
+      attr_reader :calendar_called
+
+      def initialize(calendar)
+        @calendar = calendar
+      end
+
+      def calendar
+        @calendar_called = true
+        @calendar
+      end
+    end.new(calendar)
 
     Net::HTTP.stub(:start, ->(*) { flunk 'Net::HTTP.start should not be called' }) do
       result = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
       assert_equal :from_calendar_method, result
     end
 
-    assert_equal [['movie', start_date, days]], fetcher.calls
+    assert fetcher.calendar_called
+    assert_equal [[start_date, days]], calendar.calls
   end
 end

@@ -32,7 +32,13 @@ class TraktAgent
       return calendars.public_send(type, start_date, days) if calendars.respond_to?(type)
     end
 
-    return calendars_client.calendar(type: type.to_s.delete_suffix('s'), start_date: start_date, days: days) if calendars_client&.respond_to?(:calendar)
+    calendar = calendars_client&.respond_to?(:calendar) ? calendars_client.calendar : nil
+
+    if calendar
+      all_method = "all_#{type}".to_sym
+      return calendar.public_send(all_method, start_date, days) if calendar.respond_to?(all_method)
+      return calendar.public_send(type, start_date, days) if calendar.respond_to?(type)
+    end
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.calendars__#{type}")
     nil
