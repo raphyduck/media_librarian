@@ -416,6 +416,72 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal [10, 11], client::Movie.detail_calls
   end
 
+  def test_tmdb_fetch_titles_accepts_tmdb_model_objects
+    client = Module.new do
+      movie_mod = Module.new do
+        class << self
+          attr_accessor :detail_calls
+        end
+
+        def self.upcoming
+          [Struct.new(:id, :release_date).new(21, (Date.today + 1).to_s)]
+        end
+
+        def self.detail(id)
+          self.detail_calls ||= []
+          self.detail_calls << id
+          {
+            'id' => id,
+            'title' => "Object Movie #{id}",
+            'genres' => [],
+            'languages' => [],
+            'spoken_languages' => [],
+            'origin_country' => [],
+            'production_countries' => []
+          }
+        end
+      end
+
+      tv_mod = Module.new do
+        class << self
+          attr_accessor :detail_calls
+        end
+
+        def self.on_the_air
+          [Struct.new(:id, :first_air_date).new(31, (Date.today + 2).to_s)]
+        end
+
+        def self.detail(id)
+          self.detail_calls ||= []
+          self.detail_calls << id
+          {
+            'id' => id,
+            'name' => "Object Show #{id}",
+            'genres' => [],
+            'languages' => [],
+            'spoken_languages' => [],
+            'origin_country' => [],
+            'production_countries' => []
+          }
+        end
+      end
+
+      const_set(:Movie, movie_mod)
+      const_set(:TV, tv_mod)
+    end
+
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    date_range = Date.today..(Date.today + 7)
+    results = provider.upcoming(date_range: date_range, limit: 10)
+
+    assert_equal ['Object Movie 21', 'Object Show 31'], results.map { |entry| entry[:title] }
+    assert_equal [21], client::Movie.detail_calls
+    assert_equal [31], client::TV.detail_calls
+  end
+
   private
 
   def base_entry
