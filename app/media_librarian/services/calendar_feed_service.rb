@@ -404,22 +404,27 @@ module MediaLibrarian
         end
 
         def fetch_page(path, kind, page, params = {})
+          params = { page: page }.merge(params || {}).compact
+
           if page.to_i == 1
-            case kind
-            when :movie
-              return client::Movie.upcoming if path == '/movie/upcoming' && client.const_defined?(:Movie) &&
-                                               client::Movie.respond_to?(:upcoming)
-              return client::Movie.now_playing if path == '/movie/now_playing' && client.const_defined?(:Movie) &&
-                                                  client::Movie.respond_to?(:now_playing)
-            when :tv
-              return client::TV.on_the_air if path == '/tv/on_the_air' && client.const_defined?(:TV) &&
-                                               client::TV.respond_to?(:on_the_air)
-              return client::TV.airing_today if path == '/tv/airing_today' && client.const_defined?(:TV) &&
-                                                  client::TV.respond_to?(:airing_today)
+            begin
+              case kind
+              when :movie
+                return client::Movie.upcoming if path == '/movie/upcoming' && client.const_defined?(:Movie) &&
+                                                 client::Movie.respond_to?(:upcoming)
+                return client::Movie.now_playing if path == '/movie/now_playing' && client.const_defined?(:Movie) &&
+                                                    client::Movie.respond_to?(:now_playing)
+              when :tv
+                return client::TV.on_the_air if path == '/tv/on_the_air' && client.const_defined?(:TV) &&
+                                                 client::TV.respond_to?(:on_the_air)
+                return client::TV.airing_today if path == '/tv/airing_today' && client.const_defined?(:TV) &&
+                                                    client::TV.respond_to?(:airing_today)
+              end
+            rescue ArgumentError
+              nil
             end
           end
 
-          params = { page: page }.merge(params || {}).compact
           if client.const_defined?(:Api) && client::Api.respond_to?(:request)
             return client::Api.request(path, params)
           end
