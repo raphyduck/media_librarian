@@ -101,4 +101,26 @@ class CalendarFeedTest < Minitest::Test
     assert_equal CalendarFeed::DEFAULT_REFRESH_LIMIT, calls.first[:limit]
     assert_nil calls.first[:sources]
   end
+
+  def test_refresh_feed_logs_refresh_context
+    today = Date.new(2024, 3, 15)
+    calls = []
+    service = Object.new
+    service.define_singleton_method(:refresh) do |**kwargs|
+      calls << kwargs
+      []
+    end
+
+    CalendarFeed.stub(:calendar_service, service) do
+      Date.stub(:today, today) do
+        CalendarFeed.refresh_feed(days: 7, limit: 5, sources: 'imdb,tmdb')
+      end
+    end
+
+    message = @environment.application.speaker.messages.last.to_s
+    assert_match(/past: 7d/, message)
+    assert_match(/future: 7d/, message)
+    assert_match(/limit: 5/, message)
+    assert_match(/sources: imdb,tmdb/, message)
+  end
 end

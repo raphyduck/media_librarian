@@ -20,7 +20,9 @@ module MediaLibrarian
         return [] unless calendar_table_available?
 
         normalized = collect_entries(date_range, limit, normalize_sources(sources))
+        speaker.speak_up("Calendar feed collected #{normalized.length} items")
         persist_entries(normalized)
+        speaker.speak_up("Calendar feed persisted #{normalized.length} items")
         normalized
       end
 
