@@ -68,6 +68,19 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'https://example.test/poster.jpg', rows.first[:poster_url]
   end
 
+  def test_refresh_logs_collection_and_persistence_counts
+    provider = FakeProvider.new([
+      base_entry.merge(external_id: 'movie-1', title: 'Logged Movie')
+    ])
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    service.refresh(date_range: Date.today..(Date.today + 1), limit: 5)
+
+    assert_includes @speaker.messages, 'Calendar feed collected 1 items'
+    assert_includes @speaker.messages, 'Calendar feed persisted 1 items'
+  end
+
   def test_refresh_replaces_duplicates
     initial_provider = FakeProvider.new([
       base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 6.4)
