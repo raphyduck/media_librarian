@@ -1016,6 +1016,12 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
+      @control_server.mount_proc('/calendar/refresh') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_refresh_request(req, res)
+      end
+
       @control_server.mount_proc('/logs') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1159,6 +1165,20 @@ class Daemon
 
       calendar = Calendar.new(app: app)
       json_response(res, body: calendar.entries(filters))
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def handle_calendar_refresh_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      payload = parse_payload(req)
+      CalendarFeed.refresh_feed(
+        days: payload['days'],
+        limit: payload['limit'],
+        sources: payload['sources'],
+      )
+      json_response(res, body: { 'status' => 'ok' })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
     end
