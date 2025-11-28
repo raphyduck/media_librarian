@@ -1401,6 +1401,17 @@ async function loadCalendar(options = {}) {
   }
 }
 
+async function refreshCalendarFeed() {
+  try {
+    await fetchJson('/calendar/refresh', { method: 'POST' });
+    showNotification('Flux calendrier rafraîchi.');
+  } catch (error) {
+    showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
+  } finally {
+    loadCalendar({ preserveFilters: true });
+  }
+}
+
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
@@ -1748,6 +1759,10 @@ function setupCalendarEvents() {
   const refresh = document.getElementById('refresh-calendar');
   if (refresh) {
     refresh.addEventListener('click', () => loadCalendar({ preserveFilters: true }));
+  }
+  const refreshFeed = document.getElementById('refresh-calendar-feed');
+  if (refreshFeed) {
+    refreshFeed.addEventListener('click', refreshCalendarFeed);
   }
   const calendarView = document.getElementById('calendar-view');
   if (calendarView) {
