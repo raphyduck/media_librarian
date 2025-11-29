@@ -6,6 +6,7 @@ require 'io/console'
 
 require_relative '../simple_speaker'
 require_relative '../simple_args_dispatch' unless defined?(SimpleArgsDispatch)
+require_relative '../logger'
 
 require_relative '../storage/db' unless defined?(Storage::Db)
 require_relative '../torznab_tracker' unless defined?(TorznabTracker)
@@ -125,7 +126,9 @@ module MediaLibrarian
                                                   application.config_file,
                                                   application.config_example))
 
-      store(:speaker, SimpleSpeaker::Speaker.new, freeze: false)
+      log_dir = File.join(application.config_dir, 'log')
+      log_path, error_log_path = Logger.log_paths(log_dir)
+      store(:speaker, SimpleSpeaker::Speaker.new(log_path, error_log_path), freeze: false)
       store(:args_dispatch, SimpleArgsDispatch::Agent.new(speaker, application.env_flags), freeze: false)
 
       store(:db, Storage::Db.new(File.join(application.config_dir, 'librarian.db')), freeze: false)
