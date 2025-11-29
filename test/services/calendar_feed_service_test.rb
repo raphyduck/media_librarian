@@ -372,6 +372,34 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['sci-fi'], show[:genres]
   end
 
+  def test_trakt_movies_rejects_non_hash_items
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    payload = [
+      {
+        'released' => Date.today.to_s,
+        'movie' => { 'title' => 'Valid Movie', 'ids' => { 'slug' => 'valid-movie' } }
+      },
+      nil
+    ]
+
+    assert_empty service.send(:parse_trakt_movies, payload)
+
+    error = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
+    assert_equal 'Calendar Trakt movies payload', error&.last
+  end
+
+  def test_trakt_shows_skip_invalid_show_records
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    payload = [
+      {
+        'first_aired' => Date.today.to_s,
+        'show' => []
+      }
+    ]
+
+    assert_empty service.send(:parse_trakt_shows, payload)
+  end
+
   def test_tmdb_fetch_page_handles_movies_and_shows_without_argument_errors
     client = fake_tmdb_client
     provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
