@@ -386,6 +386,22 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal [['/tv/on_the_air', { page: 2 }]], client::Api.requests
   end
 
+  def test_tmdb_fetch_page_uses_http_fallback_for_discover_paths
+    client = Module.new
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    query = { page: 1, 'primary_release_date.gte' => Date.today.to_s }
+    calls = []
+
+    provider.stub(:http_request, ->(path, params) { calls << [path, params]; { 'results' => [] } }) do
+      provider.send(:fetch_page, '/discover/movie', :movie, 1, query.dup)
+    end
+
+    assert_equal [['/discover/movie', query]], calls
+  end
+
   def test_tmdb_fetch_titles_accepts_array_payloads_without_total_pages
     client = Module.new do
       movie_mod = Module.new do
