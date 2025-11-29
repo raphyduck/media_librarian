@@ -960,6 +960,35 @@ function pickEntryValue(entry, keys) {
   return keys.map((key) => entry[key]).find((value) => value !== undefined && value !== null) ?? null;
 }
 
+function resolveExternalUrl(entry) {
+  const clean = (value) => (value == null ? '' : String(value).trim());
+  const ids = entry?.ids || {};
+  const source = clean(pickEntryValue(entry, ['source'])).toLowerCase();
+  const mediaType = (pickEntryValue(entry, ['media_type', 'type', 'kind', 'category']) || '').toString().toLowerCase();
+  const isShow = /tv|show|serie/.test(mediaType);
+
+  const imdbId =
+    clean(ids.imdb)
+    || clean(ids.imdb_id)
+    || clean(pickEntryValue(entry, ['imdb_id', 'imdb']))
+    || (source === 'imdb' ? clean(pickEntryValue(entry, ['external_id'])) : '');
+  if (imdbId) {
+    return `https://www.imdb.com/title/${imdbId}`;
+  }
+
+  const tmdbId = clean(ids.tmdb) || clean(pickEntryValue(entry, ['tmdb_id', 'tmdb']));
+  if (tmdbId) {
+    return `https://www.themoviedb.org/${isShow ? 'tv' : 'movie'}/${tmdbId}`;
+  }
+
+  const traktId = clean(ids.trakt) || clean(pickEntryValue(entry, ['trakt_id', 'trakt']));
+  if (traktId) {
+    return `https://trakt.tv/${isShow ? 'shows' : 'movies'}/${traktId}`;
+  }
+
+  return '';
+}
+
 function normalizeCalendarEntries(data = {}) {
   if (Array.isArray(data)) {
     return data;
@@ -1294,8 +1323,18 @@ function renderCalendar(data = {}) {
         body.className = 'calendar-body';
 
         const header = document.createElement('header');
+        const externalUrl = resolveExternalUrl(entry);
         const titleEl = document.createElement('h4');
-        titleEl.textContent = titleText;
+        if (externalUrl) {
+          const link = document.createElement('a');
+          link.href = externalUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = titleText;
+          titleEl.appendChild(link);
+        } else {
+          titleEl.textContent = titleText;
+        }
         const dateLabel = document.createElement('span');
         dateLabel.className = 'calendar-meta';
         dateLabel.textContent = date
