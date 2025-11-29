@@ -319,7 +319,7 @@ class CalendarFeedServiceTest < Minitest::Test
         'released' => (start_date + 1).to_s,
         'movie' => {
           'title' => 'Trakt Movie',
-          'ids' => { 'slug' => 'trakt-movie' },
+          'ids' => { 'slug' => 'trakt-movie', 'imdb' => 'tt7777777', 'tmdb' => 555, 'trakt' => 1111 },
           'genres' => ['drama'],
           'language' => 'en',
           'country' => 'us',
@@ -332,7 +332,7 @@ class CalendarFeedServiceTest < Minitest::Test
         'first_aired' => (start_date + 2).to_s,
         'show' => {
           'title' => 'Trakt Show',
-          'ids' => { 'slug' => 'trakt-show' },
+          'ids' => { 'slug' => 'trakt-show', 'tmdb' => 333, 'trakt' => 2222 },
           'genres' => ['sci-fi'],
           'language' => 'en',
           'country' => 'gb',
@@ -370,6 +370,10 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['en'], movie[:languages]
     assert_equal ['gb'], show[:countries]
     assert_equal ['sci-fi'], show[:genres]
+    assert_equal 'tt7777777', movie[:ids][:imdb]
+    assert_equal 555, movie[:ids][:tmdb]
+    assert_equal 'trakt-show', show[:ids][:slug]
+    assert_equal 2222, show[:ids][:trakt]
   end
 
   def test_trakt_movies_rejects_non_hash_items
@@ -454,7 +458,8 @@ class CalendarFeedServiceTest < Minitest::Test
             'languages' => [],
             'spoken_languages' => [],
             'origin_country' => [],
-            'production_countries' => []
+            'production_countries' => [],
+            'imdb_id' => format('tt%07d', id)
           }
         end
       end
@@ -471,6 +476,10 @@ class CalendarFeedServiceTest < Minitest::Test
 
     assert_equal ['Array Movie 10', 'Array Movie 11'], results.map { |entry| entry[:title] }
     assert_equal [10, 11], client::Movie.detail_calls
+    assert_equal(
+      [{ 'tmdb' => 10, 'imdb' => 'tt0000010' }, { 'tmdb' => 11, 'imdb' => 'tt0000011' }],
+      results.map { |entry| entry[:ids] }
+    )
   end
 
   def test_tmdb_fetch_titles_accepts_tmdb_model_objects
@@ -494,7 +503,8 @@ class CalendarFeedServiceTest < Minitest::Test
             'languages' => [],
             'spoken_languages' => [],
             'origin_country' => [],
-            'production_countries' => []
+            'production_countries' => [],
+            'imdb_id' => format('tt%07d', id)
           }
         end
       end
@@ -518,7 +528,8 @@ class CalendarFeedServiceTest < Minitest::Test
             'languages' => [],
             'spoken_languages' => [],
             'origin_country' => [],
-            'production_countries' => []
+            'production_countries' => [],
+            'imdb_id' => format('tt%07d', id)
           }
         end
       end
@@ -537,6 +548,10 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['Object Movie 21', 'Object Show 31'], results.map { |entry| entry[:title] }
     assert_equal [21], client::Movie.detail_calls
     assert_equal [31], client::TV.detail_calls
+    assert_equal(
+      [{ 'tmdb' => 21, 'imdb' => 'tt0000021' }, { 'tmdb' => 31, 'imdb' => 'tt0000031' }],
+      results.map { |entry| entry[:ids] }
+    )
   end
 
   private
@@ -569,6 +584,7 @@ class CalendarFeedServiceTest < Minitest::Test
       Text :genres
       Text :languages
       Text :countries
+      Text :ids
       String :poster_url, size: 500
       String :backdrop_url, size: 500
       Float :rating
