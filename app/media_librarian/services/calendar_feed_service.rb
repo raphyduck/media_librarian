@@ -72,6 +72,8 @@ module MediaLibrarian
         media_type = entry[:media_type].to_s.strip
         return if source.empty? || external_id.empty? || title.empty? || media_type.empty?
 
+        ids = default_ids(normalize_ids(entry[:ids] || entry['ids']), source, external_id)
+
         {
           source: source,
           external_id: external_id,
@@ -83,7 +85,8 @@ module MediaLibrarian
           rating: entry[:rating] ? entry[:rating].to_f : nil,
           poster_url: normalize_url(entry[:poster_url] || entry[:poster]),
           backdrop_url: normalize_url(entry[:backdrop_url] || entry[:backdrop]),
-          release_date: release_date
+          release_date: release_date,
+          ids: ids
         }
       end
 
@@ -129,6 +132,21 @@ module MediaLibrarian
       def normalize_url(value)
         url = value.to_s.strip
         url.empty? ? nil : url
+      end
+
+      def normalize_ids(value)
+        return {} unless value.is_a?(Hash)
+
+        value.each_with_object({}) do |(key, val), memo|
+          memo[key.to_s] = val unless key.to_s.empty? || val.nil?
+        end
+      end
+
+      def default_ids(ids, source, external_id)
+        return ids unless ids.empty?
+        return ids if source.empty? || external_id.empty?
+
+        ids.merge(source => external_id)
       end
 
       def persist_entries(entries)
@@ -298,7 +316,8 @@ module MediaLibrarian
       def build_trakt_entry(record, media_type, release_date)
         return unless release_date
 
-        external_id = trakt_external_id(record)
+        ids = trakt_ids(record)
+        external_id = trakt_external_id(ids)
         title = record['title'].to_s
         return if external_id.to_s.empty? || title.empty?
 
@@ -312,13 +331,20 @@ module MediaLibrarian
           rating: safe_float(record['rating']),
           poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
           backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
-          release_date: release_date
+          release_date: release_date,
+          ids: ids
         }
       end
 
-      def trakt_external_id(record)
-        ids = record['ids'] || {}
+      def trakt_external_id(ids)
         ids['imdb'] || ids['slug'] || ids['tmdb']&.to_s || ids['tvdb']&.to_s || ids['trakt']&.to_s
+      end
+
+      def trakt_ids(record)
+        raw_ids = record['ids'] || {}
+        raw_ids.each_with_object({}) do |(key, val), memo|
+          memo[key.to_s] = val unless key.to_s.empty? || val.nil?
+        end
       end
 
       def trakt_image(record, *paths)
@@ -519,8 +545,16 @@ module MediaLibrarian
             rating: details['vote_average'],
             poster_url: image_url(details['poster_path'], 'w342'),
             backdrop_url: image_url(details['backdrop_path'], 'w780'),
-            release_date: release_date
+            release_date: release_date,
+            ids: tmdb_ids(details)
           }
+        end
+
+        def tmdb_ids(details)
+          ids = { 'tmdb' => details['id'] }
+          imdb_id = details['imdb_id'].to_s
+          ids['imdb'] = imdb_id unless imdb_id.empty?
+          ids
         end
 
         def extract_languages(details)
@@ -589,8 +623,10 @@ module MediaLibrarian
         end
 
         def build_entry(record)
+          imdb_id = imdb_external_id(record)
+
           {
-            external_id: imdb_external_id(record),
+            external_id: imdb_id,
             title: imdb_title(record),
             media_type: imdb_media_type(record),
             genres: imdb_list(record, :genres, :genre, %i[genres genres]),
@@ -599,7 +635,8 @@ module MediaLibrarian
             rating: imdb_rating(record),
             poster_url: imdb_image(record),
             backdrop_url: imdb_image(record, :backdrop),
-            release_date: imdb_release_date(record)
+            release_date: imdb_release_date(record),
+            ids: imdb_ids(imdb_id)
           }
         end
 
@@ -615,6 +652,10 @@ module MediaLibrarian
           return raw unless raw.is_a?(String)
 
           raw[%r{tt\d+}] || raw
+        end
+
+        def imdb_ids(imdb_id)
+          imdb_id.to_s.empty? ? {} : { 'imdb' => imdb_id }
         end
 
         def imdb_title(record)
@@ -780,7 +821,8 @@ module MediaLibrarian
             rating: entry[:rating] ? entry[:rating].to_f : nil,
             poster_url: entry[:poster_url],
             backdrop_url: entry[:backdrop_url],
-            release_date: release_date
+            release_date: release_date,
+            ids: normalize_ids(entry[:ids] || entry['ids'])
           }
         end
 
@@ -790,6 +832,14 @@ module MediaLibrarian
           Date.parse(value.to_s)
         rescue StandardError
           nil
+        end
+
+        def normalize_ids(value)
+          return {} unless value.is_a?(Hash)
+
+          value.each_with_object({}) do |(key, val), memo|
+            memo[key.to_s] = val unless key.to_s.empty? || val.nil?
+          end
         end
       end
     end

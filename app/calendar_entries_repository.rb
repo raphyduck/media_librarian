@@ -218,7 +218,8 @@ class CalendarEntriesRepository
     return {} unless value.is_a?(Hash)
 
     value.each_with_object({}) do |(key, val), memo|
-      memo[key.to_s] = val
+      key_str = key.to_s
+      memo[key_str] = val unless key_str.empty? || val.nil?
     end
   end
 
