@@ -261,10 +261,12 @@ module MediaLibrarian
 
       def parse_trakt_movies(payload)
         items = validate_trakt_payload(payload, 'Calendar Trakt movies payload')
-        return [] unless items
+        return [] if items.empty?
 
         items.filter_map do |item|
-          movie = item['movie'] || {}
+          movie = item['movie']
+          next unless movie.is_a?(Hash)
+
           release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
           build_trakt_entry(movie, 'movie', release_date)
         end
@@ -272,10 +274,12 @@ module MediaLibrarian
 
       def parse_trakt_shows(payload)
         items = validate_trakt_payload(payload, 'Calendar Trakt shows payload')
-        return [] unless items
+        return [] if items.empty?
 
         items.filter_map do |item|
-          show = item['show'] || {}
+          show = item['show']
+          next unless show.is_a?(Hash)
+
           release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
           build_trakt_entry(show, 'show', release_date)
         end
@@ -286,29 +290,29 @@ module MediaLibrarian
         return items if items.all?(Hash)
 
         speaker&.tell_error(StandardError.new('Invalid Trakt payload format'), context)
-        nil
+        []
       end
 
-        def build_trakt_entry(record, media_type, release_date)
-          return unless release_date
+      def build_trakt_entry(record, media_type, release_date)
+        return unless release_date
 
-          external_id = trakt_external_id(record)
-          title = record['title'].to_s
-          return if external_id.to_s.empty? || title.empty?
+        external_id = trakt_external_id(record)
+        title = record['title'].to_s
+        return if external_id.to_s.empty? || title.empty?
 
-          {
-            external_id: external_id,
-            title: title,
-            media_type: media_type,
-            genres: Array(record['genres']).compact.map(&:to_s),
-            languages: wrap_string(record['language']),
-            countries: wrap_string(record['country']),
-            rating: safe_float(record['rating']),
-            poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
-            backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
-            release_date: release_date
-          }
-        end
+        {
+          external_id: external_id,
+          title: title,
+          media_type: media_type,
+          genres: Array(record['genres']).compact.map(&:to_s),
+          languages: wrap_string(record['language']),
+          countries: wrap_string(record['country']),
+          rating: safe_float(record['rating']),
+          poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
+          backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
+          release_date: release_date
+        }
+      end
 
       def trakt_external_id(record)
         ids = record['ids'] || {}
