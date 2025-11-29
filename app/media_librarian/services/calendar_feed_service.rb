@@ -3,6 +3,8 @@
 require 'date'
 require 'themoviedb'
 require 'imdb_party'
+require 'json'
+require 'net/http'
 
 module MediaLibrarian
   module Services
@@ -431,14 +433,21 @@ module MediaLibrarian
             end
           end
 
-          if client.const_defined?(:Api) && client::Api.respond_to?(:request)
-            return client::Api.request(path, params)
-          end
+          return client::Api.request(path, params) if client.const_defined?(:Api) && client::Api.respond_to?(:request)
 
-          raise ArgumentError, "Unsupported TMDB fetch for #{path}"
+          http_request(path, params)
         rescue StandardError => e
           report_error(e, "Calendar TMDB fetch failed for #{path}")
           nil
+        end
+
+        def http_request(path, params)
+          uri = URI("https://api.themoviedb.org/3#{path}")
+          query = params.merge(api_key: @api_key, language: language, region: region).compact
+          uri.query = URI.encode_www_form(query)
+
+          response = Net::HTTP.get_response(uri)
+          response.is_a?(Net::HTTPSuccess) ? JSON.parse(response.body) : nil
         end
 
         def release_from(item, kind)
