@@ -66,6 +66,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'Test Show', rows.last[:title]
     assert_equal %w[en fr], rows.last[:languages]
     assert_equal 'https://example.test/poster.jpg', rows.first[:poster_url]
+    assert_equal 321, rows.first[:imdb_votes]
   end
 
   def test_refresh_logs_collection_and_persistence_counts
@@ -83,13 +84,13 @@ class CalendarFeedServiceTest < Minitest::Test
 
   def test_refresh_replaces_duplicates
     initial_provider = FakeProvider.new([
-      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 6.4)
+      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 6.4, imdb_votes: 10)
     ])
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [initial_provider])
     service.refresh(date_range: Date.today..(Date.today + 3), limit: 5)
 
     updated_provider = FakeProvider.new([
-      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 8.2, languages: ['fr'])
+      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 8.2, languages: ['fr'], imdb_votes: 12)
     ])
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [updated_provider])
     service.refresh(date_range: Date.today..(Date.today + 3), limit: 5)
@@ -98,6 +99,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 1, rows.count
     assert_in_delta 8.2, rows.first[:rating]
     assert_equal ['fr'], rows.first[:languages]
+    assert_equal 12, rows.first[:imdb_votes]
   end
 
   def test_refresh_filters_to_requested_sources
@@ -237,7 +239,7 @@ class CalendarFeedServiceTest < Minitest::Test
         'genres' => { 'genres' => [{ 'text' => 'Drama' }] },
         'spokenLanguages' => [{ 'text' => 'English' }],
         'countriesOfOrigin' => [{ 'text' => 'United States' }],
-        'ratingsSummary' => { 'aggregateRating' => 9.3 }
+        'ratingsSummary' => { 'aggregateRating' => 9.3, 'voteCount' => 123_456 }
       },
       {
         'id' => 'tt7654321',
@@ -247,7 +249,7 @@ class CalendarFeedServiceTest < Minitest::Test
         'genres' => { 'genres' => [{ 'text' => 'Sci-Fi' }] },
         'spokenLanguages' => [{ 'text' => 'French' }],
         'countriesOfOrigin' => [{ 'text' => 'Canada' }],
-        'ratingsSummary' => { 'aggregateRating' => 7.5 }
+        'ratingsSummary' => { 'aggregateRating' => 7.5, 'voteCount' => 6_789 }
       }
     ]
 
@@ -277,10 +279,12 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['Drama'], rows.first[:genres]
     assert_equal ['English'], rows.first[:languages]
     assert_equal ['United States'], rows.first[:countries]
+    assert_equal 123_456, rows.first[:imdb_votes]
     assert_equal 'show', rows.last[:media_type]
     assert_equal ['Sci-Fi'], rows.last[:genres]
     assert_equal ['French'], rows.last[:languages]
     assert_equal ['Canada'], rows.last[:countries]
+    assert_equal 6_789, rows.last[:imdb_votes]
   end
 
   def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
@@ -323,7 +327,8 @@ class CalendarFeedServiceTest < Minitest::Test
           'genres' => ['drama'],
           'language' => 'en',
           'country' => 'us',
-          'rating' => 7.3
+          'rating' => 7.3,
+          'votes' => 50
         }
       }
     ]
@@ -336,7 +341,8 @@ class CalendarFeedServiceTest < Minitest::Test
           'genres' => ['sci-fi'],
           'language' => 'en',
           'country' => 'gb',
-          'rating' => 8.1
+          'rating' => 8.1,
+          'votes' => 75
         }
       }
     ]
@@ -374,6 +380,8 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 555, movie[:ids][:tmdb]
     assert_equal 'trakt-show', show[:ids][:slug]
     assert_equal 2222, show[:ids][:trakt]
+    assert_equal 50, movie[:imdb_votes]
+    assert_equal 75, show[:imdb_votes]
   end
 
   def test_trakt_movies_rejects_non_hash_items
@@ -459,6 +467,7 @@ class CalendarFeedServiceTest < Minitest::Test
             'spoken_languages' => [],
             'origin_country' => [],
             'production_countries' => [],
+            'vote_count' => id * 10,
             'imdb_id' => format('tt%07d', id)
           }
         end
@@ -480,6 +489,7 @@ class CalendarFeedServiceTest < Minitest::Test
       [{ 'tmdb' => 10, 'imdb' => 'tt0000010' }, { 'tmdb' => 11, 'imdb' => 'tt0000011' }],
       results.map { |entry| entry[:ids] }
     )
+    assert_equal [100, 110], results.map { |entry| entry[:imdb_votes] }
   end
 
   def test_tmdb_fetch_titles_accepts_tmdb_model_objects
@@ -504,6 +514,7 @@ class CalendarFeedServiceTest < Minitest::Test
             'spoken_languages' => [],
             'origin_country' => [],
             'production_countries' => [],
+            'vote_count' => id + 1,
             'imdb_id' => format('tt%07d', id)
           }
         end
@@ -529,6 +540,7 @@ class CalendarFeedServiceTest < Minitest::Test
             'spoken_languages' => [],
             'origin_country' => [],
             'production_countries' => [],
+            'vote_count' => id + 2,
             'imdb_id' => format('tt%07d', id)
           }
         end
@@ -552,6 +564,7 @@ class CalendarFeedServiceTest < Minitest::Test
       [{ 'tmdb' => 21, 'imdb' => 'tt0000021' }, { 'tmdb' => 31, 'imdb' => 'tt0000031' }],
       results.map { |entry| entry[:ids] }
     )
+    assert_equal [22, 33], results.map { |entry| entry[:imdb_votes] }
   end
 
   private
@@ -566,6 +579,7 @@ class CalendarFeedServiceTest < Minitest::Test
       languages: ['en'],
       countries: ['US'],
       rating: 7.1,
+      imdb_votes: 321,
       poster_url: 'https://example.test/poster.jpg',
       backdrop_url: 'https://example.test/backdrop.jpg',
       release_date: Date.today + 1
@@ -587,6 +601,7 @@ class CalendarFeedServiceTest < Minitest::Test
       Text :ids
       String :poster_url, size: 500
       String :backdrop_url, size: 500
+      Integer :imdb_votes
       Float :rating
       Date :release_date
       DateTime :created_at

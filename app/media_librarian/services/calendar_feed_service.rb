@@ -83,6 +83,7 @@ module MediaLibrarian
           languages: Array(entry[:languages]).compact.map(&:to_s),
           countries: Array(entry[:countries]).compact.map(&:to_s),
           rating: entry[:rating] ? entry[:rating].to_f : nil,
+          imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
           poster_url: normalize_url(entry[:poster_url] || entry[:poster]),
           backdrop_url: normalize_url(entry[:backdrop_url] || entry[:backdrop]),
           release_date: release_date,
@@ -329,6 +330,7 @@ module MediaLibrarian
           languages: wrap_string(record['language']),
           countries: wrap_string(record['country']),
           rating: safe_float(record['rating']),
+          imdb_votes: record['votes'],
           poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
           backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
           release_date: release_date,
@@ -541,16 +543,17 @@ module MediaLibrarian
             external_id: "#{kind}-#{details['id']}",
             title: (kind == :movie ? details['title'] : details['name']) ||
                    details['original_title'] || details['original_name'] || '',
-            media_type: kind == :movie ? 'movie' : 'show',
-            genres: Array(details['genres']).filter_map { |genre| genre['name'] },
-            languages: extract_languages(details),
-            countries: extract_countries(details),
-            rating: details['vote_average'],
-            poster_url: image_url(details['poster_path'], 'w342'),
-            backdrop_url: image_url(details['backdrop_path'], 'w780'),
-            release_date: release_date,
-            ids: tmdb_ids(details)
-          }
+          media_type: kind == :movie ? 'movie' : 'show',
+          genres: Array(details['genres']).filter_map { |genre| genre['name'] },
+          languages: extract_languages(details),
+          countries: extract_countries(details),
+          rating: details['vote_average'],
+          imdb_votes: details['vote_count'],
+          poster_url: image_url(details['poster_path'], 'w342'),
+          backdrop_url: image_url(details['backdrop_path'], 'w780'),
+          release_date: release_date,
+          ids: tmdb_ids(details)
+        }
         end
 
         def tmdb_ids(details)
@@ -634,13 +637,14 @@ module MediaLibrarian
             media_type: imdb_media_type(record),
             genres: imdb_list(record, :genres, :genre, %i[genres genres]),
             languages: imdb_list(record, :languages, :spoken_languages, :spokenLanguages),
-            countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
-            rating: imdb_rating(record),
-            poster_url: imdb_image(record),
-            backdrop_url: imdb_image(record, :backdrop),
-            release_date: imdb_release_date(record),
-            ids: imdb_ids(imdb_id)
-          }
+          countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
+          rating: imdb_rating(record),
+          imdb_votes: imdb_votes(record),
+          poster_url: imdb_image(record),
+          backdrop_url: imdb_image(record, :backdrop),
+          release_date: imdb_release_date(record),
+          ids: imdb_ids(imdb_id)
+        }
         end
 
         def imdb_release_date(record)
@@ -703,6 +707,13 @@ module MediaLibrarian
           nil
         end
 
+        def imdb_votes(record)
+          votes = record_value(record, :votes, %i[ratings_summary vote_count], %i[ratingsSummary voteCount])
+          return if votes.nil?
+
+          votes.to_i
+        end
+
         def record_value(record, *keys)
           keys.compact.each do |key|
             value =
@@ -755,6 +766,7 @@ module MediaLibrarian
             languages: Array(entry[:languages]).compact.map(&:to_s),
             countries: Array(entry[:countries]).compact.map(&:to_s),
             rating: entry[:rating] ? entry[:rating].to_f : nil,
+            imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
             poster_url: imdb_image(entry, :poster_url),
             backdrop_url: imdb_image(entry, :backdrop_url),
             release_date: release_date
@@ -818,15 +830,16 @@ module MediaLibrarian
             external_id: external_id,
             title: title,
             media_type: media_type,
-            genres: Array(entry[:genres]).compact.map(&:to_s),
-            languages: Array(entry[:languages]).compact.map(&:to_s),
-            countries: Array(entry[:countries]).compact.map(&:to_s),
-            rating: entry[:rating] ? entry[:rating].to_f : nil,
-            poster_url: entry[:poster_url],
-            backdrop_url: entry[:backdrop_url],
-            release_date: release_date,
-            ids: normalize_ids(entry[:ids] || entry['ids'])
-          }
+          genres: Array(entry[:genres]).compact.map(&:to_s),
+          languages: Array(entry[:languages]).compact.map(&:to_s),
+          countries: Array(entry[:countries]).compact.map(&:to_s),
+          rating: entry[:rating] ? entry[:rating].to_f : nil,
+          imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
+          poster_url: entry[:poster_url],
+          backdrop_url: entry[:backdrop_url],
+          release_date: release_date,
+          ids: normalize_ids(entry[:ids] || entry['ids'])
+        }
         end
 
         def parse_date(value)
