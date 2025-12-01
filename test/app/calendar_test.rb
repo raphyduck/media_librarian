@@ -107,6 +107,23 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_filters_by_imdb_vote_range
+    db = stub_calendar_rows([
+      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
+      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
+      { source: 'tmdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
+    ])
+
+    WatchlistStore.stub(:fetch, []) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(imdb_votes_min: '800', imdb_votes_max: '1500')
+
+      assert_equal ['Bravo'], result[:entries].map { |entry| entry[:title] }
+    end
+
+    db.verify
+  end
+
   def test_handle_calendar_request_uses_offset_and_window
     Daemon.configure(app: @environment.application)
     response = FakeResponse.new

@@ -18,6 +18,8 @@ const state = {
       genres: [],
       ratingMin: '',
       ratingMax: '',
+      votesMin: '',
+      votesMax: '',
       language: '',
       country: '',
     },
@@ -1079,6 +1081,13 @@ function readCalendarFilters() {
   filters.ratingMin = Number.isFinite(ratingMin) ? ratingMin : '';
   filters.ratingMax = Number.isFinite(ratingMax) ? ratingMax : '';
 
+  const votesMinRaw = document.getElementById('calendar-votes-min')?.value || '';
+  const votesMaxRaw = document.getElementById('calendar-votes-max')?.value || '';
+  const votesMin = votesMinRaw === '' ? '' : Number(votesMinRaw);
+  const votesMax = votesMaxRaw === '' ? '' : Number(votesMaxRaw);
+  filters.votesMin = Number.isFinite(votesMin) ? votesMin : '';
+  filters.votesMax = Number.isFinite(votesMax) ? votesMax : '';
+
   filters.language = (document.getElementById('calendar-language')?.value || '').trim();
   filters.country = (document.getElementById('calendar-country')?.value || '').trim();
   return filters;
@@ -1155,6 +1164,14 @@ function entryMatchesFilters(entry, filters) {
     return false;
   }
   if (filters.ratingMax !== '' && rating > filters.ratingMax) {
+    return false;
+  }
+
+  const votes = Number(pickEntryValue(entry, ['imdb_votes', 'votes', 'vote_count']));
+  if (filters.votesMin !== '' && (!Number.isFinite(votes) || votes < filters.votesMin)) {
+    return false;
+  }
+  if (filters.votesMax !== '' && (!Number.isFinite(votes) || votes > filters.votesMax)) {
     return false;
   }
 
@@ -1421,6 +1438,8 @@ async function loadCalendar(options = {}) {
   if (filters.genres.length) search.set('genres', filters.genres.join(','));
   if (filters.ratingMin !== '') search.set('imdb_min', filters.ratingMin);
   if (filters.ratingMax !== '') search.set('imdb_max', filters.ratingMax);
+  if (filters.votesMin !== '') search.set('imdb_votes_min', filters.votesMin);
+  if (filters.votesMax !== '') search.set('imdb_votes_max', filters.votesMax);
   if (filters.language) search.set('language', filters.language);
   if (filters.country) search.set('country', filters.country);
   if (range) {
@@ -1817,6 +1836,8 @@ function setupCalendarEvents() {
     'calendar-genres',
     'calendar-rating-min',
     'calendar-rating-max',
+    'calendar-votes-min',
+    'calendar-votes-max',
     'calendar-language',
     'calendar-country',
   ];
