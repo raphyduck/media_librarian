@@ -1500,6 +1500,8 @@ function renderDownloadList(entries = []) {
   }
   emptyHint.classList.add('hidden');
 
+  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'URL'];
+
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const title = entry.title || entry['title'] || '';
@@ -1518,8 +1520,9 @@ function renderDownloadList(entries = []) {
       url ? { link: url } : { text: '—' },
     ];
 
-    cells.forEach((value) => {
+    cells.forEach((value, index) => {
       const cell = document.createElement('td');
+      cell.dataset.label = labels[index];
       if (value.link) {
         const link = document.createElement('a');
         link.href = value.link;
@@ -1534,6 +1537,8 @@ function renderDownloadList(entries = []) {
     });
 
     const actionsCell = document.createElement('td');
+    actionsCell.className = 'actions-cell';
+    actionsCell.dataset.label = 'Actions';
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'Supprimer';
