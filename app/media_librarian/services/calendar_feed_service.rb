@@ -4,7 +4,7 @@ require 'date'
 require 'themoviedb'
 require 'imdb_party'
 require 'json'
-require 'net/http'
+require 'httparty'
 
 module MediaLibrarian
   module Services
@@ -468,12 +468,15 @@ module MediaLibrarian
         end
 
         def http_request(path, params)
-          uri = URI("https://api.themoviedb.org/3#{path}")
           query = params.merge(api_key: @api_key, language: language, region: region).compact
-          uri.query = URI.encode_www_form(query)
+          response = HTTParty.get("https://api.themoviedb.org/3#{path}", query: query)
+          return JSON.parse(response.body) if response.success?
 
-          response = Net::HTTP.get_response(uri)
-          response.is_a?(Net::HTTPSuccess) ? JSON.parse(response.body) : nil
+          report_error(StandardError.new("TMDB #{response.code}"), "Calendar TMDB fetch failed for #{path}")
+          nil
+        rescue StandardError => e
+          report_error(e, "Calendar TMDB fetch failed for #{path}")
+          nil
         end
 
         def release_from(item, kind)
