@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'net/http'
-require 'uri'
 require 'openssl'
+require 'httparty'
 
 class Client
   include MediaLibrarian::AppContainerSupport
@@ -15,42 +14,38 @@ class Client
   end
 
   def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
-    request = Net::HTTP::Post.new(uri_for('/jobs'))
-    request['Content-Type'] = 'application/json'
-    request.body = JSON.dump(
-      'command' => command,
-      'wait' => wait,
-      'queue' => queue,
-      'task' => task,
-      'internal' => internal,
-      'capture_output' => capture_output
+    perform(
+      :post,
+      '/jobs',
+      body: JSON.dump(
+        'command' => command,
+        'wait' => wait,
+        'queue' => queue,
+        'task' => task,
+        'internal' => internal,
+        'capture_output' => capture_output
+      ),
+      headers: json_headers
     )
-    perform(request)
   end
 
   def status
-    perform(Net::HTTP::Get.new(uri_for('/status')))
+    perform(:get, '/status')
   end
 
   def job_status(job_id)
-    perform(Net::HTTP::Get.new(uri_for("/jobs/#{job_id}")))
+    perform(:get, "/jobs/#{job_id}")
   end
 
   def stop
-    perform(Net::HTTP::Post.new(uri_for('/stop')))
+    perform(:post, '/stop')
   end
 
   private
 
-  def perform(request)
-    attach_control_token(request)
-
-    http_options = net_http_options
-    Net::HTTP.start(request.uri.hostname, request.uri.port, **http_options) do |http|
-      http.read_timeout = 120
-      response = http.request(request)
-      parse_response(response)
-    end
+  def perform(method, path, options = {})
+    response = HTTParty.send(method, path, httparty_options(options))
+    parse_response(response)
   rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
     { 'status_code' => 503, 'error' => connection_error_message(e) }
   end
@@ -60,21 +55,7 @@ class Client
     { 'status_code' => response.code.to_i, 'body' => body }
   end
 
-  def uri_for(path)
-    builder = ssl_enabled? ? URI::HTTPS : URI::HTTP
-    builder.build(
-      host: app.api_option['bind_address'],
-      port: app.api_option['listen_port'],
-      path: path
-    )
-  end
-
   attr_reader :control_token
-
-  def attach_control_token(request)
-    return unless control_token
-    request['X-Control-Token'] = control_token
-  end
 
   def resolve_control_token(explicit_token, options)
     select_token(
@@ -112,26 +93,6 @@ class Client
     truthy?(api_options['ssl_enabled'])
   end
 
-  def net_http_options
-    return {} unless ssl_enabled?
-
-    options = { use_ssl: true }
-    verify_mode = resolve_ssl_verify_mode(api_options['ssl_verify_mode'])
-    options[:verify_mode] = verify_mode unless verify_mode.nil?
-
-    ca_path = api_options['ssl_ca_path']
-    if ca_path && !ca_path.to_s.empty?
-      case ca_path
-      when ->(path) { File.directory?(path) }
-        options[:ca_path] = ca_path
-      when ->(path) { File.file?(path) }
-        options[:ca_file] = ca_path
-      end
-    end
-
-    options
-  end
-
   def resolve_ssl_verify_mode(mode)
     return mode if mode.is_a?(Integer)
 
@@ -159,6 +120,45 @@ class Client
   end
 
   attr_reader :api_options
+
+  def base_uri
+    "#{ssl_enabled? ? 'https' : 'http'}://#{api_options['bind_address']}:#{api_options['listen_port']}"
+  end
+
+  def httparty_options(extra = {})
+    headers = default_headers.merge(extra.fetch(:headers, {}))
+    ssl_options = httparty_ssl_options
+
+    { base_uri: base_uri, headers: headers, timeout: 120 }
+      .merge(ssl_options)
+      .merge(extra.reject { |key, _| key == :headers })
+  end
+
+  def default_headers
+    return {} unless control_token
+    { 'X-Control-Token' => control_token }
+  end
+
+  def json_headers
+    default_headers.merge('Content-Type' => 'application/json')
+  end
+
+  def httparty_ssl_options
+    return {} unless ssl_enabled?
+
+    options = {}
+    verify_mode = resolve_ssl_verify_mode(api_options['ssl_verify_mode'])
+    options[:verify] = verify_mode != OpenSSL::SSL::VERIFY_NONE unless verify_mode.nil?
+    options[:ssl_verify_mode] = verify_mode unless verify_mode.nil?
+
+    ca_path = api_options['ssl_ca_path']
+    if ca_path && !ca_path.to_s.empty?
+      options[:ssl_ca_path] = ca_path if File.directory?(ca_path)
+      options[:ssl_ca_file] = ca_path if File.file?(ca_path)
+    end
+
+    options
+  end
 
   def connection_error_message(error)
     case error

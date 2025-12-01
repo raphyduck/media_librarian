@@ -262,6 +262,7 @@ DEPENDENCIES
   fuzzy-string-match
   get_process_mem
   hanami-mailer
+  httparty
   imdb_party!
   logger (< 1.6)
   mechanize
