@@ -1152,6 +1152,8 @@ class Daemon
         genres: normalize_list_param(req.query['genres']),
         imdb_min: req.query['imdb_min'],
         imdb_max: req.query['imdb_max'],
+        imdb_votes_min: req.query['imdb_votes_min'],
+        imdb_votes_max: req.query['imdb_votes_max'],
         language: req.query['language'],
         country: req.query['country'],
         downloaded: req.query['downloaded'],
