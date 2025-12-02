@@ -13,6 +13,7 @@ const state = {
   isRefreshing: false,
   calendar: {
     view: 'week',
+    entries: [],
     filters: {
       type: '',
       genres: [],
@@ -1236,6 +1237,21 @@ function makeCalendarBadge(text) {
   return span;
 }
 
+function formatVoteCount(value) {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+  if (value < 1000) {
+    return new Intl.NumberFormat('fr-FR').format(Math.round(value));
+  }
+  return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function resolveVoteCount(entry) {
+  const votes = Number(pickEntryValue(entry, ['imdb_votes', 'votes', 'vote_count']));
+  return Number.isFinite(votes) && votes >= 0 ? votes : null;
+}
+
 function resolveIdentifier(entry) {
   return (
     pickEntryValue(entry, ['id', 'slug', 'imdb_id', 'tmdb_id', 'tvdb_id'])
@@ -1289,12 +1305,13 @@ async function addToWatchlist(entry, button) {
   }
 }
 
-function renderCalendar(data = {}) {
+function renderCalendar(data = null) {
   const container = document.getElementById('calendar-content');
   if (!container) {
     return;
   }
-  const entries = normalizeCalendarEntries(data);
+  const entries = normalizeCalendarEntries(data ?? state.calendar.entries ?? []);
+  state.calendar.entries = entries;
   updateCalendarGenres(entries);
   const filters = readCalendarFilters();
   const filtered = entries.filter((entry) => entryMatchesFilters(entry, filters));
@@ -1373,6 +1390,10 @@ function renderCalendar(data = {}) {
         const rating = pickEntryValue(entry, ['imdb_rating', 'rating', 'score']);
         if (rating !== undefined && rating !== null && rating !== '') {
           badges.appendChild(makeCalendarBadge(`IMDb ${rating}`));
+        }
+        const votes = resolveVoteCount(entry);
+        if (votes !== null) {
+          badges.appendChild(makeCalendarBadge(`${formatVoteCount(votes)} votes`));
         }
         const genres = extractGenres(entry);
         if (genres.length) {
