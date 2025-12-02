@@ -516,6 +516,15 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.calendar-range input {
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-range span {
+  color: var(--muted);
+}
+
 .calendar-content {
   display: grid;
   gap: 1rem;
