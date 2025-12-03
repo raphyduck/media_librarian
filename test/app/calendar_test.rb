@@ -108,9 +108,9 @@ class CalendarTest < Minitest::Test
 
   def test_filters_by_imdb_vote_range
     db = stub_calendar_rows([
-      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
-      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
-      { source: 'tmdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
+      { source: 'imdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
+      { source: 'imdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
+      { source: 'imdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
     ])
 
     WatchlistStore.stub(:fetch, []) do
