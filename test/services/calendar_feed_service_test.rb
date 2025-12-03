@@ -380,8 +380,8 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 555, movie[:ids][:tmdb]
     assert_equal 'trakt-show', show[:ids][:slug]
     assert_equal 2222, show[:ids][:trakt]
-    assert_equal 50, movie[:imdb_votes]
-    assert_equal 75, show[:imdb_votes]
+    assert_nil movie[:imdb_votes]
+    assert_nil show[:imdb_votes]
   end
 
   def test_trakt_movies_rejects_non_hash_items

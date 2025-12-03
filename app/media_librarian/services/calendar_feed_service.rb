@@ -330,7 +330,7 @@ module MediaLibrarian
           languages: wrap_string(record['language']),
           countries: wrap_string(record['country']),
           rating: safe_float(record['rating']),
-          imdb_votes: record['votes'],
+          imdb_votes: nil,
           poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
           backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
           release_date: release_date,
