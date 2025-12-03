@@ -10,8 +10,7 @@ class CalendarTest < Minitest::Test
   def setup
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
-    Calendar.cache[:data] = []
-    Calendar.cache[:expires_at] = nil
+    Calendar.clear_cache
   end
 
   def teardown
