@@ -548,7 +548,7 @@ module MediaLibrarian
           languages: extract_languages(details),
           countries: extract_countries(details),
           rating: details['vote_average'],
-          imdb_votes: details['vote_count'],
+          imdb_votes: nil,
           poster_url: image_url(details['poster_path'], 'w342'),
           backdrop_url: image_url(details['backdrop_path'], 'w780'),
           release_date: release_date,
