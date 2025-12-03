@@ -3,6 +3,7 @@
 require 'date'
 require_relative 'media_librarian/services/base_service'
 require_relative 'media_librarian/services/calendar_feed_service'
+require_relative 'calendar'
 
 class CalendarFeed
   include MediaLibrarian::AppContainerSupport
@@ -33,6 +34,7 @@ class CalendarFeed
       )
 
       calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
+      Calendar.clear_cache
     end
   end
 
