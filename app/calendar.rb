@@ -15,6 +15,13 @@ class Calendar
     def cache
       @cache ||= { data: [], expires_at: nil, mutex: Mutex.new }
     end
+
+    def clear_cache
+      cache[:mutex].synchronize do
+        cache[:data] = []
+        cache[:expires_at] = nil
+      end
+    end
   end
 
   def initialize(app: self.class.app)
