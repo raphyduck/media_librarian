@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'json'
 require 'ostruct'
 require_relative '../../lib/watchlist_store'
 require_relative '../../app/calendar'
@@ -140,6 +141,29 @@ class CalendarTest < Minitest::Test
     assert_kind_of Time, filters[:end_date]
     assert_equal Time.utc(2024, 1, 8), filters[:start_date]
     assert_equal Time.utc(2024, 1, 14), filters[:end_date]
+  end
+
+  def test_handle_calendar_refresh_request_enqueues_job
+    Daemon.configure(app: @environment.application)
+    response = FakeResponse.new
+    enqueued = nil
+    job = OpenStruct.new(to_h: { 'id' => 'job-123' })
+
+    CalendarFeed.stub(:refresh_feed, ->(*) { flunk('refresh should be enqueued, not invoked directly') }) do
+      Daemon.stub(:enqueue, ->(**params) { enqueued = params; job }) do
+        request = OpenStruct.new(
+          request_method: 'POST',
+          body: { days: 7, limit: 15, sources: %w[imdb tmdb] }.to_json,
+          path: '/calendar/refresh'
+        )
+
+        Daemon.send(:handle_calendar_refresh_request, request, response)
+      end
+    end
+
+    assert_equal 200, response.status
+    assert_equal ['calendar', 'refresh_feed', '--days=7', '--limit=15', '--sources=imdb,tmdb'], enqueued[:args]
+    assert_equal({ 'job' => job.to_h }, JSON.parse(response.body))
   end
 
   private
