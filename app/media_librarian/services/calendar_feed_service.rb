@@ -274,15 +274,23 @@ module MediaLibrarian
         end
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
+          client_id = trakt_config['client_id']
+          client_secret = trakt_config['client_secret']
+          fetcher = build_trakt_fetcher(
+            client_id,
+            client_secret,
+            trakt_config['access_token']
+          )
+
+          unless fetcher
+            speaker&.speak_up('Skipping Trakt provider: missing client_id or client_secret')
+          end
+
           providers << TraktCalendarProvider.new(
-            client_id: trakt_config['client_id'],
-            client_secret: trakt_config['client_secret'],
+            client_id: client_id,
+            client_secret: client_secret,
             speaker: speaker,
-            fetcher: build_trakt_fetcher(
-              trakt_config['client_id'],
-              trakt_config['client_secret'],
-              trakt_config['access_token']
-            )
+            fetcher: fetcher
           )
         end
         providers.compact.select(&:available?)
@@ -890,7 +898,10 @@ module MediaLibrarian
         private
 
         def fetch_entries(date_range, limit)
-          return [] unless @fetcher
+          unless @fetcher
+            @speaker&.speak_up('Trakt fetch skipped: no fetcher')
+            return []
+          end
 
           @fetcher.call(date_range: date_range, limit: limit)
         rescue StandardError => e
