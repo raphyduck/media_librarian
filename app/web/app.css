@@ -560,6 +560,7 @@ button:disabled {
   grid-template-columns: minmax(180px, 220px) 1fr;
   gap: 0.75rem;
   align-items: start;
+  overflow: hidden;
 }
 
 .calendar-media {
@@ -593,6 +594,8 @@ button:disabled {
   gap: 0.35rem;
   align-content: start;
   min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .calendar-body header {
@@ -631,6 +634,8 @@ button:disabled {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .calendar-actions-row {
