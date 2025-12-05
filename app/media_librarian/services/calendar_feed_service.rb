@@ -618,8 +618,6 @@ module MediaLibrarian
         end
 
         def build_entry(details, kind, release_date)
-          vote_count = value_from(details, :vote_count, 'vote_count').to_s.strip
-
           {
             source: source,
             external_id: "#{kind}-#{details['id']}",
@@ -630,7 +628,7 @@ module MediaLibrarian
             languages: extract_languages(details),
             countries: extract_countries(details),
             rating: details['vote_average'],
-            imdb_votes: vote_count.empty? ? nil : vote_count.to_i,
+            imdb_votes: nil,
             poster_url: image_url(details['poster_path'], 'w342'),
             backdrop_url: image_url(details['backdrop_path'], 'w780'),
             release_date: release_date,
