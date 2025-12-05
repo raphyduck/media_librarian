@@ -5,6 +5,7 @@ require 'themoviedb'
 require 'imdb_party'
 require 'json'
 require 'httparty'
+require 'trakt'
 
 module MediaLibrarian
   module Services
@@ -342,21 +343,29 @@ module MediaLibrarian
         nil
       end
 
-      def build_trakt_fetcher(client_id, client_secret, _token)
+      def build_trakt_fetcher(client_id, client_secret, token)
         return nil if client_id.to_s.empty? || client_secret.to_s.empty?
 
         lambda do |date_range:, limit:|
-          fetch_trakt_entries(date_range: date_range, limit: limit)
+          fetch_trakt_entries(
+            date_range: date_range,
+            limit: limit,
+            client_id: client_id,
+            client_secret: client_secret,
+            token: token
+          )
         end
       end
 
-      def fetch_trakt_entries(date_range:, limit:)
+      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, token: nil)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        movies = TraktAgent.calendars__all_movies(start_date, days)
-        shows = TraktAgent.calendars__all_shows(start_date, days)
+        fetcher = trakt_calendar_client(client_id: client_id, client_secret: client_secret, token: token)
+
+        movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
+        shows = TraktAgent.fetch_calendar_entries(:shows, start_date, days, fetcher: fetcher)
 
         parsed_movies = parse_trakt_movies(movies)
         parsed_shows = parse_trakt_shows(shows)
@@ -365,6 +374,22 @@ module MediaLibrarian
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         []
+      end
+
+      def trakt_calendar_client(client_id:, client_secret:, token: nil)
+        Trakt.new(
+          client_id: client_id,
+          client_secret: client_secret,
+          token: normalize_trakt_token(token),
+          speaker: speaker
+        )
+      end
+
+      def normalize_trakt_token(token)
+        return token if token.is_a?(Hash)
+
+        token_value = token.to_s.strip
+        token_value.empty? ? nil : { access_token: token_value }
       end
 
       def parse_trakt_movies(payload)
@@ -636,7 +661,7 @@ module MediaLibrarian
             languages: extract_languages(details),
             countries: extract_countries(details),
             rating: details['vote_average'],
-            imdb_votes: nil,
+            imdb_votes: details['vote_count'],
             poster_url: image_url(details['poster_path'], 'w342'),
             backdrop_url: image_url(details['backdrop_path'], 'w780'),
             release_date: release_date,
