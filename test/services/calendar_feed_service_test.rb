@@ -79,7 +79,7 @@ class CalendarFeedServiceTest < Minitest::Test
     service.refresh(date_range: Date.today..(Date.today + 1), limit: 5)
 
     assert_includes @speaker.messages, 'Calendar feed collected 1 items'
-    assert_includes @speaker.messages, 'Calendar feed persisted 1 items'
+    assert @speaker.messages.any? { |msg| msg.start_with?('Calendar feed persisted 1 items') }
   end
 
   def test_refresh_replaces_duplicates
@@ -146,7 +146,7 @@ class CalendarFeedServiceTest < Minitest::Test
 
     service.refresh(date_range: Date.today..(Date.today + 1), limit: 5)
 
-    assert @speaker.messages.any? { |msg| msg.first == :error && msg.last.to_s.include?('Calendar provider failure') }
+    assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.first == :error && msg.last.to_s.include?('Calendar provider failure') }
     rows = @db.get_rows(:calendar_entries)
     assert_equal 1, rows.count
     assert_equal 'working', rows.first[:source]
@@ -285,6 +285,46 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['French'], rows.last[:languages]
     assert_equal ['Canada'], rows.last[:countries]
     assert_equal 6_789, rows.last[:imdb_votes]
+  end
+
+  def test_imdb_fetcher_logs_missing_calendar_support
+    date_range = Date.today..(Date.today + 1)
+    client_class = Class.new
+    client_class.const_set(:VERSION, '9.9.9')
+    client = client_class.new
+
+    ImdbParty::Imdb.stub :new, client do
+      config = { 'imdb' => {} }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
+    end
+
+    assert_includes @speaker.messages,
+                    "IMDb calendar unavailable for #{client.class.name} #{client_class::VERSION}"
+  end
+
+  def test_imdb_fetcher_logs_calls_and_errors
+    date_range = Date.today..(Date.today + 3)
+    client = Object.new
+    client.define_singleton_method(:respond_to?) do |method_name, include_all = false|
+      method_name == :calendar || super(method_name, include_all)
+    end
+    client.define_singleton_method(:calendar) do |**_args|
+      raise StandardError, 'calendar exploded'
+    end
+
+    ImdbParty::Imdb.stub :new, client do
+      config = { 'imdb' => {} }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 2, sources: ['imdb'])
+    end
+
+    assert_includes @speaker.messages, "IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: 2)"
+    assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.first == :error && msg[1].is_a?(StandardError) && msg.last == 'IMDB calendar fetch failed' }
   end
 
   def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
