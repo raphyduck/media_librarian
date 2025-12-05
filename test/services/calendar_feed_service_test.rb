@@ -422,6 +422,21 @@ class CalendarFeedServiceTest < Minitest::Test
     assert errors.any? { |msg| msg.last == 'IMDB calendar fetch failed' }
   end
 
+  def test_imdb_provider_logs_empty_results
+    date_range = Date.today..(Date.today + 1)
+    imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
+      speaker: @speaker,
+      fetcher: ->(**_) { [] }
+    )
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [imdb_provider])
+
+    service.refresh(date_range: date_range, limit: 3, sources: ['imdb'])
+
+    expected_message = "Calendar provider imdb returned no entries for #{date_range.first}..#{date_range.last}"
+    assert_includes @speaker.messages, expected_message
+  end
+
   def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
     date = Date.today + 2
     imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
