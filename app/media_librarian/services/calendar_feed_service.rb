@@ -270,19 +270,22 @@ module MediaLibrarian
         providers << imdb_provider(imdb_config) if imdb_provider_enabled?(imdb_config)
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
+          account_id = trakt_config['account_id']
           client_id = trakt_config['client_id']
           client_secret = trakt_config['client_secret']
           fetcher = build_trakt_fetcher(
             client_id,
             client_secret,
-            trakt_config['access_token']
+            trakt_config['access_token'],
+            account_id
           )
 
           unless fetcher
-            speaker&.speak_up('Skipping Trakt provider: missing client_id or client_secret')
+            speaker&.speak_up('Skipping Trakt provider: missing account_id, client_id or client_secret')
           end
 
           providers << TraktCalendarProvider.new(
+            account_id: account_id,
             client_id: client_id,
             client_secret: client_secret,
             speaker: speaker,
@@ -349,8 +352,8 @@ module MediaLibrarian
         nil
       end
 
-      def build_trakt_fetcher(client_id, client_secret, token)
-        return nil if client_id.to_s.empty? || client_secret.to_s.empty?
+      def build_trakt_fetcher(client_id, client_secret, token, account_id)
+        return nil if client_id.to_s.empty? || client_secret.to_s.empty? || account_id.to_s.empty?
 
         lambda do |date_range:, limit:|
           fetch_trakt_entries(
@@ -358,17 +361,23 @@ module MediaLibrarian
             limit: limit,
             client_id: client_id,
             client_secret: client_secret,
+            account_id: account_id,
             token: token
           )
         end
       end
 
-      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, token: nil)
+      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, account_id:, token: nil)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        fetcher = trakt_calendar_client(client_id: client_id, client_secret: client_secret, token: token)
+        fetcher = trakt_calendar_client(
+          client_id: client_id,
+          client_secret: client_secret,
+          account_id: account_id,
+          token: token
+        )
 
         movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
         shows = TraktAgent.fetch_calendar_entries(:shows, start_date, days, fetcher: fetcher)
@@ -385,10 +394,11 @@ module MediaLibrarian
         { entries: [], errors: [e.message] }
       end
 
-      def trakt_calendar_client(client_id:, client_secret:, token: nil)
+      def trakt_calendar_client(client_id:, client_secret:, account_id:, token: nil)
         Trakt.new(
           client_id: client_id,
           client_secret: client_secret,
+          account_id: account_id,
           token: normalize_trakt_token(token),
           speaker: speaker
         )
@@ -935,7 +945,8 @@ module MediaLibrarian
       class TraktCalendarProvider
         attr_reader :source, :last_request_path
 
-        def initialize(client_id:, client_secret:, speaker: nil, fetcher: nil)
+        def initialize(account_id:, client_id:, client_secret:, speaker: nil, fetcher: nil)
+          @account_id = account_id.to_s
           @client_id = client_id.to_s
           @client_secret = client_secret.to_s
           @speaker = speaker
@@ -945,7 +956,7 @@ module MediaLibrarian
         end
 
         def available?
-          !@client_id.empty? && !@client_secret.empty?
+          !@account_id.empty? && !@client_id.empty? && !@client_secret.empty?
         end
 
         def upcoming(date_range:, limit: 100)
@@ -959,6 +970,12 @@ module MediaLibrarian
         private
 
         def fetch_entries(date_range, limit)
+          unless available?
+            message = 'Trakt account_id is required'
+            @speaker&.tell_error(StandardError.new(message), message)
+            return []
+          end
+
           unless @fetcher
             @speaker&.speak_up('Trakt fetch skipped: no fetcher')
             return []
