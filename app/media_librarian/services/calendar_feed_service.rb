@@ -21,10 +21,10 @@ module MediaLibrarian
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
-        normalized = collect_entries(date_range, limit, normalize_sources(sources))
+        normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
         speaker.speak_up("Calendar feed collected #{normalized.length} items")
         persist_entries(normalized)
-        speaker.speak_up("Calendar feed persisted #{normalized.length} items")
+        speaker.speak_up("Calendar feed persisted #{normalized.length} items#{summary_suffix(stats)}")
         normalized
       end
 
@@ -38,13 +38,15 @@ module MediaLibrarian
 
       def collect_entries(date_range, limit, sources)
         active_providers = select_providers(sources)
-        return [] if active_providers.empty?
+        return [[], {}] if active_providers.empty?
+
+        stats = Hash.new { |h, k| h[k] = { fetched: 0, retained: 0, location: nil } }
 
         collected = active_providers.flat_map do |provider|
-          fetched = safe_fetch(provider, date_range, limit)
+          fetched = fetch_from_provider(provider, date_range, limit, stats)
           if provider.source == 'imdb' && fetched.empty?
             fallback = fallback_provider('tmdb', active_providers)
-            fetched = safe_fetch(fallback, date_range, limit) if fallback
+            fetched = fetch_from_provider(fallback, date_range, limit, stats) if fallback
           end
           fetched
         end
@@ -54,8 +56,10 @@ module MediaLibrarian
                                .uniq { |entry| [entry[:source], entry[:external_id]] }
                                .first(limit)
 
+        normalized.each { |entry| stats[entry[:source]][:retained] += 1 }
+        log_provider_results(stats)
         log_entries(normalized)
-        normalized
+        [normalized, stats]
       end
 
       def default_date_range
@@ -180,10 +184,27 @@ module MediaLibrarian
       end
 
       def safe_fetch(provider, date_range, limit)
-        provider.upcoming(date_range: date_range, limit: limit)
+        provider&.upcoming(date_range: date_range, limit: limit)
       rescue StandardError => e
         speaker.tell_error(e, "Calendar provider failure: #{provider.class.name}") if speaker
         []
+      end
+
+      def fetch_from_provider(provider, date_range, limit, stats)
+        return [] unless provider
+
+        source = provider.source
+        location = provider_location(provider)
+        stats[source][:location] ||= location
+        speaker&.speak_up(
+          "Calendar provider #{source} fetching #{date_range.first}..#{date_range.last} " \
+          "(limit: #{limit}#{location ? ", path: #{location}" : ''})"
+        )
+
+        fetched = safe_fetch(provider, date_range, limit)
+        stats[source][:fetched] += fetched.length
+        stats[source][:location] ||= provider_location(provider)
+        fetched
       end
 
       def select_providers(sources)
@@ -200,6 +221,34 @@ module MediaLibrarian
         providers.find do |provider|
           provider.source == name && !excluded.include?(provider)
         end
+      end
+
+      def log_provider_results(stats)
+        return unless speaker
+
+        stats.each do |source, data|
+          location_suffix = data[:location] ? " (path: #{data[:location]})" : ''
+          speaker.speak_up(
+            "Calendar provider #{source} returned #{data[:fetched]} items and kept #{data[:retained]}#{location_suffix}"
+          )
+        end
+      end
+
+      def provider_location(provider)
+        return unless provider
+
+        %i[last_request_path endpoint url base_url].each do |method|
+          return provider.public_send(method) if provider.respond_to?(method)
+        end
+
+        nil
+      end
+
+      def summary_suffix(stats)
+        return '' if stats.nil? || stats.empty?
+
+        summary = stats.map { |source, data| "#{source}: #{data[:retained]}" }.join(', ')
+        summary.empty? ? '' : " (#{summary})"
       end
 
       def default_providers
@@ -386,7 +435,7 @@ module MediaLibrarian
       end
 
       class TmdbCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(api_key:, language: 'en', region: 'US', speaker: nil, client: Tmdb)
           @api_key = api_key.to_s
@@ -462,6 +511,7 @@ module MediaLibrarian
         end
 
         def fetch_page(path, kind, page, params = {})
+          @last_request_path = path
           params = { page: page }.merge(params || {}).compact
 
           if page.to_i == 1
@@ -620,12 +670,13 @@ module MediaLibrarian
       end
 
       class ImdbCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(speaker: nil, fetcher: nil)
           @speaker = speaker
           @fetcher = fetcher
           @source = 'imdb'
+          @last_request_path = nil
         end
 
         def available?
@@ -807,7 +858,7 @@ module MediaLibrarian
       end
 
       class TraktCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(client_id:, client_secret:, speaker: nil, fetcher: nil)
           @client_id = client_id.to_s
@@ -815,6 +866,7 @@ module MediaLibrarian
           @speaker = speaker
           @fetcher = fetcher
           @source = 'trakt'
+          @last_request_path = nil
         end
 
         def available?
