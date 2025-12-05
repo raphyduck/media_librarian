@@ -547,7 +547,7 @@ button:disabled {
 
 .calendar-items {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 0.75rem;
 }
 
@@ -557,9 +557,9 @@ button:disabled {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
   display: grid;
-  grid-template-columns: clamp(140px, 24%, 240px) 1fr;
+  grid-template-columns: minmax(200px, 260px) 1fr;
   gap: 0.75rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 .calendar-media {
@@ -592,6 +592,7 @@ button:disabled {
   display: grid;
   gap: 0.35rem;
   align-content: start;
+  min-width: 0;
 }
 
 .calendar-body header {
