@@ -489,7 +489,7 @@ class CalendarFeedServiceTest < Minitest::Test
       [{ 'tmdb' => 10, 'imdb' => 'tt0000010' }, { 'tmdb' => 11, 'imdb' => 'tt0000011' }],
       results.map { |entry| entry[:ids] }
     )
-    assert_equal [nil, nil], results.map { |entry| entry[:imdb_votes] }
+    assert_equal [100, 110], results.map { |entry| entry[:imdb_votes] }
   end
 
   def test_tmdb_fetch_titles_accepts_tmdb_model_objects
@@ -564,7 +564,7 @@ class CalendarFeedServiceTest < Minitest::Test
       [{ 'tmdb' => 21, 'imdb' => 'tt0000021' }, { 'tmdb' => 31, 'imdb' => 'tt0000031' }],
       results.map { |entry| entry[:ids] }
     )
-    assert_equal [nil, nil], results.map { |entry| entry[:imdb_votes] }
+    assert_equal [22, 33], results.map { |entry| entry[:imdb_votes] }
   end
 
   private

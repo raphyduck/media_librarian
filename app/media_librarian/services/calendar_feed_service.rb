@@ -610,7 +610,7 @@ module MediaLibrarian
         end
 
         def build_entry(details, kind, release_date)
-          vote_count = details['vote_count'].to_s.strip
+          vote_count = value_from(details, :vote_count, 'vote_count').to_s.strip
 
           {
             source: source,
