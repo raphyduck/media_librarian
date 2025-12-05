@@ -778,8 +778,15 @@ module MediaLibrarian
         def fetch_entries(date_range, limit)
           return [] unless @fetcher
 
-          Array(@fetcher.call(date_range: date_range, limit: limit))
-            .filter_map { |record| build_entry(record) }
+          entries =
+            Array(@fetcher.call(date_range: date_range, limit: limit))
+              .filter_map { |record| build_entry(record) }
+
+          if entries.empty?
+            @speaker&.speak_up("Calendar provider #{source} returned no entries for #{date_range.first}..#{date_range.last}")
+          end
+
+          entries
         rescue StandardError => e
           @speaker&.tell_error(e, 'Calendar IMDb fetch failed')
           []
