@@ -123,6 +123,22 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_filters_when_any_genre_matches
+    db = stub_calendar_rows([
+      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', genres: ['Drama'] },
+      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', genres: ['Horror'] }
+    ])
+
+    WatchlistStore.stub(:fetch, []) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(genres: ['Drama, Comedy'])
+
+      assert_equal ['Alpha'], result[:entries].map { |entry| entry[:title] }
+    end
+
+    db.verify
+  end
+
   def test_handle_calendar_request_uses_offset_and_window
     Daemon.configure(app: @environment.application)
     response = FakeResponse.new
