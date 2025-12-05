@@ -366,6 +366,62 @@ class CalendarFeedServiceTest < Minitest::Test
     assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.first == :error && msg[1].is_a?(StandardError) && msg.last == 'IMDB calendar fetch failed' }
   end
 
+  def test_imdb_fetcher_reports_http_errors
+    date_range = Date.today..Date.today
+    response = Struct.new(:code, :body).new(500, 'failed')
+    client = Class.new do
+      def initialize(response)
+        @response = response
+      end
+
+      def get(*_args)
+        @response
+      end
+    end.new(response)
+
+    api = ImdbApi.new(http_client: client, speaker: @speaker)
+
+    ImdbApi.stub :new, ->(**_) { api } do
+      config = { 'imdb' => {} }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 1, sources: ['imdb'])
+    end
+
+    errors = @speaker.messages.select { |msg| msg.is_a?(Array) && msg.first == :error }
+    assert errors.any? { |msg| msg[1].message.include?('status 500') }
+    assert errors.any? { |msg| msg.last == 'IMDB calendar fetch failed' }
+  end
+
+  def test_imdb_fetcher_reports_empty_responses
+    date_range = Date.today..Date.today
+    response = Struct.new(:code, :body).new(200, '')
+    client = Class.new do
+      def initialize(response)
+        @response = response
+      end
+
+      def get(*_args)
+        @response
+      end
+    end.new(response)
+
+    api = ImdbApi.new(http_client: client, speaker: @speaker)
+
+    ImdbApi.stub :new, ->(**_) { api } do
+      config = { 'imdb' => {} }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 1, sources: ['imdb'])
+    end
+
+    errors = @speaker.messages.select { |msg| msg.is_a?(Array) && msg.first == :error }
+    assert errors.any? { |msg| msg[1].message.include?('response was empty') }
+    assert errors.any? { |msg| msg.last == 'IMDB calendar fetch failed' }
+  end
+
   def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
     date = Date.today + 2
     imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(

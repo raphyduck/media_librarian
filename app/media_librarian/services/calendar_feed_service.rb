@@ -306,7 +306,8 @@ module MediaLibrarian
         api = ImdbApi.new(
           base_url: config_value(config, 'base_url'),
           region: config_value(config, 'region'),
-          api_key: config_value(config, 'api_key')
+          api_key: config_value(config, 'api_key'),
+          speaker: speaker
         )
 
         lambda do |date_range:, limit:|
