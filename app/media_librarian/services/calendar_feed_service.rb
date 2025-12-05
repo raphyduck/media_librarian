@@ -373,13 +373,16 @@ module MediaLibrarian
         movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
         shows = TraktAgent.fetch_calendar_entries(:shows, start_date, days, fetcher: fetcher)
 
-        parsed_movies = parse_trakt_movies(movies)
-        parsed_shows = parse_trakt_shows(shows)
+        parsed_movies, movie_error = parse_trakt_movies(movies)
+        parsed_shows, show_error = parse_trakt_shows(shows)
 
-        (parsed_movies + parsed_shows).first(limit)
+        {
+          entries: (parsed_movies + parsed_shows).first(limit),
+          errors: [movie_error, show_error].compact
+        }
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
-        []
+        { entries: [], errors: [e.message] }
       end
 
       def trakt_calendar_client(client_id:, client_secret:, token: nil)
@@ -399,37 +402,60 @@ module MediaLibrarian
       end
 
       def parse_trakt_movies(payload)
-        items = validate_trakt_payload(payload, 'Calendar Trakt movies payload')
-        return [] if items.empty?
+        items, error = validate_trakt_payload(payload, 'Calendar Trakt movies payload')
+        return [[], error] if error
 
-        items.filter_map do |item|
-          movie = item['movie']
-          next unless movie.is_a?(Hash)
+        [
+          items.filter_map do |item|
+            movie = item['movie']
+            next unless movie.is_a?(Hash)
 
-          release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
-          build_trakt_entry(movie, 'movie', release_date)
-        end
+            release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
+            build_trakt_entry(movie, 'movie', release_date)
+          end,
+          nil
+        ]
       end
 
       def parse_trakt_shows(payload)
-        items = validate_trakt_payload(payload, 'Calendar Trakt shows payload')
-        return [] if items.empty?
+        items, error = validate_trakt_payload(payload, 'Calendar Trakt shows payload')
+        return [[], error] if error
 
-        items.filter_map do |item|
-          show = item['show']
-          next unless show.is_a?(Hash)
+        [
+          items.filter_map do |item|
+            show = item['show']
+            next unless show.is_a?(Hash)
 
-          release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
-          build_trakt_entry(show, 'show', release_date)
-        end
+            release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
+            build_trakt_entry(show, 'show', release_date)
+          end,
+          nil
+        ]
       end
 
       def validate_trakt_payload(payload, context)
-        items = Array(payload)
-        return items if items.all?(Hash)
+        if payload.nil? || (payload.respond_to?(:empty?) && payload.empty?)
+          return log_trakt_payload_error('Trakt payload missing or empty', context, payload)
+        end
 
-        speaker&.tell_error(StandardError.new('Invalid Trakt payload format'), context)
-        []
+        items = Array(payload)
+        return [items, nil] if items.all?(Hash)
+
+        log_trakt_payload_error('Invalid Trakt payload format', context, items)
+      end
+
+      def log_trakt_payload_error(message, context, payload)
+        summary = payload_summary(payload)
+        speaker&.tell_error(StandardError.new(message), summary ? "#{context} (#{summary})" : context)
+        [[], message]
+      end
+
+      def payload_summary(payload)
+        return nil if payload.nil?
+
+        size = payload.respond_to?(:size) ? payload.size : nil
+        summary_parts = [payload.class.name, ("size=#{size}" if size)]
+        summary_parts.compact.join(' ')
       end
 
       def build_trakt_entry(record, media_type, release_date)
@@ -938,10 +964,23 @@ module MediaLibrarian
             return []
           end
 
-          @fetcher.call(date_range: date_range, limit: limit)
+          result = @fetcher.call(date_range: date_range, limit: limit)
+          entries, errors = normalize_fetch_result(result)
+          if errors.any?
+            @speaker&.tell_error(StandardError.new(errors.join('; ')), 'Calendar Trakt fetch failed')
+          end
+          entries
         rescue StandardError => e
           @speaker&.tell_error(e, 'Calendar Trakt fetch failed')
           []
+        end
+
+        def normalize_fetch_result(result)
+          if result.is_a?(Hash)
+            return [Array(result[:entries]), Array(result[:errors]).compact]
+          end
+
+          [Array(result), []]
         end
 
         def normalize_entry(entry, date_range)
