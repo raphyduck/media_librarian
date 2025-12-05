@@ -49,10 +49,13 @@ module MediaLibrarian
           fetched
         end
 
-        collected.map { |entry| normalize_entry(entry, date_range) }
-                 .compact
-                 .uniq { |entry| [entry[:source], entry[:external_id]] }
-                 .first(limit)
+        normalized = collected.map { |entry| normalize_entry(entry, date_range) }
+                               .compact
+                               .uniq { |entry| [entry[:source], entry[:external_id]] }
+                               .first(limit)
+
+        log_entries(normalized)
+        normalized
       end
 
       def default_date_range
@@ -155,6 +158,25 @@ module MediaLibrarian
 
         db.insert_rows(:calendar_entries, entries, true)
         entries
+      end
+
+      def log_entries(entries)
+        return unless speaker && entries.any?
+
+        entries.each do |entry|
+          message = {
+            source: entry[:source],
+            external_id: entry[:external_id],
+            ids: entry[:ids],
+            title: entry[:title],
+            imdb_rating: entry[:rating],
+            imdb_votes: entry[:imdb_votes]
+          }.to_json
+
+          speaker.speak_up("Calendar entry #{message}")
+        end
+      rescue StandardError
+        nil
       end
 
       def safe_fetch(provider, date_range, limit)
