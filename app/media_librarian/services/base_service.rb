@@ -34,8 +34,9 @@ module MediaLibrarian
         delegate&.ask_if_needed(question, no_prompt, default)
       end
 
-      def tell_error(error, context = nil, *_args)
-        delegate&.tell_error(error, context)
+      def tell_error(error, context = nil, options = nil, *args)
+        safe_options = options.is_a?(Hash) ? options : {}
+        delegate&.tell_error(error, context, safe_options, *args)
       end
 
       private
