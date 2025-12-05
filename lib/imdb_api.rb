@@ -35,7 +35,7 @@ class ImdbApi
   attr_reader :http_client, :base_url, :region, :api_key, :speaker
 
   def fetch_calendar_for(date)
-    path = "#{base_url}/calendar/"
+    path = "#{base_url}/imdb-api/calendar"
     response = http_client.get(
       path,
       query: { date: format_date(date), region: region },
@@ -55,9 +55,18 @@ class ImdbApi
   end
 
   def headers
-    return {} if api_key.empty?
+    return {
+      'x-imdb-client-name' => 'imdb-web-next',
+      'x-imdb-client-platform' => 'Desktop',
+      'Accept' => 'application/json'
+    } if api_key.empty?
 
-    { 'x-imdb-api-key' => api_key }
+    {
+      'x-imdb-api-key' => api_key,
+      'x-imdb-client-name' => 'imdb-web-next',
+      'x-imdb-client-platform' => 'Desktop',
+      'Accept' => 'application/json'
+    }
   end
 
   def parse_calendar_response(body, fallback_date, path, status)
