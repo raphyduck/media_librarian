@@ -59,7 +59,7 @@ class CalendarEntriesRepository
     return true if genres.empty?
 
     entry_genres = Array(entry[:genres]).map { |g| g.to_s.downcase }
-    genres.all? { |genre| entry_genres.include?(genre) }
+    (entry_genres & genres).any?
   end
 
   def rating_match?(entry, min_rating, max_rating)
