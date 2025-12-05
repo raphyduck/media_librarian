@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'date'
+require 'time'
 require 'themoviedb'
 require 'json'
 require 'httparty'
@@ -10,6 +11,7 @@ require 'trakt'
 module MediaLibrarian
   module Services
     class CalendarFeedService < BaseService
+      AuthenticationError = Class.new(StandardError)
       DEFAULT_WINDOW_DAYS = 30
       SOURCES_SEPARATOR = /[\s,|]+/.freeze
 
@@ -374,11 +376,13 @@ module MediaLibrarian
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
+        validated_token = ensure_trakt_token!(token)
+
         fetcher = trakt_calendar_client(
           client_id: client_id,
           client_secret: client_secret,
           account_id: account_id,
-          token: token
+          token: validated_token
         )
 
         movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
@@ -391,6 +395,11 @@ module MediaLibrarian
           entries: (parsed_movies + parsed_shows).first(limit),
           errors: [movie_error, show_error].compact
         }
+      rescue AuthenticationError => e
+        speaker&.tell_error(e, 'Calendar Trakt authentication failed')
+        _, movie_error = validate_trakt_payload(nil, 'Calendar Trakt movies payload', e.message)
+        _, show_error = validate_trakt_payload(nil, 'Calendar Trakt shows payload', e.message)
+        { entries: [], errors: [movie_error, show_error].compact }
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         { entries: [], errors: [e.message] }
@@ -401,7 +410,7 @@ module MediaLibrarian
           client_id: client_id,
           client_secret: client_secret,
           account_id: account_id,
-          token: normalize_trakt_token(token),
+          token: ensure_trakt_token!(token),
           speaker: speaker
         )
       end
@@ -413,8 +422,41 @@ module MediaLibrarian
         token_value.empty? ? nil : { access_token: token_value }
       end
 
-      def parse_trakt_movies(payload)
-        items, error = validate_trakt_payload(payload, 'Calendar Trakt movies payload')
+      def ensure_trakt_token!(token)
+        normalized = normalize_trakt_token(token)
+        token_value = trakt_access_token(normalized)
+        raise AuthenticationError, 'Trakt access token is missing or invalid' if token_value.empty?
+
+        expires_at = trakt_token_expiry(normalized)
+        raise AuthenticationError, 'Trakt access token has expired' if expires_at && expires_at <= Time.now
+
+        return normalized unless normalized.is_a?(Hash)
+
+        normalized.merge(access_token: token_value)
+      end
+
+      def trakt_access_token(token)
+        return '' unless token.is_a?(Hash)
+
+        (token[:access_token] || token['access_token']).to_s.strip
+      end
+
+      def trakt_token_expiry(token)
+        raw = token.is_a?(Hash) ? token[:expires_at] || token['expires_at'] : nil
+        case raw
+        when Time
+          raw
+        when DateTime
+          raw.to_time
+        else
+          Time.parse(raw.to_s)
+        end
+      rescue ArgumentError, TypeError
+        nil
+      end
+
+      def parse_trakt_movies(payload, error_message: nil)
+        items, error = validate_trakt_payload(payload, 'Calendar Trakt movies payload', error_message)
         return [[], error] if error
 
         [
@@ -429,8 +471,8 @@ module MediaLibrarian
         ]
       end
 
-      def parse_trakt_shows(payload)
-        items, error = validate_trakt_payload(payload, 'Calendar Trakt shows payload')
+      def parse_trakt_shows(payload, error_message: nil)
+        items, error = validate_trakt_payload(payload, 'Calendar Trakt shows payload', error_message)
         return [[], error] if error
 
         [
@@ -445,9 +487,9 @@ module MediaLibrarian
         ]
       end
 
-      def validate_trakt_payload(payload, context)
+      def validate_trakt_payload(payload, context, fallback_error = nil)
         if payload.nil? || (payload.respond_to?(:empty?) && payload.empty?)
-          return log_trakt_payload_error('Trakt payload missing or empty', context, payload)
+          return log_trakt_payload_error(fallback_error || 'Trakt payload missing or empty', context, payload)
         end
 
         items = Array(payload)

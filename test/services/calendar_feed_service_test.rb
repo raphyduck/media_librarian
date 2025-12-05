@@ -655,6 +655,22 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_includes error_message&.last.to_s, 'Calendar Trakt movies payload'
   end
 
+  def test_trakt_provider_reports_missing_token_instead_of_empty_payload
+    date_range = Date.today..Date.today
+    config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret', 'access_token' => '' } }
+
+    Trakt.stub(:new, ->(*) { raise 'Trakt client should not initialize without token' }) do
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 5, sources: ['trakt'])
+    end
+
+    error_messages = @speaker.messages.select { |message| message.is_a?(Array) && message.first == :error }
+    assert error_messages.any? { |message| message[1].message.include?('Trakt access token is missing or invalid') }
+    refute error_messages.any? { |message| message[1].message.include?('Trakt payload missing or empty') }
+  end
+
   def test_trakt_provider_surfaces_validation_errors
     provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
       account_id: 'acc', client_id: 'id', client_secret: 'secret', speaker: @speaker,
