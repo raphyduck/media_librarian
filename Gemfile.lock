@@ -14,13 +14,6 @@ GIT
       rencoder (~> 0.2)
 
 GIT
-  remote: https://github.com/raphyduck/imdb-party.git
-  revision: fb1636b2e440fc10a9b5a8fe5b24d74104cbaae6
-  specs:
-    imdb_party (0.8.0)
-      httparty
-
-GIT
   remote: https://github.com/raphyduck/mediainfo.git
   revision: 125e7a2995343cca4a9cc005b0cbdf3138328e34
   specs:
@@ -98,16 +91,6 @@ GEM
     benchmark (0.4.1)
     bencode (1.0.0)
     bigdecimal (3.2.2)
-    capybara (3.40.0)
-      addressable
-      matrix
-      mini_mime (>= 0.1.3)
-      nokogiri (~> 1.11)
-      rack (>= 1.6.0)
-      rack-test (>= 0.6.3)
-      regexp_parser (>= 1.5, < 3.0)
-      xpath (~> 3.2)
-    cliver (0.3.2)
     concurrent-ruby (1.1.10)
     connection_pool (2.5.3)
     crass (1.0.6)
@@ -150,7 +133,6 @@ GEM
       net-imap
       net-pop
       net-smtp
-    matrix (0.4.3)
     mechanize (2.14.0)
       addressable (~> 2.8)
       base64
@@ -192,17 +174,9 @@ GEM
     nkf (0.2.0)
     nokogiri (1.18.9-x86_64-linux-gnu)
       racc (~> 1.4)
-    poltergeist (1.18.1)
-      capybara (>= 2.1, < 4)
-      cliver (~> 0.3.1)
-      websocket-driver (>= 0.2.0)
     public_suffix (6.0.2)
     racc (1.8.1)
-    rack (3.2.0)
-    rack-test (2.2.0)
-      rack (>= 1.3)
     rake (13.3.0)
-    regexp_parser (2.11.1)
     rencoder (0.2.0)
     rest-client (2.0.2)
       http-cookie (>= 1.0.2, < 2.0)
@@ -234,19 +208,11 @@ GEM
     timeout (0.4.3)
     titleize (1.4.1)
     transproc (1.1.1)
-    tvdb_party (0.9.3)
-      httparty (>= 0.6.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     webrick (1.9.1)
     webrobots (0.1.2)
     websocket (1.2.11)
-    websocket-driver (0.8.0)
-      base64
-      websocket-extensions (>= 0.1.0)
-    websocket-extensions (0.1.5)
-    xpath (3.2.0)
-      nokogiri (~> 1.8)
     zeitwerk (2.6.12)
 
 PLATFORMS
@@ -263,15 +229,12 @@ DEPENDENCIES
   get_process_mem
   hanami-mailer
   httparty
-  imdb_party!
   logger (< 1.6)
   mechanize
   mediainfo!
   net-ssh
   nokogiri
-  poltergeist
   rake
-  rexml
   rsync!
   selenium-webdriver
   sequel
@@ -282,7 +245,6 @@ DEPENDENCIES
   titleize
   torznab-client!
   trakt!
-  tvdb_party
   tvmaze!
   unrar!
   xbmc-client!
