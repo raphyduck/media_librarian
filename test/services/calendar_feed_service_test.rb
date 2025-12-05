@@ -426,27 +426,50 @@ class CalendarFeedServiceTest < Minitest::Test
       }
     ]
 
-    movie_calls = []
-    show_calls = []
+    fetcher_instance = nil
+    calendars = Class.new do
+      attr_reader :calls
 
-    TraktAgent.stub(
-      :calendars__all_movies,
-      ->(start_date, days) { movie_calls << [start_date, days]; movie_payload }
-    ) do
-      TraktAgent.stub(
-        :calendars__all_shows,
-        ->(start_date, days) { show_calls << [start_date, days]; show_payload }
-      ) do
-        config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' } }
-        app = Struct.new(:config, :db).new(config, @db)
-        service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+      def initialize(movie_payload, show_payload)
+        @movie_payload = movie_payload
+        @show_payload = show_payload
+        @calls = []
+      end
 
-        service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+      def all_movies(start_date, days)
+        @calls << [:movies, start_date, days]
+        @movie_payload
+      end
+
+      def all_shows(start_date, days)
+        @calls << [:shows, start_date, days]
+        @show_payload
+      end
+    end.new(movie_payload, show_payload)
+
+    fake_fetcher_class = Class.new do
+      attr_reader :token
+
+      def initialize(token, calendars)
+        @token = token
+        @calendars = calendars
+      end
+
+      def calendars
+        @calendars
       end
     end
 
-    assert_equal [[start_date, days]], movie_calls
-    assert_equal [[start_date, days]], show_calls
+    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars) }) do
+      config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret', 'access_token' => 'tok' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+    end
+
+    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendars.calls
+    assert_equal({ access_token: 'tok' }, fetcher_instance.token)
     rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
     assert_equal 2, rows.count
     movie = rows.find { |row| row[:media_type] == 'movie' }
