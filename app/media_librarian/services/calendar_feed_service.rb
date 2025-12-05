@@ -273,10 +273,11 @@ module MediaLibrarian
           account_id = trakt_config['account_id']
           client_id = trakt_config['client_id']
           client_secret = trakt_config['client_secret']
+          trakt_token = trakt_config['access_token'] || (app.respond_to?(:trakt) ? app.trakt&.token : nil)
           fetcher = build_trakt_fetcher(
             client_id,
             client_secret,
-            trakt_config['access_token'],
+            trakt_token,
             account_id
           )
 

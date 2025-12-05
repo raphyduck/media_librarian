@@ -559,6 +559,56 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil show[:imdb_votes]
   end
 
+  def test_trakt_fetcher_uses_app_token_when_config_token_missing
+    date_range = Date.today..(Date.today + 1)
+    start_date = date_range.first
+    days = (date_range.last - start_date).to_i + 1
+
+    calendars = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def all_movies(start_date, days)
+        @calls << [:movies, start_date, days]
+        []
+      end
+
+      def all_shows(start_date, days)
+        @calls << [:shows, start_date, days]
+        []
+      end
+    end.new
+
+    fetcher_instance = nil
+    fake_fetcher_class = Class.new do
+      attr_reader :token
+
+      def initialize(token, calendars)
+        @token = token
+        @calendars = calendars
+      end
+
+      def calendars
+        @calendars
+      end
+    end
+
+    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars) }) do
+      config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' } }
+      trakt_client = Struct.new(:token).new({ access_token: 'stored-token' })
+      app = Struct.new(:config, :db, :trakt).new(config, @db, trakt_client)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
+    end
+
+    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendars.calls
+    assert_equal({ access_token: 'stored-token' }, fetcher_instance.token)
+  end
+
   def test_trakt_movies_rejects_non_hash_items
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
     payload = [
