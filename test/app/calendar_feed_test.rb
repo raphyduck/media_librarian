@@ -10,6 +10,7 @@ class CalendarFeedTest < Minitest::Test
     MediaLibrarian.application = @environment.application
     CalendarFeed.configure(app: @environment.application)
     CalendarFeed.instance_variable_set(:@calendar_service, nil)
+    Calendar.clear_cache
   end
 
   def teardown
@@ -122,5 +123,20 @@ class CalendarFeedTest < Minitest::Test
     assert_match(/future: 7d/, message)
     assert_match(/limit: 5/, message)
     assert_match(/sources: imdb,tmdb/, message)
+  end
+
+  def test_refresh_feed_clears_calendar_cache
+    Calendar.cache[:data] = [:stale]
+    Calendar.cache[:expires_at] = Time.now + 100
+
+    service = Object.new
+    service.define_singleton_method(:refresh) { |**| [] }
+
+    CalendarFeed.stub(:calendar_service, service) do
+      CalendarFeed.refresh_feed
+    end
+
+    assert_empty Calendar.cache[:data]
+    assert_nil Calendar.cache[:expires_at]
   end
 end

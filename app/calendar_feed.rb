@@ -3,6 +3,7 @@
 require 'date'
 require_relative 'media_librarian/services/base_service'
 require_relative 'media_librarian/services/calendar_feed_service'
+require_relative 'calendar'
 
 class CalendarFeed
   include MediaLibrarian::AppContainerSupport
@@ -29,10 +30,12 @@ class CalendarFeed
       speaker = app.respond_to?(:speaker) ? app.speaker : nil
       sources_label = provider_list ? provider_list.join(',') : 'all'
       speaker&.speak_up(
-        "Refreshing calendar feed (past: #{past_days}d, future: #{future_days}d, limit: #{max_entries}, sources: #{sources_label})"
+        "Refreshing calendar feed from #{date_range.first} to #{date_range.last} " \
+        "(limit: #{max_entries}, sources: #{sources_label})"
       )
 
       calendar_service.refresh(date_range: date_range, limit: max_entries, sources: provider_list)
+      Calendar.clear_cache
     end
   end
 

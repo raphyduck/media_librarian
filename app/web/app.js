@@ -13,11 +13,16 @@ const state = {
   isRefreshing: false,
   calendar: {
     view: 'week',
+    entries: [],
+    availableGenres: [],
+    loadingGenres: false,
     filters: {
       type: '',
       genres: [],
       ratingMin: '',
       ratingMax: '',
+      votesMin: '',
+      votesMax: '',
       language: '',
       country: '',
     },
@@ -609,6 +614,9 @@ function setAuthenticated(authenticated, username = '') {
     loginForm.classList.remove('hidden');
     status.hidden = true;
     usernameLabel.textContent = '';
+    state.calendar.entries = [];
+    state.calendar.availableGenres = [];
+    state.calendar.filters.genres = [];
     stopAutoRefresh();
     setActiveTab('jobs', { skipLoad: true });
     resetEditors();
@@ -1011,6 +1019,14 @@ function extractGenres(entry) {
     .filter(Boolean);
 }
 
+function collectGenres(entries = []) {
+  const set = new Set();
+  entries.forEach((entry) => {
+    extractGenres(entry).forEach((genre) => set.add(genre));
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
 function resolveCalendarDate(entry) {
   const raw = pickEntryValue(entry, [
     'date',
@@ -1027,36 +1043,30 @@ function resolveCalendarDate(entry) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function updateCalendarGenres(entries) {
+function updateCalendarGenres() {
   const select = document.getElementById('calendar-genres');
   if (!select) {
     return;
   }
   const previous = new Set(state.calendar.filters.genres);
-  const available = new Set();
-  entries.forEach((entry) => {
-    extractGenres(entry).forEach((genre) => available.add(genre));
-  });
-  if (!available.size) {
-    if (!select.options.length) {
-      const option = document.createElement('option');
-      option.disabled = true;
-      option.value = '';
-      option.textContent = 'Aucun genre détecté';
-      select.appendChild(option);
-    }
+  const available = state.calendar.availableGenres || [];
+  if (!available.length) {
+    select.innerHTML = '';
+    const option = document.createElement('option');
+    option.disabled = true;
+    option.value = '';
+    option.textContent = 'Aucun genre détecté';
+    select.appendChild(option);
     return;
   }
   select.innerHTML = '';
-  Array.from(available)
-    .sort((a, b) => a.localeCompare(b))
-    .forEach((genre) => {
-      const option = document.createElement('option');
-      option.value = genre;
-      option.textContent = genre;
-      option.selected = previous.has(genre);
-      select.appendChild(option);
-    });
+  available.forEach((genre) => {
+    const option = document.createElement('option');
+    option.value = genre;
+    option.textContent = genre;
+    option.selected = previous.has(genre);
+    select.appendChild(option);
+  });
 }
 
 function readCalendarFilters() {
@@ -1078,6 +1088,13 @@ function readCalendarFilters() {
   const ratingMax = ratingMaxRaw === '' ? '' : Number(ratingMaxRaw);
   filters.ratingMin = Number.isFinite(ratingMin) ? ratingMin : '';
   filters.ratingMax = Number.isFinite(ratingMax) ? ratingMax : '';
+
+  const votesMinRaw = document.getElementById('calendar-votes-min')?.value || '';
+  const votesMaxRaw = document.getElementById('calendar-votes-max')?.value || '';
+  const votesMin = votesMinRaw === '' ? '' : Number(votesMinRaw);
+  const votesMax = votesMaxRaw === '' ? '' : Number(votesMaxRaw);
+  filters.votesMin = Number.isFinite(votesMin) ? votesMin : '';
+  filters.votesMax = Number.isFinite(votesMax) ? votesMax : '';
 
   filters.language = (document.getElementById('calendar-language')?.value || '').trim();
   filters.country = (document.getElementById('calendar-country')?.value || '').trim();
@@ -1158,6 +1175,14 @@ function entryMatchesFilters(entry, filters) {
     return false;
   }
 
+  const votes = Number(pickEntryValue(entry, ['imdb_votes', 'votes', 'vote_count']));
+  if (filters.votesMin !== '' && (!Number.isFinite(votes) || votes < filters.votesMin)) {
+    return false;
+  }
+  if (filters.votesMax !== '' && (!Number.isFinite(votes) || votes > filters.votesMax)) {
+    return false;
+  }
+
   const language = (pickEntryValue(entry, ['language', 'lang', 'original_language']) || '').toString().toLowerCase();
   if (filters.language && !language.includes(filters.language.toLowerCase())) {
     return false;
@@ -1219,6 +1244,21 @@ function makeCalendarBadge(text) {
   return span;
 }
 
+function formatVoteCount(value) {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+  if (value < 1000) {
+    return new Intl.NumberFormat('fr-FR').format(Math.round(value));
+  }
+  return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function resolveVoteCount(entry) {
+  const votes = Number(pickEntryValue(entry, ['imdb_votes', 'votes', 'vote_count']));
+  return Number.isFinite(votes) && votes >= 0 ? votes : null;
+}
+
 function resolveIdentifier(entry) {
   return (
     pickEntryValue(entry, ['id', 'slug', 'imdb_id', 'tmdb_id', 'tvdb_id'])
@@ -1272,13 +1312,14 @@ async function addToWatchlist(entry, button) {
   }
 }
 
-function renderCalendar(data = {}) {
+function renderCalendar(data = null) {
   const container = document.getElementById('calendar-content');
   if (!container) {
     return;
   }
-  const entries = normalizeCalendarEntries(data);
-  updateCalendarGenres(entries);
+  const entries = normalizeCalendarEntries(data ?? state.calendar.entries ?? []);
+  state.calendar.entries = entries;
+  updateCalendarGenres();
   const filters = readCalendarFilters();
   const filtered = entries.filter((entry) => entryMatchesFilters(entry, filters));
   if (!filtered.length) {
@@ -1357,6 +1398,10 @@ function renderCalendar(data = {}) {
         if (rating !== undefined && rating !== null && rating !== '') {
           badges.appendChild(makeCalendarBadge(`IMDb ${rating}`));
         }
+        const votes = resolveVoteCount(entry);
+        if (votes !== null) {
+          badges.appendChild(makeCalendarBadge(`${formatVoteCount(votes)} votes`));
+        }
         const genres = extractGenres(entry);
         if (genres.length) {
           badges.appendChild(makeCalendarBadge(genres.slice(0, 3).join(', ')));
@@ -1409,9 +1454,33 @@ function renderCalendar(data = {}) {
   container.replaceChildren(...fragments);
 }
 
+async function loadCalendarGenres() {
+  if (!state.authenticated || state.calendar.loadingGenres) {
+    return;
+  }
+  state.calendar.loadingGenres = true;
+  try {
+    const data = await fetchJson('/calendar');
+    const entries = normalizeCalendarEntries(data || []);
+    state.calendar.availableGenres = collectGenres(entries);
+    updateCalendarGenres();
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  } finally {
+    state.calendar.loadingGenres = false;
+  }
+}
+
 async function loadCalendar(options = {}) {
   if (!state.authenticated) {
     return;
+  }
+  const needsGenres = options.refreshGenres
+    || (!state.calendar.availableGenres.length && !state.calendar.loadingGenres);
+  if (needsGenres) {
+    loadCalendarGenres();
   }
   const filters = readCalendarFilters();
   const range = resolveCalendarWindow(options);
@@ -1421,6 +1490,8 @@ async function loadCalendar(options = {}) {
   if (filters.genres.length) search.set('genres', filters.genres.join(','));
   if (filters.ratingMin !== '') search.set('imdb_min', filters.ratingMin);
   if (filters.ratingMax !== '') search.set('imdb_max', filters.ratingMax);
+  if (filters.votesMin !== '') search.set('imdb_votes_min', filters.votesMin);
+  if (filters.votesMax !== '') search.set('imdb_votes_max', filters.votesMax);
   if (filters.language) search.set('language', filters.language);
   if (filters.country) search.set('country', filters.country);
   if (range) {
@@ -1447,7 +1518,7 @@ async function refreshCalendarFeed() {
   } catch (error) {
     showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
   } finally {
-    loadCalendar({ preserveFilters: true });
+    loadCalendar({ preserveFilters: true, refreshGenres: true });
   }
 }
 
@@ -1500,6 +1571,8 @@ function renderDownloadList(entries = []) {
   }
   emptyHint.classList.add('hidden');
 
+  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'URL'];
+
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const title = entry.title || entry['title'] || '';
@@ -1518,8 +1591,9 @@ function renderDownloadList(entries = []) {
       url ? { link: url } : { text: '—' },
     ];
 
-    cells.forEach((value) => {
+    cells.forEach((value, index) => {
       const cell = document.createElement('td');
+      cell.dataset.label = labels[index];
       if (value.link) {
         const link = document.createElement('a');
         link.href = value.link;
@@ -1534,6 +1608,8 @@ function renderDownloadList(entries = []) {
     });
 
     const actionsCell = document.createElement('td');
+    actionsCell.className = 'actions-cell';
+    actionsCell.dataset.label = 'Actions';
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'Supprimer';
@@ -1812,6 +1888,8 @@ function setupCalendarEvents() {
     'calendar-genres',
     'calendar-rating-min',
     'calendar-rating-max',
+    'calendar-votes-min',
+    'calendar-votes-max',
     'calendar-language',
     'calendar-country',
   ];

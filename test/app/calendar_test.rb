@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'json'
 require 'ostruct'
 require_relative '../../lib/watchlist_store'
 require_relative '../../app/calendar'
@@ -10,8 +11,7 @@ class CalendarTest < Minitest::Test
   def setup
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
-    Calendar.cache[:data] = []
-    Calendar.cache[:expires_at] = nil
+    Calendar.clear_cache
   end
 
   def teardown
@@ -107,6 +107,39 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_filters_by_imdb_vote_range
+    db = stub_calendar_rows([
+      { source: 'imdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
+      { source: 'imdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
+      { source: 'imdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
+    ])
+
+    WatchlistStore.stub(:fetch, []) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(imdb_votes_min: '800', imdb_votes_max: '1500')
+
+      assert_equal ['Bravo'], result[:entries].map { |entry| entry[:title] }
+    end
+
+    db.verify
+  end
+
+  def test_filters_when_any_genre_matches
+    db = stub_calendar_rows([
+      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', genres: ['Drama'] },
+      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', genres: ['Horror'] }
+    ])
+
+    WatchlistStore.stub(:fetch, []) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(genres: ['Drama, Comedy'])
+
+      assert_equal ['Alpha'], result[:entries].map { |entry| entry[:title] }
+    end
+
+    db.verify
+  end
+
   def test_handle_calendar_request_uses_offset_and_window
     Daemon.configure(app: @environment.application)
     response = FakeResponse.new
@@ -124,6 +157,29 @@ class CalendarTest < Minitest::Test
     assert_kind_of Time, filters[:end_date]
     assert_equal Time.utc(2024, 1, 8), filters[:start_date]
     assert_equal Time.utc(2024, 1, 14), filters[:end_date]
+  end
+
+  def test_handle_calendar_refresh_request_enqueues_job
+    Daemon.configure(app: @environment.application)
+    response = FakeResponse.new
+    enqueued = nil
+    job = OpenStruct.new(to_h: { 'id' => 'job-123' })
+
+    CalendarFeed.stub(:refresh_feed, ->(*) { flunk('refresh should be enqueued, not invoked directly') }) do
+      Daemon.stub(:enqueue, ->(**params) { enqueued = params; job }) do
+        request = OpenStruct.new(
+          request_method: 'POST',
+          body: { days: 7, limit: 15, sources: %w[imdb tmdb] }.to_json,
+          path: '/calendar/refresh'
+        )
+
+        Daemon.send(:handle_calendar_refresh_request, request, response)
+      end
+    end
+
+    assert_equal 200, response.status
+    assert_equal ['calendar', 'refresh_feed', '--days=7', '--limit=15', '--sources=imdb,tmdb'], enqueued[:args]
+    assert_equal({ 'job' => job.to_h }, JSON.parse(response.body))
   end
 
   private

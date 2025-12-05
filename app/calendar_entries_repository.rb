@@ -34,6 +34,7 @@ class CalendarEntriesRepository
         type_match?(entry, filters[:type]) &&
         genres_match?(entry, filters[:genres]) &&
         rating_match?(entry, filters[:imdb_min], filters[:imdb_max]) &&
+        votes_match?(entry, filters[:imdb_votes_min], filters[:imdb_votes_max]) &&
         language_match?(entry, filters[:language]) &&
         country_match?(entry, filters[:country]) &&
         flag_match?(entry[:downloaded], filters[:downloaded]) &&
@@ -58,7 +59,7 @@ class CalendarEntriesRepository
     return true if genres.empty?
 
     entry_genres = Array(entry[:genres]).map { |g| g.to_s.downcase }
-    genres.all? { |genre| entry_genres.include?(genre) }
+    (entry_genres & genres).any?
   end
 
   def rating_match?(entry, min_rating, max_rating)
@@ -67,6 +68,15 @@ class CalendarEntriesRepository
 
     min_ok = min_rating.to_s.empty? || rating >= min_rating.to_f
     max_ok = max_rating.to_s.empty? || rating <= max_rating.to_f
+    min_ok && max_ok
+  end
+
+  def votes_match?(entry, min_votes, max_votes)
+    votes = entry[:imdb_votes]
+    return min_votes.to_s.empty? && max_votes.to_s.empty? if votes.nil?
+
+    min_ok = min_votes.to_s.empty? || votes >= min_votes.to_i
+    max_ok = max_votes.to_s.empty? || votes <= max_votes.to_i
     min_ok && max_ok
   end
 
@@ -153,6 +163,7 @@ class CalendarEntriesRepository
       language: languages.find { |lang| !lang.to_s.empty? },
       country: countries.find { |country| !country.to_s.empty? },
       imdb_rating: parse_rating(row[:rating] || row['rating']),
+      imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
       release_date: release_date,
       downloaded: !!(row[:downloaded] || row['downloaded']),
       in_interest_list: !!(row[:in_interest_list] || row['in_interest_list']),
@@ -195,6 +206,12 @@ class CalendarEntriesRepository
     return nil if value.nil? || value.to_s.strip.empty?
 
     value.to_f
+  end
+
+  def parse_integer(value)
+    return nil if value.nil? || value.to_s.strip.empty?
+
+    value.to_i
   end
 
   def parse_time(value)

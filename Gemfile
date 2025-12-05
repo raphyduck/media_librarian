@@ -12,6 +12,7 @@ gem 'bcrypt', :require => false
 gem 'fuzzy-string-match', :require => false
 gem 'get_process_mem', :require => false
 gem 'hanami-mailer', :require => false
+gem 'httparty', :require => false
 gem 'imdb_party', :git => 'https://github.com/raphyduck/imdb-party.git', :require => false
 gem 'mechanize', :require => false
 gem 'mediainfo', :git => 'https://github.com/raphyduck/mediainfo.git', :require => false

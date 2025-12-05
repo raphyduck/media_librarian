@@ -252,15 +252,22 @@ class Librarian
     def run_command(cmd, direct = 0, object = '', &block)
       original_cmd = Array(cmd).dup
       cmd = sanitize_arguments(original_cmd)
-      sanitized_cmd = cmd.dup
 
       if direct.to_i.zero? && cmd.empty?
         notify_missing_command(original_cmd)
         cmd = ['help']
       end
 
+      sanitized_cmd = cmd.dup
+      running_command = sanitized_cmd
+        .map { |a| a.is_a?(String) ? a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') : a.inspect }
+        .join(' ')
+
       object = cmd[0..1].join(' ') if object.to_s.empty? || object == 'rcv'
       init_thread(Thread.current, object, direct, &block)
+
+      app.speaker.speak_up(String.new('Running command: '), 0)
+      app.speaker.speak_up("#{running_command}\n\n", 0)
 
       thread_value =
         if direct.to_i > 0
@@ -277,8 +284,6 @@ class Librarian
             cmd.empty? ? p.call : p.call(*cmd)
           end
         else
-          app.speaker.speak_up(String.new('Running command: '), 0)
-          app.speaker.speak_up("#{cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')}\n\n", 0)
           app.args_dispatch.dispatch(MediaLibrarian::APP_NAME, cmd, command_registry.actions, nil, app.template_dir)
         end
 

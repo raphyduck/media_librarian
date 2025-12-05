@@ -1152,6 +1152,8 @@ class Daemon
         genres: normalize_list_param(req.query['genres']),
         imdb_min: req.query['imdb_min'],
         imdb_max: req.query['imdb_max'],
+        imdb_votes_min: req.query['imdb_votes_min'],
+        imdb_votes_max: req.query['imdb_votes_max'],
         language: req.query['language'],
         country: req.query['country'],
         downloaded: req.query['downloaded'],
@@ -1173,12 +1175,14 @@ class Daemon
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
 
       payload = parse_payload(req)
-      CalendarFeed.refresh_feed(
-        days: payload['days'],
-        limit: payload['limit'],
-        sources: payload['sources'],
-      )
-      json_response(res, body: { 'status' => 'ok' })
+      args = ['calendar', 'refresh_feed']
+      args += %w[days limit].filter_map { |key| payload[key] && "--#{key}=#{payload[key]}" }
+
+      sources = payload['sources']
+      args << "--sources=#{Array(sources).join(',')}" if sources
+
+      job = enqueue(args: args, parent_thread: nil)
+      json_response(res, body: { 'job' => job&.to_h })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
     end

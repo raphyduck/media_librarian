@@ -5,6 +5,7 @@ require 'themoviedb'
 require 'imdb_party'
 require 'json'
 require 'httparty'
+require 'trakt'
 
 module MediaLibrarian
   module Services
@@ -21,10 +22,10 @@ module MediaLibrarian
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
-        normalized = collect_entries(date_range, limit, normalize_sources(sources))
+        normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
         speaker.speak_up("Calendar feed collected #{normalized.length} items")
         persist_entries(normalized)
-        speaker.speak_up("Calendar feed persisted #{normalized.length} items")
+        speaker.speak_up("Calendar feed persisted #{normalized.length} items#{summary_suffix(stats)}")
         normalized
       end
 
@@ -38,21 +39,28 @@ module MediaLibrarian
 
       def collect_entries(date_range, limit, sources)
         active_providers = select_providers(sources)
-        return [] if active_providers.empty?
+        return [[], {}] if active_providers.empty?
+
+        stats = Hash.new { |h, k| h[k] = { fetched: 0, retained: 0, location: nil } }
 
         collected = active_providers.flat_map do |provider|
-          fetched = safe_fetch(provider, date_range, limit)
+          fetched = fetch_from_provider(provider, date_range, limit, stats)
           if provider.source == 'imdb' && fetched.empty?
             fallback = fallback_provider('tmdb', active_providers)
-            fetched = safe_fetch(fallback, date_range, limit) if fallback
+            fetched = fetch_from_provider(fallback, date_range, limit, stats) if fallback
           end
           fetched
         end
 
-        collected.map { |entry| normalize_entry(entry, date_range) }
-                 .compact
-                 .uniq { |entry| [entry[:source], entry[:external_id]] }
-                 .first(limit)
+        normalized = collected.map { |entry| normalize_entry(entry, date_range) }
+                               .compact
+                               .uniq { |entry| [entry[:source], entry[:external_id]] }
+                               .first(limit)
+
+        normalized.each { |entry| stats[entry[:source]][:retained] += 1 }
+        log_provider_results(stats)
+        log_entries(normalized)
+        [normalized, stats]
       end
 
       def default_date_range
@@ -83,6 +91,7 @@ module MediaLibrarian
           languages: Array(entry[:languages]).compact.map(&:to_s),
           countries: Array(entry[:countries]).compact.map(&:to_s),
           rating: entry[:rating] ? entry[:rating].to_f : nil,
+          imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
           poster_url: normalize_url(entry[:poster_url] || entry[:poster]),
           backdrop_url: normalize_url(entry[:backdrop_url] || entry[:backdrop]),
           release_date: release_date,
@@ -156,11 +165,47 @@ module MediaLibrarian
         entries
       end
 
+      def log_entries(entries)
+        return unless speaker && entries.any?
+
+        entries.each do |entry|
+          message = {
+            source: entry[:source],
+            external_id: entry[:external_id],
+            ids: entry[:ids],
+            title: entry[:title],
+            imdb_rating: entry[:rating],
+            imdb_votes: entry[:imdb_votes]
+          }.to_json
+
+          speaker.speak_up("Calendar entry #{message}")
+        end
+      rescue StandardError
+        nil
+      end
+
       def safe_fetch(provider, date_range, limit)
-        provider.upcoming(date_range: date_range, limit: limit)
+        provider&.upcoming(date_range: date_range, limit: limit)
       rescue StandardError => e
         speaker.tell_error(e, "Calendar provider failure: #{provider.class.name}") if speaker
         []
+      end
+
+      def fetch_from_provider(provider, date_range, limit, stats)
+        return [] unless provider
+
+        source = provider.source
+        location = provider_location(provider)
+        stats[source][:location] ||= location
+        speaker&.speak_up(
+          "Calendar provider #{source} fetching #{date_range.first}..#{date_range.last} " \
+          "(limit: #{limit}#{location ? ", path: #{location}" : ''})"
+        )
+
+        fetched = safe_fetch(provider, date_range, limit)
+        stats[source][:fetched] += fetched.length
+        stats[source][:location] ||= provider_location(provider)
+        fetched
       end
 
       def select_providers(sources)
@@ -177,6 +222,34 @@ module MediaLibrarian
         providers.find do |provider|
           provider.source == name && !excluded.include?(provider)
         end
+      end
+
+      def log_provider_results(stats)
+        return unless speaker
+
+        stats.each do |source, data|
+          location_suffix = data[:location] ? " (path: #{data[:location]})" : ''
+          speaker.speak_up(
+            "Calendar provider #{source} returned #{data[:fetched]} items and kept #{data[:retained]}#{location_suffix}"
+          )
+        end
+      end
+
+      def provider_location(provider)
+        return unless provider
+
+        %i[last_request_path endpoint url base_url].each do |method|
+          return provider.public_send(method) if provider.respond_to?(method)
+        end
+
+        nil
+      end
+
+      def summary_suffix(stats)
+        return '' if stats.nil? || stats.empty?
+
+        summary = stats.map { |source, data| "#{source}: #{data[:retained]}" }.join(', ')
+        summary.empty? ? '' : " (#{summary})"
       end
 
       def default_providers
@@ -202,15 +275,23 @@ module MediaLibrarian
         end
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
+          client_id = trakt_config['client_id']
+          client_secret = trakt_config['client_secret']
+          fetcher = build_trakt_fetcher(
+            client_id,
+            client_secret,
+            trakt_config['access_token']
+          )
+
+          unless fetcher
+            speaker&.speak_up('Skipping Trakt provider: missing client_id or client_secret')
+          end
+
           providers << TraktCalendarProvider.new(
-            client_id: trakt_config['client_id'],
-            client_secret: trakt_config['client_secret'],
+            client_id: client_id,
+            client_secret: client_secret,
             speaker: speaker,
-            fetcher: build_trakt_fetcher(
-              trakt_config['client_id'],
-              trakt_config['client_secret'],
-              trakt_config['access_token']
-            )
+            fetcher: fetcher
           )
         end
         providers.compact.select(&:available?)
@@ -218,11 +299,19 @@ module MediaLibrarian
 
       def build_imdb_fetcher
         client = ImdbParty::Imdb.new
+        version = (client.class.const_get(:VERSION) rescue nil) || (ImdbParty.const_get(:VERSION) rescue nil)
 
         lambda do |date_range:, limit:|
-          return [] unless client.respond_to?(:calendar)
+          unless client.respond_to?(:calendar)
+            speaker&.speak_up("IMDb calendar unavailable for #{client.class.name} #{version || 'unknown version'}")
+            return []
+          end
 
+          speaker&.speak_up("IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: #{limit})")
           Array(client.calendar(date_range: date_range, limit: limit)).first(limit)
+        rescue StandardError => e
+          speaker&.tell_error(e, 'IMDB calendar fetch failed')
+          []
         end
       end
 
@@ -254,21 +343,29 @@ module MediaLibrarian
         nil
       end
 
-      def build_trakt_fetcher(client_id, client_secret, _token)
+      def build_trakt_fetcher(client_id, client_secret, token)
         return nil if client_id.to_s.empty? || client_secret.to_s.empty?
 
         lambda do |date_range:, limit:|
-          fetch_trakt_entries(date_range: date_range, limit: limit)
+          fetch_trakt_entries(
+            date_range: date_range,
+            limit: limit,
+            client_id: client_id,
+            client_secret: client_secret,
+            token: token
+          )
         end
       end
 
-      def fetch_trakt_entries(date_range:, limit:)
+      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, token: nil)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
         days = [(end_date - start_date).to_i + 1, 1].max
 
-        movies = TraktAgent.calendars__all_movies(start_date, days)
-        shows = TraktAgent.calendars__all_shows(start_date, days)
+        fetcher = trakt_calendar_client(client_id: client_id, client_secret: client_secret, token: token)
+
+        movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
+        shows = TraktAgent.fetch_calendar_entries(:shows, start_date, days, fetcher: fetcher)
 
         parsed_movies = parse_trakt_movies(movies)
         parsed_shows = parse_trakt_shows(shows)
@@ -277,6 +374,22 @@ module MediaLibrarian
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         []
+      end
+
+      def trakt_calendar_client(client_id:, client_secret:, token: nil)
+        Trakt.new(
+          client_id: client_id,
+          client_secret: client_secret,
+          token: normalize_trakt_token(token),
+          speaker: speaker
+        )
+      end
+
+      def normalize_trakt_token(token)
+        return token if token.is_a?(Hash)
+
+        token_value = token.to_s.strip
+        token_value.empty? ? nil : { access_token: token_value }
       end
 
       def parse_trakt_movies(payload)
@@ -329,6 +442,7 @@ module MediaLibrarian
           languages: wrap_string(record['language']),
           countries: wrap_string(record['country']),
           rating: safe_float(record['rating']),
+          imdb_votes: nil,
           poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
           backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
           release_date: release_date,
@@ -362,7 +476,7 @@ module MediaLibrarian
       end
 
       class TmdbCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(api_key:, language: 'en', region: 'US', speaker: nil, client: Tmdb)
           @api_key = api_key.to_s
@@ -438,6 +552,7 @@ module MediaLibrarian
         end
 
         def fetch_page(path, kind, page, params = {})
+          @last_request_path = path
           params = { page: page }.merge(params || {}).compact
 
           if page.to_i == 1
@@ -546,6 +661,7 @@ module MediaLibrarian
             languages: extract_languages(details),
             countries: extract_countries(details),
             rating: details['vote_average'],
+            imdb_votes: details['vote_count'],
             poster_url: image_url(details['poster_path'], 'w342'),
             backdrop_url: image_url(details['backdrop_path'], 'w780'),
             release_date: release_date,
@@ -593,12 +709,13 @@ module MediaLibrarian
       end
 
       class ImdbCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(speaker: nil, fetcher: nil)
           @speaker = speaker
           @fetcher = fetcher
           @source = 'imdb'
+          @last_request_path = nil
         end
 
         def available?
@@ -634,13 +751,14 @@ module MediaLibrarian
             media_type: imdb_media_type(record),
             genres: imdb_list(record, :genres, :genre, %i[genres genres]),
             languages: imdb_list(record, :languages, :spoken_languages, :spokenLanguages),
-            countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
-            rating: imdb_rating(record),
-            poster_url: imdb_image(record),
-            backdrop_url: imdb_image(record, :backdrop),
-            release_date: imdb_release_date(record),
-            ids: imdb_ids(imdb_id)
-          }
+          countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
+          rating: imdb_rating(record),
+          imdb_votes: imdb_votes(record),
+          poster_url: imdb_image(record),
+          backdrop_url: imdb_image(record, :backdrop),
+          release_date: imdb_release_date(record),
+          ids: imdb_ids(imdb_id)
+        }
         end
 
         def imdb_release_date(record)
@@ -703,6 +821,13 @@ module MediaLibrarian
           nil
         end
 
+        def imdb_votes(record)
+          votes = record_value(record, :votes, %i[ratings_summary vote_count], %i[ratingsSummary voteCount])
+          return if votes.nil?
+
+          votes.to_i
+        end
+
         def record_value(record, *keys)
           keys.compact.each do |key|
             value =
@@ -755,6 +880,7 @@ module MediaLibrarian
             languages: Array(entry[:languages]).compact.map(&:to_s),
             countries: Array(entry[:countries]).compact.map(&:to_s),
             rating: entry[:rating] ? entry[:rating].to_f : nil,
+            imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
             poster_url: imdb_image(entry, :poster_url),
             backdrop_url: imdb_image(entry, :backdrop_url),
             release_date: release_date
@@ -771,7 +897,7 @@ module MediaLibrarian
       end
 
       class TraktCalendarProvider
-        attr_reader :source
+        attr_reader :source, :last_request_path
 
         def initialize(client_id:, client_secret:, speaker: nil, fetcher: nil)
           @client_id = client_id.to_s
@@ -779,6 +905,7 @@ module MediaLibrarian
           @speaker = speaker
           @fetcher = fetcher
           @source = 'trakt'
+          @last_request_path = nil
         end
 
         def available?
@@ -796,7 +923,10 @@ module MediaLibrarian
         private
 
         def fetch_entries(date_range, limit)
-          return [] unless @fetcher
+          unless @fetcher
+            @speaker&.speak_up('Trakt fetch skipped: no fetcher')
+            return []
+          end
 
           @fetcher.call(date_range: date_range, limit: limit)
         rescue StandardError => e
@@ -818,15 +948,16 @@ module MediaLibrarian
             external_id: external_id,
             title: title,
             media_type: media_type,
-            genres: Array(entry[:genres]).compact.map(&:to_s),
-            languages: Array(entry[:languages]).compact.map(&:to_s),
-            countries: Array(entry[:countries]).compact.map(&:to_s),
-            rating: entry[:rating] ? entry[:rating].to_f : nil,
-            poster_url: entry[:poster_url],
-            backdrop_url: entry[:backdrop_url],
-            release_date: release_date,
-            ids: normalize_ids(entry[:ids] || entry['ids'])
-          }
+          genres: Array(entry[:genres]).compact.map(&:to_s),
+          languages: Array(entry[:languages]).compact.map(&:to_s),
+          countries: Array(entry[:countries]).compact.map(&:to_s),
+          rating: entry[:rating] ? entry[:rating].to_f : nil,
+          imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
+          poster_url: entry[:poster_url],
+          backdrop_url: entry[:backdrop_url],
+          release_date: release_date,
+          ids: normalize_ids(entry[:ids] || entry['ids'])
+        }
         end
 
         def parse_date(value)
