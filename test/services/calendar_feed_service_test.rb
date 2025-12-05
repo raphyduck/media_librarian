@@ -226,7 +226,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
   end
 
-  def test_imdb_provider_fetches_via_imdb_party_client
+  def test_imdb_provider_fetches_via_imdb_api_helper
     movie_date = Date.today + 1
     show_date = Date.today + 2
     date_range = Date.today..(Date.today + 5)
@@ -253,18 +253,22 @@ class CalendarFeedServiceTest < Minitest::Test
       }
     ]
 
-    client = Object.new
-    client.define_singleton_method(:calendar_calls) { @calendar_calls ||= [] }
-    client.define_singleton_method(:respond_to?) do |method_name, include_all = false|
-      method_name == :calendar || super(method_name, include_all)
-    end
-    client.define_singleton_method(:calendar) do |date_range:, limit:|
-      calendar_calls << { date_range: date_range, limit: limit }
-      calendar_items
-    end
+    helper = Class.new do
+      attr_reader :calls
 
-    ImdbParty::Imdb.stub :new, client do
-      config = { 'imdb' => {} }
+      def initialize(calendar_items)
+        @calendar_items = calendar_items
+        @calls = []
+      end
+
+      def calendar(date_range:, limit:)
+        @calls << { date_range: date_range, limit: limit }
+        @calendar_items
+      end
+    end.new(calendar_items)
+
+    ImdbApi.stub :new, ->(**_) { helper } do
+      config = { 'imdb' => { 'base_url' => 'https://example.test' } }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
       assert_includes service.send(:providers).map(&:source), 'imdb'
@@ -272,7 +276,7 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
     end
 
-    assert_equal [{ date_range: date_range, limit: 5 }], client.calendar_calls
+    assert_equal [{ date_range: date_range, limit: 5 }], helper.calls
     rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:external_id] }
     assert_equal 2, rows.count
     assert_equal 'movie', rows.first[:media_type]
@@ -287,13 +291,51 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 6_789, rows.last[:imdb_votes]
   end
 
+  def test_imdb_calendar_fetches_past_and_upcoming_titles
+    past_date = Date.today - 1
+    future_date = Date.today + 2
+    date_range = past_date..future_date
+
+    helper = Class.new do
+      attr_reader :calls
+
+      def initialize(past_date, future_date)
+        @past_date = past_date
+        @future_date = future_date
+        @calls = []
+      end
+
+      def calendar(date_range:, limit:)
+        @calls << { date_range: date_range, limit: limit }
+        [
+          { 'id' => 'tt0100001', 'titleText' => { 'text' => 'Past Title' }, 'releaseDate' => @past_date },
+          { 'id' => 'tt0200002', 'titleText' => { 'text' => 'Future Title' }, 'releaseDate' => @future_date }
+        ]
+      end
+    end.new(past_date, future_date)
+
+    ImdbApi.stub :new, ->(**_) { helper } do
+      config = { 'imdb' => {} }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+
+      service.refresh(date_range: date_range, limit: 10, sources: ['imdb'])
+    end
+
+    assert_equal [{ date_range: date_range, limit: 10 }], helper.calls
+    rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:title] }
+    assert_equal ['Future Title', 'Past Title'], rows.map { |row| row[:title] }
+  end
+
   def test_imdb_fetcher_logs_missing_calendar_support
     date_range = Date.today..(Date.today + 1)
-    client_class = Class.new
-    client_class.const_set(:VERSION, '9.9.9')
-    client = client_class.new
+    helper = Class.new do
+      def calendar(**_args)
+        []
+      end
+    end
 
-    ImdbParty::Imdb.stub :new, client do
+    ImdbApi.stub :new, ->(**_) { helper.new } do
       config = { 'imdb' => {} }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
@@ -301,21 +343,18 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
     end
 
-    assert_includes @speaker.messages,
-                    "IMDb calendar unavailable for #{client.class.name} #{client_class::VERSION}"
+    assert_includes @speaker.messages, "IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: 5)"
   end
 
   def test_imdb_fetcher_logs_calls_and_errors
     date_range = Date.today..(Date.today + 3)
-    client = Object.new
-    client.define_singleton_method(:respond_to?) do |method_name, include_all = false|
-      method_name == :calendar || super(method_name, include_all)
-    end
-    client.define_singleton_method(:calendar) do |**_args|
-      raise StandardError, 'calendar exploded'
-    end
+    helper = Class.new do
+      def calendar(**_args)
+        raise StandardError, 'calendar exploded'
+      end
+    end.new
 
-    ImdbParty::Imdb.stub :new, client do
+    ImdbApi.stub :new, ->(**_) { helper } do
       config = { 'imdb' => {} }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)

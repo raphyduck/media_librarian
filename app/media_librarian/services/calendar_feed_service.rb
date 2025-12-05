@@ -2,9 +2,9 @@
 
 require 'date'
 require 'themoviedb'
-require 'imdb_party'
 require 'json'
 require 'httparty'
+require_relative '../../../lib/imdb_api'
 require 'trakt'
 
 module MediaLibrarian
@@ -267,12 +267,7 @@ module MediaLibrarian
           )
         end
         imdb_config = config['imdb']
-        if imdb_provider_enabled?(imdb_config)
-          providers << ImdbCalendarProvider.new(
-            speaker: speaker,
-            fetcher: build_imdb_fetcher
-          )
-        end
+        providers << imdb_provider(imdb_config) if imdb_provider_enabled?(imdb_config)
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
           client_id = trakt_config['client_id']
@@ -297,18 +292,23 @@ module MediaLibrarian
         providers.compact.select(&:available?)
       end
 
-      def build_imdb_fetcher
-        client = ImdbParty::Imdb.new
-        version = (client.class.const_get(:VERSION) rescue nil) || (ImdbParty.const_get(:VERSION) rescue nil)
+      def imdb_provider(config)
+        ImdbCalendarProvider.new(
+          speaker: speaker,
+          fetcher: build_imdb_fetcher(config)
+        )
+      end
+
+      def build_imdb_fetcher(config)
+        api = ImdbApi.new(
+          base_url: config_value(config, 'base_url'),
+          region: config_value(config, 'region'),
+          api_key: config_value(config, 'api_key')
+        )
 
         lambda do |date_range:, limit:|
-          unless client.respond_to?(:calendar)
-            speaker&.speak_up("IMDb calendar unavailable for #{client.class.name} #{version || 'unknown version'}")
-            return []
-          end
-
           speaker&.speak_up("IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: #{limit})")
-          Array(client.calendar(date_range: date_range, limit: limit)).first(limit)
+          api.calendar(date_range: date_range, limit: limit)
         rescue StandardError => e
           speaker&.tell_error(e, 'IMDB calendar fetch failed')
           []
@@ -324,6 +324,12 @@ module MediaLibrarian
         else
           !!config
         end
+      end
+
+      def config_value(config, key)
+        return nil unless config.is_a?(Hash)
+
+        config[key]
       end
 
       def imdb_media_type(value)
@@ -780,7 +786,7 @@ module MediaLibrarian
         end
 
         def imdb_title(record)
-          record_value(
+          value = record_value(
             record,
             :title,
             :titleText,
@@ -790,6 +796,10 @@ module MediaLibrarian
             %i[originalTitleText text],
             %i[original_title_text text]
           )
+
+          return value[:text] || value['text'] if value.is_a?(Hash)
+
+          value
         end
 
         def imdb_media_type(record)
