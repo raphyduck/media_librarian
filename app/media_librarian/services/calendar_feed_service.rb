@@ -290,11 +290,19 @@ module MediaLibrarian
 
       def build_imdb_fetcher
         client = ImdbParty::Imdb.new
+        version = (client.class.const_get(:VERSION) rescue nil) || (ImdbParty.const_get(:VERSION) rescue nil)
 
         lambda do |date_range:, limit:|
-          return [] unless client.respond_to?(:calendar)
+          unless client.respond_to?(:calendar)
+            speaker&.speak_up("IMDb calendar unavailable for #{client.class.name} #{version || 'unknown version'}")
+            return []
+          end
 
+          speaker&.speak_up("IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: #{limit})")
           Array(client.calendar(date_range: date_range, limit: limit)).first(limit)
+        rescue StandardError => e
+          speaker&.tell_error(e, 'IMDB calendar fetch failed')
+          []
         end
       end
 
