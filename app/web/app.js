@@ -14,6 +14,8 @@ const state = {
   calendar: {
     view: 'week',
     entries: [],
+    availableGenres: [],
+    loadingGenres: false,
     filters: {
       type: '',
       genres: [],
@@ -612,6 +614,9 @@ function setAuthenticated(authenticated, username = '') {
     loginForm.classList.remove('hidden');
     status.hidden = true;
     usernameLabel.textContent = '';
+    state.calendar.entries = [];
+    state.calendar.availableGenres = [];
+    state.calendar.filters.genres = [];
     stopAutoRefresh();
     setActiveTab('jobs', { skipLoad: true });
     resetEditors();
@@ -1014,6 +1019,14 @@ function extractGenres(entry) {
     .filter(Boolean);
 }
 
+function collectGenres(entries = []) {
+  const set = new Set();
+  entries.forEach((entry) => {
+    extractGenres(entry).forEach((genre) => set.add(genre));
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
 function resolveCalendarDate(entry) {
   const raw = pickEntryValue(entry, [
     'date',
@@ -1030,36 +1043,30 @@ function resolveCalendarDate(entry) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function updateCalendarGenres(entries) {
+function updateCalendarGenres() {
   const select = document.getElementById('calendar-genres');
   if (!select) {
     return;
   }
   const previous = new Set(state.calendar.filters.genres);
-  const available = new Set();
-  entries.forEach((entry) => {
-    extractGenres(entry).forEach((genre) => available.add(genre));
-  });
-  if (!available.size) {
-    if (!select.options.length) {
-      const option = document.createElement('option');
-      option.disabled = true;
-      option.value = '';
-      option.textContent = 'Aucun genre détecté';
-      select.appendChild(option);
-    }
+  const available = state.calendar.availableGenres || [];
+  if (!available.length) {
+    select.innerHTML = '';
+    const option = document.createElement('option');
+    option.disabled = true;
+    option.value = '';
+    option.textContent = 'Aucun genre détecté';
+    select.appendChild(option);
     return;
   }
   select.innerHTML = '';
-  Array.from(available)
-    .sort((a, b) => a.localeCompare(b))
-    .forEach((genre) => {
-      const option = document.createElement('option');
-      option.value = genre;
-      option.textContent = genre;
-      option.selected = previous.has(genre);
-      select.appendChild(option);
-    });
+  available.forEach((genre) => {
+    const option = document.createElement('option');
+    option.value = genre;
+    option.textContent = genre;
+    option.selected = previous.has(genre);
+    select.appendChild(option);
+  });
 }
 
 function readCalendarFilters() {
@@ -1312,7 +1319,7 @@ function renderCalendar(data = null) {
   }
   const entries = normalizeCalendarEntries(data ?? state.calendar.entries ?? []);
   state.calendar.entries = entries;
-  updateCalendarGenres(entries);
+  updateCalendarGenres();
   const filters = readCalendarFilters();
   const filtered = entries.filter((entry) => entryMatchesFilters(entry, filters));
   if (!filtered.length) {
@@ -1447,9 +1454,33 @@ function renderCalendar(data = null) {
   container.replaceChildren(...fragments);
 }
 
+async function loadCalendarGenres() {
+  if (!state.authenticated || state.calendar.loadingGenres) {
+    return;
+  }
+  state.calendar.loadingGenres = true;
+  try {
+    const data = await fetchJson('/calendar');
+    const entries = normalizeCalendarEntries(data || []);
+    state.calendar.availableGenres = collectGenres(entries);
+    updateCalendarGenres();
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  } finally {
+    state.calendar.loadingGenres = false;
+  }
+}
+
 async function loadCalendar(options = {}) {
   if (!state.authenticated) {
     return;
+  }
+  const needsGenres = options.refreshGenres
+    || (!state.calendar.availableGenres.length && !state.calendar.loadingGenres);
+  if (needsGenres) {
+    loadCalendarGenres();
   }
   const filters = readCalendarFilters();
   const range = resolveCalendarWindow(options);
@@ -1487,7 +1518,7 @@ async function refreshCalendarFeed() {
   } catch (error) {
     showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
   } finally {
-    loadCalendar({ preserveFilters: true });
+    loadCalendar({ preserveFilters: true, refreshGenres: true });
   }
 }
 
