@@ -457,10 +457,13 @@ class CalendarFeedServiceTest < Minitest::Test
       nil
     ]
 
-    assert_empty service.send(:parse_trakt_movies, payload)
+    entries, error = service.send(:parse_trakt_movies, payload)
+
+    assert_empty entries
+    assert_equal 'Invalid Trakt payload format', error
 
     error = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
-    assert_equal 'Calendar Trakt movies payload', error&.last
+    assert_includes error&.last.to_s, 'Calendar Trakt movies payload'
   end
 
   def test_trakt_shows_skip_invalid_show_records
@@ -472,7 +475,34 @@ class CalendarFeedServiceTest < Minitest::Test
       }
     ]
 
-    assert_empty service.send(:parse_trakt_shows, payload)
+    entries, error = service.send(:parse_trakt_shows, payload)
+
+    assert_empty entries
+    assert_nil error
+  end
+
+  def test_trakt_payload_missing_is_reported
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    entries, error = service.send(:parse_trakt_movies, nil)
+
+    assert_empty entries
+    assert_equal 'Trakt payload missing or empty', error
+
+    error_message = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
+    assert_includes error_message&.last.to_s, 'Calendar Trakt movies payload'
+  end
+
+  def test_trakt_provider_surfaces_validation_errors
+    provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
+      client_id: 'id', client_secret: 'secret', speaker: @speaker,
+      fetcher: ->(**_) { { entries: [], errors: ['Trakt payload missing or empty'] } }
+    )
+
+    provider.send(:fetch_entries, Date.today..Date.today, 5)
+
+    error_message = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
+    assert_includes error_message&.last.to_s, 'Calendar Trakt fetch failed'
   end
 
   def test_tmdb_fetch_page_handles_movies_and_shows_without_argument_errors
