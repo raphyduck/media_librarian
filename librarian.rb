@@ -259,7 +259,9 @@ class Librarian
       end
 
       sanitized_cmd = cmd.dup
-      running_command = sanitized_cmd.map { |a| a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') }.join(' ')
+      running_command = sanitized_cmd
+        .map { |a| a.is_a?(String) ? a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') : a.inspect }
+        .join(' ')
 
       object = cmd[0..1].join(' ') if object.to_s.empty? || object == 'rcv'
       init_thread(Thread.current, object, direct, &block)
