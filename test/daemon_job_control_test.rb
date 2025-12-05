@@ -6,6 +6,7 @@ require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../librarian'
 require_relative '../lib/simple_speaker'
+require_relative '../app/report'
 
 class DaemonJobControlTest < Minitest::Test
   class BlockingArgsDispatch < TestSupport::Fakes::ArgsDispatch
@@ -420,5 +421,47 @@ class DaemonJobControlTest < Minitest::Test
     assert_equal [['scheduled', 'scheduled-job']], sent
   ensure
     Daemon.send(:cleanup)
+  end
+
+  def test_daemon_emails_include_command_lines_for_direct_jobs
+    reset_librarian_state!
+    args_dispatch = TestSupport::Fakes::ArgsDispatch.new
+    environment = build_stubbed_environment(args_dispatch: args_dispatch, speaker: SimpleSpeaker::Speaker.new)
+    MediaLibrarian.application = environment.application
+    Daemon.configure(app: environment.application)
+    Librarian.new(container: environment.container, args: [])
+    Daemon.send(:boot_framework_state)
+
+    email_records = []
+    email_job_defined = Object.const_defined?(:EmailJob)
+    Object.const_set(:EmailJob, Class.new do
+      def self.perform(*)
+        thread = Thread.current
+        thread[:email_msg] << 'Job finished'
+        thread[:send_email] = 1
+      end
+    end) unless email_job_defined
+
+    Env.stub(:email_notif?, ->(*) { true }) do
+      Report.stub(:sent_out, ->(subject, thread, *rest) {
+        email_records << { subject: subject, email_msg: thread[:email_msg].dup }
+      }) do
+        job = Daemon.enqueue(args: ['EmailJob', 'perform'], internal: 1, parent_thread: nil)
+        job.future.value!
+      end
+    end
+
+    refute_empty email_records, 'expected daemon job to trigger email delivery'
+    email_body = email_records.first[:email_msg]
+    assert_includes email_body, 'Running command:'
+    assert_includes email_body, 'EmailJob perform'
+  ensure
+    Object.send(:remove_const, :EmailJob) unless email_job_defined
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    environment&.cleanup
+    MediaLibrarian.application = nil
   end
 end
