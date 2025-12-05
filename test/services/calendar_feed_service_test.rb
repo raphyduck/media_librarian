@@ -156,7 +156,7 @@ class CalendarFeedServiceTest < Minitest::Test
     config = {
       'tmdb' => { 'api_key' => '123', 'language' => 'en', 'region' => 'US' },
       'imdb' => {},
-      'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret' }
+      'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' }
     }
     app = Struct.new(:config, :db).new(config, @db)
 
@@ -208,7 +208,7 @@ class CalendarFeedServiceTest < Minitest::Test
       fetcher: ->(**_) { [{ external_id: 'imdb-1', title: 'IMDb Title', media_type: 'movie', release_date: date }] }
     )
     trakt_provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
-      client_id: 'id', client_secret: 'secret', speaker: @speaker,
+      account_id: 'acc', client_id: 'id', client_secret: 'secret', speaker: @speaker,
       fetcher: ->(**_) { [{ external_id: 'trakt-1', title: 'Trakt Title', media_type: 'show', release_date: date }] }
     )
 
@@ -448,11 +448,12 @@ class CalendarFeedServiceTest < Minitest::Test
     end.new(movie_payload, show_payload)
 
     fake_fetcher_class = Class.new do
-      attr_reader :token
+      attr_reader :token, :account_id
 
-      def initialize(token, calendars)
+      def initialize(token, calendars, account_id)
         @token = token
         @calendars = calendars
+        @account_id = account_id
       end
 
       def calendars
@@ -460,8 +461,8 @@ class CalendarFeedServiceTest < Minitest::Test
       end
     end
 
-    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars) }) do
-      config = { 'trakt' => { 'client_id' => 'id', 'client_secret' => 'secret', 'access_token' => 'tok' } }
+    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars, opts[:account_id]) }) do
+      config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret', 'access_token' => 'tok' } }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
 
@@ -470,6 +471,7 @@ class CalendarFeedServiceTest < Minitest::Test
 
     assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendars.calls
     assert_equal({ access_token: 'tok' }, fetcher_instance.token)
+    assert_equal 'acc', fetcher_instance.account_id
     rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
     assert_equal 2, rows.count
     movie = rows.find { |row| row[:media_type] == 'movie' }
@@ -534,7 +536,7 @@ class CalendarFeedServiceTest < Minitest::Test
 
   def test_trakt_provider_surfaces_validation_errors
     provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
-      client_id: 'id', client_secret: 'secret', speaker: @speaker,
+      account_id: 'acc', client_id: 'id', client_secret: 'secret', speaker: @speaker,
       fetcher: ->(**_) { { entries: [], errors: ['Trakt payload missing or empty'] } }
     )
 
@@ -542,6 +544,19 @@ class CalendarFeedServiceTest < Minitest::Test
 
     error_message = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
     assert_includes error_message&.last.to_s, 'Calendar Trakt fetch failed'
+  end
+
+  def test_trakt_provider_requires_account_id
+    provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
+      account_id: '', client_id: 'id', client_secret: 'secret', speaker: @speaker,
+      fetcher: ->(**_) { { entries: [], errors: [] } }
+    )
+
+    result = provider.send(:fetch_entries, Date.today..Date.today, 5)
+
+    assert_empty result
+    error_message = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
+    assert_includes error_message&.last.to_s, 'Trakt account_id is required'
   end
 
   def test_tmdb_fetch_page_handles_movies_and_shows_without_argument_errors
