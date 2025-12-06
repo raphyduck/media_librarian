@@ -40,7 +40,7 @@ module MediaLibrarian
                   else
                     options
                   end
-        delegate&.tell_error(error, context, in_mail, *args)
+        delegate&.tell_error(error, context, { in_mail: in_mail }, *args)
       end
 
       private
