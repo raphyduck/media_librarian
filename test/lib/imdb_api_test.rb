@@ -11,23 +11,30 @@ class ImdbApiTest < Minitest::Test
 
   def test_calendar_returns_entries_from_fixture_response
     date = Date.new(2024, 12, 5)
-    api = ImdbApi.new(http_client: fake_client, api_key: 'sample-key')
+    client = fake_client
+    api = ImdbApi.new(http_client: client, api_key: 'sample-key')
 
     entries = api.calendar(date_range: date..date)
 
     refute_empty entries
     assert_equal 'Sample Calendar Movie', entries.first['title']
     assert_equal '2024-12-05', entries.first['releaseDate']
+    assert_equal(
+      "#{ImdbApi::DEFAULT_BASE_URL}/imdb-api/v1/calendar",
+      client.received_path
+    )
   end
 
   private
 
   def fake_client
-    body = File.read(FIXTURE_PATH)
-
     Class.new do
-      define_method(:get) do |_path, **_opts|
-        Struct.new(:code, :body).new(200, body)
+      attr_reader :received_path, :received_options
+
+      define_method(:get) do |path, **opts|
+        @received_path = path
+        @received_options = opts
+        Struct.new(:code, :body).new(200, File.read(ImdbApiTest::FIXTURE_PATH))
       end
     end.new
   end

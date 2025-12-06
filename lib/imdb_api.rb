@@ -35,7 +35,7 @@ class ImdbApi
   attr_reader :http_client, :base_url, :region, :api_key, :speaker
 
   def fetch_calendar_for(date)
-    path = "#{base_url}/imdb-api/calendar"
+    path = "#{base_url}/imdb-api/v1/calendar"
     response = http_client.get(
       path,
       query: { date: format_date(date), region: region },
