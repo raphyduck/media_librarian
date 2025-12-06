@@ -27,6 +27,7 @@ gem 'themoviedb', :require => false
 gem 'torznab-client', :git => 'https://github.com/raphyduck/torznab-client', branch: "master", :require => false
 gem 'trakt', :git => 'https://github.com/raphyduck/trakt.git', :require => false
 gem 'tvmaze', :git => 'https://github.com/raphyduck/tvmaze.git', :require => false
+gem 'tvdb_party', require: false
 gem 'unrar', :git => 'https://github.com/raphyduck/unrar.git', :require => false
 gem 'xbmc-client', :git => 'https://github.com/raphyduck/xbmc-client.git', :require => false
 gem 'zeitwerk'
