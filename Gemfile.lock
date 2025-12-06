@@ -36,9 +36,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
-  revision: b5fc5c209e65798e938ca415eb0b91123b75ec8c
+  revision: b3b2932eb6ab42102bb14a592b1b9cfe28195ff4
   specs:
-    trakt (0.1.9.6)
+    trakt (0.1.9.7)
       httparty
 
 GIT
@@ -89,7 +89,7 @@ GEM
     bcrypt (3.1.20)
     benchmark (0.4.1)
     bencode (1.0.0)
-    bigdecimal (3.2.2)
+    bigdecimal (3.3.1)
     concurrent-ruby (1.1.10)
     connection_pool (2.5.3)
     crass (1.0.6)
@@ -115,7 +115,7 @@ GEM
       transproc (~> 1.0)
     http-cookie (1.0.8)
       domain_name (~> 0.5)
-    httparty (0.23.1)
+    httparty (0.23.2)
       csv
       mini_mime (>= 1.0.0)
       multi_xml (>= 0.5.2)
@@ -253,4 +253,4 @@ RUBY VERSION
    ruby 3.2.3p157
 
 BUNDLED WITH
-   2.4.10
+   2.4.19
