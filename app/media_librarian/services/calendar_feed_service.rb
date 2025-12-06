@@ -5,7 +5,7 @@ require 'time'
 require 'themoviedb'
 require 'json'
 require 'httparty'
-require_relative '../../../lib/imdb_api'
+require_relative '../../../lib/omdb_api'
 require 'trakt'
 
 module MediaLibrarian
@@ -47,10 +47,6 @@ module MediaLibrarian
 
         collected = active_providers.flat_map do |provider|
           fetched = fetch_from_provider(provider, date_range, limit, stats)
-          if provider.source == 'imdb' && fetched.empty?
-            fallback = fallback_provider('tmdb', active_providers)
-            fetched = fetch_from_provider(fallback, date_range, limit, stats) if fallback
-          end
           fetched
         end
 
@@ -268,8 +264,8 @@ module MediaLibrarian
             speaker: speaker
           )
         end
-        imdb_config = config['imdb']
-        providers << imdb_provider(imdb_config) if imdb_provider_enabled?(imdb_config)
+        omdb_config = config['omdb']
+        providers << omdb_provider(omdb_config) if omdb_config.is_a?(Hash)
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
           account_id = trakt_config['account_id']
@@ -298,54 +294,21 @@ module MediaLibrarian
         providers.compact.select(&:available?)
       end
 
-      def imdb_provider(config)
-        ImdbCalendarProvider.new(
+      def omdb_provider(config)
+        api_key = config_value(config, 'api_key').to_s
+        return if api_key.empty?
+
+        OmdbCalendarProvider.new(
           speaker: speaker,
-          fetcher: build_imdb_fetcher(config)
+          api_key: api_key,
+          base_url: config_value(config, 'base_url')
         )
-      end
-
-      def build_imdb_fetcher(config)
-        api = ImdbApi.new(
-          base_url: config_value(config, 'base_url'),
-          region: config_value(config, 'region'),
-          api_key: config_value(config, 'api_key'),
-          speaker: speaker
-        )
-
-        lambda do |date_range:, limit:|
-          speaker&.speak_up("IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: #{limit})")
-          api.calendar(date_range: date_range, limit: limit)
-        rescue StandardError => e
-          speaker&.tell_error(e, 'IMDB calendar fetch failed')
-          []
-        end
-      end
-
-      def imdb_provider_enabled?(config)
-        case config
-        when nil
-          true
-        when Hash
-          config.fetch('enabled', true)
-        else
-          !!config
-        end
       end
 
       def config_value(config, key)
         return nil unless config.is_a?(Hash)
 
         config[key]
-      end
-
-      def imdb_media_type(value)
-        case value.to_s.strip.downcase
-        when 'tv series', 'tv mini-series', 'tv episode', 'tv', 'show', 'tv show', 'series'
-          'show'
-        else
-          'movie'
-        end
       end
 
       def safe_float(value)
@@ -825,195 +788,110 @@ module MediaLibrarian
           @speaker&.tell_error(error, message)
         end
       end
-
-      class ImdbCalendarProvider
+      class OmdbCalendarProvider
         attr_reader :source, :last_request_path
 
-        def initialize(speaker: nil, fetcher: nil)
+        def initialize(api_key:, base_url: nil, speaker: nil, fetcher: nil)
+          @api_key = api_key.to_s
+          @base_url = base_url
           @speaker = speaker
           @fetcher = fetcher
-          @source = 'imdb'
+          @source = 'omdb'
           @last_request_path = nil
         end
 
         def available?
-          !@fetcher.nil?
+          !@api_key.empty? || !@fetcher.nil?
         end
 
         def upcoming(date_range:, limit: 100)
           return [] unless available?
 
-          fetch_entries(date_range, limit)
-            .filter_map { |entry| normalize_entry(entry, date_range) }
-            .first(limit)
+          fetch_entries(date_range, limit).first(limit)
         end
 
         private
 
         def fetch_entries(date_range, limit)
-          return [] unless @fetcher
+          fetcher = ensure_fetcher
+          entries = Array(fetcher.call(date_range: date_range, limit: limit))
+          @last_request_path = fetcher.respond_to?(:last_request_path) ? fetcher.last_request_path : api_last_request_path(fetcher)
 
-          entries =
-            Array(@fetcher.call(date_range: date_range, limit: limit))
-              .filter_map { |record| build_entry(record) }
-
-          if entries.empty?
+          normalized = entries.filter_map { |entry| normalize_entry(entry, date_range) }
+          if normalized.empty?
             @speaker&.speak_up("Calendar provider #{source} returned no entries for #{date_range.first}..#{date_range.last}")
           end
 
-          entries
+          normalized
         rescue StandardError => e
-          @speaker&.tell_error(e, 'Calendar IMDb fetch failed')
+          @speaker&.tell_error(e, 'Calendar OMDb fetch failed')
           []
         end
 
-        def build_entry(record)
-          imdb_id = imdb_external_id(record)
+        def ensure_fetcher
+          return @fetcher if @fetcher
 
-          {
-            external_id: imdb_id,
-            title: imdb_title(record),
-            media_type: imdb_media_type(record),
-            genres: imdb_list(record, :genres, :genre, %i[genres genres]),
-            languages: imdb_list(record, :languages, :spoken_languages, :spokenLanguages),
-          countries: imdb_list(record, :countries, :countries_of_origin, :countriesOfOrigin),
-          rating: imdb_rating(record),
-          imdb_votes: imdb_votes(record),
-          poster_url: imdb_image(record),
-          backdrop_url: imdb_image(record, :backdrop),
-          release_date: imdb_release_date(record),
-          ids: imdb_ids(imdb_id)
-        }
-        end
-
-        def imdb_release_date(record)
-          value = record_value(record, :release_date, :releaseDate, %i[release date])
-          parse_date(value)
-        rescue StandardError
-          nil
-        end
-
-        def imdb_external_id(record)
-          raw = record_value(record, :external_id, :imdb_id, :id, %i[title id])
-          return raw unless raw.is_a?(String)
-
-          raw[%r{tt\d+}] || raw
-        end
-
-        def imdb_ids(imdb_id)
-          imdb_id.to_s.empty? ? {} : { 'imdb' => imdb_id }
-        end
-
-        def imdb_title(record)
-          value = record_value(
-            record,
-            :title,
-            :titleText,
-            %i[titleText text],
-            %i[title_text text],
-            :originalTitleText,
-            %i[originalTitleText text],
-            %i[original_title_text text]
-          )
-
-          return value[:text] || value['text'] if value.is_a?(Hash)
-
-          value
-        end
-
-        def imdb_media_type(record)
-          type = record_value(record, :media_type, :type, :title_type, %i[titleType id], %i[titleType text])
-          normalized = type.to_s.downcase
-          return 'movie' if normalized.include?('movie') || normalized.include?('film')
-          return 'show' if normalized.include?('tv') || normalized.include?('series') || normalized.include?('show')
-
-          normalized.empty? ? 'movie' : normalized
-        end
-
-        def imdb_list(record, *keys)
-          value = record_value(record, *keys)
-          value = value['genres'] || value[:genres] if value.is_a?(Hash) && (value.key?('genres') || value.key?(:genres))
-          Array(value).filter_map do |entry|
-            case entry
-            when Hash
-              entry[:text] || entry['text'] || entry[:value] || entry['value'] || entry[:id] || entry['id'] || entry.dig(:name, :text) || entry.dig('name', 'text')
-            else
-              entry
-            end
-          end.map { |item| item.to_s.strip }.reject(&:empty?)
-        end
-
-        def imdb_rating(record)
-          rating = record_value(record, :rating, %i[ratings_summary aggregate_rating], %i[ratingsSummary aggregateRating])
-          return rating.to_f if rating
-
-          nil
-        end
-
-        def imdb_votes(record)
-          votes = record_value(record, :votes, %i[ratings_summary vote_count], %i[ratingsSummary voteCount])
-          return if votes.nil?
-
-          votes.to_i
-        end
-
-        def record_value(record, *keys)
-          keys.compact.each do |key|
-            value =
-              if key.is_a?(Array)
-                key.reduce(record) { |memo, part| memo_value(memo, part) }
-              else
-                memo_value(record, key)
-              end
-
-            return value unless value.nil?
-          end
-
-          nil
-        end
-
-        def memo_value(record, key)
-          return unless record
-
-          if record.is_a?(Hash)
-            record[key] || record[key.to_s] || record[key.to_sym]
-          elsif record.respond_to?(key)
-            record.public_send(key)
+          api = OmdbApi.new(api_key: @api_key, base_url: @base_url, speaker: @speaker)
+          @api_client = api
+          @fetcher = lambda do |date_range:, limit:|
+            api.calendar(date_range: date_range, limit: limit)
           end
         end
 
-        def imdb_image(record, key = nil)
-          value = record_value(record, key || :primaryImage, :primary_image, %i[primaryImage url], %i[primary_image url],
-                                %i[image url], :image)
-          url = value.is_a?(Hash) ? value[:url] || value['url'] : value
-          url = url[:url] || url['url'] if url.is_a?(Hash)
-          url = url.to_s.strip
-          url.empty? ? nil : url
+        def api_last_request_path(fetcher)
+          return unless defined?(@api_client)
+
+          @api_client.last_request_path if fetcher && @api_client.respond_to?(:last_request_path)
         end
 
         def normalize_entry(entry, date_range)
-          release_date = parse_date(entry[:release_date])
+          release_date = parse_date(entry[:release_date] || entry['release_date'] || entry['Released'] || entry['DVD'])
           return unless release_date && date_range.cover?(release_date)
 
-          external_id = entry[:external_id].to_s.strip
-          title = entry[:title].to_s.strip
-          media_type = entry[:media_type].to_s.strip
-          return if external_id.empty? || title.empty? || media_type.empty?
+          external_id = fetch_value(entry, :external_id, :imdbID, :imdb_id)
+          title = fetch_value(entry, :title, :Title)
+          media_type = normalize_type(fetch_value(entry, :media_type, :Type))
+          return if external_id.to_s.strip.empty? || title.to_s.strip.empty? || media_type.empty?
 
           {
             source: source,
-            external_id: external_id,
-            title: title,
+            external_id: external_id.to_s,
+            title: title.to_s,
             media_type: media_type,
-            genres: Array(entry[:genres]).compact.map(&:to_s),
-            languages: Array(entry[:languages]).compact.map(&:to_s),
-            countries: Array(entry[:countries]).compact.map(&:to_s),
-            rating: entry[:rating] ? entry[:rating].to_f : nil,
-            imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
-            poster_url: imdb_image(entry, :poster_url),
-            backdrop_url: imdb_image(entry, :backdrop_url),
-            release_date: release_date
+            genres: list_from(entry, :genres, :Genre),
+            languages: list_from(entry, :languages, :Language),
+            countries: list_from(entry, :countries, :Country),
+            rating: float_value(fetch_value(entry, :rating, :imdbRating)),
+            imdb_votes: votes(fetch_value(entry, :imdb_votes, :imdbVotes)),
+            poster_url: url_value(fetch_value(entry, :poster_url, :Poster)),
+            backdrop_url: url_value(fetch_value(entry, :backdrop_url, :Backdrop)),
+            release_date: release_date,
+            ids: ids_for(external_id)
           }
+        end
+
+        def normalize_type(value)
+          type = value.to_s.downcase
+          return 'movie' if type == 'movie'
+          return 'show' if type == 'series' || type.include?('series')
+
+          type.empty? ? 'movie' : type
+        end
+
+        def list_from(record, *keys)
+          value = fetch_value(record, *keys)
+          return [] if value.nil?
+
+          Array(value.is_a?(String) ? value.split(',') : value).map { |item| item.to_s.strip }.reject(&:empty?)
+        end
+
+        def fetch_value(record, *keys)
+          keys.each do |key|
+            next unless key
+            value = record[key] || record[key.to_s] || record[key.to_sym]
+            return value unless value.nil?
+          end
+          nil
         end
 
         def parse_date(value)
@@ -1023,9 +901,35 @@ module MediaLibrarian
         rescue StandardError
           nil
         end
+
+        def votes(value)
+          return nil if value.nil?
+
+          value.to_s.delete(',').to_i
+        rescue StandardError
+          nil
+        end
+
+        def float_value(value)
+          return nil if value.nil? || value.to_s.strip.empty?
+
+          value.to_f
+        rescue StandardError
+          nil
+        end
+
+        def url_value(value)
+          url = value.to_s.strip
+          url.empty? ? nil : url
+        end
+
+        def ids_for(imdb_id)
+          imdb_id.to_s.empty? ? {} : { 'imdb' => imdb_id }
+        end
       end
 
       class TraktCalendarProvider
+
         attr_reader :source, :last_request_path
 
         def initialize(account_id:, client_id:, client_secret:, speaker: nil, fetcher: nil)
