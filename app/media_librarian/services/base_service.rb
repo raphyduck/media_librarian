@@ -35,8 +35,12 @@ module MediaLibrarian
       end
 
       def tell_error(error, context = nil, options = nil, *args)
-        safe_options = options.is_a?(Hash) ? options : {}
-        delegate&.tell_error(error, context, safe_options, *args)
+        in_mail = if options.is_a?(Hash)
+                    options[:in_mail] || options['in_mail']
+                  else
+                    options
+                  end
+        delegate&.tell_error(error, context, in_mail, *args)
       end
 
       private
