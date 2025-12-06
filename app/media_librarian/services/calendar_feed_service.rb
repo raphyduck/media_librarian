@@ -6,6 +6,7 @@ require 'themoviedb'
 require 'json'
 require 'httparty'
 require_relative '../../../lib/omdb_api'
+require_relative '../../../lib/simple_speaker'
 require 'trakt'
 
 module MediaLibrarian
