@@ -385,8 +385,8 @@ module MediaLibrarian
           token: validated_token
         )
 
-        movies = TraktAgent.fetch_calendar_entries(:movies, start_date, days, fetcher: fetcher)
-        shows = TraktAgent.fetch_calendar_entries(:shows, start_date, days, fetcher: fetcher)
+        movies = trakt_calendar_payload(:movies, fetcher, start_date, days)
+        shows = trakt_calendar_payload(:shows, fetcher, start_date, days)
 
         parsed_movies, movie_error = parse_trakt_movies(movies)
         parsed_shows, show_error = parse_trakt_shows(shows)
@@ -403,6 +403,38 @@ module MediaLibrarian
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         { entries: [], errors: [e.message] }
+      end
+
+      def trakt_calendar_payload(type, fetcher, start_date, days)
+        payload = TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fetcher)
+        return payload if payload
+
+        fallback = trakt_fallback_calendar(fetcher)
+        payload = TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fallback) if fallback
+        return payload if payload
+
+        raise StandardError, trakt_payload_error(type, fetcher, start_date, days)
+      end
+
+      def trakt_fallback_calendar(fetcher)
+        return unless fetcher&.respond_to?(:calendar)
+
+        fallback = fetcher.calendar
+        fallback if fallback != fetcher
+      end
+
+      def trakt_payload_error(type, fetcher, start_date, days)
+        parts = ["Trakt #{type} calendar returned no data for #{start_date}..#{start_date + days - 1}"]
+        if (location = provider_location(fetcher))
+          parts << "path: #{location}"
+        end
+        if fetcher.respond_to?(:last_response) && (response = fetcher.last_response)
+          status = response.respond_to?(:code) ? response.code : nil
+          body = response.respond_to?(:body) ? response.body : nil
+          details = [status && "status #{status}", body && "body #{body}"].compact.join(', ')
+          parts << details unless details.empty?
+        end
+        parts.join(' | ')
       end
 
       def trakt_calendar_client(client_id:, client_secret:, account_id:, token: nil)
