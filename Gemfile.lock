@@ -208,6 +208,8 @@ GEM
     timeout (0.4.3)
     titleize (1.4.1)
     transproc (1.1.1)
+    tvdb_party (0.9.3)
+      httparty (>= 0.6.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     webrick (1.9.1)
@@ -245,6 +247,7 @@ DEPENDENCIES
   titleize
   torznab-client!
   trakt!
+  tvdb_party
   tvmaze!
   unrar!
   xbmc-client!
