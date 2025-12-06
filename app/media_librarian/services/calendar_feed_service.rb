@@ -324,14 +324,16 @@ module MediaLibrarian
         return nil if client_id.to_s.empty? || client_secret.to_s.empty? || account_id.to_s.empty?
 
         lambda do |date_range:, limit:|
-          fetch_trakt_entries(
-            date_range: date_range,
-            limit: limit,
-            client_id: client_id,
-            client_secret: client_secret,
-            account_id: account_id,
-            token: token
-          )
+          with_trakt_output_capture do
+            fetch_trakt_entries(
+              date_range: date_range,
+              limit: limit,
+              client_id: client_id,
+              client_secret: client_secret,
+              account_id: account_id,
+              token: token
+            )
+          end
         end
       end
 
@@ -370,11 +372,15 @@ module MediaLibrarian
       end
 
       def trakt_calendar_payload(type, fetcher, start_date, days)
-        payload = TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fetcher)
+        payload = with_trakt_output_capture do
+          TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fetcher)
+        end
         return payload if payload
 
         fallback = trakt_fallback_calendar(fetcher)
-        payload = TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fallback) if fallback
+        payload = with_trakt_output_capture do
+          TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fallback)
+        end if fallback
         return payload if payload
 
         raise StandardError, trakt_payload_error(type, fetcher, start_date, days)
@@ -402,13 +408,40 @@ module MediaLibrarian
       end
 
       def trakt_calendar_client(client_id:, client_secret:, account_id:, token: nil)
-        Trakt.new(
-          client_id: client_id,
-          client_secret: client_secret,
-          account_id: account_id,
-          token: ensure_trakt_token!(token),
-          speaker: speaker
-        )
+        with_trakt_output_capture do
+          Trakt.new(
+            client_id: client_id,
+            client_secret: client_secret,
+            account_id: account_id,
+            token: ensure_trakt_token!(token),
+            speaker: speaker
+          )
+        end
+      end
+
+      def with_trakt_output_capture
+        original_stdout, original_stderr = $stdout, $stderr
+        proxy = trakt_output_proxy
+        $stdout = proxy
+        $stderr = proxy
+        yield
+      ensure
+        $stdout = original_stdout
+        $stderr = original_stderr
+      end
+
+      def trakt_output_proxy
+        return $stdout unless speaker
+
+        proxy = Object.new
+        output = ->(arg) { speaker.daemon_send(arg.to_s) }
+        %i[write puts print].each do |method|
+          proxy.define_singleton_method(method) do |*args|
+            args = ["\n"] if args.empty? && method == :puts
+            args.each { |arg| output.call(arg) }
+          end
+        end
+        proxy
       end
 
       def normalize_trakt_token(token)
