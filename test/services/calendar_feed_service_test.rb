@@ -559,6 +559,68 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil show[:imdb_votes]
   end
 
+  def test_trakt_fetcher_uses_fallback_calendar_client_when_primary_returns_nil
+    start_date = Date.today
+    end_date = start_date + 1
+    date_range = start_date..end_date
+    token = { access_token: 'token', expires_at: Time.now + 3600 }
+
+    calendars_client = Object.new
+    calendar_client = Object.new
+    trakt_client = Class.new do
+      attr_reader :calendar_called
+
+      def initialize(calendars_client, calendar_client)
+        @calendars_client = calendars_client
+        @calendar_client = calendar_client
+        @calendar_called = false
+      end
+
+      def calendars
+        @calendars_client
+      end
+
+      def calendar
+        @calendar_called = true
+        @calendar_client
+      end
+    end.new(calendars_client, calendar_client)
+
+    movie_payload = [
+      { 'released' => start_date.to_s, 'movie' => { 'title' => 'Fallback Movie', 'ids' => { 'slug' => 'fb-movie' } } }
+    ]
+    show_payload = [
+      { 'first_aired' => end_date.to_s, 'show' => { 'title' => 'Fallback Show', 'ids' => { 'slug' => 'fb-show' } } }
+    ]
+
+    call_log = []
+    TraktAgent.stub(:fetch_calendar_entries, ->(type, _start, _days, fetcher:) do
+      call_log << [type, fetcher]
+      next nil if fetcher.equal?(trakt_client)
+
+      type == :movies ? movie_payload : show_payload
+    end) do
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db)
+      service.stub(:trakt_calendar_client, ->(**_) { trakt_client }) do
+        result = service.send(
+          :fetch_trakt_entries,
+          date_range: date_range,
+          limit: 10,
+          client_id: 'id',
+          client_secret: 'secret',
+          account_id: 'acc',
+          token: token
+        )
+
+        assert_equal 2, result[:entries].size
+        assert_empty result[:errors]
+      end
+    end
+
+    assert_equal [[:movies, trakt_client], [:movies, calendar_client], [:shows, trakt_client], [:shows, calendar_client]], call_log
+    assert trakt_client.calendar_called
+  end
+
   def test_trakt_fetcher_uses_app_token_when_config_token_missing
     date_range = Date.today..(Date.today + 1)
     start_date = date_range.first
