@@ -40,7 +40,6 @@ GIT
   specs:
     trakt (0.1.9.6)
       httparty
-      simple_speaker
 
 GIT
   remote: https://github.com/raphyduck/tvmaze.git
@@ -196,8 +195,6 @@ GEM
       websocket (~> 1.0)
     sequel (5.97.0)
       bigdecimal
-      simple_speaker (~> 0.3.0)
-    simple_speaker (0.3.0.8)
     sqlite3 (1.5.3)
       mini_portile2 (~> 2.8.0)
     streamio-ffmpeg (3.0.2)
@@ -240,7 +237,6 @@ DEPENDENCIES
   rsync!
   selenium-webdriver
   sequel
-  simple_speaker (~> 0.3.0)
   sqlite3 (= 1.5.3)
   streamio-ffmpeg
   themoviedb
