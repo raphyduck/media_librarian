@@ -155,7 +155,7 @@ class CalendarFeedServiceTest < Minitest::Test
   def test_default_providers_come_from_config
     config = {
       'tmdb' => { 'api_key' => '123', 'language' => 'en', 'region' => 'US' },
-      'imdb' => {},
+      'omdb' => { 'api_key' => 'omdb-key' },
       'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' }
     }
     app = Struct.new(:config, :db).new(config, @db)
@@ -164,38 +164,18 @@ class CalendarFeedServiceTest < Minitest::Test
 
     sources = service.send(:default_providers).map(&:source)
     assert_includes sources, 'tmdb'
-    assert_includes sources, 'imdb'
+    assert_includes sources, 'omdb'
     assert_includes sources, 'trakt'
   end
 
-  def test_imdb_provider_enabled_with_empty_configuration
-    config = { 'imdb' => {} }
+  def test_omdb_provider_requires_api_key
+    config = { 'omdb' => {} }
     app = Struct.new(:config, :db).new(config, @db)
 
     service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
 
     sources = service.send(:default_providers).map(&:source)
-    assert_includes sources, 'imdb'
-  end
-
-  def test_imdb_provider_enabled_when_configuration_absent
-    config = {}
-    app = Struct.new(:config, :db).new(config, @db)
-
-    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-    sources = service.send(:default_providers).map(&:source)
-    assert_includes sources, 'imdb'
-  end
-
-  def test_imdb_provider_can_be_disabled
-    config = { 'imdb' => { 'enabled' => false } }
-    app = Struct.new(:config, :db).new(config, @db)
-
-    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-    sources = service.send(:default_providers).map(&:source)
-    refute_includes sources, 'imdb'
+    refute_includes sources, 'omdb'
   end
 
   def test_normalization_downcases_sources
@@ -203,9 +183,10 @@ class CalendarFeedServiceTest < Minitest::Test
     tmdb_provider = FakeProvider.new([
       base_entry.merge(source: 'TMDB', external_id: 'tmdb-1', title: 'TMDB Title')
     ], source: 'TMDB')
-    imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
+    omdb_provider = MediaLibrarian::Services::CalendarFeedService::OmdbCalendarProvider.new(
       speaker: @speaker,
-      fetcher: ->(**_) { [{ external_id: 'imdb-1', title: 'IMDb Title', media_type: 'movie', release_date: date }] }
+      api_key: 'key',
+      fetcher: ->(**_) { [{ external_id: 'omdb-1', title: 'OMDb Title', media_type: 'movie', release_date: date }] }
     )
     trakt_provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
       account_id: 'acc', client_id: 'id', client_secret: 'secret', speaker: @speaker,
@@ -216,40 +197,42 @@ class CalendarFeedServiceTest < Minitest::Test
       app: nil,
       speaker: @speaker,
       db: @db,
-      providers: [tmdb_provider, imdb_provider, trakt_provider]
+      providers: [tmdb_provider, omdb_provider, trakt_provider]
     )
 
     service.refresh(date_range: Date.today..(Date.today + 3), limit: 10)
 
     rows = @db.get_rows(:calendar_entries).sort_by { |row| row[:external_id] }
-    assert_equal %w[imdb tmdb trakt], rows.map { |row| row[:source] }.uniq.sort
+    assert_equal %w[omdb tmdb trakt], rows.map { |row| row[:source] }.uniq.sort
     assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
   end
 
-  def test_imdb_provider_fetches_via_imdb_api_helper
+  def test_omdb_provider_fetches_via_omdb_api_helper
     movie_date = Date.today + 1
     show_date = Date.today + 2
     date_range = Date.today..(Date.today + 5)
     calendar_items = [
       {
-        'id' => 'tt0111161',
-        'titleText' => { 'text' => 'The Shawshank Redemption' },
-        'titleType' => { 'text' => 'Feature Film' },
-        'releaseDate' => movie_date,
-        'genres' => { 'genres' => [{ 'text' => 'Drama' }] },
-        'spokenLanguages' => [{ 'text' => 'English' }],
-        'countriesOfOrigin' => [{ 'text' => 'United States' }],
-        'ratingsSummary' => { 'aggregateRating' => 9.3, 'voteCount' => 123_456 }
+        'imdbID' => 'tt0111161',
+        'Title' => 'The Shawshank Redemption',
+        'Type' => 'movie',
+        'Released' => movie_date,
+        'Genre' => 'Drama',
+        'Language' => 'English',
+        'Country' => 'United States',
+        'imdbRating' => '9.3',
+        'imdbVotes' => '123,456'
       },
       {
-        'id' => 'tt7654321',
-        'titleText' => { 'text' => 'New Series' },
-        'titleType' => { 'text' => 'TV Series' },
-        'releaseDate' => show_date,
-        'genres' => { 'genres' => [{ 'text' => 'Sci-Fi' }] },
-        'spokenLanguages' => [{ 'text' => 'French' }],
-        'countriesOfOrigin' => [{ 'text' => 'Canada' }],
-        'ratingsSummary' => { 'aggregateRating' => 7.5, 'voteCount' => 6_789 }
+        'imdbID' => 'tt7654321',
+        'Title' => 'New Series',
+        'Type' => 'series',
+        'Released' => show_date,
+        'Genre' => 'Sci-Fi',
+        'Language' => 'French',
+        'Country' => 'Canada',
+        'imdbRating' => '7.5',
+        'imdbVotes' => '6,789'
       }
     ]
 
@@ -267,17 +250,17 @@ class CalendarFeedServiceTest < Minitest::Test
       end
     end.new(calendar_items)
 
-    ImdbApi.stub :new, ->(**_) { helper } do
-      config = { 'imdb' => { 'base_url' => 'https://example.test' } }
+    OmdbApi.stub :new, ->(**_) { helper } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-      assert_includes service.send(:providers).map(&:source), 'imdb'
+      assert_includes service.send(:providers).map(&:source), 'omdb'
 
-      service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
+      service.refresh(date_range: date_range, limit: 5, sources: ['omdb'])
     end
 
     assert_equal [{ date_range: date_range, limit: 5 }], helper.calls
-    rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:external_id] }
+    rows = @db.get_rows(:calendar_entries, { source: 'omdb' }).sort_by { |row| row[:external_id] }
     assert_equal 2, rows.count
     assert_equal 'movie', rows.first[:media_type]
     assert_equal ['Drama'], rows.first[:genres]
@@ -291,179 +274,49 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 6_789, rows.last[:imdb_votes]
   end
 
-  def test_imdb_calendar_fetches_past_and_upcoming_titles
-    past_date = Date.today - 1
-    future_date = Date.today + 2
-    date_range = past_date..future_date
-
-    helper = Class.new do
-      attr_reader :calls
-
-      def initialize(past_date, future_date)
-        @past_date = past_date
-        @future_date = future_date
-        @calls = []
-      end
-
-      def calendar(date_range:, limit:)
-        @calls << { date_range: date_range, limit: limit }
-        [
-          { 'id' => 'tt0100001', 'titleText' => { 'text' => 'Past Title' }, 'releaseDate' => @past_date },
-          { 'id' => 'tt0200002', 'titleText' => { 'text' => 'Future Title' }, 'releaseDate' => @future_date }
-        ]
-      end
-    end.new(past_date, future_date)
-
-    ImdbApi.stub :new, ->(**_) { helper } do
-      config = { 'imdb' => {} }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-      service.refresh(date_range: date_range, limit: 10, sources: ['imdb'])
-    end
-
-    assert_equal [{ date_range: date_range, limit: 10 }], helper.calls
-    rows = @db.get_rows(:calendar_entries, { source: 'imdb' }).sort_by { |row| row[:title] }
-    assert_equal ['Future Title', 'Past Title'], rows.map { |row| row[:title] }
-  end
-
-  def test_imdb_fetcher_logs_missing_calendar_support
-    date_range = Date.today..(Date.today + 1)
-    helper = Class.new do
-      def calendar(**_args)
-        []
-      end
-    end
-
-    ImdbApi.stub :new, ->(**_) { helper.new } do
-      config = { 'imdb' => {} }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-      service.refresh(date_range: date_range, limit: 5, sources: ['imdb'])
-    end
-
-    assert_includes @speaker.messages, "IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: 5)"
-  end
-
-  def test_imdb_fetcher_logs_calls_and_errors
+  def test_omdb_fetcher_logs_calls_and_errors
     date_range = Date.today..(Date.today + 3)
     helper = Class.new do
+      attr_reader :last_request_path
+
+      def initialize
+        @last_request_path = 'https://example.test/?apikey=omdb'
+      end
+
       def calendar(**_args)
         raise StandardError, 'calendar exploded'
       end
     end.new
 
-    ImdbApi.stub :new, ->(**_) { helper } do
-      config = { 'imdb' => {} }
+    OmdbApi.stub :new, ->(**_) { helper } do
+      config = { 'omdb' => { 'api_key' => 'key' } }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
 
-      service.refresh(date_range: date_range, limit: 2, sources: ['imdb'])
+      service.refresh(date_range: date_range, limit: 2, sources: ['omdb'])
     end
 
-    assert_includes @speaker.messages, "IMDb calendar fetch #{date_range.first}..#{date_range.last} (limit: 2)"
-    assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.first == :error && msg[1].is_a?(StandardError) && msg.last == 'IMDB calendar fetch failed' }
+    assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.first == :error && msg[1].is_a?(StandardError) && msg.last == 'Calendar OMDb fetch failed' }
   end
 
-  def test_imdb_fetcher_reports_http_errors
-    date_range = Date.today..Date.today
-    response = Struct.new(:code, :body).new(500, 'failed')
-    client = Class.new do
-      def initialize(response)
-        @response = response
-      end
-
-      def get(*_args)
-        @response
-      end
-    end.new(response)
-
-    api = ImdbApi.new(http_client: client, speaker: @speaker)
-
-    ImdbApi.stub :new, ->(**_) { api } do
-      config = { 'imdb' => {} }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-      service.refresh(date_range: date_range, limit: 1, sources: ['imdb'])
-    end
-
-    errors = @speaker.messages.select { |msg| msg.is_a?(Array) && msg.first == :error }
-    assert errors.any? { |msg| msg[1].message.include?('status 500') }
-    assert errors.any? { |msg| msg.last == 'IMDB calendar fetch failed' }
-  end
-
-  def test_imdb_fetcher_reports_empty_responses
-    date_range = Date.today..Date.today
-    response = Struct.new(:code, :body).new(200, '')
-    client = Class.new do
-      def initialize(response)
-        @response = response
-      end
-
-      def get(*_args)
-        @response
-      end
-    end.new(response)
-
-    api = ImdbApi.new(http_client: client, speaker: @speaker)
-
-    ImdbApi.stub :new, ->(**_) { api } do
-      config = { 'imdb' => {} }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-      service.refresh(date_range: date_range, limit: 1, sources: ['imdb'])
-    end
-
-    errors = @speaker.messages.select { |msg| msg.is_a?(Array) && msg.first == :error }
-    assert errors.any? { |msg| msg[1].message.include?('response was empty') }
-    assert errors.any? { |msg| msg.last == 'IMDB calendar fetch failed' }
-  end
-
-  def test_imdb_provider_logs_empty_results
+  def test_omdb_provider_logs_empty_results
     date_range = Date.today..(Date.today + 1)
-    imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
+    omdb_provider = MediaLibrarian::Services::CalendarFeedService::OmdbCalendarProvider.new(
       speaker: @speaker,
+      api_key: 'key',
       fetcher: ->(**_) { [] }
     )
 
-    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [imdb_provider])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [omdb_provider])
 
-    service.refresh(date_range: date_range, limit: 3, sources: ['imdb'])
+    service.refresh(date_range: date_range, limit: 3, sources: ['omdb'])
 
-    expected_message = "Calendar provider imdb returned no entries for #{date_range.first}..#{date_range.last}"
+    expected_message = "Calendar provider omdb returned no entries for #{date_range.first}..#{date_range.last}"
     assert_includes @speaker.messages, expected_message
   end
 
-  def test_imdb_provider_falls_back_to_tmdb_when_feed_empty
-    date = Date.today + 2
-    imdb_provider = MediaLibrarian::Services::CalendarFeedService::ImdbCalendarProvider.new(
-      speaker: @speaker,
-      fetcher: ->(**_) { [] }
-    )
-    tmdb_entries = [
-      base_entry.merge(source: 'tmdb', external_id: 'tmdb-1', title: 'Fallback Movie', release_date: date)
-    ]
-    tmdb_provider = FakeProvider.new(tmdb_entries, source: 'tmdb')
-
-    service = MediaLibrarian::Services::CalendarFeedService.new(
-      app: nil,
-      speaker: @speaker,
-      db: @db,
-      providers: [imdb_provider, tmdb_provider]
-    )
-
-    service.refresh(date_range: Date.today..(Date.today + 5), limit: 5, sources: ['imdb'])
-
-    rows = @db.get_rows(:calendar_entries)
-    assert_equal 1, rows.count
-    assert_equal 'tmdb', rows.first[:source]
-    assert_equal 1, tmdb_provider.calls.count
-  end
-
   def test_trakt_provider_fetches_remote_calendar
+
     start_date = Date.today
     end_date = start_date + 5
     date_range = start_date..end_date

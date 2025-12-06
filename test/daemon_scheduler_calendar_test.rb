@@ -63,7 +63,7 @@ class DaemonSchedulerCalendarTest < Minitest::Test
         'refresh_every' => refresh_every,
         'refresh_days' => 10,
         'refresh_limit' => 25,
-        'providers' => 'imdb|trakt'
+        'providers' => 'omdb|trakt'
       }
     }
     @environment.container.reload_config!(config)
