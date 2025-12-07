@@ -376,12 +376,14 @@ module MediaLibrarian
           TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fetcher)
         end
         return payload if payload
+        return [] if trakt_no_content?(fetcher)
 
         fallback = trakt_fallback_calendar(fetcher)
         payload = with_trakt_output_capture do
           TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fallback)
         end if fallback
         return payload if payload
+        return [] if trakt_no_content?(fallback)
 
         raise StandardError, trakt_payload_error(type, fetcher, start_date, days)
       end
@@ -391,6 +393,13 @@ module MediaLibrarian
 
         fallback = fetcher.calendar
         fallback if fallback != fetcher
+      end
+
+      def trakt_no_content?(fetcher)
+        return false unless fetcher&.respond_to?(:last_response)
+
+        response = fetcher.last_response
+        response.respond_to?(:code) && response.code.to_i == 204
       end
 
       def trakt_payload_error(type, fetcher, start_date, days)
