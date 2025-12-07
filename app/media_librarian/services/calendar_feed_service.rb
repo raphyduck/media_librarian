@@ -430,7 +430,7 @@ module MediaLibrarian
 
       def with_trakt_output_capture
         original_stdout, original_stderr = $stdout, $stderr
-        proxy = trakt_output_proxy
+        proxy = trakt_output_proxy(original_stdout, original_stderr)
         $stdout = proxy
         $stderr = proxy
         yield
@@ -439,11 +439,11 @@ module MediaLibrarian
         $stderr = original_stderr
       end
 
-      def trakt_output_proxy
+      def trakt_output_proxy(original_stdout = $stdout, original_stderr = $stderr)
         return $stdout unless speaker
 
         proxy = Object.new
-        output = ->(arg) { speaker.daemon_send(arg.to_s) }
+        output = ->(arg) { speaker.daemon_send(arg.to_s, stdout: original_stdout, stderr: original_stderr) }
         %i[write puts print].each do |method|
           proxy.define_singleton_method(method) do |*args|
             args = ["\n"] if args.empty? && method == :puts
