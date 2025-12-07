@@ -71,7 +71,7 @@ module SimpleSpeaker
       @logger_error.error(e) if @logger_error
       speak_up("ERROR in '#{src}'" + @new_line, in_mail, thread)
       speak_up(e.to_s + @new_line, in_mail, thread)
-      speak_up(e.backtrace[0..2].join(@new_line) + @new_line, in_mail, thread)
+      speak_up(e.backtrace&[0..2].join(@new_line) + @new_line, in_mail, thread)
     end
 
     def user_input(input)

@@ -49,3 +49,5 @@ tmdb:
   api_key: api_key
 tvdb:
   api_key: api_key
+omdb:
+  api_key: api_key
