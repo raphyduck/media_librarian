@@ -43,6 +43,10 @@ module MediaLibrarian
         delegate&.tell_error(error, context, (in_mail.to_i if in_mail), *args)
       end
 
+      def daemon_send(*args, **kwargs)
+        delegate.daemon_send(*args, **kwargs) if delegate&.respond_to?(:daemon_send)
+      end
+
       private
 
       attr_reader :delegate

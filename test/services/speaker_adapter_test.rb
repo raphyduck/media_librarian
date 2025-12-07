@@ -38,6 +38,35 @@ module MediaLibrarian
 
         assert delegate.verify
       end
+
+      def test_daemon_send_delegates
+        delegate = Class.new do
+          attr_reader :calls
+
+          def initialize
+            @calls = []
+          end
+
+          def daemon_send(*args)
+            @calls << args
+          end
+
+          def respond_to?(method_name, include_all = false)
+            method_name == :daemon_send || super
+          end
+        end.new
+        adapter = SpeakerAdapter.new(delegate)
+
+        adapter.daemon_send(:run, :now)
+
+        assert_equal [[:run, :now]], delegate.calls
+      end
+
+      def test_daemon_send_no_op_without_speaker
+        adapter = SpeakerAdapter.new(nil)
+
+        assert_nil adapter.daemon_send(:ignored)
+      end
     end
   end
 end
