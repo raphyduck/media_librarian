@@ -412,6 +412,37 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil show[:imdb_votes]
   end
 
+  def test_trakt_output_capture_uses_original_streams
+    speaker = SimpleSpeaker::Speaker.new
+    entry_date = Date.today + 1
+    entry = base_entry.merge(source: 'trakt', external_id: 'trakt-1', title: 'Trakt Title', release_date: entry_date)
+
+    service = nil
+    fetcher = lambda do |**_|
+      service.send(:with_trakt_output_capture) do
+        puts 'Trakt output'
+        { entries: [entry], errors: [] }
+      end
+    end
+
+    provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
+      account_id: 'acc', client_id: 'cid', client_secret: 'secret', speaker: speaker, fetcher: fetcher
+    )
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(
+      app: nil,
+      speaker: speaker,
+      db: @db,
+      providers: [provider]
+    )
+
+    service.refresh(date_range: Date.today..(Date.today + 3), limit: 5, sources: ['trakt'])
+
+    rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
+    assert_equal 1, rows.count
+    assert_equal 'Trakt Title', rows.first[:title]
+  end
+
   def test_trakt_fetcher_uses_fallback_calendar_client_when_primary_returns_nil
     start_date = Date.today
     end_date = start_date + 1
