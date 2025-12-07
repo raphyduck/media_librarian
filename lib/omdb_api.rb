@@ -32,6 +32,16 @@ class OmdbApi
     results.first(limit)
   end
 
+  def title(imdb_id)
+    return nil if @api_key.empty?
+    return nil if imdb_id.to_s.strip.empty?
+
+    normalize_detail(request(detail_query(imdb_id)))
+  rescue StandardError => e
+    report_error(e, 'OMDb title fetch failed')
+    nil
+  end
+
   private
 
   def years(date_range)
@@ -62,6 +72,10 @@ class OmdbApi
 
   def search_query(type:, year:, page: 1)
     { s: '*', type: type, y: year, page: page }
+  end
+
+  def detail_query(imdb_id)
+    { i: imdb_id, plot: 'short' }
   end
 
   def request(query)
@@ -99,6 +113,32 @@ class OmdbApi
 
     records = payload['Search'] || payload['search'] || payload
     Array(records).filter_map { |record| normalize_record(record, date_range) }
+  end
+
+  def normalize_detail(record)
+    return nil unless record.is_a?(Hash)
+    return nil if record['Response'] == 'False'
+
+    imdb_id = value_from(record, :external_id, :imdb_id, :imdbID)
+    title = value_from(record, :title, :Title)
+    media_type = normalize_type(value_from(record, :media_type, :Type))
+    return nil if imdb_id.to_s.strip.empty? || title.to_s.strip.empty? || media_type.empty?
+
+    {
+      source: 'omdb',
+      external_id: imdb_id.to_s,
+      title: title.to_s,
+      media_type: media_type,
+      genres: list_from(record, :genres, :Genre),
+      languages: list_from(record, :languages, :Language),
+      countries: list_from(record, :countries, :Country),
+      rating: float_value(value_from(record, :rating, :imdbRating)),
+      imdb_votes: votes_value(value_from(record, :imdb_votes, :imdbVotes)),
+      poster_url: url_value(value_from(record, :poster_url, :Poster)),
+      backdrop_url: url_value(value_from(record, :backdrop_url, :Backdrop)),
+      release_date: parse_date(record[:release_date] || record['release_date'] || record['Released'] || record['DVD']),
+      ids: ids_for(imdb_id)
+    }
   end
 
   def normalize_record(record, date_range)

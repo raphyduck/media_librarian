@@ -26,6 +26,7 @@ module MediaLibrarian
         return [] unless calendar_table_available?
 
         normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
+        normalized = enrich_with_omdb(normalized)
         speaker.speak_up("Calendar feed collected #{normalized.length} items")
         persist_entries(normalized)
         speaker.speak_up("Calendar feed persisted #{normalized.length} items#{summary_suffix(stats)}")
@@ -265,8 +266,6 @@ module MediaLibrarian
             speaker: speaker
           )
         end
-        omdb_config = config['omdb']
-        providers << omdb_provider(omdb_config) if omdb_config.is_a?(Hash)
         trakt_config = config['trakt']
         if trakt_config.is_a?(Hash)
           account_id = trakt_config['account_id']
@@ -310,6 +309,56 @@ module MediaLibrarian
         return nil unless config.is_a?(Hash)
 
         config[key]
+      end
+
+      def omdb_detail_api
+        return @omdb_detail_api if defined?(@omdb_detail_api)
+
+        config = app&.config
+        omdb_config = config.is_a?(Hash) ? config['omdb'] : nil
+        api_key = config_value(omdb_config, 'api_key').to_s
+        @omdb_detail_api = api_key.empty? ? nil : OmdbApi.new(api_key: api_key, base_url: config_value(omdb_config, 'base_url'), speaker: speaker)
+      end
+
+      def enrich_with_omdb(entries)
+        api = omdb_detail_api
+        return entries unless api
+
+        entries.each do |entry|
+          imdb_id = imdb_id_for(entry)
+          next unless imdb_id
+          next unless entry[:media_type] == 'movie'
+
+          details = omdb_details(api, imdb_id)
+          next unless details
+
+          entry[:rating] = details[:rating] unless details[:rating].nil?
+          entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
+          entry[:poster_url] ||= details[:poster_url]
+          entry[:backdrop_url] ||= details[:backdrop_url]
+        end
+
+        entries
+      end
+
+      def omdb_details(api, imdb_id)
+        return nil if @omdb_enrichment_failed
+
+        @omdb_detail_cache ||= {}
+        return @omdb_detail_cache[imdb_id] if @omdb_detail_cache.key?(imdb_id)
+
+        @omdb_detail_cache[imdb_id] = api.title(imdb_id)
+      rescue StandardError => e
+        speaker&.tell_error(e, 'Calendar OMDb enrichment failed')
+        @omdb_enrichment_failed = true
+        nil
+      end
+
+      def imdb_id_for(entry)
+        ids = entry[:ids]
+        return unless ids.is_a?(Hash)
+
+        ids['imdb'] || ids[:imdb]
       end
 
       def safe_float(value)

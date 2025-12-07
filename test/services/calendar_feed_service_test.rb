@@ -69,6 +69,80 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 321, rows.first[:imdb_votes]
   end
 
+  def test_enriches_tmdb_entries_with_omdb_details
+    entry = base_entry.merge(
+      source: 'tmdb',
+      ids: { 'imdb' => 'tt0111161' },
+      rating: nil,
+      imdb_votes: nil,
+      poster_url: nil,
+      backdrop_url: nil
+    )
+    provider = FakeProvider.new([entry])
+    omdb_client = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def title(id)
+        @calls << id
+        { rating: 9.3, imdb_votes: 234_567, poster_url: 'https://omdb.test/poster.jpg', backdrop_url: 'https://omdb.test/backdrop.jpg' }
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries, { source: 'tmdb' }).first
+    assert_in_delta 9.3, row[:rating]
+    assert_equal 234_567, row[:imdb_votes]
+    assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
+    assert_equal 'https://omdb.test/backdrop.jpg', row[:backdrop_url]
+  end
+
+  def test_skips_enrichment_when_omdb_disabled
+    entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil)
+    provider = FakeProvider.new([entry])
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    service.refresh(date_range: Date.today..(Date.today + 1), limit: 3)
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_nil row[:rating]
+    assert_nil row[:imdb_votes]
+  end
+
+  def test_enrichment_logs_errors_and_falls_back
+    entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt0123456' }, rating: 6.5, imdb_votes: 100)
+    provider = FakeProvider.new([entry])
+    omdb_client = Class.new do
+      def title(_id)
+        raise StandardError, 'omdb detail failed'
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 1), limit: 2)
+    end
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_in_delta 6.5, row[:rating]
+    assert_equal 100, row[:imdb_votes]
+    assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.last == 'Calendar OMDb enrichment failed' }
+  end
+
   def test_refresh_logs_collection_and_persistence_counts
     provider = FakeProvider.new([
       base_entry.merge(external_id: 'movie-1', title: 'Logged Movie')
@@ -155,7 +229,6 @@ class CalendarFeedServiceTest < Minitest::Test
   def test_default_providers_come_from_config
     config = {
       'tmdb' => { 'api_key' => '123', 'language' => 'en', 'region' => 'US' },
-      'omdb' => { 'api_key' => 'omdb-key' },
       'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' }
     }
     app = Struct.new(:config, :db).new(config, @db)
@@ -164,18 +237,8 @@ class CalendarFeedServiceTest < Minitest::Test
 
     sources = service.send(:default_providers).map(&:source)
     assert_includes sources, 'tmdb'
-    assert_includes sources, 'omdb'
-    assert_includes sources, 'trakt'
-  end
-
-  def test_omdb_provider_requires_api_key
-    config = { 'omdb' => {} }
-    app = Struct.new(:config, :db).new(config, @db)
-
-    service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-
-    sources = service.send(:default_providers).map(&:source)
     refute_includes sources, 'omdb'
+    assert_includes sources, 'trakt'
   end
 
   def test_normalization_downcases_sources
@@ -251,10 +314,11 @@ class CalendarFeedServiceTest < Minitest::Test
     end.new(calendar_items)
 
     OmdbApi.stub :new, ->(**_) { helper } do
-      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
-      assert_includes service.send(:providers).map(&:source), 'omdb'
+      omdb_provider = MediaLibrarian::Services::CalendarFeedService::OmdbCalendarProvider.new(
+        speaker: @speaker,
+        api_key: 'omdb-key'
+      )
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [omdb_provider])
 
       service.refresh(date_range: date_range, limit: 5, sources: ['omdb'])
     end
@@ -289,9 +353,11 @@ class CalendarFeedServiceTest < Minitest::Test
     end.new
 
     OmdbApi.stub :new, ->(**_) { helper } do
-      config = { 'omdb' => { 'api_key' => 'key' } }
-      app = Struct.new(:config, :db).new(config, @db)
-      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
+      omdb_provider = MediaLibrarian::Services::CalendarFeedService::OmdbCalendarProvider.new(
+        speaker: @speaker,
+        api_key: 'key'
+      )
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [omdb_provider])
 
       service.refresh(date_range: date_range, limit: 2, sources: ['omdb'])
     end
