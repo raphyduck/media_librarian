@@ -36,7 +36,7 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
-  revision: b3b2932eb6ab42102bb14a592b1b9cfe28195ff4
+  revision: 1eb6d7aae6bec754489a9cb844b2df47a03b0c8d
   specs:
     trakt (0.1.9.7)
       httparty
@@ -70,7 +70,7 @@ GEM
     RubyInline (3.14.2)
       ZenTest (~> 4.3)
     ZenTest (4.12.2)
-    activesupport (7.1.5.1)
+    activesupport (7.1.6)
       base64
       benchmark (>= 0.3)
       bigdecimal
@@ -83,21 +83,22 @@ GEM
       mutex_m
       securerandom (>= 0.3)
       tzinfo (~> 2.0)
-    addressable (2.8.7)
-      public_suffix (>= 2.0.2, < 7.0)
+    addressable (2.8.8)
+      public_suffix (>= 2.0.2, < 8.0)
     base64 (0.3.0)
     bcrypt (3.1.20)
-    benchmark (0.4.1)
+    benchmark (0.5.0)
     bencode (1.0.0)
     bigdecimal (3.3.1)
     concurrent-ruby (1.1.10)
-    connection_pool (2.5.3)
+    connection_pool (2.5.5)
     crass (1.0.6)
     csv (3.3.5)
-    date (3.4.1)
+    date (3.5.0)
     domain_name (0.6.20240107)
     drb (2.2.3)
-    feedjira (3.2.5)
+    feedjira (4.0.1)
+      logger (>= 1.0, < 2)
       loofah (>= 2.3.1, < 3)
       sax-machine (>= 1.0, < 2)
     ffi (1.17.2-x86_64-linux-gnu)
@@ -113,7 +114,7 @@ GEM
     hanami-utils (1.3.8)
       concurrent-ruby (~> 1.0)
       transproc (~> 1.0)
-    http-cookie (1.0.8)
+    http-cookie (1.1.0)
       domain_name (~> 0.5)
     httparty (0.23.2)
       csv
@@ -122,12 +123,13 @@ GEM
     i18n (1.14.7)
       concurrent-ruby (~> 1.0)
     io-like (0.3.1)
-    json (2.13.2)
+    json (2.17.1)
     logger (1.5.3)
     loofah (2.24.1)
       crass (~> 1.0.2)
       nokogiri (>= 1.12.0)
-    mail (2.8.1)
+    mail (2.9.0)
+      logger
       mini_mime (>= 0.1.1)
       net-imap
       net-pop
@@ -148,18 +150,18 @@ GEM
     mime-types (3.7.0)
       logger
       mime-types-data (~> 3.2025, >= 3.2025.0507)
-    mime-types-data (3.2025.0805)
+    mime-types-data (3.2025.0924)
     mini_mime (1.1.5)
     mini_portile2 (2.8.9)
-    minitest (5.25.5)
-    multi_json (1.17.0)
+    minitest (5.26.2)
+    multi_json (1.18.0)
     multi_xml (0.7.2)
       bigdecimal (~> 3.1)
     mutex_m (0.3.0)
     net-http-digest_auth (1.4.1)
     net-http-persistent (4.0.6)
       connection_pool (~> 2.2, >= 2.2.4)
-    net-imap (0.5.9)
+    net-imap (0.5.12)
       date
       net-protocol
     net-pop (0.1.2)
@@ -171,29 +173,29 @@ GEM
     net-ssh (7.3.0)
     netrc (0.11.0)
     nkf (0.2.0)
-    nokogiri (1.18.9-x86_64-linux-gnu)
+    nokogiri (1.18.10-x86_64-linux-gnu)
       racc (~> 1.4)
-    public_suffix (6.0.2)
+    public_suffix (7.0.0)
     racc (1.8.1)
-    rake (13.3.0)
+    rake (13.3.1)
     rencoder (0.2.0)
     rest-client (2.0.2)
       http-cookie (>= 1.0.2, < 2.0)
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
-    rexml (3.4.1)
+    rexml (3.4.4)
     rubyntlm (0.6.5)
       base64
-    rubyzip (3.2.1)
+    rubyzip (3.2.2)
     sax-machine (1.3.2)
     securerandom (0.4.1)
-    selenium-webdriver (4.38.0)
+    selenium-webdriver (4.39.0)
       base64 (~> 0.2)
       logger (~> 1.4)
       rexml (~> 3.2, >= 3.2.5)
       rubyzip (>= 1.2.2, < 4.0)
       websocket (~> 1.0)
-    sequel (5.97.0)
+    sequel (5.99.0)
       bigdecimal
     sqlite3 (1.5.3)
       mini_portile2 (~> 2.8.0)
@@ -202,17 +204,17 @@ GEM
     themoviedb (1.0.2)
       httparty
     tilt (2.6.1)
-    timeout (0.4.3)
+    timeout (0.5.0)
     titleize (1.4.1)
     transproc (1.1.1)
     tvdb_party (0.9.3)
       httparty (>= 0.6.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
-    webrick (1.9.1)
+    webrick (1.9.2)
     webrobots (0.1.2)
     websocket (1.2.11)
-    zeitwerk (2.6.12)
+    zeitwerk (2.7.3)
 
 PLATFORMS
   x86_64-linux
