@@ -182,6 +182,21 @@ class LibrarianCliTest < Minitest::Test
     assert_includes messages, 'Job job-42 completed'
   end
 
+  def test_email_commands_do_not_emit_running_banner
+    env = use_environment(speaker: TestSupport::Fakes::Speaker.new)
+    MediaLibrarian.application = env.application
+    Librarian.new(container: env.container, args: [])
+
+    Report.stub(:push_email, ->(*) { :pushed }) do
+      Librarian.run_command(['Report', 'push_email', 'subject', 'body'], 1, 'email')
+    end
+
+    refute_includes env.application.speaker.messages, 'Running command: '
+    refute_includes env.application.speaker.messages, "Report push_email\n\n"
+  ensure
+    MediaLibrarian.application = nil
+  end
+
   def test_direct_route_cmd_restores_parent_thread_state
     env = use_environment
     old_application = MediaLibrarian.application
