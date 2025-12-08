@@ -580,9 +580,14 @@ module MediaLibrarian
         end
 
         items = Array(payload)
-        return [items, nil] if items.all?(Hash)
+        valid_items = items.select { |item| item.is_a?(Hash) }
 
-        log_trakt_payload_error('Invalid Trakt payload format', context, items)
+        if valid_items.empty?
+          log_trakt_payload_error('Invalid Trakt payload format', context, items)
+        else
+          log_trakt_payload_error('Invalid Trakt payload format', context, items) if valid_items.size < items.size
+          [valid_items, nil]
+        end
       end
 
       def log_trakt_payload_error(message, context, payload)
