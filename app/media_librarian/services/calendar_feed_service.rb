@@ -548,10 +548,10 @@ module MediaLibrarian
 
         [
           items.filter_map do |item|
-            movie = item['movie']
+            movie = trakt_fetch(item, :movie)
             next unless movie.is_a?(Hash)
 
-            release_date = parse_date(item['released'] || item['release_date'] || item['first_aired'])
+            release_date = parse_date(trakt_fetch(item, :released, :release_date, :first_aired))
             build_trakt_entry(movie, 'movie', release_date)
           end,
           nil
@@ -564,10 +564,10 @@ module MediaLibrarian
 
         [
           items.filter_map do |item|
-            show = item['show']
+            show = trakt_fetch(item, :show)
             next unless show.is_a?(Hash)
 
-            release_date = parse_date(item['first_aired'] || item.dig('episode', 'first_aired'))
+            release_date = parse_date(trakt_fetch(item, :first_aired) || trakt_fetch(trakt_fetch(item, :episode), :first_aired))
             build_trakt_entry(show, 'show', release_date)
           end,
           nil
@@ -580,13 +580,57 @@ module MediaLibrarian
         end
 
         items = Array(payload)
-        valid_items = items.select { |item| item.is_a?(Hash) }
+        normalized = normalize_trakt_payload(items)
 
-        if valid_items.empty?
+        if normalized.empty?
           log_trakt_payload_error('Invalid Trakt payload format', context, items)
         else
-          log_trakt_payload_error('Invalid Trakt payload format', context, items) if valid_items.size < items.size
-          [valid_items, nil]
+          log_trakt_payload_error('Invalid Trakt payload format', context, items) if normalized.size < items.size
+          [normalized, nil]
+        end
+      end
+
+      def normalize_trakt_payload(payload)
+        Array(payload).filter_map { |item| normalize_trakt_object(item) }
+      end
+
+      def normalize_trakt_object(value)
+        return nil if value.nil?
+
+        hash = case
+               when value.is_a?(Hash)
+                 value
+               when value.respond_to?(:to_h)
+                 begin
+                   value.to_h
+                 rescue StandardError
+                   nil
+                 end
+               when value.respond_to?(:to_hash)
+                 begin
+                   value.to_hash
+                 rescue StandardError
+                   nil
+                 end
+               else
+                attrs = %i[movie show released release_date first_aired episode ids title country genres language rating votes poster backdrop poster_url].each_with_object({}) do |key, memo|
+                   memo[key] = value.public_send(key) if value.respond_to?(key)
+                 end
+                 return nil if attrs.empty?
+                 attrs
+               end
+
+        return nil unless hash.is_a?(Hash)
+
+        hash.each_with_object({}) do |(key, val), memo|
+          memo[key] = case val
+                      when Hash
+                        normalize_trakt_object(val) || val
+                      when Array
+                        val.map { |item| normalize_trakt_object(item) || item }
+                      else
+                        normalize_trakt_object(val) || val
+                      end
         end
       end
 
@@ -609,23 +653,47 @@ module MediaLibrarian
 
         ids = trakt_ids(record)
         external_id = trakt_external_id(ids)
-        title = record['title'].to_s
+        title = trakt_fetch(record, :title).to_s
         return if external_id.to_s.empty? || title.empty?
 
         {
           external_id: external_id,
           title: title,
           media_type: media_type,
-          genres: Array(record['genres']).compact.map(&:to_s),
-          languages: wrap_string(record['language']),
-          countries: wrap_string(record['country']),
-          rating: safe_float(record['rating']),
+          genres: Array(trakt_fetch(record, :genres)).compact.map(&:to_s),
+          languages: wrap_string(trakt_fetch(record, :language)),
+          countries: wrap_string(trakt_fetch(record, :country)),
+          rating: safe_float(trakt_fetch(record, :rating)),
           imdb_votes: nil,
-          poster_url: trakt_image(record, %w[images poster full], %w[images poster medium], %w[poster]),
-          backdrop_url: trakt_image(record, %w[images fanart full], %w[images backdrop full], %w[fanart], %w[backdrop]),
+          poster_url: trakt_image(record, %i[images poster full], %i[images poster medium], %i[poster], %i[poster_url]),
+          backdrop_url: trakt_image(record, %i[images fanart full], %i[images backdrop full], %i[fanart], %i[backdrop]),
           release_date: release_date,
           ids: ids
         }
+      end
+
+      def trakt_fetch(record, *keys)
+        return nil unless record
+
+        keys.each do |key|
+          candidates = [key, key.to_s, key.to_sym].uniq
+          candidates.each do |candidate|
+            next unless record.respond_to?(:[])
+
+            begin
+              value = record[candidate]
+            rescue StandardError
+              next
+            end
+
+            return value unless value.nil?
+          end
+
+          return record.public_send(key) if record.respond_to?(key)
+          return record.public_send(key.to_s) if record.respond_to?(key.to_s)
+        end
+
+        nil
       end
 
       def trakt_external_id(ids)
@@ -633,7 +701,7 @@ module MediaLibrarian
       end
 
       def trakt_ids(record)
-        raw_ids = record['ids'] || {}
+        raw_ids = normalize_trakt_object(trakt_fetch(record, :ids)) || {}
         raw_ids.each_with_object({}) do |(key, val), memo|
           memo[key.to_s] = val unless key.to_s.empty? || val.nil?
         end
