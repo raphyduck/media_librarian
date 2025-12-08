@@ -46,7 +46,12 @@ module SimpleSpeaker
 
     def email_msg_add(str, in_mail, thread)
       str = "[*] #{str}" if in_mail.to_i > 0
-      thread[:email_msg] << str.to_s.force_encoding('UTF-8') + @new_line if thread[:email_msg]
+      buffer = thread[:email_msg]
+      return unless buffer
+
+      buffer = buffer.dup if buffer.frozen?
+      thread[:email_msg] = buffer
+      buffer << str.to_s.force_encoding('UTF-8') + @new_line
       thread[:send_email] = in_mail.to_i if in_mail.to_i > 0 && thread[:send_email]
     end
 
@@ -68,10 +73,11 @@ module SimpleSpeaker
     end
 
     def tell_error(e, src, in_mail = 1, thread = Thread.current)
-      @logger_error.error(e) if @logger_error
+      err = e.is_a?(Exception) ? e : StandardError.new(e.to_s)
+      @logger_error.error(err) if @logger_error
       speak_up("ERROR in '#{src}'" + @new_line, in_mail, thread)
-      speak_up(e.to_s + @new_line, in_mail, thread)
-      speak_up(e.backtrace&[0..2].join(@new_line) + @new_line, in_mail, thread)
+      speak_up(err.to_s + @new_line, in_mail, thread)
+      speak_up(Array(err.backtrace)[0..2].join(@new_line) + @new_line, in_mail, thread)
     end
 
     def user_input(input)
