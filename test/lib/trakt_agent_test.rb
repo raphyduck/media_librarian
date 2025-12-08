@@ -22,7 +22,7 @@ class TraktAgentTest < Minitest::Test
     start_date = Date.new(2024, 1, 1)
     days = 3
 
-    calendars = Class.new do
+    calendar = Class.new do
       attr_reader :calls
 
       def initialize
@@ -36,17 +36,17 @@ class TraktAgentTest < Minitest::Test
     end.new
 
     fetcher = Class.new do
-      attr_reader :calendars_called
+      attr_reader :calendar_called
 
-      def initialize(calendars)
-        @calendars = calendars
+      def initialize(calendar)
+        @calendar = calendar
       end
 
-      def calendars
-        @calendars_called = true
-        @calendars
+      def calendar
+        @calendar_called = true
+        @calendar
       end
-    end.new(calendars)
+    end.new(calendar)
 
     @environment.application.trakt = fetcher
 
@@ -55,8 +55,8 @@ class TraktAgentTest < Minitest::Test
       assert_equal [:entries], result
     end
 
-    assert fetcher.calendars_called
-    assert_equal [[start_date, days]], calendars.calls
+    assert fetcher.calendar_called
+    assert_equal [[start_date, days]], calendar.calls
   end
 
   def test_calendar_entries_can_use_injected_fetcher

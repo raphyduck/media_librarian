@@ -23,24 +23,23 @@ class TraktAgent
   end
 
   def self.fetch_calendar_entries(type, start_date, days, fetcher: nil)
-    calendars_client = fetcher || MediaLibrarian.app.trakt
-    calendars = calendars_client&.respond_to?(:calendars) ? calendars_client.calendars : calendars_client
+    calendar = calendar_client(fetcher || MediaLibrarian.app.trakt)
+    return unless calendar
 
-    if calendars
-      all_method = "all_#{type}".to_sym
-      return calendars.public_send(all_method, start_date, days) if calendars.respond_to?(all_method)
-      return calendars.public_send(type, start_date, days) if calendars.respond_to?(type)
-    end
-
-    calendar = calendars_client&.respond_to?(:calendar) ? calendars_client.calendar : nil
-
-    if calendar
-      all_method = "all_#{type}".to_sym
-      return calendar.public_send(all_method, start_date, days) if calendar.respond_to?(all_method)
-      return calendar.public_send(type, start_date, days) if calendar.respond_to?(type)
-    end
+    call_calendar(calendar, type, start_date, days)
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.calendars__#{type}")
     nil
+  end
+
+  def self.calendar_client(fetcher)
+    return fetcher.calendar if fetcher&.respond_to?(:calendar)
+    return fetcher.calendars if fetcher&.respond_to?(:calendars)
+  end
+
+  def self.call_calendar(calendar, type, start_date, days)
+    %I[all_#{type} #{type}].each do |method|
+      return calendar.public_send(method, start_date, days) if calendar.respond_to?(method)
+    end
   end
 end

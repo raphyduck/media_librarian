@@ -417,7 +417,7 @@ class CalendarFeedServiceTest < Minitest::Test
     ]
 
     fetcher_instance = nil
-    calendars = Class.new do
+    calendar = Class.new do
       attr_reader :calls
 
       def initialize(movie_payload, show_payload)
@@ -440,18 +440,18 @@ class CalendarFeedServiceTest < Minitest::Test
     fake_fetcher_class = Class.new do
       attr_reader :token, :account_id
 
-      def initialize(token, calendars, account_id)
+      def initialize(token, calendar, account_id)
         @token = token
-        @calendars = calendars
+        @calendar = calendar
         @account_id = account_id
       end
 
-      def calendars
-        @calendars
+      def calendar
+        @calendar
       end
     end
 
-    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars, opts[:account_id]) }) do
+    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendar, opts[:account_id]) }) do
       config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret', 'access_token' => 'tok' } }
       app = Struct.new(:config, :db).new(config, @db)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
@@ -459,7 +459,7 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
     end
 
-    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendars.calls
+    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendar.calls
     assert_equal({ access_token: 'tok' }, fetcher_instance.token)
     assert_equal 'acc', fetcher_instance.account_id
     rows = @db.get_rows(:calendar_entries, { source: 'trakt' })
@@ -515,26 +515,20 @@ class CalendarFeedServiceTest < Minitest::Test
     date_range = start_date..end_date
     token = { access_token: 'token', expires_at: Time.now + 3600 }
 
-    calendars_client = Object.new
     calendar_client = Object.new
     trakt_client = Class.new do
       attr_reader :calendar_called
 
-      def initialize(calendars_client, calendar_client)
-        @calendars_client = calendars_client
+      def initialize(calendar_client)
         @calendar_client = calendar_client
         @calendar_called = false
-      end
-
-      def calendars
-        @calendars_client
       end
 
       def calendar
         @calendar_called = true
         @calendar_client
       end
-    end.new(calendars_client, calendar_client)
+    end.new(calendar_client)
 
     movie_payload = [
       { 'released' => start_date.to_s, 'movie' => { 'title' => 'Fallback Movie', 'ids' => { 'slug' => 'fb-movie' } } }
@@ -576,7 +570,7 @@ class CalendarFeedServiceTest < Minitest::Test
     start_date = date_range.first
     days = (date_range.last - start_date).to_i + 1
 
-    calendars = Class.new do
+    calendar = Class.new do
       attr_reader :calls
 
       def initialize
@@ -598,17 +592,17 @@ class CalendarFeedServiceTest < Minitest::Test
     fake_fetcher_class = Class.new do
       attr_reader :token
 
-      def initialize(token, calendars)
+      def initialize(token, calendar)
         @token = token
-        @calendars = calendars
+        @calendar = calendar
       end
 
-      def calendars
-        @calendars
+      def calendar
+        @calendar
       end
     end
 
-    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendars) }) do
+    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendar) }) do
       config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' } }
       trakt_client = Struct.new(:token).new({ access_token: 'stored-token' })
       app = Struct.new(:config, :db, :trakt).new(config, @db, trakt_client)
@@ -617,7 +611,7 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: date_range, limit: 10, sources: ['trakt'])
     end
 
-    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendars.calls
+    assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendar.calls
     assert_equal({ access_token: 'stored-token' }, fetcher_instance.token)
   end
 
