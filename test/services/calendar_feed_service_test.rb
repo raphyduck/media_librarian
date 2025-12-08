@@ -615,7 +615,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal({ access_token: 'stored-token' }, fetcher_instance.token)
   end
 
-  def test_trakt_movies_rejects_non_hash_items
+  def test_trakt_movies_filter_invalid_items_but_keep_valid
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
     payload = [
       {
@@ -627,11 +627,30 @@ class CalendarFeedServiceTest < Minitest::Test
 
     entries, error = service.send(:parse_trakt_movies, payload)
 
-    assert_empty entries
-    assert_equal 'Invalid Trakt payload format', error
+    assert_equal 1, entries.size
+    assert_nil error
 
     error = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
     assert_includes error&.last.to_s, 'Calendar Trakt movies payload'
+  end
+
+  def test_trakt_shows_filter_invalid_items_but_keep_valid
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    payload = [
+      {
+        'first_aired' => Date.today.to_s,
+        'show' => { 'title' => 'Valid Show', 'ids' => { 'slug' => 'valid-show' } }
+      },
+      'invalid'
+    ]
+
+    entries, error = service.send(:parse_trakt_shows, payload)
+
+    assert_equal 1, entries.size
+    assert_nil error
+
+    error = @speaker.messages.find { |message| message.is_a?(Array) && message.first == :error }
+    assert_includes error&.last.to_s, 'Calendar Trakt shows payload'
   end
 
   def test_trakt_shows_skip_invalid_show_records
