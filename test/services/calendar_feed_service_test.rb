@@ -668,6 +668,25 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil error
   end
 
+  def test_trakt_parsers_handle_struct_payloads
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    movie_struct = Struct.new(:title, :ids).new('Struct Movie', { slug: 'struct-movie' })
+    movie_payload = [Struct.new(:released, :movie).new(Date.today.to_s, movie_struct)]
+
+    show_struct = Struct.new(:title, :ids).new('Struct Show', { slug: 'struct-show' })
+    episode_struct = Struct.new(:first_aired).new(Date.today.to_s)
+    show_payload = [Struct.new(:first_aired, :show, :episode).new(nil, show_struct, episode_struct)]
+
+    movie_entries, movie_error = service.send(:parse_trakt_movies, movie_payload)
+    show_entries, show_error = service.send(:parse_trakt_shows, show_payload)
+
+    assert_nil movie_error
+    assert_nil show_error
+    assert_equal 'struct-movie', movie_entries.first[:ids]['slug']
+    assert_equal 'struct-show', show_entries.first[:ids]['slug']
+  end
+
   def test_trakt_payload_missing_is_reported
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
 
