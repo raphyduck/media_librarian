@@ -266,8 +266,10 @@ class Librarian
       object = cmd[0..1].join(' ') if object.to_s.empty? || object == 'rcv'
       init_thread(Thread.current, object, direct, &block)
 
-      app.speaker.speak_up(String.new('Running command: '), 0)
-      app.speaker.speak_up("#{running_command}\n\n", 0)
+      unless internal_email_command?(object, sanitized_cmd)
+        app.speaker.speak_up(String.new('Running command: '), 0)
+        app.speaker.speak_up("#{running_command}\n\n", 0)
+      end
 
       thread_value =
         if direct.to_i > 0
@@ -335,6 +337,11 @@ class Librarian
       token.to_s.match?(/\A[a-z]/)
     end
     private :cli_direct_invocation?
+
+    def internal_email_command?(object, command)
+      object.to_s == 'email' || Array(command).map(&:to_s).first(2) == %w[Report push_email]
+    end
+    private :internal_email_command?
 
     def find_action(tokens)
       names = Array(tokens).take_while { |arg| arg.to_s !~ /^-/ }
