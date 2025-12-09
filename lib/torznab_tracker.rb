@@ -64,6 +64,9 @@ class TorznabTracker
       }
     end
     result
+  rescue Torznab::Errors::HttpError, SocketError, Timeout::Error, Errno::ECONNREFUSED, Errno::ECONNRESET => e
+    MediaLibrarian.app.speaker.speak_up "Tracker '#{name}' network issue: #{e.message}"
+    []
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
