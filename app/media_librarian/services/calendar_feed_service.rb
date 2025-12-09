@@ -328,12 +328,24 @@ module MediaLibrarian
         return entries unless api
 
         entries.each do |entry|
-          next unless entry[:media_type] == 'movie'
+          unless entry[:media_type] == 'movie'
+            omdb_enrichment_debug("OMDb enrichment skipped for #{entry[:title] || entry[:external_id]} (media_type=#{entry[:media_type].inspect})")
+            next
+          end
 
           imdb_id = imdb_id_for(entry)
+          omdb_enrichment_debug("OMDb enrichment fetching #{entry[:title] || entry[:external_id]} via IMDb #{imdb_id}") if imdb_id
           details = imdb_id ? omdb_details(api, imdb_id) : nil
-          details ||= omdb_search_details(api, entry)
-          next unless details
+          unless details
+            omdb_enrichment_debug("OMDb enrichment searching by title for #{entry[:title] || entry[:external_id]} (year=#{entry[:release_date]&.year || 'unknown'})")
+            details = omdb_search_details(api, entry)
+          end
+
+          unless details
+            last_path = api.respond_to?(:last_request_path) ? api.last_request_path : nil
+            omdb_enrichment_debug("OMDb enrichment missing for #{entry[:title] || entry[:external_id]} (last_path=#{last_path})")
+            next
+          end
 
           entry[:ids] ||= {}
           entry[:ids]['imdb'] ||= details[:ids]&.[]('imdb')
@@ -341,6 +353,10 @@ module MediaLibrarian
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]
           entry[:backdrop_url] ||= details[:backdrop_url]
+
+          omdb_enrichment_debug(
+            "OMDb enrichment applied to #{entry[:title] || entry[:external_id]} (imdb=#{entry[:ids]['imdb']}, rating=#{entry[:rating].inspect}, votes=#{entry[:imdb_votes].inspect})"
+          )
         end
 
         entries
@@ -371,6 +387,18 @@ module MediaLibrarian
         return unless ids.is_a?(Hash)
 
         ids['imdb'] || ids[:imdb]
+      end
+
+      def omdb_enrichment_debug(message)
+        return unless omdb_enrichment_debug?
+
+        speaker&.speak_up(message)
+      end
+
+      def omdb_enrichment_debug?
+        Env.debug?
+      rescue StandardError
+        false
       end
 
       def safe_float(value)
