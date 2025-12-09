@@ -72,7 +72,7 @@ module MediaLibrarian
         return unless entry.is_a?(Hash)
 
         release_date = parse_date(entry[:release_date])
-        return unless release_date && date_range.cover?(release_date)
+        return if release_date && !date_range.cover?(release_date)
 
         source = entry[:source].to_s.strip.downcase
         external_id = entry[:external_id].to_s.strip
@@ -434,7 +434,6 @@ module MediaLibrarian
       def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, account_id:, token: nil)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
-        days = [(end_date - start_date).to_i + 1, 1].max
 
         validated_token = ensure_trakt_token!(token)
 
@@ -445,16 +444,27 @@ module MediaLibrarian
           token: validated_token
         )
 
-        movies = trakt_calendar_payload(:movies, fetcher, start_date, days)
-        shows = trakt_calendar_payload(:shows, fetcher, start_date, days)
+        entries = []
+        errors = []
+        chunk_days = trakt_calendar_chunk_days
+        current_date = start_date
 
-        parsed_movies, movie_error = parse_trakt_movies(movies)
-        parsed_shows, show_error = parse_trakt_shows(shows)
+        while current_date <= end_date && entries.size < limit
+          days = [chunk_days, (end_date - current_date).to_i + 1].min
 
-        {
-          entries: (parsed_movies + parsed_shows).first(limit),
-          errors: [movie_error, show_error].compact
-        }
+          movies = trakt_calendar_payload(:movies, fetcher, current_date, days)
+          shows = trakt_calendar_payload(:shows, fetcher, current_date, days)
+
+          parsed_movies, movie_error = parse_trakt_movies(movies)
+          parsed_shows, show_error = parse_trakt_shows(shows)
+
+          errors += [movie_error, show_error].compact
+          entries = deduplicate_trakt_entries(entries + parsed_movies + parsed_shows)
+
+          current_date += days
+        end
+
+        { entries: entries.first(limit), errors: errors }
       rescue AuthenticationError => e
         speaker&.tell_error(e, 'Calendar Trakt authentication failed')
         _, movie_error = validate_trakt_payload(nil, 'Calendar Trakt movies payload', e.message)
@@ -487,6 +497,10 @@ module MediaLibrarian
 
         fallback = fetcher.calendar
         fallback if fallback != fetcher
+      end
+
+      def trakt_calendar_chunk_days
+        30
       end
 
       def trakt_no_content?(fetcher)
@@ -715,6 +729,13 @@ module MediaLibrarian
           release_date: release_date,
           ids: ids
         }
+      end
+
+      def deduplicate_trakt_entries(entries)
+        entries.each_with_object({}) do |entry, memo|
+          key = [entry[:media_type], entry[:external_id]]
+          memo[key] ||= entry
+        end.values
       end
 
       def trakt_fetch(record, *keys)
