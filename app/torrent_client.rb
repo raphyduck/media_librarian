@@ -213,7 +213,7 @@ class TorrentClient
     safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
   rescue => e
     app.speaker.tell_error(e, "app.t_client.#{debug_message}")
-    raise e if invalid_torrent_error?(e)
+    raise e unless invalid_torrent_error?(e)
   end
 
   private
@@ -238,6 +238,8 @@ class TorrentClient
       args.empty? ? core.send(name) : core.send(name, *args)
     end
   rescue => e
+    return handle_invalid_torrent(args) if invalid_torrent_error?(e)
+
     reset_connection
     if tries_remaining > 1
       sleep 5
@@ -250,6 +252,15 @@ class TorrentClient
 
   def invalid_torrent_error?(error)
     [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('InvalidTorrentError') }
+  end
+
+  def handle_invalid_torrent(args)
+    tid = Array(args.first).first.to_s
+    return {} if tid.empty?
+
+    Cache.queue_state_remove('deluge_torrents_added', tid)
+    Cache.queue_state_remove('deluge_torrents_completed', tid)
+    {}
   end
 
   def reset_connection
