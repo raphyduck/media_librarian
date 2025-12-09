@@ -145,7 +145,12 @@ class OmdbApi
     return unless record.is_a?(Hash)
 
     release_date = parse_date(record[:release_date] || record['release_date'] || record['Released'] || record['DVD'])
-    return unless release_date && date_range.cover?(release_date)
+    year = release_date&.year || parse_year(value_from(record, :year, :Year))
+    return unless year
+
+    year_match = date_range.any? { |date| date.respond_to?(:year) && date.year == year }
+    release_date ||= year_match ? parse_date(date_range.first) : Date.new(year, 1, 1)
+    return unless release_date && (date_range.cover?(release_date) || year_match)
 
     imdb_id = value_from(record, :external_id, :imdb_id, :imdbID)
     title = value_from(record, :title, :Title)
@@ -226,6 +231,11 @@ class OmdbApi
     Date.parse(value.to_s)
   rescue StandardError
     nil
+  end
+
+  def parse_year(value)
+    year = value.to_s[/\d{4}/]
+    year ? year.to_i : nil
   end
 
   def report_error(error, message)

@@ -274,6 +274,7 @@ class CalendarFeedServiceTest < Minitest::Test
     movie_date = Date.today + 1
     show_date = Date.today + 2
     date_range = Date.today..(Date.today + 5)
+    year_only = Date.today.year
     calendar_items = [
       {
         'imdbID' => 'tt0111161',
@@ -296,6 +297,12 @@ class CalendarFeedServiceTest < Minitest::Test
         'Country' => 'Canada',
         'imdbRating' => '7.5',
         'imdbVotes' => '6,789'
+      },
+      {
+        'imdbID' => 'tt2024001',
+        'Title' => 'Year Only Movie',
+        'Type' => 'movie',
+        'Year' => year_only
       }
     ]
 
@@ -325,12 +332,14 @@ class CalendarFeedServiceTest < Minitest::Test
 
     assert_equal [{ date_range: date_range, limit: 5 }], helper.calls
     rows = @db.get_rows(:calendar_entries, { source: 'omdb' }).sort_by { |row| row[:external_id] }
-    assert_equal 2, rows.count
+    assert_equal 3, rows.count
     assert_equal 'movie', rows.first[:media_type]
     assert_equal ['Drama'], rows.first[:genres]
     assert_equal ['English'], rows.first[:languages]
     assert_equal ['United States'], rows.first[:countries]
     assert_equal 123_456, rows.first[:imdb_votes]
+    assert_equal 'movie', rows[1][:media_type]
+    assert_equal date_range.first.to_s, rows[1][:release_date].to_s
     assert_equal 'show', rows.last[:media_type]
     assert_equal ['Sci-Fi'], rows.last[:genres]
     assert_equal ['French'], rows.last[:languages]
