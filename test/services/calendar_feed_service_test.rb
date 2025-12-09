@@ -121,7 +121,7 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal ['Drama'], row[:genres]
     assert_equal ['fr'], row[:languages]
     assert_equal ['FR'], row[:countries]
-    assert_equal Date.new(2025, 12, 31), row[:release_date]
+    assert_equal Date.new(2025, 12, 31).to_s, row[:release_date]
   end
 
   def test_enriches_tmdb_entries_without_imdb_ids_using_omdb_search
@@ -767,6 +767,94 @@ class CalendarFeedServiceTest < Minitest::Test
 
     assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendar.calls
     assert_equal({ access_token: 'stored-token' }, fetcher_instance.token)
+  end
+
+  def test_trakt_fetcher_aggregates_chunks
+    start_date = Date.new(2024, 1, 1)
+    end_date = start_date + 3
+    date_range = start_date..end_date
+    token = { access_token: 'token', expires_at: Time.now + 3600 }
+
+    call_log = []
+    movies_payloads = [
+      [{ 'released' => start_date.to_s, 'movie' => { 'title' => 'Movie 1', 'ids' => { 'slug' => 'movie-1' } } }],
+      [{ 'released' => (start_date + 2).to_s, 'movie' => { 'title' => 'Movie 2', 'ids' => { 'slug' => 'movie-2' } } }]
+    ]
+    shows_payloads = [
+      [{ 'first_aired' => (start_date + 1).to_s, 'show' => { 'title' => 'Show 1', 'ids' => { 'slug' => 'show-1' } } }],
+      [{ 'first_aired' => (start_date + 3).to_s, 'show' => { 'title' => 'Show 2', 'ids' => { 'slug' => 'show-2' } } }]
+    ]
+
+    TraktAgent.stub(:fetch_calendar_entries, ->(type, _start, _days, fetcher:) do
+      call_log << [type, _start, _days, fetcher]
+      type == :movies ? movies_payloads.shift : shows_payloads.shift
+    end) do
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db)
+
+      service.stub(:trakt_calendar_client, ->(**_) { :client }) do
+        service.stub(:trakt_calendar_chunk_days, 2) do
+          result = service.send(
+            :fetch_trakt_entries,
+            date_range: date_range,
+            limit: 10,
+            client_id: 'id',
+            client_secret: 'secret',
+            account_id: 'acc',
+            token: token
+          )
+
+          assert_equal %w[movie-1 movie-2 show-1 show-2].sort, result[:entries].map { |e| e[:external_id] }.sort
+          assert_empty result[:errors]
+        end
+      end
+    end
+
+    assert_equal(
+      [
+        [:movies, start_date, 2, :client],
+        [:shows, start_date, 2, :client],
+        [:movies, start_date + 2, 2, :client],
+        [:shows, start_date + 2, 2, :client]
+      ],
+      call_log
+    )
+  end
+
+  def test_trakt_fetcher_respects_limit_across_chunks
+    start_date = Date.new(2024, 2, 1)
+    end_date = start_date + 3
+    date_range = start_date..end_date
+    token = { access_token: 'token', expires_at: Time.now + 3600 }
+
+    TraktAgent.stub(:fetch_calendar_entries, ->(type, *_args, **) do
+      if type == :movies
+        [
+          { 'released' => start_date.to_s, 'movie' => { 'title' => 'Movie 1', 'ids' => { 'slug' => 'movie-1' } } },
+          { 'released' => start_date.to_s, 'movie' => { 'title' => 'Movie 1', 'ids' => { 'slug' => 'movie-1' } } }
+        ]
+      else
+        []
+      end
+    end) do
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db)
+
+      service.stub(:trakt_calendar_client, ->(**_) { :client }) do
+        service.stub(:trakt_calendar_chunk_days, 2) do
+          result = service.send(
+            :fetch_trakt_entries,
+            date_range: date_range,
+            limit: 1,
+            client_id: 'id',
+            client_secret: 'secret',
+            account_id: 'acc',
+            token: token
+          )
+
+          assert_equal 1, result[:entries].size
+          assert_equal 'movie-1', result[:entries].first[:external_id]
+        end
+      end
+    end
   end
 
   def test_trakt_movies_filter_invalid_items_but_keep_valid
