@@ -28,8 +28,8 @@ ffmpeg_settings:
 calendar:
   refresh_every: 12 hours
   refresh_on_start: true
-  window_past_days: 30
-  window_future_days: 45
+  window_past_days: 60
+  window_future_days: 365
   refresh_limit: 200
   providers: imdb|trakt|tmdb
 # imdb:
