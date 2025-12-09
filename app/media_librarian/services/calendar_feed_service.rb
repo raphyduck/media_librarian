@@ -104,6 +104,7 @@ module MediaLibrarian
 
         tokens = Array(value).flat_map { |src| src.to_s.split(SOURCES_SEPARATOR) }
                               .map { |src| src.strip.downcase }
+                              .map { |src| src == 'imdb' ? 'omdb' : src }
                               .reject(&:empty?)
         tokens.empty? ? nil : tokens
       end
@@ -257,6 +258,8 @@ module MediaLibrarian
         return [] unless config.respond_to?(:[])
 
         providers = []
+        omdb_config = config['omdb']
+        providers << omdb_provider(omdb_config) if omdb_config.is_a?(Hash)
         tmdb_config = config['tmdb']
         if tmdb_config.is_a?(Hash)
           providers << TmdbCalendarProvider.new(
