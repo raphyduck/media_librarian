@@ -107,6 +107,47 @@ class MovieTest < Minitest::Test
     assert_includes error_contexts, 'Movie.movie_get trakt lookup timed out'
   end
 
+  def test_movie_uses_force_title_when_title_is_missing
+    movie = Movie.new(
+      {
+        'force_title' => 'Provided',
+        'release_date' => '2021-02-02',
+        'ids' => { 'imdb' => 'tt99999' }
+      },
+      app: @environment.application
+    )
+
+    assert_equal 'Provided (2021)', movie.name
+    refute @environment.application.speaker.messages.any? { |msg| msg.include?('missing title') }
+  end
+
+  def test_movie_falls_back_to_ids_when_no_title_is_available
+    movie = Movie.new(
+      {
+        'release_date' => '2020-01-01',
+        'ids' => { 'imdb' => 'tt0000001' }
+      },
+      app: @environment.application
+    )
+
+    assert_equal 'tt0000001 (2020)', movie.name
+    assert_includes @environment.application.speaker.messages,
+                    'Movie.extract_value missing title, using fallback: tt0000001'
+  end
+
+  def test_movie_allows_missing_title_without_ids
+    movie = Movie.new(
+      {
+        'release_date' => '2019-12-12'
+      },
+      app: @environment.application
+    )
+
+    assert_nil movie.name
+    assert_includes @environment.application.speaker.messages,
+                    'Movie.extract_value missing title, no fallback available: {"release_date"=>"2019-12-12"}'
+  end
+
   private
 
   def ensure_tmdb_stubs
