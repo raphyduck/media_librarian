@@ -76,7 +76,11 @@ class CalendarFeedServiceTest < Minitest::Test
       rating: nil,
       imdb_votes: nil,
       poster_url: nil,
-      backdrop_url: nil
+      backdrop_url: nil,
+      genres: [],
+      languages: [],
+      countries: [],
+      release_date: nil
     )
     provider = FakeProvider.new([entry])
     omdb_client = Class.new do
@@ -88,7 +92,16 @@ class CalendarFeedServiceTest < Minitest::Test
 
       def title(id)
         @calls << id
-        { rating: 9.3, imdb_votes: 234_567, poster_url: 'https://omdb.test/poster.jpg', backdrop_url: 'https://omdb.test/backdrop.jpg' }
+        {
+          rating: 9.3,
+          imdb_votes: 234_567,
+          poster_url: 'https://omdb.test/poster.jpg',
+          backdrop_url: 'https://omdb.test/backdrop.jpg',
+          genres: ['Drama'],
+          languages: ['fr'],
+          countries: ['FR'],
+          release_date: Date.new(2025, 12, 31)
+        }
       end
     end.new
 
@@ -105,6 +118,10 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 234_567, row[:imdb_votes]
     assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
     assert_equal 'https://omdb.test/backdrop.jpg', row[:backdrop_url]
+    assert_equal ['Drama'], row[:genres]
+    assert_equal ['fr'], row[:languages]
+    assert_equal ['FR'], row[:countries]
+    assert_equal Date.new(2025, 12, 31), row[:release_date]
   end
 
   def test_enriches_tmdb_entries_without_imdb_ids_using_omdb_search

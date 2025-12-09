@@ -13,7 +13,7 @@ module MediaLibrarian
   module Services
     class CalendarFeedService < BaseService
       AuthenticationError = Class.new(StandardError)
-      DEFAULT_WINDOW_DAYS = 30
+      DEFAULT_WINDOW_DAYS = 365
       SOURCES_SEPARATOR = /[\s,|]+/.freeze
 
       def initialize(app: self.class.app, speaker: nil, file_system: nil, db: nil, providers: nil)
@@ -353,6 +353,11 @@ module MediaLibrarian
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]
           entry[:backdrop_url] ||= details[:backdrop_url]
+          entry[:release_date] ||= details[:release_date]
+
+          entry[:genres] = details[:genres] if Array(entry[:genres]).empty? && details[:genres].is_a?(Array) && details[:genres].any?
+          entry[:languages] = details[:languages] if Array(entry[:languages]).empty? && details[:languages].is_a?(Array) && details[:languages].any?
+          entry[:countries] = details[:countries] if Array(entry[:countries]).empty? && details[:countries].is_a?(Array) && details[:countries].any?
 
           omdb_enrichment_debug(
             "OMDb enrichment applied to #{entry[:title] || entry[:external_id]} (imdb=#{entry[:ids]['imdb']}, rating=#{entry[:rating].inspect}, votes=#{entry[:imdb_votes].inspect})"
