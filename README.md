@@ -93,7 +93,7 @@ trakt:
 
 `refresh_every` overrides the scheduler interval so the daemon automatically re-hydrates the calendar at the requested cadence. `window_past_days` and `window_future_days` define the rolling window of dates that will be fetched on each run (`refresh_days` remains a backward-compatible alias for the future window), while `refresh_limit` caps the number of entries persisted per refresh. `refresh_on_start` ensures the daemon performs an immediate refresh when the calendar table is empty (set it to `false` to disable that bootstrap). `providers` can be specified as a delimited string (`omdb|trakt|tmdb`, `omdb trakt`, etc.) or as a YAML array, and only the enabled fetchers are queried on each refresh.
 
-The OMDb fetcher relies on an API key (`omdb.api_key`) and maps OMDb/IMDb metadata into the calendar feed. Trakt access still requires an API application; `client_id`/`client_secret` identify the app and the calendar endpoints live under `https://api.trakt.tv/calendars/all/...`. Public calendars work with only the client id, but supplying an OAuth `access_token` allows the service to reuse authenticated calls if you later point it at user-specific scopes.
+The OMDb fetcher relies on an API key (`omdb.api_key`) and maps OMDb/IMDb metadata into the calendar feed. Run with `--debug=1` to surface OMDb enrichment logging when diagnosing missing metadata. Trakt access still requires an API application; `client_id`/`client_secret` identify the app and the calendar endpoints live under `https://api.trakt.tv/calendars/all/...`. Public calendars work with only the client id, but supplying an OAuth `access_token` allows the service to reuse authenticated calls if you later point it at user-specific scopes.
 
 ### Tracker logins that require a real browser
 

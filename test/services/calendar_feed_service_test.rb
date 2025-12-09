@@ -210,6 +210,44 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'tt0000007', row[:ids][:imdb]
   end
 
+  def test_enrichment_debug_logs_when_omdb_returns_nothing
+    entry = base_entry.merge(source: 'tmdb', ids: { 'tmdb' => 8 }, rating: nil, imdb_votes: nil, poster_url: nil)
+    provider = FakeProvider.new([entry])
+
+    omdb_client = Class.new do
+      attr_reader :last_request_path, :calls
+
+      def initialize
+        @calls = []
+        @last_request_path = 'https://omdb.test/?apikey=debug'
+      end
+
+      def title(id)
+        @calls << [:title, id]
+        nil
+      end
+
+      def find_by_title(title:, year: nil, type: nil)
+        @calls << [:find_by_title, title, year, type]
+        @last_request_path = 'https://omdb.test/search'
+        nil
+      end
+    end.new
+
+    Env.stub :debug?, ->(*) { true } do
+      OmdbApi.stub :new, ->(**_) { omdb_client } do
+        config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+        app = Struct.new(:config, :db).new(config, @db)
+        service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+        service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+      end
+    end
+
+    assert @speaker.messages.any? { |msg| msg.include?('OMDb enrichment searching by title for Base') }
+    assert @speaker.messages.any? { |msg| msg.include?('OMDb enrichment missing for Base') }
+  end
+
   def test_enrichment_logs_errors_and_falls_back
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt0123456' }, rating: 6.5, imdb_votes: 100)
     provider = FakeProvider.new([entry])
