@@ -142,7 +142,7 @@ module MediaLibrarian
               seed_time = app.t_client.get_torrent_status(tid, ['active_time'])['active_time'].to_i - data[:active_time].to_i
               if seed_time.nil?
                 speaker.speak_up 'Torrent no longer exists, will remove now...' if Env.debug?
-                remove_it = 1
+                remove_it = remove_missing_torrent(tid)
               elsif target_seed_time <= seed_time.to_i / 3600
                 speaker.speak_up "Torrent has been seeding for #{seed_time.to_i / 3600} hours, more than the seed time set at #{target_seed_time} hour(s) for this tracker. Will remove now..." if Env.debug?
                 app.t_client.remove_torrent(tid, false) if app.remove_torrent_on_completion && torrent_record[:status].to_i < 5
@@ -153,9 +153,9 @@ module MediaLibrarian
               end
             end
           rescue StandardError => e
-            if e.to_s == 'InvalidTorrentError'
+            if invalid_torrent_error?(e)
               speaker.speak_up 'Torrent no longer exists, removing from database...' if Env.debug?
-              remove_it = 1
+              remove_it = remove_missing_torrent(tid)
             else
               speaker.tell_error(e, Utils.arguments_dump(binding))
             end
@@ -212,6 +212,15 @@ module MediaLibrarian
         torrent.merge(torrent_row.select { |key, _| [:name, :identifiers].include?(key) }).each do |key, value|
           speaker.speak_up "#{key} = #{value}"
         end
+      end
+
+      def remove_missing_torrent(tid)
+        app.db.delete_rows('torrents', { torrent_id: tid })
+        1
+      end
+
+      def invalid_torrent_error?(error)
+        [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('InvalidTorrentError') }
       end
 
       def build_download_options(torrent_row, torrent, tdid)

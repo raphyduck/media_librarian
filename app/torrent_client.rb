@@ -213,6 +213,7 @@ class TorrentClient
     safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
   rescue => e
     app.speaker.tell_error(e, "app.t_client.#{debug_message}")
+    raise e if invalid_torrent_error?(e)
   end
 
   private
@@ -238,7 +239,6 @@ class TorrentClient
     end
   rescue => e
     reset_connection
-    raise e if e.respond_to?(:message) && e.message == 'InvalidTorrentError'
     if tries_remaining > 1
       sleep 5
       safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
@@ -246,6 +246,10 @@ class TorrentClient
       app.speaker.tell_error(e, "app.t_client.#{debug_message}")
       raise e
     end
+  end
+
+  def invalid_torrent_error?(error)
+    [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('InvalidTorrentError') }
   end
 
   def reset_connection
