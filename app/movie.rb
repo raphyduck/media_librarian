@@ -73,10 +73,17 @@ class Movie
     when 'langsearch'
       result = Languages.get_code(opts['original_language'] || opts['language'])
     when 'name'
-      base_name = opts['original_title'] || opts['title']
+      base_name = opts['original_title'] || opts['title'] || opts['force_title']
       unless base_name
-        app.speaker.speak_up("Movie.extract_value missing title: #{opts.inspect}")
-        raise ArgumentError, 'Movie.extract_value missing title'
+        fallback = opts.dig('ids', 'slug') || opts.dig('ids', 'imdb') || opts.dig('ids', 'trakt') || opts.dig('ids', 'tmdb') ||
+                   opts['imdb_id'] || opts['imdbnumber'] || opts['id']
+        if fallback
+          base_name = fallback.to_s
+          app.speaker.speak_up("Movie.extract_value missing title, using fallback: #{base_name}")
+        else
+          app.speaker.speak_up("Movie.extract_value missing title, no fallback available: #{opts.inspect}")
+          return nil
+        end
       end
       result = Metadata.identify_release_year(base_name).to_i != year ? "#{base_name} (#{year})" : base_name
     when 'released'
