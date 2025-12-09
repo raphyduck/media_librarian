@@ -328,13 +328,15 @@ module MediaLibrarian
         return entries unless api
 
         entries.each do |entry|
-          imdb_id = imdb_id_for(entry)
-          next unless imdb_id
           next unless entry[:media_type] == 'movie'
 
-          details = omdb_details(api, imdb_id)
+          imdb_id = imdb_id_for(entry)
+          details = imdb_id ? omdb_details(api, imdb_id) : nil
+          details ||= omdb_search_details(api, entry)
           next unless details
 
+          entry[:ids] ||= {}
+          entry[:ids]['imdb'] ||= details[:ids]&.[]('imdb')
           entry[:rating] = details[:rating] unless details[:rating].nil?
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]
@@ -342,6 +344,13 @@ module MediaLibrarian
         end
 
         entries
+      end
+
+      def omdb_search_details(api, entry)
+        return nil unless entry[:title]
+
+        year = entry[:release_date]&.year
+        api.find_by_title(title: entry[:title], year: year, type: entry[:media_type]) if api.respond_to?(:find_by_title)
       end
 
       def omdb_details(api, imdb_id)
@@ -893,7 +902,7 @@ module MediaLibrarian
         end
 
         def fetch_details(kind, id)
-          (kind == :movie ? client::Movie : client::TV).detail(id)
+          (kind == :movie ? client::Movie : client::TV).detail(id, append_to_response: 'external_ids')
         rescue StandardError => e
           report_error(e, "Calendar TMDB detail fetch failed for #{kind} #{id}")
           nil
@@ -921,6 +930,7 @@ module MediaLibrarian
         def tmdb_ids(details)
           ids = { 'tmdb' => details['id'] }
           imdb_id = details['imdb_id'].to_s
+          imdb_id = details.dig('external_ids', 'imdb_id').to_s if imdb_id.empty?
           ids['imdb'] = imdb_id unless imdb_id.empty?
           ids
         end
