@@ -42,6 +42,20 @@ class OmdbApi
     nil
   end
 
+  def find_by_title(title:, year: nil, type: 'movie')
+    return nil if @api_key.empty?
+    return nil if title.to_s.strip.empty?
+
+    query = { t: title, plot: 'short' }
+    query[:y] = year if year
+    query[:type] = type if type
+
+    normalize_detail(request(query))
+  rescue StandardError => e
+    report_error(e, 'OMDb title search failed')
+    nil
+  end
+
   private
 
   def years(date_range)

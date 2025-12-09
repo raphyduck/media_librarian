@@ -107,6 +107,51 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'https://omdb.test/backdrop.jpg', row[:backdrop_url]
   end
 
+  def test_enriches_tmdb_entries_without_imdb_ids_using_omdb_search
+    entry = base_entry.merge(
+      source: 'tmdb',
+      ids: { 'tmdb' => 42 },
+      rating: nil,
+      imdb_votes: nil,
+      poster_url: nil,
+      backdrop_url: nil
+    )
+    provider = FakeProvider.new([entry])
+    omdb_client = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def title(id)
+        @calls << [:title, id]
+        { rating: 9.0, imdb_votes: 999_999 }
+      end
+
+      def find_by_title(title:, year: nil, type: nil)
+        @calls << [:find_by_title, title, year, type]
+        { rating: 8.4, imdb_votes: 111_222, poster_url: 'https://omdb.test/poster.jpg', ids: { 'imdb' => 'tt0000042' } }
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries, { source: 'tmdb' }).first
+    assert_includes omdb_client.calls, [:find_by_title, 'Base', (Date.today + 1).year, 'movie']
+    refute_includes omdb_client.calls.map(&:first), :title
+    assert_in_delta 8.4, row[:rating]
+    assert_equal 111_222, row[:imdb_votes]
+    assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
+    assert_equal 'tt0000042', row[:ids][:imdb]
+  end
+
   def test_skips_enrichment_when_omdb_disabled
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil)
     provider = FakeProvider.new([entry])
@@ -118,6 +163,51 @@ class CalendarFeedServiceTest < Minitest::Test
     row = @db.get_rows(:calendar_entries).first
     assert_nil row[:rating]
     assert_nil row[:imdb_votes]
+  end
+
+  def test_enriches_trakt_entries_using_omdb_search_when_imdb_missing
+    entry = base_entry.merge(
+      source: 'trakt',
+      ids: { 'tmdb' => 7 },
+      rating: nil,
+      imdb_votes: nil,
+      poster_url: nil,
+      backdrop_url: nil
+    )
+    provider = FakeProvider.new([entry])
+    omdb_client = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def title(id)
+        @calls << [:title, id]
+        { rating: 9.9, imdb_votes: 1 }
+      end
+
+      def find_by_title(title:, year: nil, type: nil)
+        @calls << [:find_by_title, title, year, type]
+        { rating: 7.5, imdb_votes: 22_333, poster_url: 'https://omdb.test/poster.jpg', ids: { 'imdb' => 'tt0000007' } }
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries, { source: 'trakt' }).first
+    assert_includes omdb_client.calls, [:find_by_title, 'Base', (Date.today + 1).year, 'movie']
+    refute_includes omdb_client.calls.map(&:first), :title
+    assert_in_delta 7.5, row[:rating]
+    assert_equal 22_333, row[:imdb_votes]
+    assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
+    assert_equal 'tt0000007', row[:ids][:imdb]
   end
 
   def test_enrichment_logs_errors_and_falls_back
@@ -793,7 +883,7 @@ class CalendarFeedServiceTest < Minitest::Test
           ]
         end
 
-        def self.detail(id)
+        def self.detail(id, **_opts)
           self.detail_calls ||= []
           self.detail_calls << id
           {
@@ -840,7 +930,7 @@ class CalendarFeedServiceTest < Minitest::Test
           [Struct.new(:id, :release_date).new(21, (Date.today + 1).to_s)]
         end
 
-        def self.detail(id)
+        def self.detail(id, **_opts)
           self.detail_calls ||= []
           self.detail_calls << id
           {
@@ -866,7 +956,7 @@ class CalendarFeedServiceTest < Minitest::Test
           [Struct.new(:id, :first_air_date).new(31, (Date.today + 2).to_s)]
         end
 
-        def self.detail(id)
+        def self.detail(id, **_opts)
           self.detail_calls ||= []
           self.detail_calls << id
           {
