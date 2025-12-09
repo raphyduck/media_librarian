@@ -1014,7 +1014,12 @@ module MediaLibrarian
 
         def normalize_entry(entry, date_range)
           release_date = parse_date(entry[:release_date] || entry['release_date'] || entry['Released'] || entry['DVD'])
-          return unless release_date && date_range.cover?(release_date)
+          year = release_date&.year || parse_year(fetch_value(entry, :year, :Year))
+          return unless year
+
+          year_match = date_range.any? { |date| date.respond_to?(:year) && date.year == year }
+          release_date ||= year_match ? parse_date(date_range.first) : Date.new(year, 1, 1)
+          return unless release_date && (date_range.cover?(release_date) || year_match)
 
           external_id = fetch_value(entry, :external_id, :imdbID, :imdb_id)
           title = fetch_value(entry, :title, :Title)
@@ -1068,6 +1073,11 @@ module MediaLibrarian
           Date.parse(value.to_s)
         rescue StandardError
           nil
+        end
+
+        def parse_year(value)
+          year = value.to_s[/\d{4}/]
+          year ? year.to_i : nil
         end
 
         def votes(value)
