@@ -343,7 +343,10 @@ module MediaLibrarian
 
           unless details
             last_path = api.respond_to?(:last_request_path) ? api.last_request_path : nil
-            omdb_enrichment_debug("OMDb enrichment missing for #{entry[:title] || entry[:external_id]} (last_path=#{last_path})")
+            last_payload = api.respond_to?(:last_response_body) ? truncate_payload(api.last_response_body) : nil
+            omdb_enrichment_debug(
+              "OMDb enrichment missing for #{entry[:title] || entry[:external_id]} (last_path=#{last_path}, last_payload=#{last_payload})"
+            )
             next
           end
 
@@ -1142,6 +1145,13 @@ module MediaLibrarian
         def parse_year(value)
           year = value.to_s[/\d{4}/]
           year ? year.to_i : nil
+        end
+
+        def truncate_payload(payload)
+          payload = payload.to_s
+          return nil if payload.empty?
+
+          payload.length > 200 ? "#{payload[0, 200]}...[truncated]" : payload
         end
 
         def votes(value)
