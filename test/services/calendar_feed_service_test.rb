@@ -276,11 +276,12 @@ class CalendarFeedServiceTest < Minitest::Test
     provider = FakeProvider.new([entry])
 
     omdb_client = Class.new do
-      attr_reader :last_request_path, :calls
+      attr_reader :last_request_path, :last_response_body, :calls
 
       def initialize
         @calls = []
         @last_request_path = 'https://omdb.test/?apikey=debug'
+        @last_response_body = 'x' * 250
       end
 
       def title(id)
@@ -291,6 +292,7 @@ class CalendarFeedServiceTest < Minitest::Test
       def find_by_title(title:, year: nil, type: nil)
         @calls << [:find_by_title, title, year, type]
         @last_request_path = 'https://omdb.test/search'
+        @last_response_body = 'y' * 250
         nil
       end
     end.new
@@ -306,7 +308,10 @@ class CalendarFeedServiceTest < Minitest::Test
     end
 
     assert @speaker.messages.any? { |msg| msg.include?('OMDb enrichment searching by title for Base') }
-    assert @speaker.messages.any? { |msg| msg.include?('OMDb enrichment missing for Base') }
+    truncated_payload = "#{'y' * 200}...[truncated]"
+    assert @speaker.messages.any? do |msg|
+      msg.include?('OMDb enrichment missing for Base') && msg.include?(truncated_payload)
+    end
   end
 
   def test_enrichment_logs_errors_and_falls_back
