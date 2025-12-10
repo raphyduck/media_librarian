@@ -42,11 +42,8 @@ filter_sources:
     existing_folder:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'
-  download_list:
-    # Loads entries from the DB-backed list (default: download_list) and optionally
-    # from a YAML file made of items with at least a `title` and `type` key.
-    list_name: 'download_list'
-    file_path: '/path/to/download_list.yml'
+  watchlist:
+    # Loads entries from the Watchlist filled from the calendrier / intérêt pane.
     existing_folder:
       movies: '/folder/of/movies'
       shows: '/folder/of/tvseries'

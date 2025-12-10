@@ -3,7 +3,6 @@ const state = {
   username: '',
   autoRefresh: null,
   activeTab: 'jobs',
-  downloadListName: 'download_list',
   dirty: {
     config: false,
     scheduler: false,
@@ -1545,20 +1544,9 @@ async function loadLogs() {
   }
 }
 
-function currentDownloadListName() {
-  const input = document.getElementById('download-list-name');
-  const value = input?.value?.trim();
-  const resolved = value || state.downloadListName || 'download_list';
-  if (input && value !== resolved) {
-    input.value = resolved;
-  }
-  state.downloadListName = resolved;
-  return resolved;
-}
-
-function renderDownloadList(entries = []) {
-  const tbody = document.getElementById('download-list-rows');
-  const emptyHint = document.getElementById('download-list-empty');
+function renderWatchlist(entries = []) {
+  const tbody = document.getElementById('watchlist-rows');
+  const emptyHint = document.getElementById('watchlist-empty');
   if (!tbody || !emptyHint) {
     return;
   }
@@ -1571,16 +1559,21 @@ function renderDownloadList(entries = []) {
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'URL'];
+  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'ID', 'URL'];
 
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
-    const title = entry.title || entry['title'] || '';
-    const type = entry.type || entry['type'] || '';
-    const year = entry.year || entry['year'] || '';
-    const imdb = entry.imdb || entry['imdb'] || '';
-    const tmdb = entry.tmdb || entry['tmdb'] || '';
-    const url = entry.url || entry['url'] || '';
+    const metadata = entry && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+      ? entry.metadata
+      : {};
+    const ids = metadata.ids && typeof metadata.ids === 'object' ? metadata.ids : {};
+    const title = entry.title || metadata.title || '';
+    const type = entry.type || metadata.type || '';
+    const year = metadata.year || metadata.release_year || '';
+    const imdb = ids.imdb || metadata.imdb || '';
+    const tmdb = ids.tmdb || metadata.tmdb || '';
+    const externalId = entry.external_id || entry.id || ids.slug || '';
+    const url = metadata.url || '';
 
     const cells = [
       { text: title || '—' },
@@ -1588,6 +1581,7 @@ function renderDownloadList(entries = []) {
       { text: year || '—' },
       { text: imdb || '—' },
       { text: tmdb || '—' },
+      { text: externalId || '—' },
       url ? { link: url } : { text: '—' },
     ];
 
@@ -1613,7 +1607,7 @@ function renderDownloadList(entries = []) {
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'Supprimer';
-    removeButton.addEventListener('click', () => removeDownloadListEntry(title, year, type));
+    removeButton.addEventListener('click', () => removeWatchlistEntry(externalId, type));
     actionsCell.appendChild(removeButton);
     row.appendChild(actionsCell);
 
@@ -1621,67 +1615,34 @@ function renderDownloadList(entries = []) {
   });
 }
 
-async function loadDownloadList() {
+async function loadWatchlist() {
   if (!state.authenticated) {
     return;
   }
-  const listName = currentDownloadListName();
   try {
-    const data = await fetchJson(`/download_list?list_name=${encodeURIComponent(listName)}`);
-    state.downloadListName = data?.list_name || listName;
-    renderDownloadList(data?.entries || []);
+    const data = await fetchJson('/watchlist');
+    renderWatchlist(data?.entries || []);
   } catch (error) {
     showNotification(error.message, 'error');
   }
 }
 
-async function addDownloadListEntry(event) {
-  event.preventDefault();
-  const form = event.target;
-  const payload = {
-    list_name: currentDownloadListName(),
-    title: form.title.value.trim(),
-    type: form.type.value,
-    year: form.year.value || null,
-    imdb: form.imdb.value.trim(),
-    tmdb: form.tmdb.value.trim(),
-    url: form.url.value.trim(),
-  };
-
-  if (!payload.title) {
-    showNotification('Merci de renseigner un titre.', 'error');
+async function removeWatchlistEntry(externalId, type) {
+  if (!externalId) {
     return;
   }
-
-  try {
-    await fetchJson('/download_list', {
-      method: 'POST',
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(payload),
-    });
-    showNotification('Média ajouté à la liste.');
-    form.reset();
-    form.type.value = payload.type;
-    await loadDownloadList();
-  } catch (error) {
-    showNotification(error.message, 'error');
+  const payload = { id: externalId };
+  if (type) {
+    payload.type = type;
   }
-}
-
-async function removeDownloadListEntry(title, year, type) {
-  if (!title) {
-    return;
-  }
-  const listName = currentDownloadListName();
-  const payload = { list_name: listName, title, year, type };
   try {
-    await fetchJson(`/download_list?list_name=${encodeURIComponent(listName)}`, {
+    await fetchJson('/watchlist', {
       method: 'DELETE',
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
-    showNotification(`« ${title} » retiré de la liste.`);
-    await loadDownloadList();
+    showNotification('Élément retiré de la liste.');
+    await loadWatchlist();
   } catch (error) {
     showNotification(error.message, 'error');
   }
@@ -1704,7 +1665,7 @@ async function loadConfigurationTab(options = {}) {
 }
 
 async function loadDownloadsTab() {
-  await loadDownloadList();
+  await loadWatchlist();
 }
 
 async function controlDaemon({ path, buttonId, message }) {
@@ -1924,20 +1885,9 @@ function setupEventListeners() {
   bindEditorAction('reload-templates', 'templates', 'reload');
   bindEditorAction('save-trackers', 'trackers', 'save');
   bindEditorAction('reload-trackers', 'trackers', 'reload');
-  const downloadForm = document.getElementById('download-list-form');
-  if (downloadForm) {
-    downloadForm.addEventListener('submit', addDownloadListEntry);
-  }
-  const downloadName = document.getElementById('download-list-name');
-  if (downloadName) {
-    downloadName.addEventListener('change', () => {
-      currentDownloadListName();
-      loadDownloadList();
-    });
-  }
-  const refreshDownload = document.getElementById('refresh-download-list');
-  if (refreshDownload) {
-    refreshDownload.addEventListener('click', loadDownloadList);
+  const refreshWatchlist = document.getElementById('refresh-watchlist');
+  if (refreshWatchlist) {
+    refreshWatchlist.addEventListener('click', loadWatchlist);
   }
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);

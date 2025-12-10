@@ -59,7 +59,7 @@ class ListManagementServiceTest < Minitest::Test
     end
   end
 
-  def test_download_list_source_reads_watchlist_store_and_flags_calendar
+  def test_watchlist_source_reads_store_and_flags_calendar
     Dir.mktmpdir('watchlist-test') do |dir|
       db_path = File.join(dir, 'librarian.db')
       db = Storage::Db.new(db_path)
@@ -77,7 +77,7 @@ class ListManagementServiceTest < Minitest::Test
       ])
 
       request = MediaLibrarian::Services::SearchListRequest.new(
-        source_type: 'download_list',
+        source_type: 'watchlist',
         category: 'movies',
         source: { 'existing_folder' => { 'movies' => '/media/movies' } }
       )

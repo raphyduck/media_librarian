@@ -1301,24 +1301,38 @@ class Daemon
     end
 
     def handle_watchlist_request(req, res)
-      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+      case req.request_method
+      when 'GET'
+        entries = WatchlistStore.fetch(type: req.query['type'])
+        json_response(res, body: { 'entries' => entries })
+      when 'POST'
+        payload = parse_payload(req)
+        external_id = (payload['id'] || payload['external_id']).to_s.strip
+        title = payload['title'].to_s.strip
+        return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
+        return error_response(res, status: 422, message: 'missing_title') if title.empty?
 
-      payload = parse_payload(req)
-      external_id = payload['id'].to_s.strip
-      title = payload['title'].to_s.strip
-      return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
-      return error_response(res, status: 422, message: 'missing_title') if title.empty?
+        metadata = payload['metadata']
+        metadata = metadata.is_a?(Hash) ? metadata : {}
+        entry = {
+          external_id: external_id,
+          title: title,
+          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s),
+          metadata: metadata,
+        }
 
-      entry = {
-        external_id: external_id,
-        title: title,
-        type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
-      }
-      metadata = payload['metadata']
-      entry[:metadata] = metadata if metadata.is_a?(Hash)
+        WatchlistStore.upsert([entry])
+        json_response(res, body: { 'status' => 'ok' })
+      when 'DELETE'
+        payload = parse_payload(req)
+        external_id = (payload['id'] || payload['external_id'] || req.query['id']).to_s.strip
+        return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
 
-      WatchlistStore.upsert([entry])
-      json_response(res, body: { 'status' => 'ok' })
+        removed = WatchlistStore.delete(external_id: external_id, type: payload['type'] || req.query['type'])
+        json_response(res, body: { 'removed' => removed.to_i })
+      else
+        method_not_allowed(res, 'GET, POST, DELETE')
+      end
     rescue JSON::ParserError => e
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
