@@ -423,6 +423,13 @@ module MediaLibrarian
         value.to_s.downcase.gsub(/[^a-z0-9\s]/i, ' ').gsub(/[\s]+/, ' ').strip
       end
 
+      def truncate_payload(payload)
+        payload = payload.to_s
+        return nil if payload.empty?
+
+        payload.length > 200 ? "#{payload[0, 200]}...[truncated]" : payload
+      end
+
       def omdb_enrichment_debug(message)
         return unless omdb_enrichment_debug?
 
@@ -1171,13 +1178,6 @@ module MediaLibrarian
         def parse_year(value)
           year = value.to_s[/\d{4}/]
           year ? year.to_i : nil
-        end
-
-        def truncate_payload(payload)
-          payload = payload.to_s
-          return nil if payload.empty?
-
-          payload.length > 200 ? "#{payload[0, 200]}...[truncated]" : payload
         end
 
         def votes(value)
