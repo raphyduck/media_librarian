@@ -17,6 +17,7 @@ require 'get_process_mem'
 
 require_relative '../lib/logger'
 require_relative '../lib/list_store'
+require_relative '../lib/watchlist_store'
 require_relative 'client'
 require_relative 'calendar_feed'
 require_relative '../lib/thread_state'
@@ -1077,6 +1078,12 @@ class Daemon
         handle_scheduler_reload_request(req, res)
       end
 
+      @control_server.mount_proc('/watchlist') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_watchlist_request(req, res)
+      end
+
       @control_thread = Thread.new { @control_server.start }
     end
 
@@ -1291,6 +1298,31 @@ class Daemon
       return error_response(res, status: 404, message: 'scheduler_not_configured') unless path
 
       handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
+    end
+
+    def handle_watchlist_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      payload = parse_payload(req)
+      external_id = payload['id'].to_s.strip
+      title = payload['title'].to_s.strip
+      return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
+      return error_response(res, status: 422, message: 'missing_title') if title.empty?
+
+      entry = {
+        external_id: external_id,
+        title: title,
+        type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
+      }
+      metadata = payload['metadata']
+      entry[:metadata] = metadata if metadata.is_a?(Hash)
+
+      WatchlistStore.upsert([entry])
+      json_response(res, body: { 'status' => 'ok' })
+    rescue JSON::ParserError => e
+      error_response(res, status: 422, message: e.message)
+    rescue StandardError => e
+      error_response(res, status: 422, message: e.message)
     end
 
     def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
