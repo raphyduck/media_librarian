@@ -111,10 +111,17 @@ class OmdbApi
   end
 
   def parse_json(body, status)
-    raise StandardError, "OMDb calendar response was empty (status #{status || 'unknown'})" if body.to_s.strip.empty?
+    text = body.to_s.strip
+    raise StandardError, "OMDb calendar response was empty (status #{status || 'unknown'})" if text.empty?
 
-    JSON.parse(body)
+    JSON.parse(text)
   rescue JSON::ParserError => e
+    fallback = tighten_json(text)
+    if fallback && fallback != text
+      body = fallback
+      retry
+    end
+
     raise StandardError, "OMDb calendar response was invalid JSON (status #{status || 'unknown'}): #{e.message}"
   end
 
@@ -265,6 +272,13 @@ class OmdbApi
 
   def truncate_body(body)
     body.to_s.length > 400 ? "#{body.to_s[0, 400]}...[truncated]" : body.to_s
+  end
+
+  def tighten_json(body)
+    closing = body.rindex(/[}\]]/)
+    return nil unless closing
+
+    body[0..closing].gsub(/([\]\}"0-9])\s*"(?=[A-Za-z0-9_]+":)/, '\\1,"')
   end
 
   def report_error(error, message)
