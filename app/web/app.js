@@ -1274,9 +1274,16 @@ function isDownloaded(entry) {
 }
 
 function isInWatchlist(entry) {
-  const flag = pickEntryValue(entry, ['in_watchlist', 'watchlist', 'on_watchlist', 'listed']);
+  const flag = pickEntryValue(entry, [
+    'in_watchlist',
+    'watchlist',
+    'on_watchlist',
+    'listed',
+    'in_interest_list',
+  ]);
   if (typeof flag === 'string') {
-    return flag.toLowerCase().includes('watch');
+    const normalized = flag.toLowerCase();
+    return normalized.includes('watch') || normalized.includes('interest');
   }
   return Boolean(flag);
 }
@@ -1419,7 +1426,8 @@ function renderCalendar(data = null) {
         if (isDownloaded(entry)) {
           badges.appendChild(makeCalendarBadge('Téléchargé'));
         }
-        if (isInWatchlist(entry)) {
+        const inWatchlist = isInWatchlist(entry);
+        if (inWatchlist) {
           badges.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
         }
         if (badges.childElementCount) {
@@ -1442,7 +1450,7 @@ function renderCalendar(data = null) {
           body.appendChild(meta);
         }
 
-        if (!isInWatchlist(entry)) {
+        if (!inWatchlist) {
           const actions = document.createElement('div');
           actions.className = 'calendar-actions-row';
           const button = document.createElement('button');
