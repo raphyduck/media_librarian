@@ -21,6 +21,15 @@ module WatchlistStore
     []
   end
 
+  def delete(external_id:, type: nil)
+    conditions = { external_id: external_id.to_s }
+    conditions[:type] = type if type && !type.to_s.empty?
+    MediaLibrarian.app.db.delete_rows('watchlist', conditions).to_i
+  rescue StandardError => e
+    MediaLibrarian.app.speaker.tell_error(e, 'WatchlistStore.delete') rescue nil
+    0
+  end
+
   def normalize_entries(entries)
     Array(entries).filter_map do |entry|
       next unless entry

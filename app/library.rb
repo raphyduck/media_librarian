@@ -400,10 +400,9 @@ class Library
     existing_files = {}
     missing = {}
     case source_type
-    when 'download_list'
-      list_name = (source['list_name'] || 'download_list').to_s
-      entries = ListStore.download_entries(list_name: list_name, file_path: source['file_path'])
-      app.speaker.speak_up("No entries found in download list '#{list_name}'") if entries.empty?
+    when 'watchlist', 'download_list'
+      entries = WatchlistStore.fetch(type: category)
+      app.speaker.speak_up('No entries found in watchlist') if entries.empty?
       entries.each do |row|
         type = Utils.regularise_media_type((row[:type] || row['type'] || category).to_s)
         next unless type.to_s == category.to_s
@@ -411,19 +410,29 @@ class Library
         title = (row[:title] || row['title']).to_s
         next if title.empty?
 
-        year = row[:year] || row['year']
-        ids = {}
-        ids['tmdb'] = row[:tmdb] || row['tmdb'] if (row[:tmdb] || row['tmdb']).to_s != ''
-        ids['imdb'] = row[:imdb] || row['imdb'] if (row[:imdb] || row['imdb']).to_s != ''
+        metadata = row[:metadata] || row['metadata']
+        metadata = {} unless metadata.is_a?(Hash)
+        ids = metadata[:ids] || metadata['ids'] || {}
+        ids = {} unless ids.is_a?(Hash)
+        ids = ids.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v }
+        year = metadata[:year] || metadata['year']
+        attrs = {
+          obj_title: title,
+          obj_year: year,
+          obj_url: metadata[:url] || metadata['url'],
+          watchlist: 1,
+          external_id: row[:external_id] || row['external_id'],
+        }
+        attrs[:metadata] = metadata unless metadata.empty?
         name = type == 'movies' && year.to_i > 0 ? "#{title} (#{year})" : title
         search_list = parse_media(
-          { :type => 'download_list', :name => name },
+          { :type => 'watchlist', :name => name },
           type,
           no_prompt,
           search_list,
           {},
           {},
-          { :obj_title => title, :obj_year => year, :obj_url => row[:url] || row['url'], :list_name => list_name },
+          attrs,
           '',
           ids
         )
@@ -450,7 +459,7 @@ class Library
             :move_completed => (destination[category] || File.dirname(DEFAULT_MEDIA_DESTINATION[category])) }
         )
       end
-    when 'filesystem', 'trakt', 'lists', 'download_list'
+    when 'filesystem', 'trakt', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
         app.speaker.speak_up(id) #REMOVEME

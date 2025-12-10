@@ -293,52 +293,15 @@
           aria-labelledby="tab-downloads"
           hidden
         >
-          <section class="panel" id="download-list-panel">
+          <section class="panel" id="watchlist-panel">
             <div class="panel-header">
               <h2>Liste d'intérêt</h2>
               <div class="panel-tools">
-                <label for="download-list-name">Nom</label>
-                <input id="download-list-name" name="download_list_name" type="text" value="download_list" />
                 <div class="actions">
-                  <button id="refresh-download-list" type="button">Rafraîchir</button>
+                  <button id="refresh-watchlist" type="button">Rafraîchir</button>
                 </div>
               </div>
             </div>
-
-            <form id="download-list-form" class="download-list-form">
-              <div class="grid">
-                <label>
-                  Titre
-                  <input id="download-title" name="title" type="text" required />
-                </label>
-                <label>
-                  Type
-                  <select id="download-type" name="type">
-                    <option value="movies">Film</option>
-                    <option value="shows">Série</option>
-                  </select>
-                </label>
-                <label>
-                  Année
-                  <input id="download-year" name="year" type="number" inputmode="numeric" min="1900" max="2100" />
-                </label>
-                <label>
-                  IMDB
-                  <input id="download-imdb" name="imdb" type="text" />
-                </label>
-                <label>
-                  TMDB
-                  <input id="download-tmdb" name="tmdb" type="text" />
-                </label>
-                <label>
-                  URL
-                  <input id="download-url" name="url" type="url" />
-                </label>
-              </div>
-              <div class="actions">
-                <button type="submit" class="primary">Ajouter</button>
-              </div>
-            </form>
 
             <div class="download-list-table">
               <div class="table-wrapper">
@@ -350,14 +313,15 @@
                       <th>Année</th>
                       <th>IMDB</th>
                       <th>TMDB</th>
+                      <th>ID</th>
                       <th>URL</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
-                  <tbody id="download-list-rows"></tbody>
+                  <tbody id="watchlist-rows"></tbody>
                 </table>
               </div>
-              <p class="hint" id="download-list-empty">Aucun média dans cette liste.</p>
+              <p class="hint" id="watchlist-empty">Aucun média dans cette liste.</p>
             </div>
           </section>
         </section>

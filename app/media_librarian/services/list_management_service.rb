@@ -56,7 +56,7 @@ module MediaLibrarian
         when 'filesystem'
           search_list[cache_name] = Library.process_folder(type: request.category, folder: request.source['existing_folder'][request.category], no_prompt: request.no_prompt, filter_criteria: request.source['filter_criteria'], item_name: request.source['item_name'])
           existing_files[request.category] = search_list[cache_name].dup
-        when 'download_list'
+        when 'watchlist', 'download_list'
           rows = WatchlistStore.fetch(type: request.category)
           calendar_entries = []
           rows.each do |row|
