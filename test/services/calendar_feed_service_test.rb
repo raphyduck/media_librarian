@@ -169,6 +169,50 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'tt0000042', row[:ids][:imdb]
   end
 
+  def test_omdb_enrichment_verifies_titles_before_applying_details
+    entry = base_entry.merge(
+      title: 'Destination jeu. 25 déc.',
+      ids: { 'imdb' => 'tt9619824' },
+      release_date: Date.today + 1,
+      rating: nil,
+      imdb_votes: nil,
+      poster_url: nil
+    )
+    provider = FakeProvider.new([entry])
+
+    omdb_client = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def title(id)
+        @calls << [:title, id]
+        { title: 'Final Destination: Bloodlines', release_date: Date.new(2026, 1, 1), rating: 1.1 }
+      end
+
+      def find_by_title(title:, year:, type: nil)
+        @calls << [:find_by_title, title, year, type]
+        { title: 'Destination', release_date: Date.new(year, 12, 25), rating: 8.2, ids: { 'imdb' => 'tt1234567' } }
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries, { source: 'fake' }).first
+    assert_includes omdb_client.calls, [:title, 'tt9619824']
+    assert_includes omdb_client.calls, [:find_by_title, 'Destination jeu. 25 déc.', entry[:release_date].year, 'movie']
+    assert_in_delta 8.2, row[:rating]
+    assert_equal 'tt1234567', row[:ids][:imdb]
+  end
+
   def test_skips_enrichment_when_omdb_disabled
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil)
     provider = FakeProvider.new([entry])

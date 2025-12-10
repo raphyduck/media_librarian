@@ -5,7 +5,9 @@ require 'time'
 require 'themoviedb'
 require 'json'
 require 'httparty'
+require_relative '../../../init/global'
 require_relative '../../../lib/omdb_api'
+require_relative '../../../lib/metadata'
 require_relative '../../../lib/simple_speaker'
 require 'trakt'
 
@@ -336,10 +338,14 @@ module MediaLibrarian
           imdb_id = imdb_id_for(entry)
           omdb_enrichment_debug("OMDb enrichment fetching #{entry[:title] || entry[:external_id]} via IMDb #{imdb_id}") if imdb_id
           details = imdb_id ? omdb_details(api, imdb_id) : nil
+          details = nil unless omdb_titles_match?(entry, details)
+
           unless details
             omdb_enrichment_debug("OMDb enrichment searching by title for #{entry[:title] || entry[:external_id]} (year=#{entry[:release_date]&.year || 'unknown'})")
             details = omdb_search_details(api, entry)
           end
+
+          details = nil unless omdb_titles_match?(entry, details)
 
           unless details
             last_path = api.respond_to?(:last_request_path) ? api.last_request_path : nil
@@ -351,7 +357,7 @@ module MediaLibrarian
           end
 
           entry[:ids] ||= {}
-          entry[:ids]['imdb'] ||= details[:ids]&.[]('imdb')
+          entry[:ids]['imdb'] = details[:ids]&.[]('imdb') if details[:ids]
           entry[:rating] = details[:rating] unless details[:rating].nil?
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]
@@ -395,6 +401,26 @@ module MediaLibrarian
         return unless ids.is_a?(Hash)
 
         ids['imdb'] || ids[:imdb]
+      end
+
+      def omdb_titles_match?(entry, details)
+        return false unless details.is_a?(Hash)
+        clean_entry = normalized_title(entry[:title])
+        clean_details = normalized_title(details[:title])
+        return true if clean_entry.empty? || clean_details.empty?
+        return true if clean_entry.start_with?(clean_details) || clean_details.start_with?(clean_entry)
+
+        Metadata.match_titles(
+          entry[:title].to_s,
+          details[:title].to_s,
+          entry[:release_date]&.year,
+          details[:release_date]&.year,
+          entry[:media_type] == 'show' ? 'shows' : 'movies'
+        )
+      end
+
+      def normalized_title(value)
+        value.to_s.downcase.gsub(/[^a-z0-9\s]/i, ' ').gsub(/[\s]+/, ' ').strip
       end
 
       def omdb_enrichment_debug(message)
