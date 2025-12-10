@@ -29,6 +29,7 @@ module MediaLibrarian
 
         normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
         normalized = enrich_with_omdb(normalized)
+        stats = recompute_stats(stats, normalized)
         speaker.speak_up("Calendar feed collected #{normalized.length} items")
         persist_entries(normalized)
         speaker.speak_up("Calendar feed persisted #{normalized.length} items#{summary_suffix(stats)}")
@@ -373,7 +374,18 @@ module MediaLibrarian
           )
         end
 
-        entries
+        entries.select do |entry|
+          keep = entry[:media_type] != 'movie' || imdb_id_for(entry)
+          omdb_enrichment_debug("OMDb enrichment removing #{entry[:title] || entry[:external_id]}: missing IMDb match") unless keep
+          keep
+        end
+      end
+
+      def recompute_stats(stats, entries)
+        return stats unless stats
+
+        counts = entries.group_by { |entry| entry[:source] }.transform_values(&:count)
+        stats.each { |source, data| data[:retained] = counts[source] || 0 }
       end
 
       def omdb_search_details(api, entry)

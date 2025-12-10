@@ -337,6 +337,31 @@ class CalendarFeedServiceTest < Minitest::Test
     assert @speaker.messages.any? { |msg| msg.is_a?(Array) && msg.last == 'Calendar OMDb enrichment failed' }
   end
 
+  def test_filters_out_movies_without_imdb_match
+    entry = base_entry.merge(source: 'tmdb', ids: { 'tmdb' => 9 }, rating: nil, imdb_votes: nil, poster_url: nil)
+    provider = FakeProvider.new([entry], source: 'tmdb')
+
+    omdb_client = Class.new do
+      def title(*) = nil
+
+      def find_by_title(**)
+        nil
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      results = service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+      assert_empty results
+    end
+
+    assert_empty @db.get_rows(:calendar_entries)
+    assert @speaker.messages.any? { |msg| msg.start_with?('Calendar feed persisted 0 items (tmdb: 0)') }
+  end
+
   def test_refresh_logs_collection_and_persistence_counts
     provider = FakeProvider.new([
       base_entry.merge(external_id: 'movie-1', title: 'Logged Movie')
