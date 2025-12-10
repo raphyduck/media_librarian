@@ -1563,7 +1563,7 @@ async function loadLogs() {
   }
 }
 
-function renderWatchlist(entries = []) {
+function renderWatchlist(entries = [], { message } = {}) {
   const tbody = document.getElementById('watchlist-rows');
   const emptyHint = document.getElementById('watchlist-empty');
   if (!tbody || !emptyHint) {
@@ -1572,6 +1572,9 @@ function renderWatchlist(entries = []) {
 
   tbody.innerHTML = '';
   const normalized = Array.isArray(entries) ? entries : [];
+  const defaultMessage = emptyHint.dataset.defaultText || emptyHint.textContent || '';
+  emptyHint.dataset.defaultText = defaultMessage;
+  emptyHint.textContent = message || defaultMessage;
   if (!normalized.length) {
     emptyHint.classList.remove('hidden');
     return;
@@ -1635,14 +1638,13 @@ function renderWatchlist(entries = []) {
 }
 
 async function loadWatchlist() {
-  if (!state.authenticated) {
-    return;
-  }
   try {
     const data = await fetchJson('/watchlist');
     renderWatchlist(data?.entries || []);
   } catch (error) {
-    showNotification(error.message, 'error');
+    const message = error?.message || 'Impossible de charger la liste.';
+    renderWatchlist([], { message });
+    showNotification(message, 'error');
   }
 }
 
@@ -1732,7 +1734,7 @@ const TAB_LOADERS = {
 };
 
 async function refreshActiveTab(options = {}) {
-  if (!state.authenticated) {
+  if (!state.authenticated && !(await syncSession())) {
     return;
   }
   const loader = TAB_LOADERS[state.activeTab];
@@ -1803,16 +1805,22 @@ async function logout() {
   }
 }
 
-async function bootstrapSession() {
+async function syncSession() {
   try {
     const session = await fetchJson('/session');
-    if (!session || !session.username) {
-      return;
+    if (session?.username) {
+      setAuthenticated(true, session.username);
+      return true;
     }
-    setAuthenticated(true, session.username);
-    await refreshAll();
   } catch (error) {
-    // Auth required or other errors already handled.
+    // Authorization failures are handled by fetchJson.
+  }
+  return state.authenticated;
+}
+
+async function bootstrapSession() {
+  if (await syncSession()) {
+    await refreshAll();
   }
 }
 
