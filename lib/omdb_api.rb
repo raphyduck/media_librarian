@@ -8,7 +8,7 @@ require 'httparty'
 class OmdbApi
   DEFAULT_BASE_URL = 'https://www.omdbapi.com/'.freeze
 
-  attr_reader :last_request_path
+  attr_reader :last_request_path, :last_response_body
 
   def initialize(api_key:, base_url: nil, http_client: HTTParty, speaker: nil)
     @api_key = api_key.to_s.strip
@@ -95,10 +95,13 @@ class OmdbApi
   def request(query)
     query_with_key = query.merge(apikey: @api_key, r: 'json')
     @last_request_path = path_with_query(query_with_key)
+    log_debug("OMDb request: #{@last_request_path}")
     response = @http_client.get(@base_url, query: query_with_key)
     status = response.respond_to?(:code) ? response.code.to_i : nil
+    @last_response_body = response&.body
+    log_debug("OMDb response (status #{status || 'unknown'}): #{truncate_body(@last_response_body)}")
     verify_response!(status)
-    parse_json(response&.body, status)
+    parse_json(@last_response_body, status)
   end
 
   def path_with_query(query)
@@ -250,6 +253,18 @@ class OmdbApi
   def parse_year(value)
     year = value.to_s[/\d{4}/]
     year ? year.to_i : nil
+  end
+
+  def log_debug(message)
+    return unless Env.debug?
+
+    @speaker&.speak_up(message)
+  rescue StandardError
+    nil
+  end
+
+  def truncate_body(body)
+    body.to_s.length > 400 ? "#{body.to_s[0, 400]}...[truncated]" : body.to_s
   end
 
   def report_error(error, message)
