@@ -97,6 +97,7 @@ module MediaLibrarian
           imdb_votes: entry[:imdb_votes].nil? ? nil : entry[:imdb_votes].to_i,
           poster_url: normalize_url(entry[:poster_url] || entry[:poster]),
           backdrop_url: normalize_url(entry[:backdrop_url] || entry[:backdrop]),
+          synopsis: normalize_synopsis(entry),
           release_date: release_date,
           ids: ids
         }
@@ -145,6 +146,17 @@ module MediaLibrarian
       def normalize_url(value)
         url = value.to_s.strip
         url.empty? ? nil : url
+      end
+
+      def normalize_synopsis(entry)
+        synopsis = %i[synopsis overview summary description plot tagline]
+                   .lazy
+                   .map { |key| entry[key] || entry[key.to_s] }
+                   .find { |value| !value.to_s.strip.empty? }
+        return nil unless synopsis
+
+        text = synopsis.to_s.strip
+        text.empty? ? nil : text
       end
 
       def normalize_ids(value)
@@ -774,6 +786,7 @@ module MediaLibrarian
           imdb_votes: nil,
           poster_url: trakt_image(record, %i[images poster full], %i[images poster medium], %i[poster], %i[poster_url]),
           backdrop_url: trakt_image(record, %i[images fanart full], %i[images backdrop full], %i[fanart], %i[backdrop]),
+          synopsis: trakt_fetch(record, :overview),
           release_date: release_date,
           ids: ids
         }
@@ -1017,17 +1030,18 @@ module MediaLibrarian
             title: (kind == :movie ? details['title'] : details['name']) ||
                    details['original_title'] || details['original_name'] || '',
             media_type: kind == :movie ? 'movie' : 'show',
-            genres: Array(details['genres']).filter_map { |genre| genre['name'] },
-            languages: extract_languages(details),
-            countries: extract_countries(details),
-            rating: details['vote_average'],
-            imdb_votes: details['vote_count'],
-            poster_url: image_url(details['poster_path'], 'w342'),
-            backdrop_url: image_url(details['backdrop_path'], 'w780'),
-            release_date: release_date,
-            ids: tmdb_ids(details)
-          }
-        end
+          genres: Array(details['genres']).filter_map { |genre| genre['name'] },
+          languages: extract_languages(details),
+          countries: extract_countries(details),
+          rating: details['vote_average'],
+          imdb_votes: details['vote_count'],
+          poster_url: image_url(details['poster_path'], 'w342'),
+          backdrop_url: image_url(details['backdrop_path'], 'w780'),
+          synopsis: details['overview'],
+          release_date: release_date,
+          ids: tmdb_ids(details)
+        }
+      end
 
         def tmdb_ids(details)
           ids = { 'tmdb' => details['id'] }
@@ -1150,6 +1164,7 @@ module MediaLibrarian
             imdb_votes: votes(fetch_value(entry, :imdb_votes, :imdbVotes)),
             poster_url: url_value(fetch_value(entry, :poster_url, :Poster)),
             backdrop_url: url_value(fetch_value(entry, :backdrop_url, :Backdrop)),
+            synopsis: fetch_value(entry, :synopsis, :Plot, :plot),
             release_date: release_date,
             ids: ids_for(external_id)
           }

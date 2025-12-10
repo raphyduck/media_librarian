@@ -164,6 +164,7 @@ class CalendarEntriesRepository
       country: countries.find { |country| !country.to_s.empty? },
       imdb_rating: parse_rating(row[:rating] || row['rating']),
       imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
+      synopsis: normalize_synopsis(row[:synopsis] || row['synopsis']),
       release_date: release_date,
       downloaded: !!(row[:downloaded] || row['downloaded']),
       in_interest_list: !!(row[:in_interest_list] || row['in_interest_list']),
@@ -200,6 +201,11 @@ class CalendarEntriesRepository
   def normalize_url(value)
     url = value.to_s.strip
     url.empty? ? nil : url
+  end
+
+  def normalize_synopsis(value)
+    text = value.to_s.strip
+    text.empty? ? nil : text
   end
 
   def parse_rating(value)

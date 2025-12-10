@@ -1388,6 +1388,17 @@ function renderCalendar(data = null) {
         header.append(titleEl, dateLabel);
         body.appendChild(header);
 
+        const synopsisText = (() => {
+          const rawSynopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
+          return rawSynopsis == null ? '' : String(rawSynopsis).trim();
+        })();
+        if (synopsisText) {
+          const synopsisEl = document.createElement('p');
+          synopsisEl.className = 'calendar-synopsis';
+          synopsisEl.textContent = synopsisText;
+          body.appendChild(synopsisEl);
+        }
+
         const badges = document.createElement('div');
         badges.className = 'calendar-badges';
         const type = pickEntryValue(entry, ['type', 'kind', 'category']);

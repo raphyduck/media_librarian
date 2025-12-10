@@ -598,6 +598,17 @@ button:disabled {
   word-break: break-word;
 }
 
+.calendar-synopsis {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .calendar-body header {
   display: flex;
   justify-content: space-between;
