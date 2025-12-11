@@ -26,6 +26,14 @@ const state = {
       country: '',
     },
   },
+  collection: {
+    entries: [],
+    sort: 'released_at',
+    page: 1,
+    perPage: 50,
+    total: 0,
+    loading: false,
+  },
   trackers: {
     entries: [],
     map: {},
@@ -1706,6 +1714,179 @@ async function refreshCalendarFeed() {
   }
 }
 
+function resolveCollectionSort(value) {
+  if (value === 'year' || value === 'title') {
+    return value;
+  }
+  return 'released_at';
+}
+
+function resolveCollectionSortOption(sort) {
+  return sort === 'released_at' ? 'date' : sort;
+}
+
+function renderCollectionCard(entry) {
+  const item = document.createElement('li');
+  item.className = 'calendar-entry';
+
+  const media = document.createElement('div');
+  media.className = 'calendar-media';
+  const posterUrl = pickEntryValue(entry, ['poster_url', 'poster', 'backdrop_url', 'backdrop']);
+  const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+  if (posterUrl) {
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = posterUrl;
+    img.alt = `${titleText} - visuel`;
+    media.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'calendar-media-fallback';
+    placeholder.textContent = titleText.charAt(0) || '?';
+    media.appendChild(placeholder);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'calendar-body';
+
+  const header = document.createElement('header');
+  const externalUrl = resolveExternalUrl(entry);
+  const titleEl = document.createElement('h4');
+  if (externalUrl) {
+    const link = document.createElement('a');
+    link.href = externalUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = titleText;
+    titleEl.appendChild(link);
+  } else {
+    titleEl.textContent = titleText;
+  }
+  const releaseDate = (() => {
+    const date = entry.released_at ? new Date(entry.released_at) : null;
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  })();
+  const addedAt = (() => {
+    const date = entry.created_at ? new Date(entry.created_at) : null;
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  })();
+  const metaLabel = document.createElement('span');
+  metaLabel.className = 'calendar-meta';
+  metaLabel.textContent = releaseDate?.getFullYear()
+    || entry.year
+    || (addedAt ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(addedAt) : 'Date inconnue');
+  header.append(titleEl, metaLabel);
+  body.appendChild(header);
+
+  const synopsisText = (() => {
+    const rawSynopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
+    return rawSynopsis == null ? '' : String(rawSynopsis).trim();
+  })();
+  if (synopsisText) {
+    const synopsis = document.createElement('p');
+    synopsis.className = 'calendar-synopsis';
+    synopsis.textContent = synopsisText;
+    body.appendChild(synopsis);
+  }
+
+  if (addedAt) {
+    const addedLabel = document.createElement('div');
+    addedLabel.className = 'calendar-meta';
+    addedLabel.textContent = `Ajouté le ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(addedAt)}`;
+    body.appendChild(addedLabel);
+  }
+
+  item.append(media, body);
+  return item;
+}
+
+function renderCollectionPagination() {
+  const pageLabel = document.getElementById('collection-page');
+  const prev = document.getElementById('collection-prev');
+  const next = document.getElementById('collection-next');
+  const perPage = state.collection.perPage || 1;
+  const totalPages = Math.max(1, Math.ceil((state.collection.total || 0) / perPage));
+  const currentPage = Math.min(Math.max(state.collection.page || 1, 1), totalPages);
+
+  if (pageLabel) {
+    pageLabel.textContent = totalPages > 1 ? `Page ${currentPage} / ${totalPages}` : `Page ${currentPage}`;
+  }
+  if (prev) {
+    prev.disabled = state.collection.loading || currentPage <= 1;
+  }
+  if (next) {
+    next.disabled = state.collection.loading || currentPage >= totalPages;
+  }
+}
+
+function renderCollection(data = null) {
+  const container = document.getElementById('collection-content');
+  if (!container) {
+    return;
+  }
+
+  if (data) {
+    state.collection.entries = Array.isArray(data.entries) ? data.entries : [];
+    const pagination = data.pagination || {};
+    state.collection.page = pagination.page ?? state.collection.page ?? 1;
+    state.collection.perPage = pagination.per_page ?? state.collection.perPage ?? 50;
+    state.collection.total = pagination.total ?? state.collection.total ?? 0;
+    state.collection.sort = resolveCollectionSort(data.sort ?? state.collection.sort);
+  }
+
+  const entries = state.collection.entries || [];
+  if (!entries.length) {
+    container.innerHTML = '<p class="hint">Aucun média dans la collection.</p>';
+    renderCollectionPagination();
+    return;
+  }
+
+  const list = document.createElement('ol');
+  list.className = 'calendar-list collection-list';
+  entries.forEach((entry) => list.appendChild(renderCollectionCard(entry)));
+  container.replaceChildren(list);
+  renderCollectionPagination();
+}
+
+async function loadCollection(options = {}) {
+  if (!state.authenticated) {
+    return;
+  }
+
+  const sortInput = options.sort ?? document.getElementById('collection-sort')?.value ?? state.collection.sort;
+  const sort = resolveCollectionSort(sortInput);
+  const page = Math.max(1, options.page ?? state.collection.page ?? 1);
+  const perPage = Math.max(1, options.perPage ?? state.collection.perPage ?? 50);
+
+  const sortSelect = document.getElementById('collection-sort');
+  if (sortSelect) {
+    const expected = resolveCollectionSortOption(sort);
+    if (sortSelect.value !== expected) {
+      sortSelect.value = expected;
+    }
+  }
+
+  const search = new URLSearchParams({ sort, page, per_page: perPage });
+  const path = `/collection${search.toString() ? `?${search.toString()}` : ''}`;
+  state.collection.loading = true;
+  state.collection.sort = sort;
+  state.collection.page = page;
+  state.collection.perPage = perPage;
+  renderCollection();
+
+  try {
+    const data = await fetchJson(path);
+    renderCollection({ ...data, sort });
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  } finally {
+    state.collection.loading = false;
+    renderCollection();
+  }
+}
+
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
@@ -2378,6 +2559,7 @@ const TAB_LOADERS = {
   scheduler: () => loadSchedulerTasks(),
   config: (options = {}) => loadConfigurationTab(options),
   calendar: (options = {}) => loadCalendar(options),
+  collection: (options = {}) => loadCollection(options),
   downloads: () => loadDownloadsTab(),
 };
 
@@ -2552,6 +2734,23 @@ function setupCalendarEvents() {
   );
 }
 
+function setupCollectionEvents() {
+  const sort = document.getElementById('collection-sort');
+  if (sort) {
+    sort.addEventListener('change', () => loadCollection({ sort: sort.value, page: 1 }));
+  }
+
+  const prev = document.getElementById('collection-prev');
+  if (prev) {
+    prev.addEventListener('click', () => loadCollection({ page: Math.max(1, state.collection.page - 1) }));
+  }
+
+  const next = document.getElementById('collection-next');
+  if (next) {
+    next.addEventListener('click', () => loadCollection({ page: state.collection.page + 1 }));
+  }
+}
+
 function setupEventListeners() {
   setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
@@ -2577,6 +2776,7 @@ function setupEventListeners() {
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
   setupCalendarEvents();
+  setupCollectionEvents();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
