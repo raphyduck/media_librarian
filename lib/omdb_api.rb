@@ -122,7 +122,8 @@ class OmdbApi
       retry
     end
 
-    raise StandardError, "OMDb calendar response was invalid JSON (status #{status || 'unknown'}): #{e.message}"
+    report_error(e, "OMDb calendar response was invalid JSON (status #{status || 'unknown'}): #{e.message}")
+    nil
   end
 
   def verify_response!(status)
