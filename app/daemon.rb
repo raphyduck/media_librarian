@@ -974,6 +974,12 @@ class Daemon
         handle_jobs_request(req, res)
       end
 
+      @control_server.mount_proc('/commands') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_commands_request(req, res)
+      end
+
       @control_server.mount_proc('/status') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1163,10 +1169,63 @@ class Daemon
       error_response(res, status: 404, message: 'not_found')
     end
 
+    def handle_commands_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      commands = serialize_commands(Librarian.command_registry.actions)
+      json_response(res, body: { 'commands' => commands })
+    rescue StandardError => e
+      error_response(res, status: 422, message: e.message)
+    end
+
     def parse_payload(req)
       return {} if req.body.nil? || req.body.empty?
 
       JSON.parse(req.body)
+    end
+
+    def serialize_commands(actions, prefix = [])
+      return [] unless actions.is_a?(Hash)
+
+      actions.flat_map do |name, action|
+        current = prefix + [name.to_s]
+        if action.is_a?(Hash)
+          serialize_commands(action, current)
+        else
+          build_command_entry(action, current)
+        end
+      end.compact
+    end
+
+    def build_command_entry(action, command_path)
+      args = command_arguments(action)
+      queue = command_queue(action)
+      entry = { 'name' => command_path.join(' '), 'command' => command_path, 'args' => args }
+      entry['queue'] = queue if queue
+      entry
+    rescue StandardError
+      nil
+    end
+
+    def command_arguments(action)
+      class_name, method_name = Array(action)
+      return [] unless class_name && method_name
+
+      target = Object.const_get(class_name)
+      method = target.method(method_name)
+      method.parameters.filter_map do |type, name|
+        next unless name
+
+        { 'name' => name.to_s, 'required' => %i[req keyreq].include?(type), 'kind' => type.to_s }
+      end
+    rescue StandardError
+      []
+    end
+
+    def command_queue(action)
+      config = Array(action).drop(2)
+      queue = config[1]
+      queue if queue.is_a?(String) && !queue.empty?
     end
 
     def handle_calendar_request(req, res)
