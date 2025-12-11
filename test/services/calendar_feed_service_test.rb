@@ -314,6 +314,38 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
+  def test_enrichment_skips_entries_when_omdb_json_is_invalid
+    invalid_body = '{"Title":"Incomplete"'
+    fake_client = Class.new do
+      def get(*)
+        Struct.new(:code, :body).new(200, invalid_body)
+      end
+
+      define_method(:invalid_body) { invalid_body }
+    end.new
+
+    api = OmdbApi.allocate
+    api.send(:initialize, api_key: 'omdb-key', http_client: fake_client, speaker: @speaker)
+
+    assert_nil api.send(:parse_json, invalid_body, 200)
+
+    entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil, poster_url: nil)
+    provider = FakeProvider.new([entry])
+
+    OmdbApi.stub :new, ->(**_) { api } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries, { source: 'tmdb' }).first
+    assert_nil row[:rating]
+    assert_nil row[:imdb_votes]
+    assert_equal 'tt7654321', row[:ids][:imdb]
+  end
+
   def test_enrichment_logs_errors_and_falls_back
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt0123456' }, rating: 6.5, imdb_votes: 100)
     provider = FakeProvider.new([entry])
