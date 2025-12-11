@@ -81,6 +81,16 @@
           Intérêts
         </button>
         <button
+          id="tab-collection"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="collection"
+        >
+          Collection
+        </button>
+        <button
           id="tab-config"
           class="tab-button"
           type="button"
@@ -253,6 +263,37 @@
 
             <div id="calendar-content" class="calendar-content">
               <p class="hint">Aucun contenu calendrier pour le moment.</p>
+            </div>
+          </section>
+        </section>
+
+        <section
+          class="tab-panel"
+          data-tab="collection"
+          role="tabpanel"
+          aria-labelledby="tab-collection"
+          hidden
+        >
+          <section class="panel" id="collection-panel">
+            <div class="panel-header">
+              <h2>Collection</h2>
+              <div class="panel-tools">
+                <label for="collection-sort">Tri</label>
+                <select id="collection-sort" name="sort">
+                  <option value="released_at">Date d'ajout</option>
+                  <option value="year">Année</option>
+                  <option value="title">Titre</option>
+                </select>
+                <div class="actions">
+                  <button id="collection-prev" type="button">Précédent</button>
+                  <span id="collection-page" class="calendar-window-label" aria-live="polite">Page 1</span>
+                  <button id="collection-next" type="button">Suivant</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="collection-content" class="calendar-content">
+              <p class="hint">Aucun média dans la collection.</p>
             </div>
           </section>
         </section>

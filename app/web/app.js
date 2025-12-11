@@ -26,6 +26,11 @@ const state = {
       country: '',
     },
   },
+  collection: {
+    entries: [],
+    pagination: { page: 1, perPage: 20, total: 0 },
+    sort: 'released_at',
+  },
   trackers: {
     entries: [],
     map: {},
@@ -1679,6 +1684,112 @@ async function refreshCalendarFeed() {
   }
 }
 
+function renderCollection() {
+  const container = document.getElementById('collection-content');
+  if (!container) {
+    return;
+  }
+  const entries = Array.isArray(state.collection.entries) ? state.collection.entries : [];
+  if (!entries.length) {
+    container.innerHTML = '<p class="hint">Aucun média dans la collection.</p>';
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'collection-grid';
+
+  entries.forEach((entry) => {
+    const card = document.createElement('article');
+    card.className = 'collection-card';
+
+    const header = document.createElement('header');
+    const title = document.createElement('h4');
+    title.textContent = entry.title || 'Titre inconnu';
+    const badge = document.createElement('span');
+    badge.className = 'collection-badge';
+    badge.textContent = (entry.media_type || '—').toString().toUpperCase();
+    header.append(title, badge);
+    card.appendChild(header);
+
+    const meta = document.createElement('div');
+    meta.className = 'collection-meta';
+    const year = entry.year ? `Année: ${entry.year}` : null;
+    const added = entry.created_at ? `Ajouté: ${formatDate(entry.created_at)}` : null;
+    const released = entry.released_at ? `Sortie: ${formatDate(entry.released_at)}` : null;
+    [year, released, added]
+      .filter(Boolean)
+      .forEach((text) => {
+        const span = document.createElement('span');
+        span.textContent = text;
+        meta.appendChild(span);
+      });
+    if (meta.childElementCount) {
+      card.appendChild(meta);
+    }
+
+    const path = entry.local_path || entry.external_id || null;
+    if (path) {
+      const pathEl = document.createElement('div');
+      pathEl.className = 'collection-path';
+      pathEl.textContent = path;
+      card.appendChild(pathEl);
+    }
+
+    list.appendChild(card);
+  });
+
+  container.replaceChildren(list);
+}
+
+function updateCollectionPaginationDisplay() {
+  const { page, perPage, total } = state.collection.pagination;
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(perPage, 1)));
+  const clampedPage = Math.min(page, totalPages);
+
+  const pageLabel = document.getElementById('collection-page');
+  if (pageLabel) {
+    pageLabel.textContent = `Page ${clampedPage} / ${totalPages}`;
+  }
+
+  const prev = document.getElementById('collection-prev');
+  if (prev) {
+    prev.disabled = clampedPage <= 1;
+  }
+  const next = document.getElementById('collection-next');
+  if (next) {
+    next.disabled = clampedPage >= totalPages;
+  }
+}
+
+async function loadCollection(options = {}) {
+  if (!state.authenticated) {
+    return;
+  }
+  const sortSelect = document.getElementById('collection-sort');
+  const sort = (sortSelect?.value || state.collection.sort || 'released_at').trim() || 'released_at';
+  const pagination = state.collection.pagination || {};
+  const perPage = pagination.perPage || 20;
+  const targetPage = options.page || (options.preservePage ? pagination.page : 1) || 1;
+
+  const search = new URLSearchParams({ sort, page: targetPage, per_page: perPage });
+  try {
+    const data = await fetchJson(`/collection?${search.toString()}`);
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    const paginationData = data?.pagination || {};
+    state.collection.entries = entries;
+    state.collection.sort = sort;
+    state.collection.pagination = {
+      page: paginationData.page || targetPage,
+      perPage: paginationData.per_page || perPage,
+      total: paginationData.total || entries.length,
+    };
+    renderCollection();
+    updateCollectionPaginationDisplay();
+  } catch (error) {
+    showNotification(error.message, 'error');
+  }
+}
+
 async function loadStatus() {
   try {
     const data = await fetchJson('/status');
@@ -2348,6 +2459,7 @@ const TAB_LOADERS = {
   scheduler: () => loadSchedulerTasks(),
   config: (options = {}) => loadConfigurationTab(options),
   calendar: (options = {}) => loadCalendar(options),
+  collection: (options = {}) => loadCollection(options),
   downloads: () => loadDownloadsTab(),
 };
 
@@ -2520,6 +2632,34 @@ function setupCalendarEvents() {
   );
 }
 
+function setupCollectionEvents() {
+  const sort = document.getElementById('collection-sort');
+  if (sort) {
+    sort.value = state.collection.sort;
+    sort.addEventListener('change', () => loadCollection({ preservePage: false }));
+  }
+
+  const prev = document.getElementById('collection-prev');
+  if (prev) {
+    prev.addEventListener('click', () => {
+      const nextPage = Math.max(1, (state.collection.pagination.page || 1) - 1);
+      state.collection.pagination.page = nextPage;
+      loadCollection({ preservePage: true });
+    });
+  }
+
+  const next = document.getElementById('collection-next');
+  if (next) {
+    next.addEventListener('click', () => {
+      const { page, perPage, total } = state.collection.pagination;
+      const totalPages = Math.max(1, Math.ceil(total / Math.max(perPage || 1, 1)));
+      const nextPage = Math.min(totalPages, (page || 1) + 1);
+      state.collection.pagination.page = nextPage;
+      loadCollection({ preservePage: true });
+    });
+  }
+}
+
 function setupEventListeners() {
   setupTabs();
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
@@ -2545,6 +2685,7 @@ function setupEventListeners() {
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
   setupCalendarEvents();
+  setupCollectionEvents();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
