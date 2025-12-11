@@ -162,6 +162,7 @@ class CalendarEntriesRepository
       countries: countries,
       language: languages.find { |lang| !lang.to_s.empty? },
       country: countries.find { |country| !country.to_s.empty? },
+      imdb_id: (row[:imdb_id] || row['imdb_id']).to_s,
       imdb_rating: parse_rating(row[:rating] || row['rating']),
       imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
       synopsis: normalize_synopsis(row[:synopsis] || row['synopsis']),

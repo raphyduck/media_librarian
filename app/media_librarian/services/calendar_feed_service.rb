@@ -177,8 +177,11 @@ module MediaLibrarian
       def persist_entries(entries)
         return [] if entries.empty?
 
-        db.insert_rows(:calendar_entries, entries, true)
-        entries
+        prepared = entries.filter_map { |entry| ensure_imdb_id(entry) }
+        return [] if prepared.empty?
+
+        db.insert_rows(:calendar_entries, prepared, true)
+        prepared
       end
 
       def log_entries(entries)
@@ -421,10 +424,51 @@ module MediaLibrarian
       end
 
       def imdb_id_for(entry)
-        ids = entry[:ids]
-        return unless ids.is_a?(Hash)
+        candidates = []
+        candidates << entry[:imdb_id]
 
-        ids['imdb'] || ids[:imdb]
+        ids = entry[:ids]
+        if ids.is_a?(Hash)
+          candidates << ids['imdb']
+          candidates << ids[:imdb]
+          candidates.concat(ids.values.select { |value| imdb_identifier?(value) })
+        end
+
+        candidates << entry[:external_id] if imdb_identifier?(entry[:external_id])
+
+        candidates.map { |id| normalize_identifier(id) }.find { |id| imdb_identifier?(id) }
+      end
+
+      def persist_imdb_id_for(entry)
+        imdb_id_for(entry) || begin
+          ids = entry[:ids]
+          candidates = []
+          candidates.concat(ids.values) if ids.is_a?(Hash)
+          candidates << entry[:imdb_id]
+          candidates << entry[:external_id]
+          candidates.map { |id| normalize_identifier(id) }.find { |id| !id.empty? }
+        end
+      end
+
+      def ensure_imdb_id(entry)
+        imdb_id = persist_imdb_id_for(entry)
+        if imdb_id.to_s.empty?
+          speaker&.tell_error(StandardError.new('Missing IMDb ID'), "Calendar entry missing imdb_id: #{entry[:title] || entry[:external_id]}")
+          return nil
+        end
+
+        entry[:ids] ||= {}
+        entry[:ids]['imdb'] ||= imdb_id if imdb_identifier?(imdb_id)
+        entry[:imdb_id] = imdb_id
+        entry
+      end
+
+      def imdb_identifier?(value)
+        value.to_s.match?(/\Att\d+/i)
+      end
+
+      def normalize_identifier(value)
+        value.to_s.strip
       end
 
       def omdb_titles_match?(entry, details)
@@ -1023,25 +1067,25 @@ module MediaLibrarian
           nil
         end
 
-        def build_entry(details, kind, release_date)
-          {
-            source: source,
-            external_id: "#{kind}-#{details['id']}",
-            title: (kind == :movie ? details['title'] : details['name']) ||
-                   details['original_title'] || details['original_name'] || '',
-            media_type: kind == :movie ? 'movie' : 'show',
-          genres: Array(details['genres']).filter_map { |genre| genre['name'] },
-          languages: extract_languages(details),
-          countries: extract_countries(details),
-          rating: details['vote_average'],
-          imdb_votes: details['vote_count'],
-          poster_url: image_url(details['poster_path'], 'w342'),
-          backdrop_url: image_url(details['backdrop_path'], 'w780'),
-          synopsis: details['overview'],
-          release_date: release_date,
-          ids: tmdb_ids(details)
-        }
-      end
+          def build_entry(details, kind, release_date)
+            {
+              source: source,
+              external_id: "#{kind}-#{details['id']}",
+              title: (kind == :movie ? details['title'] : details['name']) ||
+                     details['original_title'] || details['original_name'] || '',
+              media_type: kind == :movie ? 'movie' : 'show',
+              genres: Array(details['genres']).filter_map { |genre| genre['name'] },
+              languages: extract_languages(details),
+              countries: extract_countries(details),
+              rating: details['vote_average'],
+              imdb_votes: details['vote_count'],
+              poster_url: image_url(details['poster_path'], 'w342'),
+              backdrop_url: image_url(details['backdrop_path'], 'w780'),
+              synopsis: details['overview'],
+              release_date: release_date,
+              ids: tmdb_ids(details)
+            }
+          end
 
         def tmdb_ids(details)
           ids = { 'tmdb' => details['id'] }
