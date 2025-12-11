@@ -1,3 +1,5 @@
+require_relative 'local_media_repository'
+
 class Library
   include MediaLibrarian::AppContainerSupport
 
@@ -439,12 +441,7 @@ class Library
           ids
         )
       end
-      existing_path = source.dig('existing_folder', category)
-      if existing_path.to_s != ''
-        existing_files[category] = process_folder(type: category, folder: existing_path, no_prompt: no_prompt)
-      else
-        existing_files[category] = {}
-      end
+      existing_files[category] = existing_media_from_db(category, source.dig('existing_folder', category))
     when 'search'
       keywords = source['keywords']
       keywords = [keywords] if keywords.is_a?(String)
@@ -533,6 +530,12 @@ class Library
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     media_list.delete(cache_name)
     {}
+  end
+
+  def self.existing_media_from_db(category, folder)
+    return {} if folder.to_s.empty?
+
+    LocalMediaRepository.new(app: app).library_index(type: category, folder: folder) || {}
   end
 
   def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home)

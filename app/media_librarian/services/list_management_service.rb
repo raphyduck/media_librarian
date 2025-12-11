@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative '../../local_media_repository'
+
 module MediaLibrarian
   module Services
     class CustomListRequest
@@ -54,7 +56,7 @@ module MediaLibrarian
         existing_files = {}
         case request.source_type
         when 'filesystem'
-          search_list[cache_name] = Library.process_folder(type: request.category, folder: request.source['existing_folder'][request.category], no_prompt: request.no_prompt, filter_criteria: request.source['filter_criteria'], item_name: request.source['item_name'])
+          search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
           existing_files[request.category] = search_list[cache_name].dup
         when 'watchlist', 'download_list'
           rows = WatchlistStore.fetch(type: request.category)
@@ -85,7 +87,7 @@ module MediaLibrarian
             search_list[cache_name] = Library.parse_media({ type: 'lists', name: "#{row[:title]} (#{row[:year]})".gsub('/', ' ') }, ttype, request.no_prompt, search_list[cache_name] || {}, {}, {}, { obj_title: row[:title], obj_year: row[:year], obj_url: row[:url], obj_type: ttype }, '', { 'tmdb' => row[:tmdb], 'imdb' => row[:imdb] })
           end
         end
-        existing_files[request.category] = Library.process_folder(type: request.category, folder: request.source['existing_folder'][request.category], no_prompt: request.no_prompt, remove_duplicates: 0)
+        existing_files[request.category] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
         existing_files[request.category][:shows] = search_list[cache_name][:shows] if search_list[cache_name]&.dig(:shows) && request.category.to_s == 'shows'
         annotate_calendar_downloads(search_list, existing_files, request.category)
         [search_list, existing_files]
@@ -123,6 +125,10 @@ module MediaLibrarian
 
       def normalize_metadata(metadata)
         metadata.is_a?(Hash) ? metadata : {}
+      end
+
+      def media_repository
+        @media_repository ||= LocalMediaRepository.new(app: app)
       end
 
     end
