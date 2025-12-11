@@ -122,6 +122,7 @@ module MediaLibrarian
 
     def setup_dependencies
       Bundler.require(:default)
+      require 'tvmaze' unless defined?(TVMaze::Show)
       require 'fuzzystringmatch' unless defined?(FuzzyStringMatch)
       require 'mechanize' unless defined?(Mechanize)
       require 'deluge/rpc' unless defined?(Deluge::Rpc::Client)
