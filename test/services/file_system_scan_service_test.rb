@@ -52,11 +52,17 @@ class FileSystemScanServiceTest < Minitest::Test
       folder_types: { @tmp_dir => 'movies' }
     )
 
-    Metadata.stub(:identify_title, ['Example', movie]) do
-      Metadata.stub(:parse_media_filename, ['Example (2021)', ['movieExample2021'], { movie: movie }]) do
-        @service.scan(request)
-      end
-    end
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        name: 'Example',
+        full_name: 'Example (2021)',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    Library.stub(:process_folder, library) { @service.scan(request) }
 
     assert_equal 1, @db.rows.length
     row = @db.rows.first
