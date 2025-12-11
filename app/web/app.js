@@ -1669,6 +1669,186 @@ async function removeWatchlistEntry(externalId, type) {
   }
 }
 
+function parseSchedulerTemplate(content, parsed) {
+  if (parsed && typeof parsed === 'object') {
+    return parsed;
+  }
+  if (!content) {
+    return null;
+  }
+  if (typeof YAML !== 'undefined' && typeof YAML.parse === 'function') {
+    try {
+      return YAML.parse(content);
+    } catch (error) {
+      // ignore
+    }
+  }
+  if (typeof jsyaml !== 'undefined' && typeof jsyaml.load === 'function') {
+    try {
+      return jsyaml.load(content);
+    } catch (error) {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function normalizeSchedulerArgs(args, type) {
+  const list = [];
+  if (Array.isArray(args)) {
+    args.forEach((value) => list.push(String(value)));
+  } else if (args && typeof args === 'object') {
+    Object.entries(args).forEach(([key, value]) => {
+      list.push(`--${key}=${value}`);
+    });
+  }
+  if (type === 'continuous') {
+    list.push('--continuous=1');
+  }
+  return list;
+}
+
+function extractSchedulerTasks(template) {
+  if (!template || typeof template !== 'object') {
+    return [];
+  }
+  const tasks = [];
+  ['periodic', 'continuous'].forEach((type) => {
+    const section = template[type];
+    if (!section || typeof section !== 'object') {
+      return;
+    }
+    Object.entries(section).forEach(([name, entry]) => {
+      if (!entry || typeof entry !== 'object') {
+        return;
+      }
+      let base = [];
+      if (Array.isArray(entry.command)) {
+        base = entry.command.map((value) => String(value));
+      } else if (typeof entry.command === 'string') {
+        base = entry.command.split('.');
+      }
+      if (!base.length) {
+        return;
+      }
+      const args = normalizeSchedulerArgs(entry.args, type);
+      const schedule = entry.every || entry.cron || entry.interval || '';
+      tasks.push({
+        name: name || base.join(' '),
+        type,
+        schedule: schedule ? String(schedule) : '',
+        command: [...base, ...args],
+        queue: entry.queue || '',
+        task: name || '',
+        description: entry.description || '',
+      });
+    });
+  });
+  return tasks;
+}
+
+function renderSchedulerTasks(tasks = [], { message } = {}) {
+  const container = document.getElementById('scheduler-task-list');
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  if (!tasks.length) {
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = message || 'Aucune tâche planifiée.';
+    container.appendChild(hint);
+    return;
+  }
+
+  tasks.forEach((task) => {
+    const item = document.createElement('article');
+    item.className = 'scheduler-task';
+
+    const body = document.createElement('div');
+    body.className = 'task-body';
+
+    const title = document.createElement('h3');
+    title.textContent = task.name || task.command.join(' ');
+    body.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'task-meta';
+    meta.textContent = `${task.type === 'continuous' ? 'Continu' : 'Périodique'}${
+      task.schedule ? ` · ${task.schedule}` : ''
+    }`;
+    body.appendChild(meta);
+
+    if (task.command?.length) {
+      const commandLine = document.createElement('code');
+      commandLine.textContent = task.command.join(' ');
+      body.appendChild(commandLine);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'task-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Lancer';
+    button.addEventListener('click', () => runSchedulerTask(task, button));
+    actions.appendChild(button);
+
+    item.appendChild(body);
+    item.appendChild(actions);
+    container.appendChild(item);
+  });
+}
+
+async function runSchedulerTask(task, button) {
+  if (!task?.command?.length) {
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  const payload = {
+    command: task.command,
+    wait: false,
+    task: task.task || task.name,
+  };
+  if (task.queue) {
+    payload.queue = task.queue;
+  }
+  try {
+    await fetchJson('/jobs', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification('Job ajouté à la file.');
+    await loadStatus();
+  } catch (error) {
+    showNotification(error.message, 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+async function loadSchedulerTasks() {
+  const container = document.getElementById('scheduler-task-list');
+  if (!container) {
+    return;
+  }
+  try {
+    const data = await fetchJson('/scheduler');
+    const template = parseSchedulerTemplate(data?.content, data?.entries);
+    const tasks = extractSchedulerTasks(template);
+    renderSchedulerTasks(tasks);
+  } catch (error) {
+    renderSchedulerTasks([], { message: error.message });
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+}
+
 async function loadConfigurationTab(options = {}) {
   await loadEditor('config', options);
   if (!state.authenticated) {
@@ -1728,6 +1908,7 @@ async function stopDaemon() {
 const TAB_LOADERS = {
   jobs: () => loadStatus(),
   logs: () => loadLogs(),
+  scheduler: () => loadSchedulerTasks(),
   config: (options = {}) => loadConfigurationTab(options),
   calendar: (options = {}) => loadCalendar(options),
   downloads: () => loadDownloadsTab(),
@@ -1754,6 +1935,10 @@ async function refreshAll(options = {}) {
       return;
     }
     await loadLogs();
+    if (!state.authenticated) {
+      return;
+    }
+    await loadSchedulerTasks();
     if (!state.authenticated) {
       return;
     }
@@ -1904,6 +2089,10 @@ function setupEventListeners() {
   document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
   document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+  const refreshSchedulerTasks = document.getElementById('refresh-scheduler-tasks');
+  if (refreshSchedulerTasks) {
+    refreshSchedulerTasks.addEventListener('click', loadSchedulerTasks);
+  }
   bindEditorAction('save-config', 'config', 'save');
   bindEditorAction('reload-config', 'config', 'reload');
   bindEditorAction('save-scheduler', 'scheduler', 'save');

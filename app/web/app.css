@@ -351,6 +351,43 @@ button.danger:hover {
   background: rgba(15, 23, 42, 0.6);
 }
 
+.scheduler-tasks {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.scheduler-task {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.scheduler-task .task-body {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.scheduler-task .task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.scheduler-task .task-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .job-children {
   list-style: none;
   margin: 0.75rem 0 0;
