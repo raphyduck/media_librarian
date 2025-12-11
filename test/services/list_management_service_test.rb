@@ -70,9 +70,10 @@ class ListManagementServiceTest < Minitest::Test
       WatchlistStore.upsert([
         {
           external_id: 'tmdb-42',
+          imdb_id: 'tt0042',
           type: 'movies',
           title: 'Sample',
-          metadata: { year: 2024, ids: { 'tmdb' => '42' }, calendar_entries: [{ external_id: 'tmdb-42' }] }
+          metadata: { year: 2024, ids: { 'tmdb' => '42', 'imdb' => 'tt0042' }, calendar_entries: [{ external_id: 'tmdb-42' }] }
         }
       ])
 
@@ -82,16 +83,16 @@ class ListManagementServiceTest < Minitest::Test
         source: { 'existing_folder' => { 'movies' => '/media/movies' } }
       )
 
-      parsed_media = { 'tmdb-42' => { already_followed: 1 } }
+      parsed_media = { 'tt0042' => { already_followed: 1 } }
       Library.stub(:parse_media, parsed_media) do
         existing = { 'tmdb-42' => { identifier: 'tmdb-42' } }
         Library.stub(:process_folder, existing) do
           files, search_list = @service.get_search_list(request)
 
           assert_equal existing, files['movies']
-          assert_equal parsed_media['tmdb-42'], search_list['tmdb-42']
+          assert_equal parsed_media['tt0042'], search_list['tt0042']
           assert_equal true, search_list[:calendar_entries].first[:downloaded]
-          assert_equal 'tmdb-42', search_list[:calendar_entries].first[:external_id]
+          assert_equal 'tt0042', search_list[:calendar_entries].first[:external_id]
         end
       end
     ensure
