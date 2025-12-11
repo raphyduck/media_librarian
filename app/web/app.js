@@ -1740,7 +1740,7 @@ function renderWatchlist(entries = [], { message } = {}) {
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'ID', 'URL'];
+  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'URL'];
   const trackerLabel = 'Recherche tracker';
 
   normalized.forEach((entry) => {
@@ -1753,7 +1753,6 @@ function renderWatchlist(entries = [], { message } = {}) {
     const type = entry.type || metadata.type || '';
     const year = metadata.year || metadata.release_year || '';
     const imdb = ids.imdb || metadata.imdb || '';
-    const tmdb = ids.tmdb || metadata.tmdb || '';
     const externalId = entry.external_id || entry.id || ids.slug || '';
     const url = metadata.url || '';
 
@@ -1761,9 +1760,7 @@ function renderWatchlist(entries = [], { message } = {}) {
       { text: title || '—' },
       { text: type || '—' },
       { text: year || '—' },
-      { text: imdb || '—' },
-      { text: tmdb || '—' },
-      { text: externalId || '—' },
+      { text: imdb || externalId || '—' },
       url ? { link: url } : { text: '—' },
     ];
 
@@ -2013,6 +2010,129 @@ function renderSchedulerTasks(tasks = [], { message } = {}) {
   });
 }
 
+function baseCommandKey(command = []) {
+  if (!Array.isArray(command)) {
+    return '';
+  }
+  return command
+    .filter((part) => part && !String(part).startsWith('--'))
+    .map((part) => String(part).trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function renderAvailableCommands(commands = [], scheduledTasks = []) {
+  const container = document.getElementById('available-command-list');
+  if (!container) {
+    return;
+  }
+
+  const scheduledKeys = new Set(
+    (scheduledTasks || [])
+      .map((task) => baseCommandKey(task.command))
+      .filter((value) => value)
+  );
+
+  const available = Array.isArray(commands)
+    ? commands.filter((command) => !scheduledKeys.has(baseCommandKey(command.command)))
+    : [];
+
+  container.innerHTML = '';
+
+  if (!available.length) {
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'Aucune commande CLI disponible.';
+    container.appendChild(hint);
+    return;
+  }
+
+  available.forEach((command) => {
+    const item = document.createElement('article');
+    item.className = 'scheduler-task';
+
+    const body = document.createElement('div');
+    body.className = 'task-body';
+
+    const title = document.createElement('h3');
+    title.textContent = command.name || (command.command || []).join(' ');
+    body.appendChild(title);
+
+    const queueLabel = command.queue ? [`File : ${command.queue}`] : [];
+    if (queueLabel.length) {
+      const meta = document.createElement('div');
+      meta.className = 'task-meta';
+      meta.textContent = queueLabel.join(' · ');
+      body.appendChild(meta);
+    }
+
+    const argsContainer = document.createElement('div');
+    argsContainer.className = 'command-args';
+
+    const inputs = [];
+    if (Array.isArray(command.args) && command.args.length) {
+      command.args.forEach((arg) => {
+        if (!arg?.name) {
+          return;
+        }
+        const wrapper = document.createElement('label');
+        wrapper.className = 'command-arg';
+        wrapper.textContent = arg.name;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.dataset.argName = arg.name;
+        input.placeholder = arg.required ? 'Requis' : 'Optionnel';
+        input.required = Boolean(arg.required);
+        wrapper.appendChild(input);
+        argsContainer.appendChild(wrapper);
+        inputs.push(input);
+      });
+    } else {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'Aucun argument requis.';
+      argsContainer.appendChild(hint);
+    }
+
+    body.appendChild(argsContainer);
+
+    const actions = document.createElement('div');
+    actions.className = 'task-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Lancer';
+    button.addEventListener('click', () => {
+      const missing = inputs.some((input) => input.required && !input.value.trim());
+      if (missing) {
+        showNotification('Merci de remplir les arguments requis.', 'error');
+        return;
+      }
+
+      const args = inputs
+        .map((input) => {
+          const value = input.value.trim();
+          return value ? `--${input.dataset.argName}=${value}` : null;
+        })
+        .filter(Boolean);
+
+      const task = {
+        name: command.name,
+        command: [...(command.command || []), ...args],
+        queue: command.queue || '',
+        task: command.name,
+      };
+
+      runSchedulerTask(task, button);
+    });
+    actions.appendChild(button);
+
+    item.appendChild(body);
+    item.appendChild(actions);
+    container.appendChild(item);
+  });
+}
+
 async function runSchedulerTask(task, button) {
   if (!task?.command?.length) {
     return;
@@ -2050,13 +2170,24 @@ async function loadSchedulerTasks() {
   if (!container) {
     return;
   }
+  let tasks = [];
   try {
     const data = await fetchJson('/scheduler');
     const template = parseSchedulerTemplate(data?.content, data?.entries);
-    const tasks = extractSchedulerTasks(template);
+    tasks = extractSchedulerTasks(template);
     renderSchedulerTasks(tasks);
   } catch (error) {
     renderSchedulerTasks([], { message: error.message });
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+
+  try {
+    const commandData = await fetchJson('/commands');
+    renderAvailableCommands(commandData?.commands, tasks);
+  } catch (error) {
+    renderAvailableCommands([], tasks);
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
