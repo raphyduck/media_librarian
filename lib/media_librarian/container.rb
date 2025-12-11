@@ -147,16 +147,9 @@ module MediaLibrarian
     end
 
     def build_trackers
-      return {} unless File.directory?(application.tracker_dir)
-
-      Dir.each_child(application.tracker_dir).each_with_object({}) do |tracker, memo|
-        file_path = File.join(application.tracker_dir, tracker)
-        next unless File.file?(file_path)
-
-        opts = YAML.load_file(file_path)
+      tracker_configs.each_with_object({}) do |(tracker_name, opts), memo|
         next unless opts['api_url'] && opts['api_key']
 
-        tracker_name = tracker.sub(/\.yml$/, '')
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue StandardError => e
         speaker.tell_error(e, Utils.arguments_dump(binding)) if speaker.respond_to?(:tell_error)
@@ -177,6 +170,23 @@ module MediaLibrarian
 
     def default_api_option
       deep_dup(DEFAULT_API_OPTION)
+    end
+
+    def tracker_configs
+      return {} unless File.directory?(application.tracker_dir)
+
+      Dir.each_child(application.tracker_dir).each_with_object({}) do |tracker, memo|
+        file_path = File.join(application.tracker_dir, tracker)
+        next unless File.file?(file_path) && tracker.end_with?('.yml')
+
+        opts = YAML.safe_load(File.read(file_path), aliases: true) || {}
+        next unless opts.is_a?(Hash)
+
+        tracker_name = tracker.sub(/\.yml$/, '')
+        memo[tracker_name] = opts
+      rescue StandardError => e
+        speaker.tell_error(e, Utils.arguments_dump(binding)) if speaker.respond_to?(:tell_error)
+      end
     end
 
     def load_api_option_from_config

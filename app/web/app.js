@@ -26,6 +26,11 @@ const state = {
       country: '',
     },
   },
+  trackers: {
+    entries: [],
+    map: {},
+    selections: new Map(),
+  },
 };
 
 const calendarWindow = typeof createCalendarWindowManager === 'function'
@@ -52,6 +57,13 @@ function buildApiUrl(path) {
 }
 
 const LOG_MAX_LINES = 10000;
+
+const normalizeTrackerTemplatesFn = typeof normalizeTrackerTemplates === 'function'
+  ? normalizeTrackerTemplates
+  : () => [];
+const buildTrackerSearchUrlFn = typeof buildTrackerSearchUrl === 'function'
+  ? buildTrackerSearchUrl
+  : () => '';
 
 function getLogTail(content, maxLines = LOG_MAX_LINES) {
   if (!content) {
@@ -143,6 +155,25 @@ function startAutoRefresh() {
     }
     refreshAll();
   }, 10000);
+}
+
+function setTrackerTemplates(trackers = []) {
+  const normalized = normalizeTrackerTemplatesFn(trackers);
+  state.trackers.entries = normalized;
+  state.trackers.map = normalized.reduce((memo, entry) => {
+    memo[entry.name] = entry.urlTemplate || '';
+    return memo;
+  }, {});
+}
+
+function resetTrackerTemplates() {
+  state.trackers.selections.clear();
+  setTrackerTemplates([]);
+}
+
+function generateTrackerUrl(trackerName, metadata) {
+  const template = state.trackers.map[trackerName] || '';
+  return buildTrackerSearchUrlFn(template, metadata);
 }
 
 function normalizeEditorEntries(entries) {
@@ -627,6 +658,7 @@ function setAuthenticated(authenticated, username = '') {
     state.calendar.entries = [];
     state.calendar.availableGenres = [];
     state.calendar.filters.genres = [];
+    resetTrackerTemplates();
     stopAutoRefresh();
     setActiveTab('jobs', { skipLoad: true });
     resetEditors();
@@ -1667,6 +1699,7 @@ async function loadPendingTorrents() {
 function renderWatchlist(entries = [], { message } = {}) {
   const tbody = document.getElementById('watchlist-rows');
   const emptyHint = document.getElementById('watchlist-empty');
+  const trackerHint = document.getElementById('watchlist-trackers-hint');
   if (!tbody || !emptyHint) {
     return;
   }
@@ -1676,6 +1709,14 @@ function renderWatchlist(entries = [], { message } = {}) {
   const defaultMessage = emptyHint.dataset.defaultText || emptyHint.textContent || '';
   emptyHint.dataset.defaultText = defaultMessage;
   emptyHint.textContent = message || defaultMessage;
+  const trackers = Array.isArray(state.trackers?.entries) ? state.trackers.entries : [];
+  const hasTrackers = trackers.length > 0;
+  if (trackerHint) {
+    trackerHint.textContent = hasTrackers
+      ? ''
+      : 'Aucun tracker configuré. Ajoutez un `url_template` dans config/trackers/*.yml pour générer les liens.';
+    trackerHint.classList.toggle('hidden', hasTrackers || (!trackerHint.textContent && normalized.length));
+  }
   if (!normalized.length) {
     emptyHint.classList.remove('hidden');
     return;
@@ -1683,6 +1724,7 @@ function renderWatchlist(entries = [], { message } = {}) {
   emptyHint.classList.add('hidden');
 
   const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'ID', 'URL'];
+  const trackerLabel = 'Recherche tracker';
 
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
@@ -1723,6 +1765,60 @@ function renderWatchlist(entries = [], { message } = {}) {
       }
       row.appendChild(cell);
     });
+
+    const trackerCell = document.createElement('td');
+    trackerCell.dataset.label = trackerLabel;
+    if (!hasTrackers) {
+      trackerCell.textContent = 'Aucun tracker configuré';
+    } else {
+      const selectionKey = externalId || imdb || title;
+      const select = document.createElement('select');
+      trackers.forEach(({ name }) => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+      });
+
+      const stored = state.trackers.selections.get(selectionKey);
+      const availableNames = trackers.map((tracker) => tracker.name);
+      const defaultSelection = availableNames.includes(stored) ? stored : trackers[0]?.name;
+      if (defaultSelection) {
+        select.value = defaultSelection;
+      }
+
+      const link = document.createElement('a');
+      link.target = '_blank';
+      link.rel = 'noreferrer noopener';
+      link.textContent = 'Lien';
+
+      const refreshTrackerLink = () => {
+        const trackerName = select.value;
+        const generatedUrl = generateTrackerUrl(trackerName, { title, year, imdb });
+        if (generatedUrl) {
+          link.href = generatedUrl;
+          link.textContent = 'Ouvrir';
+          link.removeAttribute('aria-disabled');
+          link.tabIndex = 0;
+        } else {
+          link.removeAttribute('href');
+          link.textContent = 'Lien indisponible';
+          link.setAttribute('aria-disabled', 'true');
+          link.tabIndex = -1;
+        }
+      };
+
+      select.addEventListener('change', () => {
+        state.trackers.selections.set(selectionKey, select.value);
+        refreshTrackerLink();
+      });
+
+      refreshTrackerLink();
+      trackerCell.appendChild(select);
+      trackerCell.appendChild(document.createTextNode(' '));
+      trackerCell.appendChild(link);
+    }
+    row.appendChild(trackerCell);
 
     const actionsCell = document.createElement('td');
     actionsCell.className = 'actions-cell';
@@ -1966,7 +2062,20 @@ async function loadConfigurationTab(options = {}) {
   await loadEditor('trackers', options);
 }
 
+async function loadTrackersInfo() {
+  try {
+    const data = await fetchJson('/trackers/info');
+    setTrackerTemplates(data?.trackers || []);
+  } catch (error) {
+    resetTrackerTemplates();
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+}
+
 async function loadDownloadsTab() {
+  await loadTrackersInfo();
   await Promise.all([loadPendingTorrents(), loadWatchlist()]);
 }
 

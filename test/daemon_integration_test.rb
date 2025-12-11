@@ -312,6 +312,24 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal updated_yaml, refetched[:body].fetch('content')
   end
 
+  def test_tracker_info_endpoint_lists_templates_without_torznab
+    boot_daemon_environment do
+      create_yaml_file(@environment.application.tracker_dir, 'alpha.yml', 'url_template' => 'https://alpha/%title%')
+      create_yaml_file(@environment.application.tracker_dir,
+                       'beta.yml',
+                       'api_url' => 'https://tracker.test',
+                       'api_key' => 'secret',
+                       'url_template' => 'https://beta/%imdbid%')
+    end
+
+    response = control_get('/trackers/info')
+    assert_equal 200, response[:status_code]
+
+    trackers = response[:body].fetch('trackers')
+    assert_includes(trackers, { 'name' => 'alpha', 'url_template' => 'https://alpha/%title%' })
+    assert_includes(trackers, { 'name' => 'beta', 'url_template' => 'https://beta/%imdbid%' })
+  end
+
   def test_dashboard_interface_is_served_at_root
     boot_daemon_environment
 

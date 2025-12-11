@@ -1072,6 +1072,12 @@ class Daemon
         )
       end
 
+      @control_server.mount_proc('/trackers/info') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_tracker_info_request(req, res)
+      end
+
       @control_server.mount_proc('/download_list') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1268,8 +1274,8 @@ class Daemon
       db = app.respond_to?(:db) ? app.db : nil
       return nil unless db
 
-      db.get_rows('torrents', { status: 1, identifier: identifier }).first
-        || db.get_rows('torrents', { status: 1, name: identifier }).first
+      db.get_rows('torrents', { status: 1, identifier: identifier }).first ||
+        db.get_rows('torrents', { status: 1, name: identifier }).first
     end
 
     def normalize_list_param(value)
@@ -1369,6 +1375,53 @@ class Daemon
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
       error_response(res, status: 422, message: e.message)
+    end
+
+    def handle_tracker_info_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      entries = tracker_info_entries
+      json_response(res, body: { 'trackers' => entries })
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def tracker_info_entries
+      tracker_configurations
+        .sort_by { |(name, _)| name }
+        .map do |name, config|
+          { 'name' => name, 'url_template' => tracker_url_template(config) }
+        end
+    end
+
+    def tracker_url_template(config)
+      return unless config.is_a?(Hash)
+
+      value = (config['url_template'] || config[:url_template]).to_s.strip
+      value.empty? ? nil : value
+    end
+
+    def tracker_configurations
+      container = app.container if app.respond_to?(:container)
+      if container && container.respond_to?(:tracker_configs, true)
+        return container.send(:tracker_configs)
+      end
+
+      load_tracker_files(app.tracker_dir)
+    end
+
+    def load_tracker_files(directory)
+      return {} unless directory && File.directory?(directory)
+
+      Dir.each_child(directory).each_with_object({}) do |tracker, memo|
+        path = File.join(directory, tracker)
+        next unless File.file?(path) && tracker.end_with?('.yml')
+
+        config = YAML.safe_load(File.read(path), aliases: true) || {}
+        memo[tracker.sub(/\.yml\z/, '')] = config if config.is_a?(Hash)
+      rescue StandardError => e
+        app.speaker.tell_error(e, Utils.arguments_dump(binding)) if app.respond_to?(:speaker)
+      end
     end
 
     def handle_scheduler_request(req, res)
