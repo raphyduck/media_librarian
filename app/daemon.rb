@@ -1146,8 +1146,16 @@ class Daemon
         return handle_job_not_found(res) unless req.path.start_with?('/jobs/')
 
         handle_job_lookup(req, res)
+      when 'DELETE'
+        return handle_job_not_found(res) unless req.path.start_with?('/jobs/')
+
+        jid = req.path.sub('/jobs/', '')
+        cancelled = Daemon.kill(jid: jid)
+        return handle_job_not_found(res) unless cancelled
+
+        json_response(res, body: { 'status' => 'cancelled', 'id' => jid })
       else
-        method_not_allowed(res, 'GET, POST')
+        method_not_allowed(res, 'GET, POST, DELETE')
       end
     rescue Concurrent::RejectedExecutionError
       error_response(res, status: 429, message: 'queue_full')

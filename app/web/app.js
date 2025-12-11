@@ -803,6 +803,22 @@ function updateJobMetrics(snapshot = {}) {
   container.hidden = parts.length === 0;
 }
 
+async function killJob(jobId) {
+  if (!jobId) {
+    showNotification('Identifiant du job introuvable.', 'error');
+    return;
+  }
+
+  try {
+    await fetchJson(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+    showNotification(`Job ${jobId} terminé.`);
+  } catch (error) {
+    showNotification(error.message || 'Impossible de terminer le job.', 'error');
+  } finally {
+    loadStatus();
+  }
+}
+
 function renderJobs(data = {}) {
   const finishedStatuses = new Set(['finished', 'failed', 'cancelled']);
   const asArray = (value) => (Array.isArray(value) ? value : []);
@@ -851,7 +867,26 @@ function renderJobs(data = {}) {
     const li = document.createElement('li');
     li.className = 'job-item';
     const header = document.createElement('header');
-    header.innerHTML = `<span>${job.queue || '—'}</span><span>${job.status}</span>`;
+    const headerMain = document.createElement('div');
+    headerMain.className = 'job-header-main';
+    const queue = document.createElement('span');
+    queue.textContent = job.queue || '—';
+    const status = document.createElement('span');
+    status.textContent = job.status;
+    headerMain.append(queue, status);
+
+    const actions = document.createElement('div');
+    actions.className = 'job-actions';
+    if (String(job.status || '') === 'running' && job.id) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'danger';
+      button.textContent = 'Terminer';
+      button.addEventListener('click', () => killJob(job.id));
+      actions.appendChild(button);
+    }
+
+    header.append(headerMain, actions);
     const meta = document.createElement('div');
     meta.className = 'job-meta';
     const childIdsMarkup = childIds.map((id) => `<code>${id}</code>`).join(', ');

@@ -37,6 +37,10 @@ class Client
     perform(:get, "/jobs/#{job_id}")
   end
 
+  def kill_job(job_id)
+    perform(:delete, "/jobs/#{job_id}")
+  end
+
   def stop
     perform(:post, '/stop')
   end
