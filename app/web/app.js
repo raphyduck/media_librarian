@@ -56,7 +56,7 @@ function buildApiUrl(path) {
   return `${API_BASE_PATH}${normalizedPath}`;
 }
 
-const LOG_MAX_LINES = 10000;
+const LOG_MAX_LINES = Number.parseInt(window.LOG_MAX_LINES, 10) || 1000;
 
 const normalizeTrackerTemplatesFn = typeof normalizeTrackerTemplates === 'function'
   ? normalizeTrackerTemplates
@@ -1008,32 +1008,59 @@ function renderJobs(data = {}) {
 function renderLogs(logs = {}) {
   const container = document.getElementById('logs-container');
   const template = document.getElementById('log-entry-template');
-  container.innerHTML = '';
+  const existing = new Map(
+    Array.from(container.children).map((entry) => [entry.dataset.logName, entry]),
+  );
 
   Object.entries(logs).forEach(([name, content]) => {
-    const fragment = template.content.cloneNode(true);
-    const logEntry = fragment.querySelector('.log-entry');
-    fragment.querySelector('.log-name').textContent = name;
-    const { text: displayContent, truncated } = getLogTail(content || '');
-    const logContent = fragment.querySelector('.log-content');
-    logContent.textContent = displayContent || '—';
-    fragment.querySelector('.copy-log').addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(displayContent || '');
-        showNotification(`Log « ${name} » copié dans le presse-papiers.`);
-      } catch (error) {
-        showNotification(`Impossible de copier le log « ${name} ».`, 'error');
-      }
-    });
-    if (truncated) {
-      const hint = document.createElement('p');
-      hint.className = 'log-hint';
-      hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
-      logEntry.appendChild(hint);
+    let logEntry = existing.get(name);
+    if (!logEntry) {
+      const fragment = template.content.cloneNode(true);
+      logEntry = fragment.querySelector('.log-entry');
+      logEntry.dataset.logName = name;
+      fragment.querySelector('.log-name').textContent = name;
+      fragment.querySelector('.copy-log').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(logEntry.dataset.logText || '');
+          showNotification(`Log « ${name} » copié dans le presse-papiers.`);
+        } catch (error) {
+          showNotification(`Impossible de copier le log « ${name} ».`, 'error');
+        }
+      });
+      container.appendChild(fragment);
     }
-    container.appendChild(fragment);
+
+    const { text: displayContent, truncated } = getLogTail(content || '');
+    const logContent = logEntry.querySelector('.log-content');
+    const previousText = logContent.textContent || '';
+    const normalizedText = displayContent || '—';
+    if (!previousText || !displayContent || !displayContent.startsWith(previousText)) {
+      logContent.textContent = normalizedText;
+    } else if (displayContent.length > previousText.length) {
+      logContent.append(displayContent.slice(previousText.length));
+    }
+    logEntry.dataset.logText = displayContent || '';
+
+    let hint = logEntry.querySelector('.log-hint');
+    if (truncated) {
+      if (!hint) {
+        hint = document.createElement('p');
+        hint.className = 'log-hint';
+        logEntry.appendChild(hint);
+      }
+      hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
+    } else if (hint) {
+      hint.remove();
+    }
+
     if (logContent) {
       logContent.scrollTop = logContent.scrollHeight;
+    }
+  });
+
+  existing.forEach((entry, name) => {
+    if (!Object.prototype.hasOwnProperty.call(logs, name)) {
+      entry.remove();
     }
   });
 }
@@ -1691,7 +1718,10 @@ async function loadStatus() {
   }
 }
 
-async function loadLogs() {
+async function loadLogs({ force = false } = {}) {
+  if (!force && state.activeTab !== 'logs') {
+    return;
+  }
   try {
     const data = await fetchJson('/logs');
     renderLogs(data.logs || {});
@@ -2371,9 +2401,11 @@ async function refreshAll(options = {}) {
     if (!state.authenticated) {
       return;
     }
-    await loadLogs();
-    if (!state.authenticated) {
-      return;
+    if (state.activeTab === 'logs') {
+      await loadLogs();
+      if (!state.authenticated) {
+        return;
+      }
     }
     await loadSchedulerTasks();
     if (!state.authenticated) {
