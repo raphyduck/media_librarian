@@ -1727,7 +1727,7 @@ function resolveCollectionSortOption(sort) {
 
 function renderCollectionCard(entry) {
   const item = document.createElement('li');
-  item.className = 'calendar-entry';
+  item.className = 'calendar-item';
 
   const media = document.createElement('div');
   media.className = 'calendar-media';
@@ -1842,7 +1842,7 @@ function renderCollection(data = null) {
   }
 
   const list = document.createElement('ol');
-  list.className = 'calendar-list collection-list';
+  list.className = 'calendar-items collection-list';
   entries.forEach((entry) => list.appendChild(renderCollectionCard(entry)));
   container.replaceChildren(list);
   renderCollectionPagination();
