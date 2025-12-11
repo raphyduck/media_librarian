@@ -2041,7 +2041,10 @@ function renderWatchlist(entries = [], { message } = {}) {
     const ids = metadata.ids && typeof metadata.ids === 'object' ? metadata.ids : {};
     const title = entry.title || metadata.title || '';
     const type = entry.type || metadata.type || '';
-    const year = metadata.year || metadata.release_year || '';
+    const releaseDateYear = metadata.release_date ? new Date(metadata.release_date).getFullYear() : '';
+    const year = metadata.year
+      || metadata.release_year
+      || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
     const imdb = ids.imdb || metadata.imdb || '';
     const externalId = entry.external_id || entry.id || ids.slug || '';
     const url = metadata.url || '';
