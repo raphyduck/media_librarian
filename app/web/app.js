@@ -1376,6 +1376,39 @@ async function addToWatchlist(entry, button) {
     type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
     title: pickEntryValue(entry, ['title', 'name']) || '',
   };
+
+  const metadata = {};
+  const releaseDate = resolveCalendarDate(entry);
+  const releaseYear = pickEntryValue(entry, ['year', 'release_year']) || releaseDate?.getFullYear();
+  const ids = { ...(entry?.ids || {}) };
+  ['imdb', 'imdb_id', 'tmdb', 'tmdb_id', 'tvdb', 'tvdb_id', 'trakt', 'trakt_id'].forEach((key) => {
+    const value = pickEntryValue(entry, [key]);
+    if (value) {
+      ids[key] = value;
+    }
+  });
+
+  if (releaseYear) {
+    metadata.year = releaseYear;
+  }
+  if (releaseDate instanceof Date && !Number.isNaN(releaseDate.getTime())) {
+    metadata.release_date = releaseDate.toISOString();
+  }
+  const imdbId = ids.imdb || ids.imdb_id;
+  if (imdbId) {
+    payload.imdb_id = imdbId;
+  }
+  const cleanIds = Object.fromEntries(Object.entries(ids).filter(([, value]) => value));
+  if (Object.keys(cleanIds).length) {
+    metadata.ids = cleanIds;
+  }
+  const url = resolveExternalUrl(entry);
+  if (url) {
+    metadata.url = url;
+  }
+  if (Object.keys(metadata).length) {
+    payload.metadata = metadata;
+  }
   if (!payload.id && !payload.title) {
     showNotification("Impossible d'ajouter cet élément.", 'error');
     return;
