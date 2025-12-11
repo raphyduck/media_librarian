@@ -32,3 +32,11 @@ test('buildTrackerSearchUrl encodes placeholders and validates required fields',
   assert.equal(buildTrackerSearchUrl(template, { title: 'Film' }), '');
   assert.equal(buildTrackerSearchUrl('https://tracker/%title%', { title: 'Film' }), 'https://tracker/Film');
 });
+
+test('buildTrackerSearchUrl strips punctuation from titles before encoding', () => {
+  const url = buildTrackerSearchUrl('https://tracker/%title%', {
+    title: 'Blade: Runner, 2049.',
+  });
+
+  assert.equal(url, 'https://tracker/Blade%20Runner%202049');
+});
