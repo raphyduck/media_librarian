@@ -30,6 +30,7 @@ module MediaLibrarian
           create_custom_list: ['Library', 'create_custom_list'],
           fetch_media_box: ['Library', 'fetch_media_box'],
           handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
+          scan_file_system: ['FileSystemScan', 'scan'],
           import_csv: ['ListStore', 'import_csv'],
           process_folder: ['Library', 'process_folder']
         },
