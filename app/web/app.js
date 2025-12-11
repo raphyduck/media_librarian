@@ -1740,7 +1740,7 @@ function renderWatchlist(entries = [], { message } = {}) {
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'TMDB', 'ID', 'URL'];
+  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'URL'];
   const trackerLabel = 'Recherche tracker';
 
   normalized.forEach((entry) => {
@@ -1753,7 +1753,6 @@ function renderWatchlist(entries = [], { message } = {}) {
     const type = entry.type || metadata.type || '';
     const year = metadata.year || metadata.release_year || '';
     const imdb = ids.imdb || metadata.imdb || '';
-    const tmdb = ids.tmdb || metadata.tmdb || '';
     const externalId = entry.external_id || entry.id || ids.slug || '';
     const url = metadata.url || '';
 
@@ -1761,9 +1760,7 @@ function renderWatchlist(entries = [], { message } = {}) {
       { text: title || '—' },
       { text: type || '—' },
       { text: year || '—' },
-      { text: imdb || '—' },
-      { text: tmdb || '—' },
-      { text: externalId || '—' },
+      { text: imdb || externalId || '—' },
       url ? { link: url } : { text: '—' },
     ];
 
