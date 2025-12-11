@@ -1312,15 +1312,32 @@ async function addToWatchlist(entry, button) {
   if (button) {
     button.disabled = true;
   }
+  const previousStatus = {
+    in_watchlist: entry.in_watchlist,
+    watchlist: entry.watchlist,
+    in_interest_list: entry.in_interest_list,
+  };
+  let added = false;
   try {
     await fetchJson('/watchlist', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
+    added = true;
     showNotification('Ajouté à la liste d’intérêt.');
+    entry.in_watchlist = true;
+    entry.watchlist = true;
+    entry.in_interest_list = true;
+    if (Array.isArray(state.calendar.entries)) {
+      state.calendar.entries = state.calendar.entries.map((item) => (item === entry ? entry : item));
+    }
+    renderCalendar();
     await loadCalendar({ preserveFilters: true });
   } catch (error) {
+    if (!added) {
+      Object.assign(entry, previousStatus);
+    }
     showNotification(error.message, 'error');
   } finally {
     if (button) {
