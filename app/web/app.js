@@ -1309,7 +1309,11 @@ function resolveIdentifier(entry) {
 }
 
 function isDownloaded(entry) {
-  const flag = pickEntryValue(entry, ['downloaded', 'is_downloaded', 'download_status', 'status']);
+  const downloaded = pickEntryValue(entry, ['downloaded']);
+  if (downloaded !== undefined && downloaded !== null) {
+    return Boolean(downloaded);
+  }
+  const flag = pickEntryValue(entry, ['is_downloaded', 'download_status', 'status']);
   if (typeof flag === 'string') {
     return flag.toLowerCase().includes('download');
   }
@@ -1409,6 +1413,11 @@ function renderCalendar(data = null) {
         const item = document.createElement('article');
         item.className = 'calendar-item';
 
+        const downloaded = isDownloaded(entry);
+        if (downloaded) {
+          item.classList.add('calendar-item--downloaded');
+        }
+
         const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
         const mediaUrl = pickEntryValue(entry, ['poster_url', 'poster', 'backdrop_url', 'backdrop']);
         const media = document.createElement('div');
@@ -1483,8 +1492,10 @@ function renderCalendar(data = null) {
         if (genres.length) {
           badges.appendChild(makeCalendarBadge(genres.slice(0, 3).join(', ')));
         }
-        if (isDownloaded(entry)) {
-          badges.appendChild(makeCalendarBadge('Téléchargé'));
+        if (downloaded) {
+          const badge = makeCalendarBadge('Téléchargé');
+          badge.classList.add('calendar-badge--success');
+          badges.appendChild(badge);
         }
         const inWatchlist = isInWatchlist(entry);
         if (inWatchlist) {

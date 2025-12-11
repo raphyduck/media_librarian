@@ -18,7 +18,8 @@ class CalendarEntriesRepository
 
   def load_entries
     rows = app.respond_to?(:db) ? Array(app.db&.get_rows(:calendar_entries)) : []
-    rows.filter_map { |row| normalize_row(row) }
+    downloaded_index = build_downloaded_index
+    rows.filter_map { |row| normalize_row(row, downloaded_index) }
   rescue StandardError
     []
   end
@@ -139,7 +140,7 @@ class CalendarEntriesRepository
     [value, 200].min
   end
 
-  def normalize_row(row)
+  def normalize_row(row, downloaded_index = nil)
     type = normalize_type(row[:media_type] || row['media_type'] || row[:type] || row['type'])
     title = (row[:title] || row['title']).to_s.strip
     return unless type && !title.empty?
@@ -167,7 +168,7 @@ class CalendarEntriesRepository
       imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
       synopsis: normalize_synopsis(row[:synopsis] || row['synopsis']),
       release_date: release_date,
-      downloaded: !!(row[:downloaded] || row['downloaded']),
+      downloaded: downloaded?(row, type, ids, downloaded_index),
       in_interest_list: !!(row[:in_interest_list] || row['in_interest_list']),
       poster_url: poster_url,
       backdrop_url: backdrop_url,
@@ -175,6 +176,45 @@ class CalendarEntriesRepository
       source: (row[:source] || row['source']).to_s,
       external_id: (row[:external_id] || row['external_id']).to_s
     }
+  end
+
+  def downloaded?(row, type, ids, downloaded_index)
+    return true if row[:downloaded] || row['downloaded']
+
+    inventory_downloaded?(type, ids, row, downloaded_index)
+  end
+
+  def inventory_downloaded?(type, ids, row, downloaded_index)
+    return false unless downloaded_index && type
+
+    imdb_id = extract_id(ids, row, 'imdb')
+    tmdb_id = extract_id(ids, row, 'tmdb')
+
+    [[type, 'imdb', imdb_id], [type, 'tmdb', tmdb_id]].any? do |key_type, source, identifier|
+      !identifier.empty? && downloaded_index[[key_type, source]]&.key?(identifier)
+    end
+  end
+
+  def extract_id(ids, row, key)
+    (ids[key] || ids[key.to_s] || row["#{key}_id".to_sym] || row["#{key}_id"]).to_s.strip
+  end
+
+  def build_downloaded_index
+    database = app.respond_to?(:db) ? app.db : nil
+    return {} unless database&.respond_to?(:table_exists?) && database.table_exists?(:local_media)
+    return {} unless database.respond_to?(:get_rows)
+
+    rows = Array(database.get_rows(:local_media))
+    rows.each_with_object(Hash.new { |hash, key| hash[key] = {} }) do |row, memo|
+      type = normalize_type(row[:media_type] || row['media_type'])
+      source = (row[:external_source] || row['external_source']).to_s.strip.downcase
+      external_id = (row[:external_id] || row['external_id']).to_s.strip
+      next if type.nil? || source.empty? || external_id.empty?
+
+      memo[[type, source]][external_id] = true
+    end
+  rescue StandardError
+    {}
   end
 
   def normalize_type(value)
