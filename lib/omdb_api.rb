@@ -36,7 +36,7 @@ class OmdbApi
     return nil if @api_key.empty?
     return nil if imdb_id.to_s.strip.empty?
 
-    normalize_detail(request(detail_query(imdb_id)))
+    normalize_detail(request(detail_query(imdb_id), :title_lookup))
   rescue StandardError => e
     report_error(e, 'OMDb title fetch failed')
     nil
@@ -50,7 +50,7 @@ class OmdbApi
     query[:y] = year if year
     query[:type] = type if type
 
-    normalize_detail(request(query))
+    normalize_detail(request(query, :title_search))
   rescue StandardError => e
     report_error(e, 'OMDb title search failed')
     nil
@@ -67,7 +67,7 @@ class OmdbApi
     %w[movie series].each do |type|
       page = 1
       while results.length < limit
-        payload = request(search_query(type: type, year: year, page: page))
+        payload = request(search_query(type: type, year: year, page: page), :calendar)
         batch = normalize_search(payload, date_range)
         break if batch.empty?
 
@@ -92,7 +92,7 @@ class OmdbApi
     { i: imdb_id, plot: 'short' }
   end
 
-  def request(query)
+  def request(query, operation = nil)
     query_with_key = query.merge(apikey: @api_key, r: 'json')
     @last_request_path = path_with_query(query_with_key)
     log_debug("OMDb request: #{@last_request_path}")
@@ -100,8 +100,8 @@ class OmdbApi
     status = response.respond_to?(:code) ? response.code.to_i : nil
     @last_response_body = response&.body
     log_debug("OMDb response (status #{status || 'unknown'}): #{truncate_body(@last_response_body)}")
-    verify_response!(status)
-    parse_json(@last_response_body, status)
+    verify_response!(status, operation)
+    parse_json(@last_response_body, status, operation)
   end
 
   def path_with_query(query)
@@ -110,9 +110,10 @@ class OmdbApi
     uri.to_s
   end
 
-  def parse_json(body, status)
+  def parse_json(body, status, operation)
+    op = operation || 'request'
     text = body.to_s.strip
-    raise StandardError, "OMDb calendar response was empty (status #{status || 'unknown'})" if text.empty?
+    raise StandardError, "OMDb #{op} response was empty (status #{status || 'unknown'})" if text.empty?
 
     JSON.parse(text)
   rescue JSON::ParserError => e
@@ -122,14 +123,14 @@ class OmdbApi
       retry
     end
 
-    report_error(e, "OMDb calendar response was invalid JSON (status #{status || 'unknown'}): #{e.message}")
+    report_error(e, "OMDb #{op} response was invalid JSON (status #{status || 'unknown'}): #{e.message}")
     nil
   end
 
-  def verify_response!(status)
+  def verify_response!(status, operation)
     return if status && status.between?(200, 299)
 
-    raise StandardError, "OMDb calendar request failed with status #{status || 'unknown'}"
+    raise StandardError, "OMDb #{operation || 'request'} request failed with status #{status || 'unknown'}"
   end
 
   def normalize_search(payload, date_range)
