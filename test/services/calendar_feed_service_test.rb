@@ -1237,11 +1237,13 @@ class CalendarFeedServiceTest < Minitest::Test
       primary_key :id
       String :source, size: 50, null: false
       String :external_id, size: 200, null: false
+      String :imdb_id, size: 50, null: false
       String :title, size: 500, null: false
       String :media_type, size: 50, null: false
       Text :genres
       Text :languages
       Text :countries
+      Text :synopsis
       Text :ids
       String :poster_url, size: 500
       String :backdrop_url, size: 500
@@ -1251,7 +1253,7 @@ class CalendarFeedServiceTest < Minitest::Test
       DateTime :created_at
       DateTime :updated_at
 
-      index %i[source external_id], unique: true
+      index :imdb_id, unique: true
       index :release_date
     end
   end
