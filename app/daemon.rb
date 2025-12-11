@@ -1314,8 +1314,14 @@ class Daemon
 
         metadata = payload['metadata']
         metadata = metadata.is_a?(Hash) ? metadata : {}
+        ids = metadata['ids'] || metadata[:ids] || {}
+        ids = {} unless ids.is_a?(Hash)
+
+        imdb_id = (payload['imdb_id'] || ids['imdb'] || ids[:imdb] || external_id).to_s.strip
+        metadata['ids'] = ids if ids.any?
         entry = {
           external_id: external_id,
+          imdb_id: imdb_id,
           title: title,
           type: Utils.regularise_media_type((payload['type'] || 'movies').to_s),
           metadata: metadata,
@@ -1325,10 +1331,15 @@ class Daemon
         json_response(res, body: { 'status' => 'ok' })
       when 'DELETE'
         payload = parse_payload(req)
+        imdb_id = (payload['imdb_id'] || req.query['imdb_id']).to_s.strip
         external_id = (payload['id'] || payload['external_id'] || req.query['id']).to_s.strip
-        return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
+        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty? && external_id.empty?
 
-        removed = WatchlistStore.delete(external_id: external_id, type: payload['type'] || req.query['type'])
+        removed = WatchlistStore.delete(
+          imdb_id: imdb_id,
+          external_id: external_id,
+          type: payload['type'] || req.query['type']
+        )
         json_response(res, body: { 'removed' => removed.to_i })
       else
         method_not_allowed(res, 'GET, POST, DELETE')

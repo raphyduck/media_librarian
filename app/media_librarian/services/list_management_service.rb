@@ -62,11 +62,15 @@ module MediaLibrarian
           rows.each do |row|
             meta = normalize_metadata(row[:metadata])
             ids = meta[:ids] || {}
-            attrs = { already_followed: 1, watchlist: 1, external_id: row[:external_id] }
+            ids = {} unless ids.is_a?(Hash)
+            imdb_id = row[:imdb_id] || ids[:imdb] || ids['imdb'] || row[:external_id]
+            ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
+            ids['imdb'] ||= imdb_id
+            attrs = { already_followed: 1, watchlist: 1, external_id: imdb_id }
             attrs[:metadata] = meta unless meta.empty?
             title = build_watchlist_title(row[:title], meta[:year])
             search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
-            calendar_entries.concat(build_calendar_entries(meta[:calendar_entries], ids, row[:external_id], request.category))
+            calendar_entries.concat(build_calendar_entries(meta[:calendar_entries], ids, imdb_id, request.category))
           end
           search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
         when 'lists'

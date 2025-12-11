@@ -415,13 +415,15 @@ class Library
         ids = metadata[:ids] || metadata['ids'] || {}
         ids = {} unless ids.is_a?(Hash)
         ids = ids.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v }
+        imdb_id = row[:imdb_id] || row['imdb_id'] || ids['imdb'] || row[:external_id] || row['external_id']
+        ids['imdb'] ||= imdb_id
         year = metadata[:year] || metadata['year']
         attrs = {
           obj_title: title,
           obj_year: year,
           obj_url: metadata[:url] || metadata['url'],
           watchlist: 1,
-          external_id: row[:external_id] || row['external_id'],
+          external_id: imdb_id,
         }
         attrs[:metadata] = metadata unless metadata.empty?
         name = type == 'movies' && year.to_i > 0 ? "#{title} (#{year})" : title
