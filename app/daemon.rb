@@ -1338,7 +1338,20 @@ class Daemon
       path = scheduler_template_path
       return error_response(res, status: 404, message: 'scheduler_not_configured') unless path
 
-      handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
+      case req.request_method
+      when 'GET'
+        content = scheduler_mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
+        parsed =
+          begin
+            content ? YAML.safe_load(content, aliases: true) : nil
+          rescue Psych::SyntaxError
+            nil
+          end
+
+        json_response(res, body: { 'content' => content, 'entries' => parsed })
+      else
+        handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
+      end
     end
 
     def handle_watchlist_request(req, res)

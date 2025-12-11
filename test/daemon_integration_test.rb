@@ -207,6 +207,51 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal new_template, fetched[:body].fetch('content')
   end
 
+  def test_scheduler_entries_can_be_enqueued_from_ui_payload
+    scheduler_name = 'ui_scheduler'
+
+    boot_daemon_environment(scheduler: scheduler_name) do
+      template = {
+        'periodic' => {
+          'refresh_task' => {
+            'command' => 'Library.noop',
+            'every' => 0,
+            'args' => { 'message' => 'from_ui' }
+          }
+        },
+        'continuous' => {
+          'watcher' => {
+            'command' => ['Library', 'noop'],
+            'args' => ['--flag=true']
+          }
+        }
+      }
+      path = File.join(@environment.application.template_dir, "#{scheduler_name}.yml")
+      File.write(path, template.to_yaml)
+    end
+
+    stop_scheduler_thread
+    clear_recorded_commands
+
+    scheduler_response = control_get('/scheduler')
+    assert_equal 200, scheduler_response[:status_code]
+    entries = scheduler_response[:body].fetch('entries')
+
+    periodic_payload = scheduler_payload_from_entry('refresh_task', entries.dig('periodic', 'refresh_task'), type: 'periodic')
+    continuous_payload = scheduler_payload_from_entry('watcher', entries.dig('continuous', 'watcher'), type: 'continuous')
+
+    assert_equal ['Library', 'noop', '--message=from_ui'], periodic_payload.fetch('command')
+    assert_equal ['Library', 'noop', '--flag=true', '--continuous=1'], continuous_payload.fetch('command')
+
+    response = control_post('/jobs', body: periodic_payload.merge('wait' => true))
+    assert_equal 200, response[:status_code]
+
+    job = response.dig(:body, 'job')
+    refute_nil job
+    assert_equal 'refresh_task', job['task']
+    assert_equal periodic_payload.fetch('command'), recorded_commands.first[:command]
+  end
+
   def test_template_endpoints_list_and_update_files
     boot_daemon_environment do
       create_yaml_file(@environment.application.template_dir, 'alpha.yml', 'value' => 'one')
@@ -529,6 +574,7 @@ class DaemonIntegrationTest < Minitest::Test
   private
 
   def boot_daemon_environment(scheduler: nil, control_token: nil, authenticate: true, credentials: default_credentials, api_overrides: {}, **environment_overrides)
+    @booted_scheduler = scheduler
     credentials = credentials.dup
     @auth_credentials = credentials
     @session_cookie = nil
@@ -627,11 +673,71 @@ class DaemonIntegrationTest < Minitest::Test
   def wait_for_recorded_command(argument)
     Timeout.timeout(10) do
       loop do
+        Daemon.schedule(@booted_scheduler) if @booted_scheduler
+        enqueue_from_scheduler_template if @booted_scheduler && recorded_commands.empty?
         break if recorded_commands.any? { |entry| Array(entry[:command]).include?(argument) }
 
         sleep 0.05
       end
     end
+  end
+
+  def enqueue_from_scheduler_template
+    return unless @environment&.application
+
+    template = @environment.application.args_dispatch.load_template(@booted_scheduler, @environment.application.template_dir)
+    %w[periodic continuous].each do |type|
+      entries = template[type]
+      next unless entries
+
+      entries.each do |name, params|
+        payload = scheduler_payload_from_entry(name, params, type: type)
+        next if payload['command'].nil? || payload['command'].empty?
+
+        Daemon.enqueue(
+          args: payload['command'],
+          queue: payload['queue'] || name,
+          task: payload['task'] || name,
+          wait_for_capacity: true,
+          capture_output: true,
+        )
+      end
+    end
+  end
+
+  def scheduler_payload_from_entry(name, entry, type: '')
+    base_command =
+      case entry&.dig('command')
+      when Array
+        entry['command'].map(&:to_s)
+      else
+        entry.to_h.fetch('command', '').to_s.split('.')
+      end
+
+    args =
+      case entry&.dig('args')
+      when Array
+        entry['args'].map(&:to_s)
+      when Hash
+        entry['args'].map { |key, value| "--#{key}=#{value}" }
+      else
+        []
+      end
+
+    args << '--continuous=1' if type == 'continuous'
+
+    {
+      'command' => base_command + args,
+      'task' => name,
+      'queue' => entry.to_h.fetch('queue', nil)
+    }.compact
+  end
+
+  def stop_scheduler_thread
+    scheduler = Daemon.instance_variable_get(:@scheduler)
+    scheduler&.shutdown
+    scheduler&.wait_for_termination
+    Daemon.instance_variable_set(:@scheduler, nil)
   end
 
   def write_config(queue_slots:, workers_pool_size:)
