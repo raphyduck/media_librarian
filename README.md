@@ -103,6 +103,10 @@ login command will launch a Selenium WebDriver instance, open the configured `lo
 confirm the login is complete (the prompt is skipped when running with `--no-prompt`). The captured browser cookies are injected
 into the Mechanize agent and saved via the regular cookie cache so subsequent searches reuse the authenticated session.
 
+Each tracker configuration (`~/.medialibrarian/trackers/<tracker>.yml`) can also expose a `url_template` to build manual search
+links in the web interface. The template accepts `%title%`, `%year%` and `%imdbid%` placeholders (URL-encoded at render time)
+and is returned by the `/trackers/info` endpoint for the dashboard dropdown.
+
 The feature relies on the `selenium-webdriver` gem and an actual browser driver (`geckodriver`/Firefox by default, override with
 `browser_driver` in the metadata). Make sure the matching browser and driver binary are installed and available on your `PATH`.
 

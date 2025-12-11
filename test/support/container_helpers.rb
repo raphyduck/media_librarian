@@ -160,7 +160,7 @@ module TestSupport
         self
       end
 
-      def build_trackers
+      def tracker_configs
         return {} unless File.directory?(application.tracker_dir)
 
         Dir.each_child(application.tracker_dir).each_with_object({}) do |filename, memo|
@@ -168,8 +168,13 @@ module TestSupport
           next unless File.file?(path) && filename.end_with?('.yml')
 
           tracker_name = filename.sub(/\.yml\z/, '')
-          memo[tracker_name] = YAML.safe_load(File.read(path), aliases: true) || {}
+          config = YAML.safe_load(File.read(path), aliases: true) || {}
+          memo[tracker_name] = config if config.is_a?(Hash)
         end
+      end
+
+      def build_trackers
+        tracker_configs
       end
     end
   end
