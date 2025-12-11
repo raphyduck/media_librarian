@@ -150,11 +150,11 @@ function stopAutoRefresh() {
 function startAutoRefresh() {
   stopAutoRefresh();
   state.autoRefresh = window.setInterval(() => {
-    if (!state.authenticated) {
+    if (!state.authenticated || document.visibilityState === 'hidden') {
       return;
     }
-    refreshAll();
-  }, 10000);
+    refreshActiveTab();
+  }, 15000);
 }
 
 function setTrackerTemplates(trackers = []) {
