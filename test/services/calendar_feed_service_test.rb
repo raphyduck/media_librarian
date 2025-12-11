@@ -327,7 +327,7 @@ class CalendarFeedServiceTest < Minitest::Test
     api = OmdbApi.allocate
     api.send(:initialize, api_key: 'omdb-key', http_client: fake_client, speaker: @speaker)
 
-    assert_nil api.send(:parse_json, invalid_body, 200)
+    assert_nil api.send(:parse_json, invalid_body, 200, :calendar)
 
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil, poster_url: nil)
     provider = FakeProvider.new([entry])
