@@ -26,6 +26,7 @@
     }
 
     const normalizedTitle = (metadata.title || '').toString().trim();
+    const sanitizedTitle = normalizedTitle.replace(/[^\p{L}\p{N}\s]/gu, '');
     const normalizedYear = metadata.year == null ? '' : metadata.year.toString().trim();
     const normalizedImdb = (metadata.imdb || metadata.imdbid || '').toString().trim();
 
@@ -36,7 +37,7 @@
 
     let url = normalizedTemplate;
     const replacements = {
-      '%title%': normalizedTitle,
+      '%title%': sanitizedTitle,
       '%year%': normalizedYear,
       '%imdbid%': normalizedImdb,
     };
