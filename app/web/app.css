@@ -413,10 +413,22 @@ button.danger:hover {
 .job-item header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   font-size: 0.95rem;
   margin-bottom: 0.5rem;
   padding: 0;
+}
+
+.job-header-main {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.job-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
 }
 
 .job-meta {

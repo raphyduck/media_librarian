@@ -115,6 +115,19 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 200, status['status_code']
   end
 
+  def test_running_job_can_be_cancelled_via_http
+    boot_daemon_environment
+
+    killed = []
+    Daemon.stub(:kill, ->(jid:) { killed << jid }) do
+      response = control_delete('/jobs/demo')
+      assert_equal 200, response[:status_code]
+      assert_equal 'cancelled', response.dig(:body, 'status')
+    end
+
+    assert_equal ['demo'], killed
+  end
+
   def test_reload_refreshes_configuration_and_scheduler
     scheduler_name = 'reload_scheduler'
 
