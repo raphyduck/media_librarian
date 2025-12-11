@@ -12,15 +12,9 @@ module MediaLibrarian
           return []
         end
 
-        mapped_folders = request.folder_types
-        mapped_folders[root] ||= 'movies'
-
-        mapped_folders.flat_map do |folder, type|
-          next [] unless file_system.directory?(folder)
-
-          library = Library.process_folder(type: type, folder: folder, no_prompt: 1, cache_expiration: 1)
-          persist_media_entries(library, type)
-        end.flatten
+        folder_type = request.type.empty? ? 'movies' : request.type
+        library = Library.process_folder(type: folder_type, folder: root, no_prompt: 1, cache_expiration: 1)
+        persist_media_entries(library, folder_type)
       rescue StandardError => e
         speaker.tell_error(e, Utils.arguments_dump(binding))
         []

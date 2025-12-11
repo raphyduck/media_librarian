@@ -49,7 +49,7 @@ class FileSystemScanServiceTest < Minitest::Test
     movie = Struct.new(:ids, :year).new({ 'imdb' => 'tt1234567' }, 2021)
     request = MediaLibrarian::Services::FileSystemScanRequest.new(
       root_path: @tmp_dir,
-      folder_types: { @tmp_dir => 'movies' }
+      type: 'movies'
     )
 
     library = {
