@@ -5,7 +5,7 @@ require 'json'
 Sequel.migration do
   up do
     alter_table(:watchlist) do
-      add_column :imdb_id, Text, null: false, default: ''
+      add_column :imdb_id, String, text: true, null: false, default: ''
     end
 
     self[:watchlist].each do |row|
