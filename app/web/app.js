@@ -1574,6 +1574,25 @@ async function loadLogs() {
   }
 }
 
+async function validateTorrent(entry) {
+  const identifier = entry?.identifier || entry?.name;
+  if (!identifier) {
+    showNotification('Identifiant de torrent introuvable.', 'error');
+    return;
+  }
+  try {
+    await fetchJson('/torrents/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier }),
+    });
+    showNotification('Torrent validé.');
+    loadPendingTorrents();
+  } catch (error) {
+    showNotification(error?.message || 'Impossible de valider le torrent.', 'error');
+  }
+}
+
 function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   const tbody = document.getElementById(rowsId);
   const emptyHint = document.getElementById(emptyId);
@@ -1589,7 +1608,9 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
+  const baseLabels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
+  const includeActions = normalized.some((entry) => Number(entry?.status) === 1);
+  const labels = includeActions ? [...baseLabels, 'Actions'] : baseLabels;
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const cells = [
@@ -1607,6 +1628,21 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
       cell.textContent = value || '—';
       row.appendChild(cell);
     });
+
+    if (includeActions) {
+      const cell = document.createElement('td');
+      cell.dataset.label = 'Actions';
+      if (Number(entry?.status) === 1) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Valider';
+        button.addEventListener('click', () => validateTorrent(entry));
+        cell.appendChild(button);
+      } else {
+        cell.textContent = '—';
+      }
+      row.appendChild(cell);
+    }
 
     tbody.appendChild(row);
   });
