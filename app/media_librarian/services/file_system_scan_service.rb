@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'find'
+require_relative '../../library'
 
 module MediaLibrarian
   module Services
@@ -15,22 +15,12 @@ module MediaLibrarian
         mapped_folders = request.folder_types
         mapped_folders[root] ||= 'movies'
 
-        results = []
-        Find.find(root) do |path|
-          next if File.directory?(path)
-          next unless video_file?(path)
+        mapped_folders.flat_map do |folder, type|
+          next [] unless file_system.directory?(folder)
 
-          type = media_type_for(path, mapped_folders)
-          next unless type
-
-          metadata = extract_metadata(path, type, root)
-          next unless metadata
-
-          persist(metadata)
-          results << metadata
-        end
-
-        results
+          library = Library.process_folder(type: type, folder: folder, no_prompt: 1, cache_expiration: 1)
+          persist_media_entries(library, type)
+        end.flatten
       rescue StandardError => e
         speaker.tell_error(e, Utils.arguments_dump(binding))
         []
@@ -38,31 +28,36 @@ module MediaLibrarian
 
       private
 
-      def media_type_for(path, mapped_folders)
-        expanded_path = File.expand_path(path)
-        folder = mapped_folders.keys.sort_by(&:length).reverse.find do |mapped_folder|
-          expanded_path.start_with?(mapped_folder)
+      def persist_media_entries(library, type)
+        return [] unless library.is_a?(Hash)
+
+        library.each_with_object([]) do |(id, entry), memo|
+          next if id.is_a?(Symbol)
+          next unless entry.is_a?(Hash)
+
+          subject = entry[:movie] || entry[:show]
+          external_id, source = extract_external_id(subject)
+          next if external_id.to_s.empty?
+
+          title = entry[:full_name] || entry[:name]
+          year = subject.respond_to?(:year) ? subject.year : Metadata.identify_release_year(title)
+
+          Array(entry[:files]).each do |file|
+            local_path = file[:name]
+            next unless local_path && File.file?(local_path)
+
+            metadata = {
+              media_type: type,
+              title: title,
+              year: year,
+              external_id: external_id,
+              external_source: source,
+              local_path: local_path
+            }
+            persist(metadata)
+            memo << metadata
+          end
         end
-        mapped_folders[folder] if folder
-      end
-
-      def extract_metadata(path, type, base_folder)
-        item_name, item = Metadata.identify_title(path, type, 1, folder_hierarchy[type], base_folder)
-        return unless item && item_name
-
-        full_name, _ids, info = Metadata.parse_media_filename(path, type, item, item_name, 1, folder_hierarchy, base_folder)
-        subject = info[:movie] || info[:show] || item
-        external_id, source = extract_external_id(subject)
-        return if external_id.to_s.empty?
-
-        {
-          media_type: type,
-          title: full_name,
-          year: subject.respond_to?(:year) ? subject.year : Metadata.identify_release_year(full_name),
-          external_id: external_id,
-          external_source: source,
-          local_path: path
-        }
       end
 
       def extract_external_id(subject)
@@ -74,15 +69,6 @@ module MediaLibrarian
 
       def persist(metadata)
         app.db.insert_row('local_media', metadata, 1)
-      end
-
-      def folder_hierarchy
-        defined?(FOLDER_HIERARCHY) ? FOLDER_HIERARCHY : {}
-      end
-
-      def video_file?(path)
-        extension = File.extname(path).delete('.').downcase
-        EXTENSIONS_TYPE[:video].include?(extension)
       end
     end
   end
