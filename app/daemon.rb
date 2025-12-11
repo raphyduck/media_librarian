@@ -20,6 +20,7 @@ require_relative '../lib/list_store'
 require_relative '../lib/watchlist_store'
 require_relative 'client'
 require_relative 'calendar_feed'
+require_relative 'collection_repository'
 require_relative '../lib/thread_state'
 
 WEBrick::HTTPServlet::ProcHandler.class_eval do
@@ -1023,6 +1024,12 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
+      @control_server.mount_proc('/collection') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_collection_request(req, res)
+      end
+
       @control_server.mount_proc('/torrents/pending') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1263,6 +1270,27 @@ class Daemon
       error_response(res, status: 500, message: e.message)
     end
 
+    def handle_collection_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      params = normalize_collection_params(req.query)
+      result = collection_repository.paginated_entries(**params)
+
+      json_response(
+        res,
+        body: {
+          'entries' => result[:entries],
+          'pagination' => {
+            'page' => params[:page],
+            'per_page' => params[:per_page],
+            'total' => result[:total]
+          }
+        }
+      )
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
     def handle_calendar_refresh_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
 
@@ -1350,6 +1378,32 @@ class Daemon
       return value if value.is_a?(Array)
 
       value.to_s.split(',').map(&:strip)
+    end
+
+    def normalize_collection_params(query)
+      page = clamp_positive_integer(query['page'], default: 1, max: 1_000)
+      per_page = clamp_positive_integer(query['per_page'], default: 50, max: CollectionRepository::MAX_PER_PAGE)
+
+      {
+        sort: normalize_collection_sort(query['sort']),
+        page: page,
+        per_page: per_page
+      }
+    end
+
+    def normalize_collection_sort(value)
+      sort = value.to_s.strip
+      %w[released_at year title].include?(sort) ? sort : 'released_at'
+    end
+
+    def clamp_positive_integer(value, default:, max:)
+      numeric = value.to_i
+      numeric = default if numeric <= 0
+      [numeric, max].min
+    end
+
+    def collection_repository
+      @collection_repository ||= CollectionRepository.new(app: app)
     end
 
     def calendar_start_date(query)
