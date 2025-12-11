@@ -689,6 +689,17 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.calendar-badge--success {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #dcfce7;
+}
+
+.calendar-item--downloaded {
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.25);
+}
+
 .calendar-meta {
   color: var(--muted);
   font-size: 0.9rem;
