@@ -78,6 +78,17 @@ function getLogTail(content, maxLines = LOG_MAX_LINES) {
   };
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return '—';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
   container.textContent = message;
@@ -1563,6 +1574,60 @@ async function loadLogs() {
   }
 }
 
+function renderPendingTorrentList(rowsId, emptyId, entries = []) {
+  const tbody = document.getElementById(rowsId);
+  const emptyHint = document.getElementById(emptyId);
+  if (!tbody || !emptyHint) {
+    return;
+  }
+
+  tbody.innerHTML = '';
+  const normalized = Array.isArray(entries) ? entries : [];
+  if (!normalized.length) {
+    emptyHint.classList.remove('hidden');
+    return;
+  }
+  emptyHint.classList.add('hidden');
+
+  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
+  normalized.forEach((entry) => {
+    const row = document.createElement('tr');
+    const cells = [
+      entry?.name || '—',
+      entry?.tracker || '—',
+      entry?.category || '—',
+      formatDateTime(entry?.created_at),
+      formatDateTime(entry?.waiting_until),
+      entry?.identifier || '—',
+    ];
+
+    cells.forEach((value, index) => {
+      const cell = document.createElement('td');
+      cell.dataset.label = labels[index];
+      cell.textContent = value || '—';
+      row.appendChild(cell);
+    });
+
+    tbody.appendChild(row);
+  });
+}
+
+function renderPendingTorrents(data = {}) {
+  renderPendingTorrentList('pending-validation-rows', 'pending-validation-empty', data.validation);
+  renderPendingTorrentList('pending-download-rows', 'pending-download-empty', data.downloads);
+}
+
+async function loadPendingTorrents() {
+  try {
+    const data = await fetchJson('/torrents/pending');
+    renderPendingTorrents(data || {});
+  } catch (error) {
+    renderPendingTorrents();
+    const message = error?.message || 'Impossible de charger les torrents en attente.';
+    showNotification(message, 'error');
+  }
+}
+
 function renderWatchlist(entries = [], { message } = {}) {
   const tbody = document.getElementById('watchlist-rows');
   const emptyHint = document.getElementById('watchlist-empty');
@@ -1686,7 +1751,7 @@ async function loadConfigurationTab(options = {}) {
 }
 
 async function loadDownloadsTab() {
-  await loadWatchlist();
+  await Promise.all([loadPendingTorrents(), loadWatchlist()]);
 }
 
 async function controlDaemon({ path, buttonId, message }) {
@@ -1912,10 +1977,10 @@ function setupEventListeners() {
   bindEditorAction('reload-templates', 'templates', 'reload');
   bindEditorAction('save-trackers', 'trackers', 'save');
   bindEditorAction('reload-trackers', 'trackers', 'reload');
-  const refreshWatchlist = document.getElementById('refresh-watchlist');
-  if (refreshWatchlist) {
-    refreshWatchlist.addEventListener('click', loadWatchlist);
-  }
+  ['refresh-watchlist', 'refresh-pending-torrents']
+    .map((id) => document.getElementById(id))
+    .filter(Boolean)
+    .forEach((button) => button.addEventListener('click', loadDownloadsTab));
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
   setupCalendarEvents();

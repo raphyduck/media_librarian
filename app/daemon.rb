@@ -1017,6 +1017,12 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
+      @control_server.mount_proc('/torrents/pending') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_pending_torrents_request(req, res)
+      end
+
       @control_server.mount_proc('/calendar/refresh') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1192,6 +1198,41 @@ class Daemon
       json_response(res, body: { 'job' => job&.to_h })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
+    end
+
+    def handle_pending_torrents_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      json_response(res, body: pending_torrents_snapshot)
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def pending_torrents_snapshot
+      rows = app.db.get_rows('torrents', { status: [1, 2] })
+      rows.each_with_object({ validation: [], downloads: [] }) do |row, memo|
+        entry = format_pending_torrent(row)
+        next unless entry
+
+        (row[:status].to_i == 1 ? memo[:validation] : memo[:downloads]) << entry
+      end
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'pending_torrents_snapshot') rescue nil
+      { validation: [], downloads: [] }
+    end
+
+    def format_pending_torrent(row)
+      attributes = row[:tattributes].is_a?(Hash) ? row[:tattributes] : {}
+
+      {
+        name: row[:name].to_s,
+        tracker: attributes[:tracker],
+        category: attributes[:category],
+        waiting_until: row[:waiting_until],
+        created_at: row[:created_at],
+        identifier: row[:identifier],
+        status: row[:status].to_i,
+      }.compact
     end
 
     def normalize_list_param(value)
