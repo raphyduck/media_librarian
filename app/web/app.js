@@ -1629,7 +1629,7 @@ function renderCalendar(data = null) {
           body.appendChild(meta);
         }
 
-        if (!inWatchlist) {
+        if (!inWatchlist && !downloaded) {
           const actions = document.createElement('div');
           actions.className = 'calendar-actions-row';
           const button = document.createElement('button');
