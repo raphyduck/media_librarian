@@ -22,10 +22,11 @@ module WatchlistStore
   end
 
   def delete(external_id: nil, imdb_id: nil, type: nil)
-    conditions = {}
-    conditions[:imdb_id] = imdb_id.to_s if imdb_id && !imdb_id.to_s.empty?
-    conditions[:external_id] = external_id.to_s if conditions.empty?
-    return 0 if conditions.empty?
+    identifier = imdb_id.to_s
+    identifier = external_id.to_s if identifier.empty? && external_id
+    return 0 if identifier.empty?
+
+    conditions = { imdb_id: identifier }
     conditions[:type] = type if type && !type.to_s.empty?
     MediaLibrarian.app.db.delete_rows('watchlist', conditions).to_i
   rescue StandardError => e
@@ -39,15 +40,21 @@ module WatchlistStore
 
       metadata = normalize_metadata(entry[:metadata] || entry['metadata'])
       imdb_id = imdb_id_for(entry, metadata)
-      external_id = (entry[:external_id] || entry['external_id'] || imdb_id).to_s
-      imdb_id = external_id if imdb_id.to_s.empty?
+      imdb_id = (entry[:external_id] || entry['external_id']).to_s if imdb_id.to_s.empty?
 
       title = entry[:title] || entry['title']
       type = entry[:type] || entry['type'] || 'movies'
       next if imdb_id.to_s.empty? || title.to_s.empty?
 
+      ids = metadata[:ids]
+      if ids.is_a?(Hash)
+        ids = ids.transform_keys(&:to_s)
+        ids['imdb'] ||= imdb_id
+        metadata[:ids] = ids
+      end
+
       {
-        external_id: external_id,
+        external_id: imdb_id,
         imdb_id: imdb_id,
         type: type.to_s,
         title: title.to_s,
@@ -60,7 +67,7 @@ module WatchlistStore
   def normalize_metadata(metadata)
     return {} unless metadata.is_a?(Hash)
 
-    metadata
+    metadata.transform_keys(&:to_sym)
   end
 
   def imdb_id_for(entry, metadata)

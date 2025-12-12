@@ -18,6 +18,7 @@ require 'get_process_mem'
 require_relative '../lib/logger'
 require_relative '../lib/list_store'
 require_relative '../lib/watchlist_store'
+require_relative '../lib/utils'
 require_relative 'client'
 require_relative 'calendar_feed'
 require_relative 'collection_repository'
@@ -1572,9 +1573,9 @@ class Daemon
         json_response(res, body: { 'entries' => entries })
       when 'POST'
         payload = parse_payload(req)
-        external_id = (payload['id'] || payload['external_id']).to_s.strip
+        imdb_id = payload['imdb_id'].to_s.strip
         title = payload['title'].to_s.strip
-        return error_response(res, status: 422, message: 'missing_id') if external_id.empty?
+        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
         return error_response(res, status: 422, message: 'missing_title') if title.empty?
 
         metadata = payload['metadata']
@@ -1582,10 +1583,10 @@ class Daemon
         ids = metadata['ids'] || metadata[:ids] || {}
         ids = {} unless ids.is_a?(Hash)
 
-        imdb_id = (payload['imdb_id'] || ids['imdb'] || ids[:imdb] || external_id).to_s.strip
+        ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
+        ids['imdb'] = imdb_id if imdb_id
         metadata['ids'] = ids if ids.any?
         entry = {
-          external_id: external_id,
           imdb_id: imdb_id,
           title: title,
           type: Utils.regularise_media_type((payload['type'] || 'movies').to_s),
@@ -1597,12 +1598,10 @@ class Daemon
       when 'DELETE'
         payload = parse_payload(req)
         imdb_id = (payload['imdb_id'] || req.query['imdb_id']).to_s.strip
-        external_id = (payload['id'] || payload['external_id'] || req.query['id']).to_s.strip
-        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty? && external_id.empty?
+        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
 
         removed = WatchlistStore.delete(
           imdb_id: imdb_id,
-          external_id: external_id,
           type: payload['type'] || req.query['type']
         )
         json_response(res, body: { 'removed' => removed.to_i })

@@ -83,7 +83,6 @@ class ListManagementServiceTest < Minitest::Test
 
       WatchlistStore.upsert([
         {
-          external_id: 'tmdb-42',
           imdb_id: 'tt0042',
           type: 'movies',
           title: 'Sample',
@@ -99,7 +98,7 @@ class ListManagementServiceTest < Minitest::Test
 
       parsed_media = { 'tt0042' => { already_followed: 1 } }
       Library.stub(:parse_media, parsed_media) do
-        repo_data = { 'tmdb-42' => { identifier: 'tmdb-42' }, 'tt0042' => { identifier: 'tt0042' } }
+        repo_data = { 'tt0042' => { identifier: 'tt0042' } }
         repo = StubLocalMediaRepository.new(repo_data)
         LocalMediaRepository.stub(:new, repo) do
           Library.stub(:process_folder, ->(**_) { flunk 'process_folder should not be called' }) do
