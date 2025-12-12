@@ -69,11 +69,14 @@ class Calendar
   def annotate_entry(entry, interest_lookup)
     languages = Array(entry[:languages])
     countries = Array(entry[:countries])
+    ids = normalize_ids(entry[:ids] || entry['ids'])
+    interest_keys = [entry[:external_id], entry[:imdb_id], *ids.values]
+
     entry.merge(
       year: entry[:year] || entry[:release_date]&.year,
       language: entry[:language] || languages.find { |lang| !lang.to_s.empty? },
       country: entry[:country] || countries.find { |country| !country.to_s.empty? },
-      in_interest_list: interest_lookup.include?(normalize_interest_key(entry[:external_id]))
+      in_interest_list: interest_keys.any? { |id| interest_lookup.include?(normalize_interest_key(id)) }
     )
   end
 
@@ -122,16 +125,19 @@ class Calendar
   def build_interest_lookup(rows = nil)
     rows ||= WatchlistStore.fetch
     rows.each_with_object(Set.new) do |row, memo|
-      external_id = normalize_interest_key(row[:external_id] || row['external_id'])
-      memo << external_id unless external_id.empty?
-
       metadata = normalize_metadata(row[:metadata] || row['metadata'])
+      ids = normalize_ids(metadata[:ids] || metadata['ids'])
+
+      add_interest_keys(memo, row[:external_id] || row['external_id'], row[:imdb_id] || row['imdb_id'],
+                        metadata[:imdb_id] || metadata['imdb_id'], *ids.values)
+
       calendar_entries = metadata[:calendar_entries] || metadata['calendar_entries']
       next unless calendar_entries.is_a?(Array)
 
       calendar_entries.each do |entry|
-        entry_id = normalize_interest_key(entry[:external_id] || entry['external_id'])
-        memo << entry_id unless entry_id.empty?
+        entry_ids = normalize_ids(entry[:ids] || entry['ids'])
+        add_interest_keys(memo, entry[:external_id] || entry['external_id'], entry[:imdb_id] || entry['imdb_id'],
+                          *entry_ids.values)
       end
     end
   rescue StandardError
@@ -204,6 +210,13 @@ class Calendar
 
   def normalize_interest_key(value)
     value.to_s.strip.downcase
+  end
+
+  def add_interest_keys(set, *values)
+    values.each do |value|
+      normalized = normalize_interest_key(value)
+      set << normalized unless normalized.empty?
+    end
   end
 
   def repository
