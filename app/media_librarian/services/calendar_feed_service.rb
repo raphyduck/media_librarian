@@ -57,7 +57,7 @@ module MediaLibrarian
 
         normalized = collected.map { |entry| normalize_entry(entry, date_range) }
                                .compact
-                               .uniq { |entry| [entry[:source], entry[:external_id]] }
+                               .uniq { |entry| entry[:imdb_id] }
                                .first(limit)
 
         normalized.each { |entry| stats[entry[:source]][:retained] += 1 }
@@ -81,13 +81,21 @@ module MediaLibrarian
         external_id = entry[:external_id].to_s.strip
         title = entry[:title].to_s.strip
         media_type = entry[:media_type].to_s.strip
-        return if source.empty? || external_id.empty? || title.empty? || media_type.empty?
+        return if source.empty? || title.empty? || media_type.empty?
 
-        ids = default_ids(normalize_ids(entry[:ids] || entry['ids']), source, external_id)
+        ids = normalize_ids(entry[:ids] || entry['ids'])
+        imdb_id = [entry[:imdb_id], ids['imdb'], ids[:imdb], external_id]
+                  .map { |id| normalize_identifier(id) }
+                  .find { |id| imdb_identifier?(id) }
+        return unless imdb_id
+
+        external_id = imdb_id if external_id.empty?
+        ids = default_ids(ids, imdb_id)
 
         {
           source: source,
           external_id: external_id,
+          imdb_id: imdb_id,
           title: title,
           media_type: media_type,
           genres: Array(entry[:genres]).compact.map(&:to_s),
@@ -167,11 +175,11 @@ module MediaLibrarian
         end
       end
 
-      def default_ids(ids, source, external_id)
+      def default_ids(ids, imdb_id)
         return ids unless ids.empty?
-        return ids if source.empty? || external_id.empty?
+        return ids if imdb_id.to_s.empty?
 
-        ids.merge(source => external_id)
+        ids.merge('imdb' => imdb_id)
       end
 
       def persist_entries(entries)
