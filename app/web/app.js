@@ -1435,9 +1435,7 @@ async function addToWatchlist(entry, button) {
     metadata.release_date = releaseDate.toISOString();
   }
   const imdbId = ids.imdb || ids.imdb_id;
-  if (imdbId) {
-    payload.imdb_id = imdbId;
-  }
+  payload.imdb_id = imdbId;
   const cleanIds = Object.fromEntries(Object.entries(ids).filter(([, value]) => value));
   if (Object.keys(cleanIds).length) {
     metadata.ids = cleanIds;
@@ -1449,8 +1447,8 @@ async function addToWatchlist(entry, button) {
   if (Object.keys(metadata).length) {
     payload.metadata = metadata;
   }
-  if (!payload.id && !payload.title) {
-    showNotification("Impossible d'ajouter cet élément.", 'error');
+  if (!payload.imdb_id) {
+    showNotification("Identifiant IMDb manquant.", 'error');
     return;
   }
   if (button) {
@@ -2050,8 +2048,8 @@ function renderWatchlist(entries = [], { message } = {}) {
     const year = metadata.year
       || metadata.release_year
       || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
-    const imdb = ids.imdb || metadata.imdb || '';
-    const externalId = entry.external_id || entry.id || ids.slug || '';
+    const imdb = entry.imdb_id || ids.imdb || metadata.imdb || '';
+    const externalId = imdb || entry.external_id || entry.id || ids.slug || '';
     const url = metadata.url || '';
 
     const cells = [
@@ -2083,7 +2081,7 @@ function renderWatchlist(entries = [], { message } = {}) {
     if (!hasTrackers) {
       trackerCell.textContent = 'Aucun tracker configuré';
     } else {
-      const selectionKey = externalId || imdb || title;
+      const selectionKey = externalId || title;
       const select = document.createElement('select');
       trackers.forEach(({ name }) => {
         const option = document.createElement('option');
@@ -2157,11 +2155,11 @@ async function loadWatchlist() {
   }
 }
 
-async function removeWatchlistEntry(externalId, type) {
-  if (!externalId) {
+async function removeWatchlistEntry(imdbId, type) {
+  if (!imdbId) {
     return;
   }
-  const payload = { id: externalId };
+  const payload = { imdb_id: imdbId };
   if (type) {
     payload.type = type;
   }

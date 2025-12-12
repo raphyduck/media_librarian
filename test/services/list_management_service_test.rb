@@ -83,11 +83,10 @@ class ListManagementServiceTest < Minitest::Test
 
       WatchlistStore.upsert([
         {
-          external_id: 'tmdb-42',
           imdb_id: 'tt0042',
           type: 'movies',
           title: 'Sample',
-          metadata: { year: 2024, ids: { 'tmdb' => '42', 'imdb' => 'tt0042' }, calendar_entries: [{ external_id: 'tmdb-42' }] }
+          metadata: { year: 2024, ids: { 'tmdb' => '42', 'imdb' => 'tt0042' }, calendar_entries: [{}] }
         }
       ])
 
@@ -109,6 +108,7 @@ class ListManagementServiceTest < Minitest::Test
             assert_equal parsed_media['tt0042'], search_list['tt0042']
             assert_equal true, search_list[:calendar_entries].first[:downloaded]
             assert_equal 'tt0042', search_list[:calendar_entries].first[:external_id]
+            assert_equal 'tt0042', search_list[:calendar_entries].first[:imdb_id]
             assert_equal [{ type: 'movies', folder: '/media/movies' }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
           end
         end

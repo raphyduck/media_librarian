@@ -65,10 +65,11 @@ module MediaLibrarian
             meta = normalize_metadata(row[:metadata])
             ids = meta[:ids] || {}
             ids = {} unless ids.is_a?(Hash)
-            imdb_id = row[:imdb_id] || ids[:imdb] || ids['imdb'] || row[:external_id]
+            imdb_id = (row[:imdb_id] || row['imdb_id'] || ids[:imdb] || ids['imdb']).to_s
+            next if imdb_id.empty?
             ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
             ids['imdb'] ||= imdb_id
-            attrs = { already_followed: 1, watchlist: 1, external_id: imdb_id }
+            attrs = { already_followed: 1, watchlist: 1, external_id: imdb_id, imdb_id: imdb_id }
             attrs[:metadata] = meta unless meta.empty?
             title = build_watchlist_title(row[:title], meta[:year])
             search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
@@ -99,21 +100,21 @@ module MediaLibrarian
 
         library = existing_files[category] || {}
         entries.each do |entry|
-          identifiers = [entry[:external_id], entry['external_id']].compact
+          identifiers = [entry[:imdb_id] || entry['imdb_id'], entry[:external_id], entry['external_id']].compact
           ids = entry[:ids] || entry['ids']
           identifiers.concat(ids.values.compact) if ids.is_a?(Hash)
           entry[:downloaded] = identifiers.any? { |id| Metadata.media_exist?(library, id) }
         end
       end
 
-      def build_calendar_entries(raw_entries, ids, external_id, type)
+      def build_calendar_entries(raw_entries, ids, imdb_id, type)
         return [] unless raw_entries.is_a?(Array)
 
         raw_entries.filter_map do |entry|
           next unless entry
 
           base = entry.is_a?(Hash) ? entry.transform_keys(&:to_sym) : { title: entry }
-          base.merge(ids: ids, external_id: external_id, type: type)
+          base.merge(ids: ids, imdb_id: imdb_id, external_id: imdb_id, type: type)
         end
       end
 

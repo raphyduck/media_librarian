@@ -21,11 +21,11 @@ module WatchlistStore
     []
   end
 
-  def delete(external_id: nil, imdb_id: nil, type: nil)
-    conditions = {}
-    conditions[:imdb_id] = imdb_id.to_s if imdb_id && !imdb_id.to_s.empty?
-    conditions[:external_id] = external_id.to_s if conditions.empty?
-    return 0 if conditions.empty?
+  def delete(imdb_id: nil, type: nil)
+    imdb = imdb_id.to_s
+    return 0 if imdb.empty?
+
+    conditions = { imdb_id: imdb }
     conditions[:type] = type if type && !type.to_s.empty?
     MediaLibrarian.app.db.delete_rows('watchlist', conditions).to_i
   rescue StandardError => e
@@ -37,18 +37,19 @@ module WatchlistStore
     Array(entries).filter_map do |entry|
       next unless entry
 
-      metadata = normalize_metadata(entry[:metadata] || entry['metadata'])
+    metadata = normalize_metadata(entry[:metadata] || entry['metadata'])
       imdb_id = imdb_id_for(entry, metadata)
-      external_id = (entry[:external_id] || entry['external_id'] || imdb_id).to_s
-      imdb_id = external_id if imdb_id.to_s.empty?
 
       title = entry[:title] || entry['title']
       type = entry[:type] || entry['type'] || 'movies'
       next if imdb_id.to_s.empty? || title.to_s.empty?
 
+      imdb_text = imdb_id.to_s
+      metadata = ensure_imdb_metadata(metadata, imdb_text)
+
       {
-        external_id: external_id,
-        imdb_id: imdb_id,
+        external_id: imdb_text,
+        imdb_id: imdb_text,
         type: type.to_s,
         title: title.to_s,
         metadata: metadata,
@@ -63,6 +64,22 @@ module WatchlistStore
     metadata
   end
 
+  def ensure_imdb_metadata(metadata, imdb_id)
+    ids = metadata[:ids] || metadata['ids']
+    return metadata if imdb_id.empty? || !ids.is_a?(Hash)
+
+    normalized_ids = ids.each_with_object({}) do |(key, value), memo|
+      next if value.nil?
+
+      key_str = key.to_s
+      memo[key_str] = value unless key_str.empty?
+    end
+    normalized_ids['imdb'] ||= imdb_id
+
+    ids_key = metadata.key?(:ids) ? :ids : (metadata.key?('ids') ? 'ids' : :ids)
+    metadata.merge(ids_key => normalized_ids)
+  end
+
   def imdb_id_for(entry, metadata)
     explicit_imdb = entry[:imdb_id] || entry['imdb_id']
     return explicit_imdb.to_s if explicit_imdb
@@ -72,5 +89,5 @@ module WatchlistStore
 
     (ids[:imdb] || ids['imdb']).to_s
   end
-  private_class_method :normalize_entries, :normalize_metadata, :imdb_id_for
+  private_class_method :normalize_entries, :normalize_metadata, :ensure_imdb_metadata, :imdb_id_for
 end
