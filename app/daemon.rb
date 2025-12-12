@@ -982,6 +982,12 @@ class Daemon
         handle_commands_request(req, res)
       end
 
+      @control_server.mount_proc('/template_commands') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_template_commands_request(req, res)
+      end
+
       @control_server.mount_proc('/status') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1194,6 +1200,15 @@ class Daemon
       error_response(res, status: 422, message: e.message)
     end
 
+    def handle_template_commands_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      commands = build_template_commands
+      json_response(res, body: { 'commands' => commands })
+    rescue StandardError => e
+      error_response(res, status: 422, message: e.message)
+    end
+
     def parse_payload(req)
       return {} if req.body.nil? || req.body.empty?
 
@@ -1242,6 +1257,88 @@ class Daemon
       config = Array(action).drop(2)
       queue = config[1]
       queue if queue.is_a?(String) && !queue.empty?
+    end
+
+    def build_template_commands
+      template_directories.flat_map do |directory|
+        Dir.glob(File.join(directory, '*.yml')).flat_map do |path|
+          template_file_commands(path)
+        end
+      end.compact
+    end
+
+    def template_file_commands(path)
+      template = YAML.safe_load(File.read(path), aliases: true)
+      return [] unless template.is_a?(Hash)
+
+      commands = []
+      commands << build_template_command_entry(File.basename(path, '.yml'), template)
+
+      %w[periodic continuous].each do |section|
+        entries = template[section]
+        next unless entries.is_a?(Hash)
+
+        entries.each do |name, data|
+          commands << build_template_command_entry(name, data)
+        end
+      end
+
+      commands.compact
+    rescue Psych::SyntaxError => e
+      app.speaker.tell_error(e, "Invalid template at #{path}")
+      []
+    end
+
+    def build_template_command_entry(name, data)
+      return unless data.is_a?(Hash)
+
+      command_parts = normalize_command_parts(data['command'] || data[:command])
+      return if command_parts.empty?
+
+      action = find_command_action(command_parts.dup)
+      entry = {
+        'name' => name.to_s,
+        'command' => command_parts,
+        'args' => command_arguments(action)
+      }
+      queue = template_command_queue(data, action)
+      entry['queue'] = queue if queue
+      entry
+    end
+
+    def normalize_command_parts(command)
+      case command
+      when Array
+        command.map { |part| part.to_s.strip }.reject(&:empty?)
+      when String
+        command.split('.').map(&:strip).reject(&:empty?)
+      else
+        []
+      end
+    end
+
+    def find_command_action(parts, actions = Librarian.command_registry.actions)
+      return actions if parts.empty?
+      return unless actions.is_a?(Hash)
+
+      key = parts.shift
+      value = actions[key.to_sym]
+      value.is_a?(Hash) ? find_command_action(parts, value) : value
+    rescue StandardError
+      nil
+    end
+
+    def template_command_queue(data, action)
+      queue = data['queue'] || data[:queue]
+      return queue if queue.is_a?(String) && !queue.empty?
+
+      command_queue(action)
+    end
+
+    def template_directories
+      [app.template_dir, File.expand_path('~/.media_librarian/templates')].uniq.select do |dir|
+        File.directory?(dir)
+      end
     end
 
     def handle_calendar_request(req, res)

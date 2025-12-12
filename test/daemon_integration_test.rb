@@ -292,6 +292,37 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal updated_content, refetched[:body].fetch('content')
   end
 
+  def test_template_commands_endpoint_returns_entries_from_templates
+    boot_daemon_environment do
+      create_yaml_file(
+        @environment.application.template_dir,
+        'custom.yml',
+        {
+          'periodic' => {
+            'alpha' => { 'command' => 'library.fetch_media_box', 'queue' => 'custom' }
+          },
+          'continuous' => {
+            'beta' => { 'command' => 'torrent.check_all_download' }
+          }
+        }
+      )
+    end
+
+    response = control_get('/template_commands')
+    assert_equal 200, response[:status_code]
+
+    commands = response.fetch(:body).fetch('commands')
+    alpha = commands.find { |entry| entry['name'] == 'alpha' }
+    refute_nil alpha
+    assert_equal %w[library fetch_media_box], alpha.fetch('command')
+    assert_equal 'custom', alpha['queue']
+
+    beta = commands.find { |entry| entry['name'] == 'beta' }
+    refute_nil beta
+    assert_equal %w[torrent check_all_download], beta.fetch('command')
+    assert_equal 'torrenting', beta['queue']
+  end
+
   def test_tracker_endpoint_updates_registry_after_save
     boot_daemon_environment do
       create_yaml_file(@environment.application.tracker_dir,
