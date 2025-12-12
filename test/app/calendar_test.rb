@@ -60,6 +60,37 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_interest_lookup_matches_by_additional_ids
+    db = stub_calendar_rows([
+      {
+        source: 'tmdb',
+        external_id: '999',
+        title: 'Delta',
+        media_type: 'movie',
+        ids: { tmdb: '999' },
+        release_date: '2024-03-01'
+      }
+    ])
+
+    watchlist = [
+      {
+        imdb_id: 'tt1234567',
+        type: 'movies',
+        metadata: { ids: { tmdb: '999' } }
+      }
+    ]
+
+    WatchlistStore.stub(:fetch, watchlist) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(interest: 'true')
+
+      assert_equal 1, result[:total]
+      assert result[:entries].first[:in_interest_list]
+    end
+
+    db.verify
+  end
+
   def test_paginates_and_sorts_by_release_date
     db = stub_calendar_rows([
       {
