@@ -1372,10 +1372,14 @@ function resolveVoteCount(entry) {
 }
 
 function resolveIdentifier(entry) {
-  return (
-    pickEntryValue(entry, ['id', 'slug', 'imdb_id', 'tmdb_id', 'tvdb_id'])
-      || pickEntryValue(entry, ['title', 'name'])
-  );
+  const ids = entry && typeof entry === 'object' && entry.ids && typeof entry.ids === 'object' ? entry.ids : {};
+  return [
+    pickEntryValue(entry, ['external_id']),
+    pickEntryValue(ids, ['external_id', 'slug', 'id']),
+    pickEntryValue(entry, ['id', 'slug', 'imdb_id', 'tmdb_id', 'tvdb_id', 'trakt_id']),
+    pickEntryValue(ids, ['imdb', 'imdb_id', 'tmdb', 'tmdb_id', 'tvdb', 'tvdb_id', 'trakt', 'trakt_id']),
+    pickEntryValue(entry, ['title', 'name']),
+  ].find(Boolean) || null;
 }
 
 function isDownloaded(entry) {
@@ -1406,8 +1410,9 @@ function isInWatchlist(entry) {
 }
 
 async function addToWatchlist(entry, button) {
+  const identifier = resolveIdentifier(entry);
   const payload = {
-    id: resolveIdentifier(entry),
+    id: identifier,
     type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
     title: pickEntryValue(entry, ['title', 'name']) || '',
   };
