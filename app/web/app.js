@@ -1453,6 +1453,7 @@ async function addToWatchlist(entry, button) {
     showNotification("Impossible d'ajouter cet élément.", 'error');
     return;
   }
+  const originalLabel = button?.textContent;
   if (button) {
     button.disabled = true;
   }
@@ -1473,6 +1474,9 @@ async function addToWatchlist(entry, button) {
     entry.in_watchlist = true;
     entry.watchlist = true;
     entry.in_interest_list = true;
+    if (button) {
+      button.textContent = 'Ajouté à la liste d’intérêt';
+    }
     if (Array.isArray(state.calendar.entries)) {
       state.calendar.entries = state.calendar.entries.map((item) => (item === entry ? entry : item));
     }
@@ -1483,9 +1487,9 @@ async function addToWatchlist(entry, button) {
       Object.assign(entry, previousStatus);
     }
     showNotification(error.message, 'error');
-  } finally {
     if (button) {
       button.disabled = false;
+      button.textContent = originalLabel || button.textContent;
     }
   }
 }
