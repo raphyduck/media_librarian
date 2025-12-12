@@ -24,6 +24,7 @@ class CalendarTest < Minitest::Test
       {
         source: 'tmdb',
         external_id: 'movie-1',
+        imdb_id: 'ttalpha',
         title: 'Alpha',
         media_type: 'movie',
         genres: ['Drama'],
@@ -35,6 +36,7 @@ class CalendarTest < Minitest::Test
       {
         source: 'tmdb',
         external_id: 'show-1',
+        imdb_id: 'ttbravo',
         title: 'Bravo',
         media_type: 'show',
         genres: ['Comedy'],
@@ -45,7 +47,7 @@ class CalendarTest < Minitest::Test
       }
     ])
 
-    WatchlistStore.stub(:fetch, [{ external_id: 'movie-1', type: 'movies', metadata: {} }]) do
+    WatchlistStore.stub(:fetch, [{ imdb_id: 'ttalpha', type: 'movies', metadata: { ids: { imdb: 'ttalpha' } } }]) do
       calendar = Calendar.new(app: @environment.application)
       result = calendar.entries(type: 'movie', genres: ['Drama'], interest: 'true')
 
@@ -65,9 +67,10 @@ class CalendarTest < Minitest::Test
       {
         source: 'tmdb',
         external_id: '999',
+        imdb_id: '',
         title: 'Delta',
         media_type: 'movie',
-        ids: { tmdb: '999' },
+        ids: { tmdb: '999', imdb: 'tt1234567' },
         release_date: '2024-03-01'
       }
     ])
@@ -91,11 +94,39 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_interest_lookup_requires_imdb_match
+    db = stub_calendar_rows([
+      {
+        source: 'tmdb',
+        external_id: '888',
+        imdb_id: 'tt8888888',
+        title: 'Echo',
+        media_type: 'movie',
+        ids: { tmdb: '888' },
+        release_date: '2024-04-01'
+      }
+    ])
+
+    watchlist = [
+      { type: 'movies', metadata: { ids: { tmdb: '888' } } }
+    ]
+
+    WatchlistStore.stub(:fetch, watchlist) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries(interest: 'true')
+
+      assert_equal 0, result[:total]
+    end
+
+    db.verify
+  end
+
   def test_paginates_and_sorts_by_release_date
     db = stub_calendar_rows([
       {
         source: 'tmdb',
         external_id: 'movie-1',
+        imdb_id: 'ttfirst',
         title: 'First',
         media_type: 'movie',
         release_date: '2018-01-01'
@@ -103,6 +134,7 @@ class CalendarTest < Minitest::Test
       {
         source: 'tmdb',
         external_id: 'movie-2',
+        imdb_id: 'ttsecond',
         title: 'Second',
         media_type: 'movie',
         release_date: '2019-01-01'
@@ -121,11 +153,45 @@ class CalendarTest < Minitest::Test
     db.verify
   end
 
+  def test_deduplicates_entries_by_imdb_id
+    db = stub_calendar_rows([
+      {
+        source: 'tmdb',
+        external_id: 'tmdb-1',
+        imdb_id: 'ttdedup',
+        title: 'Foxtrot',
+        media_type: 'movie',
+        release_date: '2024-05-01'
+      },
+      {
+        source: 'imdb',
+        external_id: 'imdb-1',
+        imdb_id: 'ttdedup',
+        title: 'Foxtrot Copy',
+        media_type: 'movie',
+        release_date: '2024-05-02'
+      }
+    ])
+
+    WatchlistStore.stub(:fetch, [{ imdb_id: 'ttdedup', type: 'movies', metadata: {} }]) do
+      calendar = Calendar.new(app: @environment.application)
+      result = calendar.entries
+
+      assert_equal 1, result[:total]
+      entry = result[:entries].first
+      assert_equal 'Foxtrot', entry[:title]
+      assert entry[:in_interest_list]
+      assert_equal '2024-05-01T00:00:00+00:00', entry[:release_date]
+    end
+
+    db.verify
+  end
+
   def test_filters_by_release_date_range
     db = stub_calendar_rows([
-      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', release_date: '2024-01-05' },
-      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', release_date: '2024-01-20' },
-      { source: 'tmdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', release_date: '2024-02-01' }
+      { source: 'tmdb', external_id: 'movie-1', imdb_id: 'tt0101', title: 'Alpha', media_type: 'movie', release_date: '2024-01-05' },
+      { source: 'tmdb', external_id: 'movie-2', imdb_id: 'tt0102', title: 'Bravo', media_type: 'movie', release_date: '2024-01-20' },
+      { source: 'tmdb', external_id: 'movie-3', imdb_id: 'tt0103', title: 'Charlie', media_type: 'movie', release_date: '2024-02-01' }
     ])
 
     WatchlistStore.stub(:fetch, []) do
@@ -140,9 +206,9 @@ class CalendarTest < Minitest::Test
 
   def test_filters_by_imdb_vote_range
     db = stub_calendar_rows([
-      { source: 'imdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
-      { source: 'imdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
-      { source: 'imdb', external_id: 'movie-3', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
+      { source: 'imdb', external_id: 'movie-1', imdb_id: 'tt0201', title: 'Alpha', media_type: 'movie', imdb_votes: 500 },
+      { source: 'imdb', external_id: 'movie-2', imdb_id: 'tt0202', title: 'Bravo', media_type: 'movie', imdb_votes: 1200 },
+      { source: 'imdb', external_id: 'movie-3', imdb_id: 'tt0203', title: 'Charlie', media_type: 'movie', imdb_votes: nil }
     ])
 
     WatchlistStore.stub(:fetch, []) do
@@ -157,8 +223,8 @@ class CalendarTest < Minitest::Test
 
   def test_filters_when_any_genre_matches
     db = stub_calendar_rows([
-      { source: 'tmdb', external_id: 'movie-1', title: 'Alpha', media_type: 'movie', genres: ['Drama'] },
-      { source: 'tmdb', external_id: 'movie-2', title: 'Bravo', media_type: 'movie', genres: ['Horror'] }
+      { source: 'tmdb', external_id: 'movie-1', imdb_id: 'tt0301', title: 'Alpha', media_type: 'movie', genres: ['Drama'] },
+      { source: 'tmdb', external_id: 'movie-2', imdb_id: 'tt0302', title: 'Bravo', media_type: 'movie', genres: ['Horror'] }
     ])
 
     WatchlistStore.stub(:fetch, []) do

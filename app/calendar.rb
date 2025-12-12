@@ -61,22 +61,26 @@ class Calendar
     interest_entries = build_calendar_entries(watchlist_rows)
     interest_lookup = build_interest_lookup(watchlist_rows)
 
-    (base_entries + interest_entries)
-      .uniq { |entry| normalize_interest_key(entry[:external_id]) }
-      .map { |entry| annotate_entry(entry, interest_lookup) }
+    (base_entries + interest_entries).each_with_object({}) do |entry, memo|
+      imdb_id = imdb_id_for(entry)
+      next if imdb_id.empty?
+
+      memo[imdb_id] ||= annotate_entry(entry, interest_lookup, imdb_id)
+    end.values
   end
 
-  def annotate_entry(entry, interest_lookup)
+  def annotate_entry(entry, interest_lookup, imdb_id = nil)
     languages = Array(entry[:languages])
     countries = Array(entry[:countries])
+    imdb_id ||= imdb_id_for(entry)
     ids = normalize_ids(entry[:ids] || entry['ids'])
-    interest_keys = [entry[:external_id], entry[:imdb_id], *ids.values]
 
     entry.merge(
+      imdb_id: imdb_id,
       year: entry[:year] || entry[:release_date]&.year,
       language: entry[:language] || languages.find { |lang| !lang.to_s.empty? },
       country: entry[:country] || countries.find { |country| !country.to_s.empty? },
-      in_interest_list: interest_keys.any? { |id| interest_lookup.include?(normalize_interest_key(id)) }
+      in_interest_list: interest_lookup.include?(imdb_id)
     )
   end
 
@@ -98,14 +102,15 @@ class Calendar
 
   def normalize_calendar_entry(entry, ids, parent_row)
     data = entry.is_a?(Hash) ? entry : { title: entry }
-    external_id = normalize_interest_key(data[:external_id] || data['external_id'] || parent_row[:external_id] || parent_row['external_id'])
+    ids = normalize_ids(data[:ids] || data['ids'] || ids)
+    imdb_id = pick_imdb_id(data[:imdb_id] || data['imdb_id'], ids['imdb'], parent_row[:imdb_id] || parent_row['imdb_id'])
     title = data[:title] || data['title'] || parent_row[:title] || parent_row['title']
     type = normalize_type(data[:type] || data['type'] || parent_row[:type] || parent_row['type'])
-    return nil if external_id.empty? || title.to_s.empty? || type.nil?
+    return nil if imdb_id.empty? || title.to_s.empty? || type.nil?
 
     {
       source: (data[:source] || data['source'] || 'watchlist').to_s,
-      external_id: external_id,
+      external_id: imdb_id,
       title: title.to_s,
       type: type,
       release_date: parse_time(data[:release_date] || data['release_date']),
@@ -114,10 +119,11 @@ class Calendar
       countries: normalize_list(data[:countries] || data['countries']),
       imdb_rating: parse_rating(data[:imdb_rating] || data['imdb_rating'] || data[:rating] || data['rating']),
       imdb_votes: parse_integer(data[:imdb_votes] || data['imdb_votes']),
+      imdb_id: imdb_id,
       synopsis: data[:synopsis] || data['synopsis'],
       poster_url: normalize_url(data[:poster_url] || data['poster_url'] || data[:poster]),
       backdrop_url: normalize_url(data[:backdrop_url] || data['backdrop_url'] || data[:backdrop]),
-      ids: normalize_ids(data[:ids] || data['ids'] || ids),
+      ids: ids.merge('imdb' => imdb_id),
       in_interest_list: true
     }
   end
@@ -128,16 +134,14 @@ class Calendar
       metadata = normalize_metadata(row[:metadata] || row['metadata'])
       ids = normalize_ids(metadata[:ids] || metadata['ids'])
 
-      add_interest_keys(memo, row[:external_id] || row['external_id'], row[:imdb_id] || row['imdb_id'],
-                        metadata[:imdb_id] || metadata['imdb_id'], *ids.values)
+      add_interest_key(memo, pick_imdb_id(row[:imdb_id] || row['imdb_id'], metadata[:imdb_id] || metadata['imdb_id'], ids['imdb']))
 
       calendar_entries = metadata[:calendar_entries] || metadata['calendar_entries']
       next unless calendar_entries.is_a?(Array)
 
       calendar_entries.each do |entry|
         entry_ids = normalize_ids(entry[:ids] || entry['ids'])
-        add_interest_keys(memo, entry[:external_id] || entry['external_id'], entry[:imdb_id] || entry['imdb_id'],
-                          *entry_ids.values)
+        add_interest_key(memo, pick_imdb_id(entry[:imdb_id] || entry['imdb_id'], entry_ids['imdb']))
       end
     end
   rescue StandardError
@@ -212,11 +216,23 @@ class Calendar
     value.to_s.strip.downcase
   end
 
-  def add_interest_keys(set, *values)
+  def add_interest_key(set, value)
+    normalized = normalize_interest_key(value)
+    set << normalized unless normalized.empty?
+  end
+
+  def imdb_id_for(entry)
+    ids = normalize_ids(entry[:ids] || entry['ids'])
+    pick_imdb_id(entry[:imdb_id] || entry['imdb_id'], ids['imdb'])
+  end
+
+  def pick_imdb_id(*values)
     values.each do |value|
       normalized = normalize_interest_key(value)
-      set << normalized unless normalized.empty?
+      return normalized unless normalized.empty?
     end
+
+    ''
   end
 
   def repository
