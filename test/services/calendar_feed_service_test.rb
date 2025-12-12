@@ -69,6 +69,39 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 321, rows.first[:imdb_votes]
   end
 
+  def test_refresh_accepts_entries_without_external_ids_when_imdb_present
+    imdb_id = 'tt9000001'
+    provider = FakeProvider.new([
+      base_entry.merge(external_id: nil, imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'IMDb Only')
+    ])
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal imdb_id, row[:external_id]
+    assert_equal imdb_id, row[:imdb_id]
+    assert_equal 'IMDb Only', row[:title]
+  end
+
+  def test_refresh_deduplicates_entries_by_imdb_id
+    imdb_id = 'tt9000002'
+    provider = FakeProvider.new([
+      base_entry.merge(external_id: 'first', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'First'),
+      base_entry.merge(external_id: 'second', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'Second')
+    ])
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    rows = @db.get_rows(:calendar_entries)
+    assert_equal 1, rows.count
+    assert_equal 'first', rows.first[:external_id]
+    assert_equal 'First', rows.first[:title]
+  end
+
   def test_enriches_tmdb_entries_with_omdb_details
     entry = base_entry.merge(
       source: 'tmdb',
@@ -124,9 +157,10 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal Date.new(2025, 12, 31).to_s, row[:release_date]
   end
 
-  def test_enriches_tmdb_entries_without_imdb_ids_using_omdb_search
+  def test_rejects_tmdb_entries_without_imdb_ids
     entry = base_entry.merge(
       source: 'tmdb',
+      imdb_id: nil,
       ids: { 'tmdb' => 42 },
       rating: nil,
       imdb_votes: nil,
@@ -160,18 +194,14 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
     end
 
-    row = @db.get_rows(:calendar_entries, { source: 'tmdb' }).first
-    assert_includes omdb_client.calls, [:find_by_title, 'Base', (Date.today + 1).year, 'movie']
-    refute_includes omdb_client.calls.map(&:first), :title
-    assert_in_delta 8.4, row[:rating]
-    assert_equal 111_222, row[:imdb_votes]
-    assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
-    assert_equal 'tt0000042', row[:ids][:imdb]
+    assert_empty omdb_client.calls
+    assert_empty @db.get_rows(:calendar_entries, { source: 'tmdb' })
   end
 
   def test_omdb_enrichment_verifies_titles_before_applying_details
     entry = base_entry.merge(
       title: 'Destination jeu. 25 déc.',
+      imdb_id: 'tt9619824',
       ids: { 'imdb' => 'tt9619824' },
       release_date: Date.today + 1,
       rating: nil,
@@ -226,9 +256,10 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil row[:imdb_votes]
   end
 
-  def test_enriches_trakt_entries_using_omdb_search_when_imdb_missing
+  def test_rejects_trakt_entries_without_imdb_ids
     entry = base_entry.merge(
       source: 'trakt',
+      imdb_id: nil,
       ids: { 'tmdb' => 7 },
       rating: nil,
       imdb_votes: nil,
@@ -262,13 +293,8 @@ class CalendarFeedServiceTest < Minitest::Test
       service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
     end
 
-    row = @db.get_rows(:calendar_entries, { source: 'trakt' }).first
-    assert_includes omdb_client.calls, [:find_by_title, 'Base', (Date.today + 1).year, 'movie']
-    refute_includes omdb_client.calls.map(&:first), :title
-    assert_in_delta 7.5, row[:rating]
-    assert_equal 22_333, row[:imdb_votes]
-    assert_equal 'https://omdb.test/poster.jpg', row[:poster_url]
-    assert_equal 'tt0000007', row[:ids][:imdb]
+    assert_empty omdb_client.calls
+    assert_empty @db.get_rows(:calendar_entries, { source: 'trakt' })
   end
 
   def test_enrichment_debug_logs_when_omdb_returns_nothing
@@ -370,7 +396,7 @@ class CalendarFeedServiceTest < Minitest::Test
   end
 
   def test_filters_out_movies_without_imdb_match
-    entry = base_entry.merge(source: 'tmdb', ids: { 'tmdb' => 9 }, rating: nil, imdb_votes: nil, poster_url: nil)
+    entry = base_entry.merge(source: 'tmdb', imdb_id: nil, ids: { 'tmdb' => 9 }, rating: nil, imdb_votes: nil, poster_url: nil)
     provider = FakeProvider.new([entry], source: 'tmdb')
 
     omdb_client = Class.new do
@@ -408,14 +434,17 @@ class CalendarFeedServiceTest < Minitest::Test
   end
 
   def test_refresh_replaces_duplicates
+    imdb_id = 'tt9100001'
     initial_provider = FakeProvider.new([
-      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 6.4, imdb_votes: 10)
+      base_entry.merge(external_id: 'movie-1', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'First Title', rating: 6.4,
+                        imdb_votes: 10)
     ])
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [initial_provider])
     service.refresh(date_range: Date.today..(Date.today + 3), limit: 5)
 
     updated_provider = FakeProvider.new([
-      base_entry.merge(external_id: 'movie-1', title: 'First Title', rating: 8.2, languages: ['fr'], imdb_votes: 12)
+      base_entry.merge(external_id: 'movie-1', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'First Title', rating: 8.2,
+                        languages: ['fr'], imdb_votes: 12)
     ])
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [updated_provider])
     service.refresh(date_range: Date.today..(Date.today + 3), limit: 5)
@@ -495,16 +524,23 @@ class CalendarFeedServiceTest < Minitest::Test
   def test_normalization_downcases_sources
     date = Date.today + 1
     tmdb_provider = FakeProvider.new([
-      base_entry.merge(source: 'TMDB', external_id: 'tmdb-1', title: 'TMDB Title')
+      base_entry.merge(source: 'TMDB', external_id: 'tmdb-1', imdb_id: 'tt1000001',
+                       ids: { 'imdb' => 'tt1000001' }, title: 'TMDB Title')
     ], source: 'TMDB')
     omdb_provider = MediaLibrarian::Services::CalendarFeedService::OmdbCalendarProvider.new(
       speaker: @speaker,
       api_key: 'key',
-      fetcher: ->(**_) { [{ external_id: 'omdb-1', title: 'OMDb Title', media_type: 'movie', release_date: date }] }
+      fetcher: ->(**_) {
+                  [{ external_id: 'tt1000002', imdb_id: 'tt1000002', ids: { 'imdb' => 'tt1000002' }, title: 'OMDb Title',
+ media_type: 'movie', release_date: date }]
+                }
     )
     trakt_provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
       account_id: 'acc', client_id: 'id', client_secret: 'secret', speaker: @speaker,
-      fetcher: ->(**_) { [{ external_id: 'trakt-1', title: 'Trakt Title', media_type: 'show', release_date: date }] }
+      fetcher: ->(**_) {
+                  [{ external_id: 'trakt-1', imdb_id: 'tt1000003', ids: { 'imdb' => 'tt1000003' }, title: 'Trakt Title',
+ media_type: 'show', release_date: date }]
+                }
     )
 
     service = MediaLibrarian::Services::CalendarFeedService.new(
@@ -518,7 +554,7 @@ class CalendarFeedServiceTest < Minitest::Test
 
     rows = @db.get_rows(:calendar_entries).sort_by { |row| row[:external_id] }
     assert_equal %w[omdb tmdb trakt], rows.map { |row| row[:source] }.uniq.sort
-    assert_equal %w[movie movie show], rows.map { |row| row[:media_type] }
+    assert_equal %w[movie movie show].sort, rows.map { |row| row[:media_type] }.sort
   end
 
   def test_omdb_provider_fetches_via_omdb_api_helper
@@ -666,7 +702,7 @@ class CalendarFeedServiceTest < Minitest::Test
         'first_aired' => (start_date + 2).to_s,
         'show' => {
           'title' => 'Trakt Show',
-          'ids' => { 'slug' => 'trakt-show', 'tmdb' => 333, 'trakt' => 2222 },
+          'ids' => { 'slug' => 'trakt-show', 'imdb' => 'tt8888888', 'tmdb' => 333, 'trakt' => 2222 },
           'genres' => ['sci-fi'],
           'language' => 'en',
           'country' => 'gb',
@@ -1246,9 +1282,13 @@ class CalendarFeedServiceTest < Minitest::Test
   private
 
   def base_entry
+    @base_index = (@base_index || 0) + 1
+    imdb_id = format('tt%07d', @base_index)
+
     {
       source: 'fake',
-      external_id: 'base-id',
+      external_id: "base-id-#{@base_index}",
+      imdb_id: imdb_id,
       title: 'Base',
       media_type: 'movie',
       genres: [],
@@ -1258,7 +1298,8 @@ class CalendarFeedServiceTest < Minitest::Test
       imdb_votes: 321,
       poster_url: 'https://example.test/poster.jpg',
       backdrop_url: 'https://example.test/backdrop.jpg',
-      release_date: Date.today + 1
+      release_date: Date.today + 1,
+      ids: { 'imdb' => imdb_id }
     }
   end
 
