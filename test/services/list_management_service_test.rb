@@ -107,7 +107,7 @@ class ListManagementServiceTest < Minitest::Test
             assert_equal repo_data, files['movies']
             assert_equal parsed_media['tt0042'], search_list['tt0042']
             assert_equal true, search_list[:calendar_entries].first[:downloaded]
-            assert_equal 'tt0042', search_list[:calendar_entries].first[:external_id]
+            assert_equal 'tt0042', search_list[:calendar_entries].first[:imdb_id]
             assert_equal [{ type: 'movies', folder: '/media/movies' }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
           end
         end

@@ -32,10 +32,19 @@ class WatchlistStoreTest < Minitest::Test
     assert_equal 1, rows.size
     row = rows.first
     assert_equal 'tt1234567', row[:imdb_id]
-    assert_equal 'tt1234567', row[:external_id]
     assert_equal 'tt1234567', row[:metadata][:ids][:imdb]
 
     assert_equal 1, WatchlistStore.delete(imdb_id: 'tt1234567')
     assert_empty WatchlistStore.fetch
+  end
+
+  def test_normalize_legacy_external_id_only
+    WatchlistStore.upsert([
+      { external_id: 'tt4242', type: 'movies', title: 'Legacy title' }
+    ])
+
+    row = WatchlistStore.fetch.first
+    assert_equal 'tt4242', row[:imdb_id]
+    assert_equal 'tt4242', row[:metadata][:ids][:imdb]
   end
 end
