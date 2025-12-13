@@ -214,6 +214,82 @@ main {
   color: inherit;
 }
 
+.collection-files {
+  margin-top: 0.35rem;
+}
+
+.collection-files summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.file-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.25rem;
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 50;
+}
+
+.modal-content {
+  width: min(720px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal .file-list {
+  font-size: 0.9rem;
+}
+
+.season-block {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0.35rem 0.6rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.season-block summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.episode-list {
+  margin: 0.35rem 0 0.1rem;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
 .download-list-form {
   display: grid;
   gap: 1rem;
