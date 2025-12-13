@@ -2271,7 +2271,7 @@ function extractSchedulerTasks(template) {
 function buildCommandKeySet(commands = []) {
   return new Set(
     (commands || [])
-      .map((entry) => baseCommandKey(entry?.command))
+      .map((entry) => entry?.baseKey || baseCommandKey(entry?.command))
       .filter((value) => value)
   );
 }
@@ -2337,6 +2337,15 @@ function baseCommandKey(command = []) {
     .map((part) => String(part).trim())
     .filter(Boolean)
     .join(' ');
+}
+
+function addBaseCommandKey(commands = []) {
+  return (Array.isArray(commands) ? commands : [])
+    .map((command) => {
+      const baseKey = baseCommandKey(command?.command);
+      return baseKey ? { ...command, baseKey } : null;
+    })
+    .filter(Boolean);
 }
 
 function normalizeCommandEntries(entries) {
@@ -2471,7 +2480,7 @@ function renderUnscheduledTemplateCommands(commands = [], scheduledKeys = new Se
   }
 
   const unscheduled = Array.isArray(commands)
-    ? commands.filter((command) => !scheduledKeys.has(baseCommandKey(command.command)))
+    ? commands.filter((command) => command.baseKey && !scheduledKeys.has(command.baseKey))
     : [];
 
   renderCommandList(
@@ -2552,7 +2561,9 @@ async function loadSchedulerTasks() {
 
   try {
     const templateData = await fetchJson('/templates');
-    templateCommands = normalizeCommandEntries(extractEntries(templateData));
+    templateCommands = addBaseCommandKey(
+      normalizeCommandEntries(extractEntries(templateData))
+    );
     renderUnscheduledTemplateCommands(templateCommands, scheduledKeys);
   } catch (error) {
     renderUnscheduledTemplateCommands([], scheduledKeys);
