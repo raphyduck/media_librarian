@@ -163,7 +163,7 @@ Depuis l'interface web, un formulaire de connexion envoie les identifiants à `P
 
 Les cookies de session expirent automatiquement après 24 heures. Un secret dédié aux sessions est utilisé pour signer les cookies : fournissez la clé `session_secret` dans `auth` ou laissez le démon en générer un, persisté dans `~/.medialibrarian/session_secret`. Modifier ce secret (ou supprimer le fichier persistant pour le régénérer au prochain démarrage) invalide immédiatement tous les cookies existants et permet de révoquer de force les sessions.
 
-Pour la rétrocompatibilité (clients CLI, automatisations, etc.), il reste possible de définir un jeton d'API qui autorise les requêtes munies de l'en-tête `X-Control-Token` (ou du paramètre `token`). Le jeton peut être fourni via les clés `api_token`/`control_token` du fichier `~/.medialibrarian/api.yml` ou, à défaut, les variables d'environnement `MEDIA_LIBRARIAN_API_TOKEN` / `MEDIA_LIBRARIAN_CONTROL_TOKEN`.
+Pour la rétrocompatibilité (clients CLI, automatisations, etc.), il reste possible de définir un jeton d'API qui autorise les requêtes munies de l'en-tête `X-Control-Token`. Le jeton peut être fourni via les clés `api_token`/`control_token` du fichier `~/.medialibrarian/api.yml` ou, à défaut, les variables d'environnement `MEDIA_LIBRARIAN_API_TOKEN` / `MEDIA_LIBRARIAN_CONTROL_TOKEN`. Les requêtes qui envoient le jeton ailleurs (paramètres de requête, corps JSON, etc.) reçoivent désormais une erreur dédiée (`token_header_required`).
 
 ### Limites actuelles
 
