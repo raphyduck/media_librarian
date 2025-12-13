@@ -132,6 +132,8 @@ listen_port: 8888
 auth:
   username: admin
   password_hash: "$2a$12$REPLACE_WITH_BCRYPT_HASH"
+  # Facultatif : fournir un secret de session stable (sinon généré et stocké dans ~/.medialibrarian/session_secret)
+  session_secret: "REPLACE_WITH_RANDOM_SECRET"
 ```
 
 Pour exposer l'interface via HTTPS, complétez le même fichier YAML avec les paramètres TLS :
@@ -158,6 +160,8 @@ Si aucune paire clé/certificat n'est fournie, le démon génère un certificat 
 Le serveur d'administration continue d'autoriser les connexions sans certificat client (`ssl_client_verify_mode` = `none` par défaut). Pour activer l'authentification mutuelle TLS, fournissez une valeur explicite (`peer`, `require`, etc.) pour `ssl_client_verify_mode`; dans ce cas, WEBrick exigera un certificat client valide.
 
 Depuis l'interface web, un formulaire de connexion envoie les identifiants à `POST /session` et un cookie sécurisé (`Secure`, `HttpOnly`) est retourné lorsque l'authentification réussit. La déconnexion s'effectue via `DELETE /session`.
+
+Les cookies de session expirent automatiquement après 24 heures. Un secret dédié aux sessions est utilisé pour signer les cookies : fournissez la clé `session_secret` dans `auth` ou laissez le démon en générer un, persisté dans `~/.medialibrarian/session_secret`. Modifier ce secret (ou supprimer le fichier persistant pour le régénérer au prochain démarrage) invalide immédiatement tous les cookies existants et permet de révoquer de force les sessions.
 
 Pour la rétrocompatibilité (clients CLI, automatisations, etc.), il reste possible de définir un jeton d'API qui autorise les requêtes munies de l'en-tête `X-Control-Token` (ou du paramètre `token`). Le jeton peut être fourni via les clés `api_token`/`control_token` du fichier `~/.medialibrarian/api.yml` ou, à défaut, les variables d'environnement `MEDIA_LIBRARIAN_API_TOKEN` / `MEDIA_LIBRARIAN_CONTROL_TOKEN`.
 
