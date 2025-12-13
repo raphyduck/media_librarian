@@ -2015,6 +2015,9 @@ class Daemon
 
       if authenticated_session?(req) || api_token_authorized?(req)
         true
+      elsif api_token_provided_outside_header?(req)
+        error_response(res, status: 400, message: 'token_header_required')
+        false
       else
         error_response(res, status: 403, message: 'forbidden')
         false
@@ -2036,18 +2039,27 @@ class Daemon
       token = api_token
       return false if token.to_s.empty?
 
-      provided = req['X-Control-Token']
-      provided = req.query['token'] if (!provided || provided.empty?) && req.respond_to?(:query)
-      if (!provided || provided.empty?) && req.body && !req.body.empty?
-        begin
-          parsed = JSON.parse(req.body)
-          provided = parsed['token'] if parsed.is_a?(Hash)
-        rescue JSON::ParserError
-          provided = nil
-        end
-      end
+      req['X-Control-Token'] == token
+    end
 
-      provided == token
+    def api_token_provided_outside_header?(req)
+      return false if api_token.to_s.empty?
+      return false if req['X-Control-Token'] && !req['X-Control-Token'].empty?
+
+      (req.respond_to?(:query) && token_present?(req.query['token'])) || token_in_request_body?(req)
+    end
+
+    def token_in_request_body?(req)
+      return false unless req.body && !req.body.empty?
+
+      parsed = JSON.parse(req.body)
+      parsed.is_a?(Hash) && token_present?(parsed['token'])
+    rescue JSON::ParserError
+      false
+    end
+
+    def token_present?(value)
+      !value.to_s.empty?
     end
 
     def handle_session_request(req, res)

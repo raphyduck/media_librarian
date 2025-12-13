@@ -432,6 +432,18 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 204, reload[:status_code]
   end
 
+  def test_api_token_rejected_outside_header
+    boot_daemon_environment(authenticate: false)
+
+    query_param = control_get("/status?token=#{@api_token}")
+    assert_equal 400, query_param[:status_code]
+    assert_equal({ 'error' => 'token_header_required' }, query_param[:body])
+
+    body_param = control_post('/config/reload', body: { 'token' => @api_token })
+    assert_equal 400, body_param[:status_code]
+    assert_equal({ 'error' => 'token_header_required' }, body_param[:body])
+  end
+
   def test_cli_uses_control_token_when_api_token_blank
     boot_daemon_environment(control_token: 'control-secret',
                             authenticate: false,
@@ -982,11 +994,15 @@ class DaemonIntegrationTest < Minitest::Test
 
   def control_uri(path)
     builder = control_ssl_enabled? ? URI::HTTPS : URI::HTTP
-    builder.build(
+    clean_path, query = path.split('?', 2)
+
+    uri = builder.build(
       host: @environment.application.api_option['bind_address'],
       port: @environment.application.api_option['listen_port'],
-      path: path
+      path: clean_path
     )
+    uri.query = query if query
+    uri
   end
 
   def control_ssl_enabled?
