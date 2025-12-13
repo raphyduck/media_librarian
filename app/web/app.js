@@ -1741,6 +1741,102 @@ function resolveCollectionType(value) {
   return ['movie', 'tv', 'all'].includes(type) ? type : '';
 }
 
+function normalizeFileEntries(files) {
+  return (Array.isArray(files) ? files : [])
+    .map((file) => (file == null ? '' : String(file).trim()))
+    .filter(Boolean);
+}
+
+function buildFileList(files) {
+  const normalized = normalizeFileEntries(files);
+  if (!normalized.length) {
+    return null;
+  }
+  const list = document.createElement('ul');
+  list.className = 'file-list';
+  normalized.forEach((file) => {
+    const item = document.createElement('li');
+    item.textContent = file;
+    list.appendChild(item);
+  });
+  return list;
+}
+
+function buildFileAccordion(files, label = 'Fichiers') {
+  const list = buildFileList(files);
+  if (!list) {
+    return null;
+  }
+  const details = document.createElement('details');
+  details.className = 'collection-files';
+  const summary = document.createElement('summary');
+  summary.textContent = `${label} (${list.childElementCount})`;
+  details.append(summary, list);
+  return details;
+}
+
+function closeCollectionModal() {
+  const modal = document.getElementById('collection-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+}
+
+function buildSeasonHierarchy(entry) {
+  const wrapper = document.createElement('div');
+  const seasons = Array.isArray(entry?.seasons) ? entry.seasons : [];
+  if (!seasons.length) {
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'Aucune saison détectée.';
+    wrapper.appendChild(hint);
+    return wrapper;
+  }
+
+  seasons.forEach((seasonEntry) => {
+    const block = document.createElement('details');
+    block.className = 'season-block';
+    block.open = true;
+    const summary = document.createElement('summary');
+    const episodeCount = Array.isArray(seasonEntry?.episodes) ? seasonEntry.episodes.length : 0;
+    summary.textContent = `Saison ${seasonEntry?.season ?? '?'} (${episodeCount} ép.)`;
+    block.appendChild(summary);
+
+    const episodeList = document.createElement('ul');
+    episodeList.className = 'episode-list';
+    (seasonEntry?.episodes || []).forEach((episode) => {
+      const episodeItem = document.createElement('li');
+      const label = document.createElement('div');
+      const fileCount = normalizeFileEntries(episode?.files).length;
+      label.textContent = `Épisode ${episode?.episode ?? '?'}${fileCount ? ` • ${fileCount} fichier(s)` : ''}`;
+      episodeItem.appendChild(label);
+      const files = buildFileList(episode?.files);
+      if (files) {
+        episodeItem.appendChild(files);
+      }
+      episodeList.appendChild(episodeItem);
+    });
+
+    block.appendChild(episodeList);
+    wrapper.appendChild(block);
+  });
+
+  return wrapper;
+}
+
+function openCollectionModal(entry, titleText) {
+  const modal = document.getElementById('collection-modal');
+  const body = document.getElementById('collection-modal-body');
+  const title = document.getElementById('collection-modal-title');
+  if (!modal || !body || !title) {
+    return;
+  }
+  const content = buildSeasonHierarchy(entry);
+  body.replaceChildren(content);
+  title.textContent = titleText || 'Saisons';
+  modal.classList.remove('hidden');
+}
+
 function renderCollectionCard(entry) {
   const item = document.createElement('li');
   item.className = 'calendar-item';
@@ -1810,6 +1906,21 @@ function renderCollectionCard(entry) {
     addedLabel.className = 'calendar-meta';
     addedLabel.textContent = `Ajouté le ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(addedAt)}`;
     body.appendChild(addedLabel);
+  }
+
+  const files = buildFileAccordion(entry.files, 'Fichiers');
+  if (files) {
+    body.appendChild(files);
+  }
+
+  if (entry.media_type === 'tv') {
+    const seasons = Array.isArray(entry.seasons) ? entry.seasons : [];
+    const seasonButton = document.createElement('button');
+    seasonButton.type = 'button';
+    seasonButton.textContent = 'Saisons / épisodes';
+    seasonButton.disabled = !seasons.length;
+    seasonButton.addEventListener('click', () => openCollectionModal(entry, titleText));
+    body.appendChild(seasonButton);
   }
 
   item.append(media, body);
@@ -2888,6 +2999,26 @@ function setupCollectionEvents() {
   if (next) {
     next.addEventListener('click', () => loadCollection({ page: state.collection.page + 1 }));
   }
+
+  const modalClose = document.getElementById('collection-modal-close');
+  if (modalClose) {
+    modalClose.addEventListener('click', closeCollectionModal);
+  }
+
+  const modal = document.getElementById('collection-modal');
+  if (modal) {
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeCollectionModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeCollectionModal();
+    }
+  });
 }
 
 function setupEventListeners() {
