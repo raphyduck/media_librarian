@@ -30,6 +30,7 @@ module MediaLibrarian
 
         existing_calendar_ids = calendar_imdb_ids
         cached_calendar = {}
+        cleaned_watchlist = Set.new
 
         library.each_with_object([]) do |(id, entry), memo|
           next if id.is_a?(Symbol)
@@ -41,6 +42,8 @@ module MediaLibrarian
 
           cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, type, entry, existing_calendar_ids) unless cached_calendar.key?(imdb_id)
 
+          files_persisted = false
+
           Array(entry[:files]).each do |file|
             local_path = file[:name]
             next unless local_path && File.file?(local_path)
@@ -51,8 +54,11 @@ module MediaLibrarian
               local_path: local_path
             }
             persist(metadata)
+            files_persisted = true
             memo << metadata
           end
+
+          remove_from_watchlist(imdb_id, type, cleaned_watchlist) if files_persisted
         end
       end
 
@@ -130,6 +136,25 @@ module MediaLibrarian
 
       def persist(metadata)
         app.db.insert_row('local_media', metadata, 1)
+      end
+
+      def remove_from_watchlist(imdb_id, type, cleaned_watchlist)
+        return if imdb_id.empty? || cleaned_watchlist.include?(imdb_id)
+        return unless watchlist_table?
+
+        conditions = { imdb_id: imdb_id, type: normalize_watchlist_type(type) }
+        app.db.delete_rows(:watchlist, conditions)
+        cleaned_watchlist << imdb_id
+      rescue StandardError => e
+        speaker.tell_error(e, 'File system scan watchlist cleanup failed') if speaker
+      end
+
+      def normalize_watchlist_type(type)
+        type.to_s.strip
+      end
+
+      def watchlist_table?
+        app&.db&.respond_to?(:table_exists?) && app.db.table_exists?(:watchlist)
       end
     end
   end
