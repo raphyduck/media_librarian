@@ -13,8 +13,8 @@ class CollectionRepository
     self.class.configure(app: app)
   end
 
-  def paginated_entries(sort:, page:, per_page: DEFAULT_PER_PAGE)
-    dataset = collection_dataset
+  def paginated_entries(sort:, page:, per_page: DEFAULT_PER_PAGE, search: '')
+    dataset = apply_search(collection_dataset, search)
     return empty_response(page, per_page) unless dataset
 
     per_page = clamp_per_page(per_page)
@@ -39,6 +39,12 @@ class CollectionRepository
     else
       dataset
     end
+  end
+
+  def apply_search(dataset, search)
+    return dataset unless dataset && search.to_s.strip != ''
+
+    dataset.where(Sequel.ilike(:title, "%#{search.strip}%"))
   end
 
   def clamp_per_page(per_page)

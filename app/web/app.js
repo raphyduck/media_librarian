@@ -33,6 +33,7 @@ const state = {
     perPage: 50,
     total: 0,
     loading: false,
+    search: '',
   },
   trackers: {
     entries: [],
@@ -1866,6 +1867,9 @@ async function loadCollection(options = {}) {
   const sort = resolveCollectionSort(sortInput);
   const page = Math.max(1, options.page ?? state.collection.page ?? 1);
   const perPage = Math.max(1, options.perPage ?? state.collection.perPage ?? 50);
+  const searchInput = document.getElementById('collection-search');
+  const rawSearch = options.search ?? searchInput?.value ?? state.collection.search ?? '';
+  const searchTerm = rawSearch.toString().trim();
 
   const sortSelect = document.getElementById('collection-sort');
   if (sortSelect) {
@@ -1875,12 +1879,20 @@ async function loadCollection(options = {}) {
     }
   }
 
+  if (searchInput && searchInput.value !== searchTerm) {
+    searchInput.value = searchTerm;
+  }
+
   const search = new URLSearchParams({ sort, page, per_page: perPage });
+  if (searchTerm) {
+    search.set('search', searchTerm);
+  }
   const path = `/collection${search.toString() ? `?${search.toString()}` : ''}`;
   state.collection.loading = true;
   state.collection.sort = sort;
   state.collection.page = page;
   state.collection.perPage = perPage;
+  state.collection.search = searchTerm;
   renderCollection();
 
   try {
@@ -2818,6 +2830,15 @@ function setupCalendarEvents() {
 }
 
 function setupCollectionEvents() {
+  const searchForm = document.getElementById('collection-search-form');
+  const searchInput = document.getElementById('collection-search');
+  if (searchForm && searchInput) {
+    searchForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadCollection({ search: searchInput.value, page: 1 });
+    });
+  }
+
   const sort = document.getElementById('collection-sort');
   if (sort) {
     sort.addEventListener('change', () => loadCollection({ sort: sort.value, page: 1 }));

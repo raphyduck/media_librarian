@@ -199,6 +199,21 @@ main {
   font-weight: 600;
 }
 
+.collection-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.collection-search input {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(17, 24, 39, 0.6);
+  color: inherit;
+}
+
 .download-list-form {
   display: grid;
   gap: 1rem;
