@@ -1444,8 +1444,8 @@ class Daemon
           'entries' => result[:entries],
           'type' => params[:type],
           'pagination' => {
-            'page' => params[:page],
-            'per_page' => params[:per_page],
+            'page' => result[:page] || params[:page],
+            'per_page' => result[:per_page] || params[:per_page],
             'total' => result[:total]
           }
         }

@@ -21,15 +21,32 @@ class CollectionRepository
     per_page = clamp_per_page(per_page)
     page = normalize_page(page)
     ordered = apply_sort(dataset, sort)
-    total = ordered.unlimited.count
-    entries = ordered.limit(per_page, offset(page, per_page)).all
+    aggregated = aggregate_rows(ordered.all)
+    total = aggregated.size
+    entries = aggregated.slice(offset(page, per_page), per_page) || []
 
-    { entries: entries.map { |row| serialize_row(row) }, total: total }
+    { entries: entries, total: total, page: page, per_page: per_page }
   rescue StandardError
     empty_response(page, per_page)
   end
 
   private
+
+  def aggregate_rows(rows)
+    groups = {}
+    order = []
+
+    rows.each do |row|
+      key = fetch(row, :imdb_id).to_s
+      key = fetch(row, :id).to_s if key.empty?
+      next if key.empty?
+
+      order << key unless groups.key?(key)
+      (groups[key] ||= []) << row
+    end
+
+    order.map { |key| serialize_group(groups[key]) }
+  end
 
   def apply_sort(dataset, sort)
     case sort
@@ -83,16 +100,21 @@ class CollectionRepository
     (page - 1) * per_page
   end
 
-  def serialize_row(row)
-    {
-      id: fetch(row, :id),
-      media_type: fetch(row, :media_type),
-      imdb_id: fetch(row, :imdb_id),
-      title: derived_title(row),
-      released_at: build_released_at(fetch(row, :created_at)),
-      local_path: fetch(row, :local_path),
-      created_at: fetch(row, :created_at)
+  def serialize_group(rows)
+    primary = rows.first
+    entry = {
+      id: fetch(primary, :id),
+      media_type: fetch(primary, :media_type),
+      imdb_id: fetch(primary, :imdb_id),
+      title: derived_title(primary),
+      released_at: build_released_at(fetch(primary, :created_at)),
+      local_path: fetch(primary, :local_path),
+      created_at: fetch(primary, :created_at),
+      files: rows.map { |row| fetch(row, :local_path) }.compact
     }.compact
+
+    entry[:seasons] = build_seasons(rows) if entry[:media_type] == 'tv'
+    entry
   end
 
   def fetch(row, key)
@@ -109,5 +131,38 @@ class CollectionRepository
     Time.parse(value.to_s).utc.iso8601
   rescue StandardError
     nil
+  end
+
+  def build_seasons(rows)
+    episodes = Hash.new { |h, k| h[k] = Hash.new { |hh, kk| hh[kk] = [] } }
+
+    rows.each do |row|
+      season, episode = extract_season_episode(row)
+      next unless season && episode
+
+      episodes[season][episode] << fetch(row, :local_path)
+    end
+
+    episodes
+      .sort_by { |season, _| season }
+      .map do |season, eps|
+        {
+          season: season,
+          episodes: eps.sort_by { |episode, _| episode }.map { |episode, files| { episode: episode, files: files.compact } }
+        }
+      end
+  end
+
+  def extract_season_episode(row)
+    source = fetch(row, :local_path).to_s
+    return if source.empty?
+
+    if (match = source.match(/[sS](\d{1,2})[ ._-]*[eE](\d{1,2})/))
+      return match[1].to_i, match[2].to_i
+    end
+
+    if (match = source.match(/(\d{1,2})x(\d{1,2})/))
+      return match[1].to_i, match[2].to_i
+    end
   end
 end

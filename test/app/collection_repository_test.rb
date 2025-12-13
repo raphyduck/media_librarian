@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+ENV['SKIP_DB_MIGRATIONS'] = '1'
+
 require 'json'
 require 'ostruct'
 require 'securerandom'
@@ -12,7 +14,8 @@ class CollectionRepositoryTest < Minitest::Test
   def setup
     @environment = build_stubbed_environment
     db_path = File.join(@environment.root_path, 'db.sqlite3')
-    attach_db(Storage::Db.new(db_path))
+    attach_db(Storage::Db.new(db_path, 0, migrations_path: nil))
+    create_local_media_table
     CollectionRepository.configure(app: @environment.application)
     @repository = CollectionRepository.new(app: @environment.application)
   end
@@ -44,6 +47,35 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal 'single.mkv', result[:entries].first[:title]
   end
 
+  def test_groups_entries_by_imdb_id
+    insert_media([
+      { imdb_id: 'ttgroup', local_path: '/tmp/media/first.mkv' },
+      { imdb_id: 'ttgroup', local_path: '/tmp/media/second.mkv' }
+    ])
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10)
+
+    assert_equal 1, result[:total]
+    assert_equal ['ttgroup'], result[:entries].map { |entry| entry[:imdb_id] }
+    assert_equal ['/tmp/media/first.mkv', '/tmp/media/second.mkv'], result[:entries].first[:files]
+  end
+
+  def test_builds_seasons_for_tv_entries
+    insert_media([
+      { imdb_id: 'tttv', media_type: 'tv', local_path: '/tmp/media/Show.S01E01.mkv' },
+      { imdb_id: 'tttv', media_type: 'tv', local_path: '/tmp/media/Show.1x02.mkv' }
+    ])
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10)
+
+    seasons = result[:entries].first[:seasons]
+    assert_equal 1, seasons.size
+    assert_equal 1, seasons.first[:season]
+    assert_equal [1, 2], seasons.first[:episodes].map { |episode| episode[:episode] }
+    assert_equal ['/tmp/media/Show.S01E01.mkv'], seasons.first[:episodes].first[:files]
+    assert_equal ['/tmp/media/Show.1x02.mkv'], seasons.first[:episodes].last[:files]
+  end
+
   private
 
   def attach_db(db)
@@ -60,6 +92,18 @@ class CollectionRepositoryTest < Minitest::Test
     rows.each do |row|
       @environment.application.db.insert_row(:local_media, base_row.merge(row), 1)
     end
+  end
+
+  def create_local_media_table
+    @environment.application.db.execute(<<~SQL)
+      CREATE TABLE IF NOT EXISTS local_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_type TEXT,
+        imdb_id TEXT,
+        local_path TEXT,
+        created_at TEXT
+      )
+    SQL
   end
 
   def base_row
@@ -96,7 +140,7 @@ class CollectionRequestTest < Minitest::Test
       Daemon.send(:handle_collection_request, request, response)
     end
 
-    assert_equal({ sort: 'released_at', page: 1, per_page: CollectionRepository::MAX_PER_PAGE, search: '' }, captured)
+    assert_equal({ sort: 'released_at', page: 1, per_page: CollectionRepository::MAX_PER_PAGE, search: '', type: nil }, captured)
     parsed = JSON.parse(response.body)
     assert_equal({ 'page' => 1, 'per_page' => CollectionRepository::MAX_PER_PAGE, 'total' => 42 }, parsed['pagination'])
   end
