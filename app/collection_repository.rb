@@ -13,8 +13,9 @@ class CollectionRepository
     self.class.configure(app: app)
   end
 
-  def paginated_entries(sort:, page:, per_page: DEFAULT_PER_PAGE, search: '')
-    dataset = apply_search(collection_dataset, search)
+  def paginated_entries(sort:, page:, per_page: DEFAULT_PER_PAGE, search: '', type: nil)
+    dataset = apply_type_filter(collection_dataset, type)
+    dataset = apply_search(dataset, search)
     return empty_response(page, per_page) unless dataset
 
     per_page = clamp_per_page(per_page)
@@ -52,6 +53,13 @@ class CollectionRepository
     value = per_page.to_i
     value = DEFAULT_PER_PAGE if value <= 0
     [value, MAX_PER_PAGE].min
+  end
+
+  def apply_type_filter(dataset, type)
+    return dataset unless dataset
+    return dataset if type.to_s.strip.empty? || type == 'all'
+
+    %w[movie tv].include?(type) ? dataset.where(media_type: type) : dataset
   end
 
   def collection_dataset

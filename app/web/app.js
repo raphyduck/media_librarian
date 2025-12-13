@@ -29,6 +29,7 @@ const state = {
   collection: {
     entries: [],
     sort: 'released_at',
+    type: '',
     page: 1,
     perPage: 50,
     total: 0,
@@ -1735,6 +1736,11 @@ function resolveCollectionSortOption(sort) {
   return sort === 'released_at' ? 'date' : sort;
 }
 
+function resolveCollectionType(value) {
+  const type = value?.toString().trim();
+  return ['movie', 'tv', 'all'].includes(type) ? type : '';
+}
+
 function renderCollectionCard(entry) {
   const item = document.createElement('li');
   item.className = 'calendar-item';
@@ -1842,6 +1848,12 @@ function renderCollection(data = null) {
     state.collection.perPage = pagination.per_page ?? state.collection.perPage ?? 50;
     state.collection.total = pagination.total ?? state.collection.total ?? 0;
     state.collection.sort = resolveCollectionSort(data.sort ?? state.collection.sort);
+    state.collection.type = resolveCollectionType(data.type ?? state.collection.type);
+  }
+
+  const typeSelect = document.getElementById('collection-type');
+  if (typeSelect && typeSelect.value !== state.collection.type) {
+    typeSelect.value = state.collection.type;
   }
 
   const entries = state.collection.entries || [];
@@ -1865,6 +1877,9 @@ async function loadCollection(options = {}) {
 
   const sortInput = options.sort ?? document.getElementById('collection-sort')?.value ?? state.collection.sort;
   const sort = resolveCollectionSort(sortInput);
+  const typeSelect = document.getElementById('collection-type');
+  const typeInput = options.type ?? typeSelect?.value ?? state.collection.type;
+  const type = resolveCollectionType(typeInput);
   const page = Math.max(1, options.page ?? state.collection.page ?? 1);
   const perPage = Math.max(1, options.perPage ?? state.collection.perPage ?? 50);
   const searchInput = document.getElementById('collection-search');
@@ -1879,17 +1894,25 @@ async function loadCollection(options = {}) {
     }
   }
 
+  if (typeSelect && typeSelect.value !== type) {
+    typeSelect.value = type;
+  }
+
   if (searchInput && searchInput.value !== searchTerm) {
     searchInput.value = searchTerm;
   }
 
   const search = new URLSearchParams({ sort, page, per_page: perPage });
+  if (type) {
+    search.set('type', type);
+  }
   if (searchTerm) {
     search.set('search', searchTerm);
   }
   const path = `/collection${search.toString() ? `?${search.toString()}` : ''}`;
   state.collection.loading = true;
   state.collection.sort = sort;
+  state.collection.type = type;
   state.collection.page = page;
   state.collection.perPage = perPage;
   state.collection.search = searchTerm;
@@ -1897,7 +1920,7 @@ async function loadCollection(options = {}) {
 
   try {
     const data = await fetchJson(path);
-    renderCollection({ ...data, sort });
+    renderCollection({ ...data, sort, type });
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
@@ -2849,6 +2872,11 @@ function setupCollectionEvents() {
   const sort = document.getElementById('collection-sort');
   if (sort) {
     sort.addEventListener('change', () => loadCollection({ sort: sort.value, page: 1 }));
+  }
+
+  const type = document.getElementById('collection-type');
+  if (type) {
+    type.addEventListener('change', () => loadCollection({ type: type.value, page: 1 }));
   }
 
   const prev = document.getElementById('collection-prev');
