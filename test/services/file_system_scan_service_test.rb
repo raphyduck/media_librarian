@@ -7,6 +7,7 @@ require_relative 'service_test_helper'
 require_relative '../../lib/metadata'
 require_relative '../../lib/media_librarian/services/file_system_scan_request'
 require_relative '../../app/media_librarian/services/base_service'
+require_relative '../../app/media_librarian/services/calendar_feed_service'
 require_relative '../../app/media_librarian/services/file_system_scan_service'
 
 class FileSystemScanServiceTest < Minitest::Test
@@ -18,7 +19,15 @@ class FileSystemScanServiceTest < Minitest::Test
     end
 
     def insert_row(table, values, or_replace = 0)
-      @rows << values.merge(table: table, replace: or_replace)
+      @rows << values.merge(table: table.to_sym, replace: or_replace)
+    end
+
+    def get_rows(table, *_)
+      @rows.select { |row| row[:table] == table.to_sym }
+    end
+
+    def table_exists?(table)
+      %i[calendar_entries local_media].include?(table.to_sym)
     end
   end
 
@@ -62,14 +71,20 @@ class FileSystemScanServiceTest < Minitest::Test
       }
     }
 
-    Library.stub(:process_folder, library) { @service.scan(request) }
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
 
-    assert_equal 1, @db.rows.length
-    row = @db.rows.first
-    assert_equal 'local_media', row[:table]
-    assert_equal 'movies', row[:media_type]
-    assert_equal 'tt1234567', row[:imdb_id]
-    assert_equal @file_path, row[:local_path]
-    assert_equal 1, row[:replace]
+    assert_equal 2, @db.rows.length
+
+    calendar = @db.rows.find { |row| row[:table] == :calendar_entries }
+    assert_equal 'tt1234567', calendar[:imdb_id]
+    assert_equal 'movie', calendar[:media_type]
+
+    local_media = @db.rows.find { |row| row[:table] == :local_media }
+    assert_equal 'movies', local_media[:media_type]
+    assert_equal 'tt1234567', local_media[:imdb_id]
+    assert_equal @file_path, local_media[:local_path]
+    assert_equal 1, local_media[:replace]
   end
 end

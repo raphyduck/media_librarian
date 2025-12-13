@@ -24,6 +24,12 @@ module MediaLibrarian
         @providers = providers || default_providers
       end
 
+      def self.enrich_entries(entries, app: self.app, speaker: nil, db: nil)
+        new(app: app, speaker: speaker, db: db)&.send(:enrich_with_omdb, entries)
+      rescue StandardError
+        entries
+      end
+
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
