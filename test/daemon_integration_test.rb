@@ -572,6 +572,35 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal @auth_credentials.fetch(:username), session.dig(:body, 'username')
   end
 
+  def test_expired_session_cookie_is_rejected
+    boot_daemon_environment
+
+    raw_cookie = @session_cookie.split('=', 2).last
+    payload = Daemon.send(:decode_session_cookie, raw_cookie)
+    secret = Daemon.send(:session_secret)
+    refute_nil payload
+    refute_nil secret
+
+    expired_payload = payload.merge('expires_at' => (Time.now.utc - 60).iso8601)
+    @session_cookie = "#{Daemon::SESSION_COOKIE_NAME}=#{Daemon.send(:encode_session_data, expired_payload, secret)}"
+
+    forbidden = control_get('/status')
+    assert_equal 403, forbidden[:status_code]
+  ensure
+    @session_cookie = nil
+  end
+
+  def test_session_secret_differs_from_password_hash
+    boot_daemon_environment(authenticate: false)
+
+    secret = Daemon.send(:session_secret)
+    password_hash = @environment.application.api_option.dig('auth', 'password_hash')
+
+    assert File.file?(File.join(@environment.application.config_dir, 'session_secret'))
+    refute_nil secret
+    refute_equal password_hash, secret
+  end
+
   def test_https_control_server_serves_requests
     boot_daemon_environment(api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
 

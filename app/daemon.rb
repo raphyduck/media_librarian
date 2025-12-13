@@ -87,6 +87,7 @@ class Daemon
   CONTROL_CONTENT_TYPE = 'application/json'
   LOG_TAIL_LINES = 10_000
   SESSION_COOKIE_NAME = 'ml_session'
+  SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
   INLINE_EXECUTED = Object.new
 
@@ -2140,10 +2141,12 @@ class Daemon
 
       username = raw['username'] || raw[:username]
       password_hash = raw['password_hash'] || raw[:password_hash]
+      session_secret = raw['session_secret'] || raw[:session_secret]
 
       result = {}
       result['username'] = username.to_s unless username.nil? || username.to_s.empty?
       result['password_hash'] = password_hash.to_s unless password_hash.nil? || password_hash.to_s.empty?
+      result['session_secret'] = session_secret.to_s unless session_secret.nil? || session_secret.to_s.empty?
       result
     end
 
@@ -2151,9 +2154,11 @@ class Daemon
       secret = session_secret
       return unless secret
 
+      now = Time.now.utc
       data = {
         'username' => username.to_s,
-        'issued_at' => Time.now.utc.iso8601
+        'issued_at' => now.iso8601,
+        'expires_at' => (now + SESSION_TTL).iso8601
       }
       encode_session_data(data, secret)
     end
@@ -2187,7 +2192,11 @@ class Daemon
 
       username = session['username'].to_s
       issued_at = parse_session_time(session['issued_at'])
-      return false if username.empty? || issued_at.nil?
+      expires_at = parse_session_time(session['expires_at'])
+      now = Time.now.utc
+
+      return false if username.empty? || issued_at.nil? || expires_at.nil?
+      return false if expires_at <= now
 
       revoked_at = session_revocations[username]
       return false if revoked_at && issued_at <= revoked_at
@@ -2225,10 +2234,48 @@ class Daemon
     end
 
     def session_secret
-      hash = auth_config['password_hash']
-      return if hash.nil? || hash.to_s.empty?
+      if defined?(@session_secret) && @session_secret
+        ensure_session_secret_file(@session_secret)
+        return @session_secret
+      end
 
-      hash.to_s
+      secret = auth_config['session_secret']
+      secret = secret.to_s unless secret.nil?
+      secret = nil if secret.to_s.empty?
+      secret ||= load_persisted_session_secret
+
+      @session_secret = secret
+      ensure_session_secret_file(secret)
+      @session_secret
+    end
+
+    def load_persisted_session_secret
+      path = File.join(app.config_dir, 'session_secret')
+
+      if File.file?(path)
+        secret = File.read(path).strip
+        return secret unless secret.empty?
+      end
+
+      secret = SecureRandom.hex(32)
+      File.write(path, secret)
+      File.chmod(0o600, path)
+      secret
+    rescue SystemCallError => e
+      app.speaker.tell_error(e, 'Unable to persist session secret')
+      nil
+    end
+
+    def ensure_session_secret_file(secret)
+      return unless secret
+
+      path = File.join(app.config_dir, 'session_secret')
+      return if File.file?(path) && !File.read(path).strip.empty?
+
+      File.write(path, secret)
+      File.chmod(0o600, path)
+    rescue SystemCallError => e
+      app.speaker.tell_error(e, 'Unable to persist session secret')
     end
 
     def secure_compare(a, b)
