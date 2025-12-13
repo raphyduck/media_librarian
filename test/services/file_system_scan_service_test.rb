@@ -68,9 +68,7 @@ class FileSystemScanServiceTest < Minitest::Test
     row = @db.rows.first
     assert_equal 'local_media', row[:table]
     assert_equal 'movies', row[:media_type]
-    assert_equal 'Example (2021)', row[:title]
-    assert_equal 2021, row[:year]
-    assert_equal 'tt1234567', row[:external_id]
+    assert_equal 'tt1234567', row[:imdb_id]
     assert_equal @file_path, row[:local_path]
     assert_equal 1, row[:replace]
   end

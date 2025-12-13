@@ -36,7 +36,7 @@ class CalendarEntriesRepositoryTest < Minitest::Test
       { media_type: 'movie', title: 'Alpha', ids: { 'imdb' => 'tt1234' } }
     ]
     local_rows = [
-      { media_type: 'movies', external_id: 'tt1234', external_source: 'imdb', title: 'Alpha', local_path: '/tmp/a' }
+      { media_type: 'movies', imdb_id: 'tt1234', local_path: '/tmp/a' }
     ]
     @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: local_rows)
 

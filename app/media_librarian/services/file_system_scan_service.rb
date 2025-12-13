@@ -30,11 +30,8 @@ module MediaLibrarian
           next unless entry.is_a?(Hash)
 
           subject = entry[:movie] || entry[:show]
-          external_id, source = extract_external_id(subject)
-          next if external_id.to_s.empty?
-
-          title = entry[:full_name] || entry[:name]
-          year = subject.respond_to?(:year) ? subject.year : Metadata.identify_release_year(title)
+          imdb_id = extract_imdb_id(subject)
+          next if imdb_id.to_s.empty?
 
           Array(entry[:files]).each do |file|
             local_path = file[:name]
@@ -42,10 +39,7 @@ module MediaLibrarian
 
             metadata = {
               media_type: type,
-              title: title,
-              year: year,
-              external_id: external_id,
-              external_source: source,
+              imdb_id: imdb_id,
               local_path: local_path
             }
             persist(metadata)
@@ -54,11 +48,12 @@ module MediaLibrarian
         end
       end
 
-      def extract_external_id(subject)
+      def extract_imdb_id(subject)
         ids = subject.respond_to?(:ids) ? subject.ids || {} : {}
-        prioritized = %w[imdb tmdb thetvdb tvdb trakt slug]
-        key = prioritized.find { |k| ids[k] || ids[k.to_sym] }
-        [ids[key] || ids[key&.to_sym], key]
+        ids = ids.is_a?(Hash) ? ids : {}
+        imdb_id = ids['imdb'] || ids[:imdb]
+        imdb_id ||= subject.respond_to?(:imdb_id) ? subject.imdb_id : nil
+        imdb_id.to_s
       end
 
       def persist(metadata)
