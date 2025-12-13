@@ -4,32 +4,8 @@ require 'json'
 require 'date'
 require_relative 'support/calendar_entry_enricher'
 
-Sequel.migration do
-  up do
-    dataset = self[:calendar_entries]
-    entries = dataset.map { |row| normalize_entry(row) }.compact
-    candidates = entries.select { |entry| needs_enrichment?(entry) }
-    return if candidates.empty?
-
-    payload = deep_dup_entries(candidates)
-    enriched = CalendarEntryEnricher.enrich(payload) || []
-    original_by_id = candidates.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
-    return if enriched.all? { |entry| original_by_id[entry[:id]] == entry }
-
-    enriched.each do |entry|
-      original = original_by_id[entry[:id]]
-      next unless original
-
-      updates = build_updates(original, entry)
-      next if updates.empty?
-
-      dataset.where(id: entry[:id]).update(updates)
-    end
-  end
-
-  down do
-    # no-op; enrichment is additive
-  end
+module CalendarEntryEnrichmentHelpers
+  module_function
 
   def normalize_entry(row)
     {
@@ -177,4 +153,34 @@ Sequel.migration do
       value
     end
   end
+end
+
+Sequel.migration do
+  up do
+    helpers = CalendarEntryEnrichmentHelpers
+    dataset = self[:calendar_entries]
+    entries = dataset.map { |row| helpers.normalize_entry(row) }.compact
+    candidates = entries.select { |entry| helpers.needs_enrichment?(entry) }
+    return if candidates.empty?
+
+    payload = helpers.deep_dup_entries(candidates)
+    enriched = CalendarEntryEnricher.enrich(payload) || []
+    original_by_id = candidates.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
+    return if enriched.all? { |entry| original_by_id[entry[:id]] == entry }
+
+    enriched.each do |entry|
+      original = original_by_id[entry[:id]]
+      next unless original
+
+      updates = helpers.build_updates(original, entry)
+      next if updates.empty?
+
+      dataset.where(id: entry[:id]).update(updates)
+    end
+  end
+
+  down do
+    # no-op; enrichment is additive
+  end
+
 end
