@@ -1735,7 +1735,7 @@ class Daemon
     def handle_watchlist_request(req, res)
       case req.request_method
       when 'GET'
-        entries = WatchlistStore.fetch(type: req.query['type'])
+        entries = WatchlistStore.fetch_with_details(type: req.query['type'])
         json_response(res, body: { 'entries' => entries })
       when 'POST'
         payload = parse_payload(req)
@@ -1744,26 +1744,17 @@ class Daemon
         return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
         return error_response(res, status: 422, message: 'missing_title') if title.empty?
 
-        metadata = payload['metadata']
-        metadata = metadata.is_a?(Hash) ? metadata : {}
-        ids = metadata['ids'] || metadata[:ids] || {}
-        ids = {} unless ids.is_a?(Hash)
-
-        ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
-        ids['imdb'] = imdb_id if imdb_id
-        metadata['ids'] = ids if ids.any?
         entry = {
           imdb_id: imdb_id,
           title: title,
-          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s),
-          metadata: metadata,
+          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
         }
 
         WatchlistStore.upsert([entry])
         json_response(res, body: { 'status' => 'ok' })
       when 'DELETE'
         payload = parse_payload(req)
-        imdb_id = (payload['imdb_id'] || req.query['imdb_id']).to_s.strip
+        imdb_id = (payload['imdb_id'] || payload['id'] || req.query['imdb_id'] || req.query['id']).to_s.strip
         return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
 
         removed = WatchlistStore.delete(

@@ -81,12 +81,21 @@ class ListManagementServiceTest < Minitest::Test
       previous_app = MediaLibrarian.instance_variable_get(:@application)
       MediaLibrarian.instance_variable_set(:@application, app)
 
+      db.insert_row(
+        'calendar_entries',
+        source: 'tmdb',
+        external_id: 'tmdb-42',
+        title: 'Sample',
+        media_type: 'movie',
+        imdb_id: 'tt0042',
+        ids: { imdb: 'tt0042', tmdb: '42' }
+      )
+
       WatchlistStore.upsert([
         {
           imdb_id: 'tt0042',
           type: 'movies',
-          title: 'Sample',
-          metadata: { year: 2024, ids: { 'tmdb' => '42', 'imdb' => 'tt0042' }, calendar_entries: [{ external_id: 'tmdb-42' }] }
+          title: 'Sample'
         }
       ])
 

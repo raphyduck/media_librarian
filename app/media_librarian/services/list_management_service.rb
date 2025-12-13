@@ -54,28 +54,26 @@ module MediaLibrarian
       def build_search_list(request, cache_name)
         search_list = {}
         existing_files = {}
-        case request.source_type
-        when 'filesystem'
-          search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
-          existing_files[request.category] = search_list[cache_name].dup
-        when 'watchlist', 'download_list'
-          rows = WatchlistStore.fetch(type: request.category)
-          calendar_entries = []
-          rows.each do |row|
-            meta = normalize_metadata(row[:metadata])
-            ids = meta[:ids] || {}
-            ids = {} unless ids.is_a?(Hash)
-            imdb_id = imdb_identifier(row, meta)
-            next if imdb_id.to_s.empty?
-            ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
-            ids['imdb'] = imdb_id if imdb_id
-            attrs = { already_followed: 1, watchlist: 1, imdb_id: imdb_id }
-            attrs[:metadata] = meta unless meta.empty?
-            title = build_watchlist_title(row[:title], meta[:year])
-            search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
-            calendar_entries.concat(build_calendar_entries(meta[:calendar_entries], ids, imdb_id, request.category))
-          end
-          search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
+      case request.source_type
+      when 'filesystem'
+        search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
+        existing_files[request.category] = search_list[cache_name].dup
+      when 'watchlist', 'download_list'
+        rows = WatchlistStore.fetch_with_details(type: request.category)
+        calendar_entries = []
+        rows.each do |row|
+          ids = normalize_metadata(row[:ids] || row['ids'])
+          imdb_id = imdb_identifier(row, ids)
+          next if imdb_id.to_s.empty?
+          ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
+          ids['imdb'] = imdb_id if imdb_id
+          attrs = { already_followed: 1, watchlist: 1, imdb_id: imdb_id }
+          year = row[:year] || row['year']
+          title = build_watchlist_title(row[:title] || row['title'], year)
+          search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
+          calendar_entries << build_calendar_entry(row, ids, imdb_id, request.category)
+        end
+        search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
         when 'lists'
           speaker.speak_up("Parsing search list '#{request.source['list_name']}', can take a long time...", 0)
           list_name = (request.source['list_name'] || 'default').to_s
@@ -105,17 +103,16 @@ module MediaLibrarian
         end
       end
 
-      def build_calendar_entries(raw_entries, ids, imdb_id, type)
-        return [] unless raw_entries.is_a?(Array)
+      def build_calendar_entry(entry, ids, imdb_id, type)
+        release_date = entry[:release_date] || entry['release_date']
 
-        ids = ids.is_a?(Hash) ? ids : {}
-
-        raw_entries.filter_map do |entry|
-          next unless entry
-
-          base = entry.is_a?(Hash) ? entry.transform_keys(&:to_sym) : { title: entry }
-          base.merge(ids: ids, imdb_id: imdb_id, type: type)
-        end
+        {
+          ids: ids,
+          imdb_id: imdb_id,
+          type: type,
+          release_date: release_date,
+          title: entry[:title] || entry['title']
+        }
       end
 
       def build_watchlist_title(title, year)
