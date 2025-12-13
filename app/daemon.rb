@@ -1442,6 +1442,7 @@ class Daemon
         res,
         body: {
           'entries' => result[:entries],
+          'type' => params[:type],
           'pagination' => {
             'page' => params[:page],
             'per_page' => params[:per_page],
@@ -1550,8 +1551,14 @@ class Daemon
         sort: normalize_collection_sort(query['sort']),
         page: page,
         per_page: per_page,
-        search: normalize_collection_search(query['search'])
+        search: normalize_collection_search(query['search']),
+        type: normalize_collection_type(query['type'])
       }
+    end
+
+    def normalize_collection_type(value)
+      type = value.to_s.strip.downcase
+      %w[movie tv all].include?(type) ? type : nil
     end
 
     def normalize_collection_sort(value)
