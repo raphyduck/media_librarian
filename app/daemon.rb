@@ -245,7 +245,8 @@ class Daemon
     end
 
     def status_snapshot
-      jobs = sort_jobs_by_queue(job_registry.values.map(&:dup))
+      finished_limit = finished_jobs_limit_per_queue
+      jobs = trim_finished_jobs(sort_jobs_by_queue(job_registry.values.map(&:dup)), finished_limit)
       running = []
       finished = []
       queued = []
@@ -274,7 +275,8 @@ class Daemon
     end
 
     def build_snapshot_from_hashes(payload)
-      jobs = sort_jobs_by_queue(extract_jobs_from(payload))
+      finished_limit = finished_jobs_limit_per_queue
+      jobs = trim_finished_jobs(sort_jobs_by_queue(extract_jobs_from(payload)), finished_limit)
       running = jobs.select { |job| job[:status].to_s == 'running' }
       finished = jobs.select { |job| FINISHED_STATUSES.include?(job[:status].to_s) }
       queued = jobs.reject { |job| running.include?(job) || finished.include?(job) }
@@ -687,6 +689,46 @@ class Daemon
       nil
     end
 
+    def finished_jobs_limit_per_queue
+      app.finished_jobs_per_queue.to_i
+    end
+
+    def finished_job?(job)
+      finished_at = job_attribute(job, :finished_at)
+      finished_at || FINISHED_STATUSES.include?(job_attribute(job, :status).to_s)
+    end
+
+    def finished_jobs_by_queue(jobs)
+      jobs.select { |job| finished_job?(job) }
+          .group_by { |job| job_attribute(job, :queue).to_s }
+    end
+
+    def finished_at_time(job)
+      coerce_time(job_attribute(job, :finished_at)) || Time.at(0)
+    end
+
+    def trim_finished_jobs(jobs, limit)
+      limit = limit.to_i
+      return jobs if limit <= 0
+
+      keep_ids = {}
+      finished_jobs_by_queue(jobs).each_value do |entries|
+        entries.sort_by { |job| finished_at_time(job) }
+               .last(limit)
+               .each do |job|
+          job_id = job_attribute(job, :id)
+          keep_ids[job_id] = true if job_id
+        end
+      end
+
+      jobs.reject do |job|
+        next false unless finished_job?(job)
+
+        job_id = job_attribute(job, :id)
+        job_id && !keep_ids[job_id]
+      end
+    end
+
     def boot_framework_state
       @running = Concurrent::AtomicBoolean.new(true)
       @stop_event = Concurrent::Event.new
@@ -876,7 +918,24 @@ class Daemon
         job[:error] = job.error || error
       end
       @jobs[job.id] = job
+      prune_finished_jobs(limit_per_queue: finished_jobs_limit_per_queue)
       unregister_child(job)
+    end
+
+    def prune_finished_jobs(limit_per_queue:)
+      limit = limit_per_queue.to_i
+      return if limit <= 0
+
+      finished_jobs_by_queue(job_registry.values).each_value do |entries|
+        excess = entries.size - limit
+        next unless excess.positive?
+
+        entries.sort_by { |job| finished_at_time(job) }
+               .first(excess)
+               .each do |job|
+          @jobs.delete(job_attribute(job, :id))
+        end
+      end
     end
 
     def unregister_child(job)
