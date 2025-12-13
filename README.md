@@ -151,6 +151,8 @@ ssl_verify_mode: peer
 ssl_client_verify_mode: none
 ```
 
+La configuration d'une authentification (identifiants ou jeton de contrôle/API) est obligatoire avant d'exposer le port de contrôle en dehors de l'interface loopback ; n'associez pas `bind_address` à `0.0.0.0` ou à une adresse publique sans protection.
+
 Si aucune paire clé/certificat n'est fournie, le démon génère un certificat auto-signé éphémère : le navigateur et le client CLI devront alors explicitement faire confiance au certificat (accepter l'exception de sécurité en développement ou installer la CA). Le client CLI détecte automatiquement la configuration HTTPS (`ssl_enabled`) et ajuste la vérification selon `ssl_verify_mode`. Les valeurs acceptées pour `ssl_verify_mode` sont `none`, `peer`, `fail_if_no_peer_cert` / `force_peer` / `require`.
 
 Le serveur d'administration continue d'autoriser les connexions sans certificat client (`ssl_client_verify_mode` = `none` par défaut). Pour activer l'authentification mutuelle TLS, fournissez une valeur explicite (`peer`, `require`, etc.) pour `ssl_client_verify_mode`; dans ce cas, WEBrick exigera un certificat client valide.
