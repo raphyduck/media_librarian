@@ -78,6 +78,10 @@ module MediaLibrarian
       container.queue_slots
     end
 
+    def finished_jobs_per_queue
+      container.finished_jobs_per_queue
+    end
+
     def db
       container.db
     end

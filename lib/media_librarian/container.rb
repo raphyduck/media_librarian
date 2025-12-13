@@ -101,6 +101,10 @@ module MediaLibrarian
       services.fetch(:queue_slots)
     end
 
+    def finished_jobs_per_queue
+      services.fetch(:finished_jobs_per_queue)
+    end
+
     def reload_api_option!
       update_api_option(load_api_option_from_config)
     end
@@ -111,6 +115,7 @@ module MediaLibrarian
       daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true) # retained for backwards compatibility
+      store(:finished_jobs_per_queue, normalized_finished_jobs_limit(daemon_config), freeze: true)
 
       store(:trackers, build_trackers)
 
@@ -144,6 +149,7 @@ module MediaLibrarian
       daemon_config = config.fetch('daemon', {}) || {}
       store(:workers_pool_size, daemon_config['workers_pool_size'] || 4, freeze: true)
       store(:queue_slots, daemon_config['queue_slots'] || 4, freeze: true) # retained for backwards compatibility
+      store(:finished_jobs_per_queue, normalized_finished_jobs_limit(daemon_config), freeze: true)
     end
 
     def build_trackers
@@ -167,6 +173,8 @@ module MediaLibrarian
       'ssl_verify_mode' => 'none',
       'ssl_client_verify_mode' => 'none'
     }.freeze
+
+    DEFAULT_FINISHED_JOBS_PER_QUEUE = 100
 
     def default_api_option
       deep_dup(DEFAULT_API_OPTION)
@@ -218,6 +226,13 @@ module MediaLibrarian
           memo[key] = value
         end
       end
+    end
+
+    def normalized_finished_jobs_limit(daemon_config)
+      limit = daemon_config['finished_jobs_per_queue']
+      limit = limit.to_i if limit
+      limit = DEFAULT_FINISHED_JOBS_PER_QUEUE if limit.nil? || limit <= 0
+      limit
     end
 
     def store(name, value, freeze: true)

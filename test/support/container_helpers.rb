@@ -31,7 +31,7 @@ module TestSupport
 
     class StubApplication
       attr_accessor :librarian, :speaker, :args_dispatch,
-                    :workers_pool_size, :queue_slots, :container,
+                    :workers_pool_size, :queue_slots, :finished_jobs_per_queue, :container,
                     :email, :email_templates
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example,
@@ -58,6 +58,7 @@ module TestSupport
         @api_option = default_api_option
         @workers_pool_size = 2
         @queue_slots = 2
+        @finished_jobs_per_queue = 100
         @speaker = speaker
         @args_dispatch = args_dispatch
         persist_default_configuration
@@ -72,7 +73,8 @@ module TestSupport
         return if File.exist?(@config_file)
 
         File.write(@config_file, { 'daemon' => { 'workers_pool_size' => @workers_pool_size,
-                                                 'queue_slots' => @queue_slots } }.to_yaml)
+                                                 'queue_slots' => @queue_slots,
+                                                 'finished_jobs_per_queue' => @finished_jobs_per_queue } }.to_yaml)
       end
 
       def persist_default_api_configuration
@@ -132,7 +134,7 @@ module TestSupport
 
     class StubContainer
       attr_reader :application
-      attr_accessor :config, :workers_pool_size, :queue_slots, :trackers
+      attr_accessor :config, :workers_pool_size, :queue_slots, :finished_jobs_per_queue, :trackers
 
       def initialize(application:)
         @application = application
@@ -140,6 +142,7 @@ module TestSupport
         daemon_config = @config.fetch('daemon', {})
         @workers_pool_size = daemon_config['workers_pool_size'] || application.workers_pool_size
         @queue_slots = daemon_config['queue_slots'] || application.queue_slots
+        @finished_jobs_per_queue = daemon_config['finished_jobs_per_queue'] || application.finished_jobs_per_queue
         @trackers = {}
       end
 
@@ -155,8 +158,10 @@ module TestSupport
         daemon_config = new_settings.fetch('daemon', {})
         @workers_pool_size = daemon_config['workers_pool_size'] || @workers_pool_size
         @queue_slots = daemon_config['queue_slots'] || @queue_slots
+        @finished_jobs_per_queue = daemon_config['finished_jobs_per_queue'] || @finished_jobs_per_queue
         application.workers_pool_size = @workers_pool_size
         application.queue_slots = @queue_slots
+        application.finished_jobs_per_queue = @finished_jobs_per_queue
         self
       end
 
