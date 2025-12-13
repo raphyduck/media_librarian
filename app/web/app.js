@@ -2551,8 +2551,8 @@ async function loadSchedulerTasks() {
   }
 
   try {
-    const templateData = await fetchJson('/templates');
-    templateCommands = normalizeCommandEntries(extractEntries(templateData));
+    const templateData = await fetchJson('/template_commands');
+    templateCommands = normalizeCommandEntries(templateData?.commands);
     renderUnscheduledTemplateCommands(templateCommands, scheduledKeys);
   } catch (error) {
     renderUnscheduledTemplateCommands([], scheduledKeys);
