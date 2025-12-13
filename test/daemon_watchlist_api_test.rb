@@ -47,7 +47,6 @@ class DaemonWatchlistApiTest < Minitest::Test
     assert_equal 200, post_response.status
     entries = WatchlistStore.fetch
     assert_equal ['tt7777'], entries.map { |row| row[:imdb_id] }
-    assert_equal 'tt7777', entries.first[:metadata][:ids][:imdb]
 
     delete_response = FakeResponse.new
     delete_request = OpenStruct.new(request_method: 'DELETE', body: { imdb_id: 'tt7777' }.to_json, query: {}, path: '/watchlist')

@@ -2056,19 +2056,15 @@ function renderWatchlist(entries = [], { message } = {}) {
 
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
-    const metadata = entry && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
-      ? entry.metadata
-      : {};
-    const ids = metadata.ids && typeof metadata.ids === 'object' ? metadata.ids : {};
-    const title = entry.title || metadata.title || '';
-    const type = entry.type || metadata.type || '';
-    const releaseDateYear = metadata.release_date ? new Date(metadata.release_date).getFullYear() : '';
-    const year = metadata.year
-      || metadata.release_year
-      || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
-    const imdb = ids.imdb || metadata.imdb || '';
-    const externalId = entry.external_id || entry.id || ids.slug || '';
-    const url = metadata.url || '';
+    const ids = entry && typeof entry.ids === 'object' ? entry.ids : {};
+    const title = entry.title || '';
+    const type = entry.type || '';
+    const releaseDateYear = entry.release_date ? new Date(entry.release_date).getFullYear() : '';
+    const year = entry.year || entry.release_year || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
+    const imdb = entry.imdb_id || ids.imdb || '';
+    const externalId = imdb || entry.id || ids.slug || '';
+    const url = entry.url || '';
+    const metadata = { ids, title, type, year, release_date: entry.release_date, imdb, url };
 
     const cells = [
       { text: title || '—' },
@@ -2173,11 +2169,11 @@ async function loadWatchlist() {
   }
 }
 
-async function removeWatchlistEntry(externalId, type) {
-  if (!externalId) {
+async function removeWatchlistEntry(imdbId, type) {
+  if (!imdbId) {
     return;
   }
-  const payload = { id: externalId };
+  const payload = { imdb_id: imdbId };
   if (type) {
     payload.type = type;
   }

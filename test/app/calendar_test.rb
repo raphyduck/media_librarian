@@ -47,7 +47,7 @@ class CalendarTest < Minitest::Test
       }
     ])
 
-    WatchlistStore.stub(:fetch, [{ imdb_id: 'ttalpha', type: 'movies', metadata: { ids: { imdb: 'ttalpha' } } }]) do
+    WatchlistStore.stub(:fetch, [{ imdb_id: 'ttalpha', type: 'movies' }]) do
       calendar = Calendar.new(app: @environment.application)
       result = calendar.entries(type: 'movie', genres: ['Drama'], interest: 'true')
 
@@ -67,7 +67,7 @@ class CalendarTest < Minitest::Test
       {
         source: 'tmdb',
         external_id: '999',
-        imdb_id: '',
+        imdb_id: 'tt1234567',
         title: 'Delta',
         media_type: 'movie',
         ids: { tmdb: '999', imdb: 'tt1234567' },
@@ -76,11 +76,7 @@ class CalendarTest < Minitest::Test
     ])
 
     watchlist = [
-      {
-        imdb_id: 'tt1234567',
-        type: 'movies',
-        metadata: { ids: { tmdb: '999' } }
-      }
+      { imdb_id: 'tt1234567', type: 'movies' }
     ]
 
     WatchlistStore.stub(:fetch, watchlist) do

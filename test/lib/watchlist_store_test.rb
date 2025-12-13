@@ -32,7 +32,7 @@ class WatchlistStoreTest < Minitest::Test
     assert_equal 1, rows.size
     row = rows.first
     assert_equal 'tt1234567', row[:imdb_id]
-    assert_equal 'tt1234567', row[:metadata][:ids][:imdb]
+    refute_includes row.keys, :metadata
 
     assert_equal 1, WatchlistStore.delete(imdb_id: 'tt1234567')
     assert_empty WatchlistStore.fetch
@@ -45,6 +45,23 @@ class WatchlistStoreTest < Minitest::Test
 
     row = WatchlistStore.fetch.first
     assert_equal 'tt4242', row[:imdb_id]
-    assert_equal 'tt4242', row[:metadata][:ids][:imdb]
+    refute_includes row.keys, :metadata
+  end
+
+  def test_fetch_with_details_enriches_rows
+    @app.db.insert_row(
+      'calendar_entries',
+      source: 'tmdb', external_id: '42', title: 'Sample', media_type: 'movie', imdb_id: 'tt0042',
+      release_date: '2024-03-01', ids: { imdb: 'tt0042' }
+    )
+
+    WatchlistStore.upsert([
+      { imdb_id: 'tt0042', type: 'movies', title: 'Sample' }
+    ])
+
+    row = WatchlistStore.fetch_with_details.first
+    assert_equal 'Sample', row[:title]
+    assert_equal 'tt0042', row[:ids]['imdb']
+    assert_equal 2024, row[:year]
   end
 end

@@ -403,31 +403,27 @@ class Library
     missing = {}
     case source_type
     when 'watchlist', 'download_list'
-      entries = WatchlistStore.fetch(type: category)
+      entries = WatchlistStore.fetch_with_details(type: category)
       app.speaker.speak_up('No entries found in watchlist') if entries.empty?
       entries.each do |row|
         type = Utils.regularise_media_type((row[:type] || row['type'] || category).to_s)
         next unless type.to_s == category.to_s
 
-        title = (row[:title] || row['title']).to_s
+        imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip
+        ids = (row[:ids] || row['ids'] || {}).each_with_object({}) { |(k, v), memo| memo[k.to_s] = v }
+        ids['imdb'] ||= imdb_id unless imdb_id.empty?
+        title = (row[:title] || row['title'] || imdb_id).to_s
         next if title.empty?
 
-        metadata = row[:metadata] || row['metadata']
-        metadata = {} unless metadata.is_a?(Hash)
-        ids = metadata[:ids] || metadata['ids'] || {}
-        ids = {} unless ids.is_a?(Hash)
-        ids = ids.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v }
-        imdb_id = row[:imdb_id] || row['imdb_id'] || ids['imdb'] || row[:external_id] || row['external_id']
-        ids['imdb'] ||= imdb_id
-        year = metadata[:year] || metadata['year']
+        year = row[:year] || row['year']
+        url = row[:url] || row['url']
         attrs = {
           obj_title: title,
           obj_year: year,
-          obj_url: metadata[:url] || metadata['url'],
+          obj_url: url,
           watchlist: 1,
           external_id: imdb_id,
         }
-        attrs[:metadata] = metadata unless metadata.empty?
         name = type == 'movies' && year.to_i > 0 ? "#{title} (#{year})" : title
         search_list = parse_media(
           { :type => 'watchlist', :name => name },
