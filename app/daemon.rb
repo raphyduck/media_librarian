@@ -1544,13 +1544,18 @@ class Daemon
       {
         sort: normalize_collection_sort(query['sort']),
         page: page,
-        per_page: per_page
+        per_page: per_page,
+        search: normalize_collection_search(query['search'])
       }
     end
 
     def normalize_collection_sort(value)
       sort = value.to_s.strip
       %w[released_at year title].include?(sort) ? sort : 'released_at'
+    end
+
+    def normalize_collection_search(value)
+      value.to_s.strip[0, 200]
     end
 
     def clamp_positive_integer(value, default:, max:)
