@@ -999,6 +999,10 @@ class Daemon
       port = opts['listen_port'] || 8888
       address = opts['bind_address'] || '127.0.0.1'
 
+      if !authentication_configured? && !control_interface_local?(address)
+        raise ArgumentError, "Authentication required before binding control interface to #{address}:#{port}"
+      end
+
       server_options = {
         Port: port,
         BindAddress: address,
@@ -1988,8 +1992,20 @@ class Daemon
       @auth_config ||= {}
     end
 
+    def control_interface_local?(address)
+      return true if address.to_s.empty?
+      return true if %w[localhost 127.0.0.1 ::1].include?(address)
+
+      IPAddr.new(address).loopback?
+    rescue IPAddr::InvalidAddressError
+      false
+    end
+
     def require_authorization(req, res)
-      return true unless authentication_configured?
+      unless authentication_configured?
+        error_response(res, status: 503, message: 'auth_not_configured')
+        return false
+      end
 
       if authenticated_session?(req) || api_token_authorized?(req)
         true
