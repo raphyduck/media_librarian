@@ -14,19 +14,18 @@ class LocalMediaRepository
       next if identifiers.empty?
 
       file = { type: 'file', name: row[:local_path], f_type: type, parts: [row[:local_path]] }
-      attrs = { obj_title: row[:title], obj_year: row[:year], f_type: type }
-      Metadata.media_add(row[:title], type, row[:title], identifiers, attrs, { f_type: type }, file, memo)
+      attrs = { obj_title: inferred_title(row), f_type: type }
+      Metadata.media_add(identifiers.first, type, identifiers.first, identifiers, attrs, { f_type: type }, file, memo)
     end
   end
 
   private
 
   def build_identifiers(row)
-    id = (row[:external_id] || row['external_id']).to_s
+    id = (row[:imdb_id] || row['imdb_id'] || row[:external_id] || row['external_id']).to_s
     return [] if id.empty?
 
-    source = (row[:external_source] || row['external_source']).to_s
-    [id, (source.empty? ? nil : "#{source}#{id}")].compact.uniq
+    [id]
   end
 
   def fetch_rows(type, folder)
@@ -42,5 +41,9 @@ class LocalMediaRepository
   rescue StandardError => e
     app&.speaker&.tell_error(e, Utils.arguments_dump(binding)) if app&.respond_to?(:speaker)
     []
+  end
+
+  def inferred_title(row)
+    File.basename(row[:local_path].to_s)
   end
 end

@@ -23,25 +23,25 @@ class CollectionRepositoryTest < Minitest::Test
 
   def test_paginated_entries_returns_sorted_results
     insert_media([
-      { title: 'Future', year: 2024, external_id: 'tmdb-1' },
-      { title: 'Recent', year: 2023, external_id: 'tmdb-2' },
-      { title: 'Classic', year: 1999, external_id: 'tmdb-3' }
+      { imdb_id: 'ttfuture', local_path: '/tmp/media/future.mkv', created_at: '2024-01-01T00:00:00Z' },
+      { imdb_id: 'ttrecent', local_path: '/tmp/media/recent.mkv', created_at: '2023-06-01T00:00:00Z' },
+      { imdb_id: 'ttclassic', local_path: '/tmp/media/classic.mkv', created_at: '1999-01-01T00:00:00Z' }
     ])
 
     result = @repository.paginated_entries(sort: 'released_at', page: 1, per_page: 2)
 
     assert_equal 3, result[:total]
-    assert_equal %w[Future Recent], result[:entries].map { |entry| entry[:title] }
+    assert_equal %w[future.mkv recent.mkv], result[:entries].map { |entry| entry[:title] }
     assert result[:entries].first[:released_at].start_with?('2024-01-01')
   end
 
   def test_paginated_entries_clamps_page_and_per_page
-    insert_media([{ title: 'Single', year: 2020, external_id: 'tmdb-10' }])
+    insert_media([{ imdb_id: 'ttsingle', local_path: '/tmp/media/single.mkv' }])
 
     result = @repository.paginated_entries(sort: 'title', page: -5, per_page: 1_000)
 
     assert_equal 1, result[:entries].size
-    assert_equal 'Single', result[:entries].first[:title]
+    assert_equal 'single.mkv', result[:entries].first[:title]
   end
 
   private
@@ -65,10 +65,7 @@ class CollectionRepositoryTest < Minitest::Test
   def base_row
     {
       media_type: 'movie',
-      title: 'Placeholder',
-      year: 2000,
-      external_id: SecureRandom.uuid,
-      external_source: 'tmdb',
+      imdb_id: SecureRandom.uuid,
       local_path: '/tmp/media/file.mkv'
     }
   end
@@ -99,7 +96,7 @@ class CollectionRequestTest < Minitest::Test
       Daemon.send(:handle_collection_request, request, response)
     end
 
-    assert_equal({ sort: 'released_at', page: 1, per_page: CollectionRepository::MAX_PER_PAGE }, captured)
+    assert_equal({ sort: 'released_at', page: 1, per_page: CollectionRepository::MAX_PER_PAGE, search: '' }, captured)
     parsed = JSON.parse(response.body)
     assert_equal({ 'page' => 1, 'per_page' => CollectionRepository::MAX_PER_PAGE, 'total' => 42 }, parsed['pagination'])
   end

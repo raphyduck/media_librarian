@@ -207,11 +207,19 @@ class CalendarEntriesRepository
     rows = Array(database.get_rows(:local_media))
     rows.each_with_object(Hash.new { |hash, key| hash[key] = {} }) do |row, memo|
       type = normalize_type(row[:media_type] || row['media_type'])
-      source = (row[:external_source] || row['external_source']).to_s.strip.downcase
-      external_id = (row[:external_id] || row['external_id']).to_s.strip
-      next if type.nil? || source.empty? || external_id.empty?
+      next if type.nil?
 
-      memo[[type, source]][external_id] = true
+      imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip
+      if !imdb_id.empty?
+        memo[[type, 'imdb']][imdb_id] = true
+        next
+      end
+
+      fallback_id = (row[:external_id] || row['external_id']).to_s.strip
+      fallback_source = (row[:external_source] || row['external_source']).to_s.strip.downcase
+      next if fallback_id.empty? || fallback_source.empty?
+
+      memo[[type, fallback_source]][fallback_id] = true
     end
   rescue StandardError
     {}

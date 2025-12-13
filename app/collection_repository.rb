@@ -33,18 +33,19 @@ class CollectionRepository
   def apply_sort(dataset, sort)
     case sort
     when 'title'
-      dataset.order(Sequel.asc(:title))
+      dataset.order(Sequel.asc(:local_path))
     when 'released_at', 'year'
-      dataset.order(Sequel.desc(:year), Sequel.asc(:title))
+      dataset.order(Sequel.desc(:created_at), Sequel.asc(:local_path))
     else
-      dataset
+      dataset.order(Sequel.desc(:created_at))
     end
   end
 
   def apply_search(dataset, search)
     return dataset unless dataset && search.to_s.strip != ''
 
-    dataset.where(Sequel.ilike(:title, "%#{search.strip}%"))
+    pattern = "%#{search.strip}%"
+    dataset.where(Sequel.ilike(:local_path, pattern) | Sequel.ilike(:imdb_id, pattern))
   end
 
   def clamp_per_page(per_page)
@@ -75,15 +76,12 @@ class CollectionRepository
   end
 
   def serialize_row(row)
-    year = parse_year(row)
     {
       id: fetch(row, :id),
       media_type: fetch(row, :media_type),
-      title: fetch(row, :title),
-      year: year,
-      released_at: build_released_at(year),
-      external_id: fetch(row, :external_id),
-      external_source: fetch(row, :external_source),
+      imdb_id: fetch(row, :imdb_id),
+      title: derived_title(row),
+      released_at: build_released_at(fetch(row, :created_at)),
       local_path: fetch(row, :local_path),
       created_at: fetch(row, :created_at)
     }.compact
@@ -93,19 +91,15 @@ class CollectionRepository
     row[key] || row[key.to_s]
   end
 
-  def parse_year(row)
-    value = fetch(row, :year)
-    return nil if value.nil?
-
-    int_value = value.to_i
-    int_value.positive? ? int_value : nil
+  def derived_title(row)
+    File.basename(fetch(row, :local_path).to_s)
   end
 
-  def build_released_at(year)
-    return nil unless year
+  def build_released_at(value)
+    return nil if value.nil?
 
-    Time.utc(year, 1, 1).iso8601
-  rescue RangeError
+    Time.parse(value.to_s).utc.iso8601
+  rescue StandardError
     nil
   end
 end
