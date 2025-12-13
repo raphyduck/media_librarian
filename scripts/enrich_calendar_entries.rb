@@ -144,7 +144,7 @@ module CalendarEntriesEnrichment
   module_function
 
   def run(db, out: $stdout)
-    dataset = db[:calendar_entries]
+    dataset = db.database[:calendar_entries]
     entries = dataset.map { |row| Helpers.normalize(row) }.compact
     candidates = entries.select { |entry| Helpers.needs_enrichment?(entry) }
     return out.puts('No calendar entries need enrichment.') if candidates.empty?
