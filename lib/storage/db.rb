@@ -262,6 +262,7 @@ module Storage
     end
 
     def run_migrations(path)
+      return if ENV['SKIP_DB_MIGRATIONS'] == '1'
       return unless path && Dir.exist?(path)
 
       Sequel::Migrator.run(database, path)
