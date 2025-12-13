@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
+require 'set'
 require 'time'
+
+require_relative '../lib/watchlist_store'
 
 class CalendarEntriesRepository
   include MediaLibrarian::AppContainerSupport
@@ -19,7 +22,8 @@ class CalendarEntriesRepository
   def load_entries
     rows = app.respond_to?(:db) ? Array(app.db&.get_rows(:calendar_entries)) : []
     downloaded_index = build_downloaded_index
-    rows.filter_map { |row| normalize_row(row, downloaded_index) }
+    interest_lookup = build_interest_lookup
+    rows.filter_map { |row| normalize_row(row, downloaded_index, interest_lookup) }
   rescue StandardError
     []
   end
@@ -140,7 +144,7 @@ class CalendarEntriesRepository
     [value, 200].min
   end
 
-  def normalize_row(row, downloaded_index = nil)
+  def normalize_row(row, downloaded_index = nil, interest_lookup = nil)
     type = normalize_type(row[:media_type] || row['media_type'] || row[:type] || row['type'])
     title = (row[:title] || row['title']).to_s.strip
     return unless type && !title.empty?
@@ -153,6 +157,7 @@ class CalendarEntriesRepository
     backdrop_url = normalize_url(row[:backdrop_url] || row['backdrop_url'])
     ids = normalize_ids(row[:ids] || row['ids'])
     ids = build_default_ids(row, ids) if ids.empty?
+    imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip
 
     {
       type: type,
@@ -163,13 +168,13 @@ class CalendarEntriesRepository
       countries: countries,
       language: languages.find { |lang| !lang.to_s.empty? },
       country: countries.find { |country| !country.to_s.empty? },
-      imdb_id: (row[:imdb_id] || row['imdb_id']).to_s,
+      imdb_id: imdb_id,
       imdb_rating: parse_rating(row[:rating] || row['rating']),
       imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
       synopsis: normalize_synopsis(row[:synopsis] || row['synopsis']),
       release_date: release_date,
       downloaded: downloaded?(row, type, ids, downloaded_index),
-      in_interest_list: !!(row[:in_interest_list] || row['in_interest_list']),
+      in_interest_list: interest_lookup&.include?(normalize_imdb(imdb_id)),
       poster_url: poster_url,
       backdrop_url: backdrop_url,
       ids: ids,
@@ -181,22 +186,20 @@ class CalendarEntriesRepository
   def downloaded?(row, type, ids, downloaded_index)
     return true if row[:downloaded] || row['downloaded']
 
-    inventory_downloaded?(type, ids, row, downloaded_index)
+    downloaded_from_inventory?(type, ids, row, downloaded_index)
   end
 
-  def inventory_downloaded?(type, ids, row, downloaded_index)
+  def downloaded_from_inventory?(type, ids, row, downloaded_index)
     return false unless downloaded_index && type
 
-    imdb_id = extract_id(ids, row, 'imdb')
-    tmdb_id = extract_id(ids, row, 'tmdb')
+    imdb_id = normalize_imdb(extract_imdb_id(ids, row))
+    return false if imdb_id.empty?
 
-    [[type, 'imdb', imdb_id], [type, 'tmdb', tmdb_id]].any? do |key_type, source, identifier|
-      !identifier.empty? && downloaded_index[[key_type, source]]&.key?(identifier)
-    end
+    downloaded_index[type]&.include?(imdb_id)
   end
 
-  def extract_id(ids, row, key)
-    (ids[key] || ids[key.to_s] || row["#{key}_id".to_sym] || row["#{key}_id"]).to_s.strip
+  def extract_imdb_id(ids, row)
+    (ids['imdb'] || ids[:imdb] || row[:imdb_id] || row['imdb_id']).to_s.strip
   end
 
   def build_downloaded_index
@@ -205,24 +208,23 @@ class CalendarEntriesRepository
     return {} unless database.respond_to?(:get_rows)
 
     rows = Array(database.get_rows(:local_media))
-    rows.each_with_object(Hash.new { |hash, key| hash[key] = {} }) do |row, memo|
+    rows.each_with_object(Hash.new { |hash, key| hash[key] = Set.new }) do |row, memo|
       type = normalize_type(row[:media_type] || row['media_type'])
-      next if type.nil?
-
-      imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip
-      if !imdb_id.empty?
-        memo[[type, 'imdb']][imdb_id] = true
-        next
-      end
-
-      fallback_id = (row[:external_id] || row['external_id']).to_s.strip
-      fallback_source = (row[:external_source] || row['external_source']).to_s.strip.downcase
-      next if fallback_id.empty? || fallback_source.empty?
-
-      memo[[type, fallback_source]][fallback_id] = true
+      imdb_id = normalize_imdb(row[:imdb_id] || row['imdb_id'])
+      memo[type] << imdb_id unless type.nil? || imdb_id.empty?
     end
   rescue StandardError
     {}
+  end
+
+  def build_interest_lookup
+    rows = WatchlistStore.fetch
+    rows.each_with_object(Set.new) do |row, memo|
+      imdb_id = normalize_imdb(row[:imdb_id] || row['imdb_id'])
+      memo << imdb_id unless imdb_id.empty?
+    end
+  rescue StandardError
+    nil
   end
 
   def normalize_type(value)
@@ -293,6 +295,10 @@ class CalendarEntriesRepository
       key_str = key.to_s
       memo[key_str] = val unless key_str.empty? || val.nil?
     end
+  end
+
+  def normalize_imdb(value)
+    value.to_s.strip.downcase
   end
 
   def build_default_ids(row, ids)
