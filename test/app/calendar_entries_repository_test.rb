@@ -31,6 +31,20 @@ class CalendarEntriesRepositoryTest < Minitest::Test
     @app = Struct.new(:db).new(nil)
   end
 
+  def test_marks_entries_in_interest_list_when_watchlist_matches
+    calendar_rows = [
+      { media_type: 'movie', title: 'Alpha', imdb_id: 'tt1234' }
+    ]
+
+    WatchlistStore.stub(:fetch, [{ imdb_id: 'tt1234' }]) do
+      @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: [])
+
+      entries = CalendarEntriesRepository.new(app: @app).load_entries
+
+      assert entries.first[:in_interest_list]
+    end
+  end
+
   def test_marks_entries_downloaded_when_inventory_matches_imdb
     calendar_rows = [
       { media_type: 'movie', title: 'Alpha', ids: { 'imdb' => 'tt1234' } }

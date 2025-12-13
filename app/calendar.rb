@@ -1,10 +1,8 @@
 # frozen_string_literal: true
 
-require 'set'
 require 'time'
 require 'date'
 
-require_relative '../lib/watchlist_store'
 require_relative 'calendar_entries_repository'
 
 class Calendar
@@ -56,113 +54,14 @@ class Calendar
   end
 
   def build_entries
-    watchlist_rows = WatchlistStore.fetch
-    base_entries = repository.load_entries
-    interest_lookup = build_interest_lookup(watchlist_rows)
-
-    base_entries.each_with_object({}) do |entry, memo|
+    repository.load_entries.each_with_object({}) do |entry, memo|
       imdb_id = imdb_id_for(entry)
-      next if imdb_id.empty?
-
-      memo[imdb_id] ||= annotate_entry(entry, interest_lookup, imdb_id)
+      memo[imdb_id] ||= entry unless imdb_id.empty?
     end.values
   end
 
-  def annotate_entry(entry, interest_lookup, imdb_id = nil)
-    languages = Array(entry[:languages])
-    countries = Array(entry[:countries])
-    imdb_id ||= imdb_id_for(entry)
-    ids = normalize_ids(entry[:ids] || entry['ids'])
-
-    entry.merge(
-      imdb_id: imdb_id,
-      year: entry[:year] || entry[:release_date]&.year,
-      language: entry[:language] || languages.find { |lang| !lang.to_s.empty? },
-      country: entry[:country] || countries.find { |country| !country.to_s.empty? },
-      in_interest_list: interest_lookup.include?(imdb_id)
-    )
-  end
-
-  def build_interest_lookup(rows = nil)
-    rows ||= WatchlistStore.fetch
-    rows.each_with_object(Set.new) do |row, memo|
-      add_interest_key(memo, row[:imdb_id] || row['imdb_id'])
-    end
-  rescue StandardError
-    Set.new
-  end
-
-  def normalize_list(value)
-    case value
-    when Array
-      value.map { |entry| entry.to_s.strip }.reject(&:empty?)
-    when String
-      value.split(',').map { |entry| entry.to_s.strip }.reject(&:empty?)
-    else
-      []
-    end
-  end
-
-  def normalize_type(value)
-    case value.to_s.downcase
-    when 'movie', 'movies', 'film', 'films'
-      'movie'
-    when 'show', 'shows', 'tv', 'series'
-      'show'
-    else
-      nil
-    end
-  end
-
-  def parse_rating(value)
-    return nil if value.nil? || value.to_s.strip.empty?
-
-    value.to_f
-  end
-
-  def parse_integer(value)
-    return nil if value.nil? || value.to_s.strip.empty?
-
-    value.to_i
-  end
-
-  def parse_time(value)
-    case value
-    when Time
-      value
-    when Date
-      Time.utc(value.year, value.month, value.day)
-    when String
-      return if value.strip.empty?
-
-      Time.parse(value)
-    else
-      nil
-    end
-  rescue ArgumentError
-    nil
-  end
-
-  def normalize_ids(value)
-    return {} unless value.is_a?(Hash)
-
-    value.each_with_object({}) do |(key, val), memo|
-      key_str = key.to_s
-      memo[key_str] = val unless key_str.empty? || val.nil?
-    end
-  end
-
-  def normalize_interest_key(value)
-    value.to_s.strip.downcase
-  end
-
-  def add_interest_key(set, value)
-    normalized = normalize_interest_key(value)
-    set << normalized unless normalized.empty?
-  end
-
   def imdb_id_for(entry)
-    ids = normalize_ids(entry[:ids] || entry['ids'])
+    ids = entry[:ids] || entry['ids'] || {}
     pick_imdb_id(entry[:imdb_id] || entry['imdb_id'], ids['imdb'])
   end
 
@@ -173,6 +72,10 @@ class Calendar
     end
 
     ''
+  end
+
+  def normalize_interest_key(value)
+    value.to_s.strip.downcase
   end
 
   def repository
