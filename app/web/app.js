@@ -2182,10 +2182,7 @@ async function removeWatchlistEntry(externalId, type) {
   }
 }
 
-function parseSchedulerTemplate(content, parsed) {
-  if (parsed && typeof parsed === 'object') {
-    return parsed;
-  }
+function parseYamlContent(content) {
   if (!content) {
     return null;
   }
@@ -2204,6 +2201,13 @@ function parseSchedulerTemplate(content, parsed) {
     }
   }
   return null;
+}
+
+function parseSchedulerTemplate(content, parsed) {
+  if (parsed && typeof parsed === 'object') {
+    return parsed;
+  }
+  return parseYamlContent(content);
 }
 
 function normalizeSchedulerArgs(args, type) {
@@ -2258,6 +2262,14 @@ function extractSchedulerTasks(template) {
     });
   });
   return tasks;
+}
+
+function buildCommandKeySet(commands = []) {
+  return new Set(
+    (commands || [])
+      .map((entry) => baseCommandKey(entry?.command))
+      .filter((value) => value)
+  );
 }
 
 function renderSchedulerTasks(tasks = [], { message } = {}) {
@@ -2323,33 +2335,46 @@ function baseCommandKey(command = []) {
     .join(' ');
 }
 
-function renderAvailableCommands(commands = [], scheduledTasks = []) {
-  const container = document.getElementById('available-command-list');
-  if (!container) {
-    return;
+function normalizeCommandEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
   }
+  return entries
+    .map((entry) => {
+      if (entry == null) {
+        return null;
+      }
+      const normalized = typeof entry === 'object' && !Array.isArray(entry)
+        ? { ...entry }
+        : { name: String(entry), command: entry };
+      const parts = Array.isArray(normalized.command)
+        ? normalized.command
+        : typeof normalized.command === 'string'
+          ? normalized.command.split('.')
+          : [];
+      normalized.command = parts
+        .map((part) => String(part).trim())
+        .filter(Boolean);
+      if (!normalized.name) {
+        normalized.name = normalized.command.join(' ');
+      }
+      return normalized.command.length ? normalized : null;
+    })
+    .filter(Boolean);
+}
 
-  const scheduledKeys = new Set(
-    (scheduledTasks || [])
-      .map((task) => baseCommandKey(task.command))
-      .filter((value) => value)
-  );
-
-  const available = Array.isArray(commands)
-    ? commands.filter((command) => !scheduledKeys.has(baseCommandKey(command.command)))
-    : [];
-
+function renderCommandList(container, commands = [], emptyMessage) {
   container.innerHTML = '';
 
-  if (!available.length) {
+  if (!commands.length) {
     const hint = document.createElement('p');
     hint.className = 'hint';
-    hint.textContent = 'Aucune commande CLI disponible.';
+    hint.textContent = emptyMessage;
     container.appendChild(hint);
     return;
   }
 
-  available.forEach((command) => {
+  commands.forEach((command) => {
     const item = document.createElement('article');
     item.className = 'scheduler-task';
 
@@ -2435,6 +2460,67 @@ function renderAvailableCommands(commands = [], scheduledTasks = []) {
   });
 }
 
+function renderUnscheduledTemplateCommands(commands = [], scheduledKeys = new Set()) {
+  const container = document.getElementById('unscheduled-template-list');
+  if (!container) {
+    return;
+  }
+
+  const unscheduled = Array.isArray(commands)
+    ? commands.filter((command) => !scheduledKeys.has(baseCommandKey(command.command)))
+    : [];
+
+  renderCommandList(
+    container,
+    unscheduled,
+    'Aucune commande de template disponible.'
+  );
+}
+
+function renderAvailableCommands(commands = [], scheduledKeys = new Set(), templateKeys = new Set()) {
+  const container = document.getElementById('available-command-list');
+  if (!container) {
+    return;
+  }
+
+  const available = Array.isArray(commands)
+    ? commands.filter((command) => {
+        const key = baseCommandKey(command.command);
+        return key && !scheduledKeys.has(key) && !templateKeys.has(key);
+      })
+    : [];
+
+  renderCommandList(container, available, 'Aucune commande CLI disponible.');
+}
+
+async function loadTemplateCommands(files = []) {
+  const entries = await Promise.all(
+    (Array.isArray(files) ? files : []).map(async (name) => {
+      try {
+        const data = await fetchJson(`/templates/${encodeURIComponent(name)}`);
+        const parsed = parseYamlContent(data?.content);
+        const command = parsed?.command;
+        if (!command) {
+          return null;
+        }
+        return {
+          name: parsed?.name || String(name).replace(/\.(ya?ml)$/i, '') || name,
+          command,
+          queue: parsed?.queue || '',
+          args: parsed?.args,
+        };
+      } catch (error) {
+        if (state.authenticated) {
+          showNotification(error.message, 'error');
+        }
+        return null;
+      }
+    })
+  );
+
+  return normalizeCommandEntries(entries.filter(Boolean));
+}
+
 async function runSchedulerTask(task, button) {
   if (!task?.command?.length) {
     return;
@@ -2473,10 +2559,13 @@ async function loadSchedulerTasks() {
     return;
   }
   let tasks = [];
+  let scheduledKeys = new Set();
+  let templateCommands = [];
   try {
     const data = await fetchJson('/scheduler');
     const template = parseSchedulerTemplate(data?.content, data?.entries);
     tasks = extractSchedulerTasks(template);
+    scheduledKeys = buildCommandKeySet(tasks);
     renderSchedulerTasks(tasks);
   } catch (error) {
     renderSchedulerTasks([], { message: error.message });
@@ -2486,10 +2575,24 @@ async function loadSchedulerTasks() {
   }
 
   try {
-    const commandData = await fetchJson('/commands');
-    renderAvailableCommands(commandData?.commands, tasks);
+    const templateData = await fetchJson('/templates');
+    templateCommands = await loadTemplateCommands(extractEntries(templateData));
+    renderUnscheduledTemplateCommands(templateCommands, scheduledKeys);
   } catch (error) {
-    renderAvailableCommands([], tasks);
+    renderUnscheduledTemplateCommands([], scheduledKeys);
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+
+  const templateKeys = buildCommandKeySet(templateCommands);
+
+  try {
+    const commandData = await fetchJson('/commands');
+    const commands = normalizeCommandEntries(commandData?.commands);
+    renderAvailableCommands(commands, scheduledKeys, templateKeys);
+  } catch (error) {
+    renderAvailableCommands([], scheduledKeys, templateKeys);
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
