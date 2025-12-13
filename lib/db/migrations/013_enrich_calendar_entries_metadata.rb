@@ -2,8 +2,7 @@
 
 require 'json'
 require 'date'
-require_relative '../../../app/media_librarian/services/calendar_feed_service'
-require_relative '../../media_librarian/application'
+require_relative 'support/calendar_entry_enricher'
 
 Sequel.migration do
   up do
@@ -13,9 +12,7 @@ Sequel.migration do
     return if candidates.empty?
 
     payload = deep_dup_entries(candidates)
-    config_app = enrichment_app
-
-    enriched = MediaLibrarian::Services::CalendarFeedService.enrich_entries(payload, app: config_app, db: nil) || []
+    enriched = CalendarEntryEnricher.enrich(payload) || []
     original_by_id = candidates.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
     return if enriched.all? { |entry| original_by_id[entry[:id]] == entry }
 
@@ -32,13 +29,6 @@ Sequel.migration do
 
   down do
     # no-op; enrichment is additive
-  end
-
-  def enrichment_app
-    app = MediaLibrarian.application
-    Struct.new(:config, :db, :speaker).new(app.config, nil, nil)
-  rescue StandardError
-    Struct.new(:config, :db, :speaker).new({}, nil, nil)
   end
 
   def normalize_entry(row)
