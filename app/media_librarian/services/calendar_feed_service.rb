@@ -42,6 +42,16 @@ module MediaLibrarian
         normalized
       end
 
+      def search(title:, year: nil, type: nil)
+        return [] unless calendar_table_available?
+        return [] if title.to_s.strip.empty?
+
+        date_range = year ? Date.new(year.to_i, 1, 1)..Date.new(year.to_i, 12, 31) : nil
+        normalized = normalize_entries(provider_search(title: title, year: year, type: type), date_range)
+        persist_entries(normalized)
+        normalized
+      end
+
       private
 
       attr_reader :db, :providers
@@ -61,10 +71,7 @@ module MediaLibrarian
           fetched
         end
 
-        normalized = collected.map { |entry| normalize_entry(entry, date_range) }
-                               .compact
-                               .uniq { |entry| entry[:imdb_id] }
-                               .first(limit)
+        normalized = normalize_entries(collected, date_range).first(limit)
 
         normalized.each { |entry| stats[entry[:source]][:retained] += 1 }
         log_provider_results(stats)
@@ -81,7 +88,7 @@ module MediaLibrarian
         return unless entry.is_a?(Hash)
 
         release_date = parse_date(entry[:release_date])
-        return if release_date && !date_range.cover?(release_date)
+        return if date_range && release_date && !date_range.cover?(release_date)
 
         source = entry[:source].to_s.strip.downcase
         external_id = entry[:external_id].to_s.strip
@@ -115,6 +122,12 @@ module MediaLibrarian
           release_date: release_date,
           ids: ids
         }
+      end
+
+      def normalize_entries(entries, date_range)
+        entries.map { |entry| normalize_entry(entry, date_range) }
+               .compact
+               .uniq { |entry| entry[:imdb_id] }
       end
 
       def normalize_sources(value)
@@ -222,6 +235,14 @@ module MediaLibrarian
       rescue StandardError => e
         speaker.tell_error(e, "Calendar provider failure: #{provider.class.name}") if speaker
         []
+      end
+
+      def provider_search(title:, year:, type:)
+        select_providers(nil).flat_map do |provider|
+          next [] unless provider.respond_to?(:search)
+
+          Array(provider.search(title: title, year: year, type: type))
+        end
       end
 
       def fetch_from_provider(provider, date_range, limit, stats)
@@ -932,6 +953,14 @@ module MediaLibrarian
           (movies + shows).first(limit)
         end
 
+        def search(title:, year: nil, type: nil)
+          return [] unless available?
+          kinds = Array(normalize_kind(type))
+          kinds = %i[movie tv] if kinds.empty?
+
+          kinds.flat_map { |kind| search_titles(kind, title, year) }
+        end
+
         private
 
         attr_reader :language, :region, :client
@@ -980,6 +1009,17 @@ module MediaLibrarian
             break if page > total_pages
           end
           results
+        end
+
+        def search_titles(kind, title, year)
+          payload = fetch_page("/search/#{kind == :tv ? 'tv' : 'movie'}", kind, 1, search_params(kind, title, year))
+          return [] unless payload
+
+          Array(payload['results']).filter_map do |item|
+            release_date = release_from(item, kind)
+            details = fetch_details(kind, value_from(item, :id))
+            build_entry(details, kind, release_date) if details
+          end
         end
 
         def fetch_page(path, kind, page, params = {})
@@ -1062,6 +1102,21 @@ module MediaLibrarian
               'first_air_date.lte': end_date.to_s
             }
           end
+        end
+
+        def search_params(kind, title, year)
+          params = { query: title }
+          params[:year] = year if kind == :movie && year
+          params[:first_air_date_year] = year if kind == :tv && year
+          params
+        end
+
+        def normalize_kind(type)
+          value = type.to_s.downcase
+          return :tv if value.start_with?('tv') || value.include?('show')
+          return :movie if value == 'movie' || value == 'film'
+
+          nil
         end
 
         def value_from(item, *keys)
@@ -1162,6 +1217,16 @@ module MediaLibrarian
           fetch_entries(date_range, limit).first(limit)
         end
 
+        def search(title:, year: nil, type: nil)
+          return [] unless available?
+
+          entry = omdb_client.find_by_title(title: title, year: year, type: omdb_type(type))
+          entry ? [entry] : []
+        rescue StandardError => e
+          @speaker&.tell_error(e, 'Calendar OMDb search failed')
+          []
+        end
+
         private
 
         def fetch_entries(date_range, limit)
@@ -1183,11 +1248,21 @@ module MediaLibrarian
         def ensure_fetcher
           return @fetcher if @fetcher
 
-          api = OmdbApi.new(api_key: @api_key, base_url: @base_url, speaker: @speaker)
-          @api_client = api
+          api = omdb_client
           @fetcher = lambda do |date_range:, limit:|
             api.calendar(date_range: date_range, limit: limit)
           end
+        end
+
+        def omdb_client
+          @api_client ||= OmdbApi.new(api_key: @api_key, base_url: @base_url, speaker: @speaker)
+        end
+
+        def omdb_type(value)
+          type = value.to_s.downcase
+          return 'series' if type.include?('show') || type == 'series'
+
+          type.empty? ? 'movie' : type
         end
 
         def api_last_request_path(fetcher)
@@ -1317,6 +1392,18 @@ module MediaLibrarian
             .first(limit)
         end
 
+        def search(title:, year: nil, type: nil)
+          return [] unless available?
+          return [] unless @fetcher&.respond_to?(:search)
+
+          date_range = search_date_range(year)
+          Array(@fetcher.search(title: title, year: year, type: type))
+            .filter_map { |entry| normalize_entry(entry, date_range) }
+        rescue StandardError => e
+          @speaker&.tell_error(e, 'Calendar Trakt search failed')
+          []
+        end
+
         private
 
         def fetch_entries(date_range, limit)
@@ -1352,7 +1439,7 @@ module MediaLibrarian
 
         def normalize_entry(entry, date_range)
           release_date = parse_date(entry[:release_date])
-          return unless release_date && date_range.cover?(release_date)
+          return unless release_date && (!date_range || date_range.cover?(release_date))
 
           external_id = entry[:external_id].to_s.strip
           title = entry[:title].to_s.strip
@@ -1380,6 +1467,15 @@ module MediaLibrarian
           return value if value.is_a?(Date)
 
           Date.parse(value.to_s)
+        rescue StandardError
+          nil
+        end
+
+        def search_date_range(year)
+          return nil unless year
+
+          date = Date.new(year.to_i, 1, 1)
+          date..date.next_year(1).prev_day
         rescue StandardError
           nil
         end

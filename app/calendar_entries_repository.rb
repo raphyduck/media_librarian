@@ -19,6 +19,15 @@ class CalendarEntriesRepository
     paginate_entries(sorted, filters[:page], filters[:per_page])
   end
 
+  def search(title:, year: nil, type: nil)
+    return [] if title.to_s.strip.empty?
+
+    needle = normalize_text(title)
+    load_entries.select do |entry|
+      title_match?(entry[:title], needle) && year_match?(entry, year) && type_match?(entry, type)
+    end.uniq { |entry| entry[:imdb_id] }
+  end
+
   def load_entries
     rows = app.respond_to?(:db) ? Array(app.db&.get_rows(:calendar_entries)) : []
     downloaded_index = build_downloaded_index
@@ -52,6 +61,21 @@ class CalendarEntriesRepository
 
     normalized = type_filter.to_s.downcase
     entry[:type] == normalized || entry[:type] == normalized.chomp('s')
+  end
+
+  def year_match?(entry, year)
+    return true unless year
+
+    release_year = entry[:release_date]&.year || entry[:year]
+    release_year.to_i == year.to_i
+  end
+
+  def title_match?(value, needle)
+    normalize_text(value) == needle
+  end
+
+  def normalize_text(value)
+    value.to_s.strip.downcase
   end
 
   def genres_match?(entry, genres_filter)
