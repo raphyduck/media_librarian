@@ -146,9 +146,12 @@ module CalendarEntriesEnrichment
   def run(db, out: $stdout)
     dataset = db.database[:calendar_entries]
     entries = dataset.map { |row| Helpers.normalize(row) }.compact
+    out.puts("Scanning #{entries.size} calendar entr#{entries.size == 1 ? 'y' : 'ies'}...")
     candidates = entries.select { |entry| Helpers.needs_enrichment?(entry) }
+    out.puts("Found #{candidates.size} entr#{candidates.size == 1 ? 'y' : 'ies'} needing enrichment.")
     return out.puts('No calendar entries need enrichment.') if candidates.empty?
 
+    out.puts("Enriching #{candidates.size} entr#{candidates.size == 1 ? 'y' : 'ies'} via OMDb...")
     enriched = CalendarEntryEnricher.enrich(Helpers.deep_dup(candidates)) || []
     originals = candidates.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
 
@@ -158,9 +161,13 @@ module CalendarEntriesEnrichment
       next unless original
 
       updates = Helpers.updates_for(original, entry)
-      next if updates.empty?
+      if updates.empty?
+        out.puts("No updates needed for entry #{entry[:id]} (#{entry[:title]}).")
+        next
+      end
 
       dataset.where(id: entry[:id]).update(updates)
+      out.puts("Updated entry #{entry[:id]} (#{entry[:title]}) with #{updates.keys.join(', ')}.")
       updated += 1
     end
 
