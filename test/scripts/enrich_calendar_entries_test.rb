@@ -56,6 +56,35 @@ class EnrichCalendarEntriesTest < Minitest::Test
     assert_equal 'poster.jpg', @dataset.updates[1][:poster_url]
   end
 
+  def test_overwrites_mismatched_metadata_but_keeps_imdb_id
+    @entries.first.merge!(
+      synopsis: 'Outdated synopsis',
+      poster_url: 'old.jpg',
+      rating: 4.5,
+      imdb_id: 'imdb-fixed',
+      countries: '[]'
+    )
+
+    enriched_entry = @entries.first.merge(
+      synopsis: 'Fresh synopsis',
+      poster_url: 'new.jpg',
+      rating: 8.7,
+      imdb_id: 'imdb-new',
+      countries: ['US']
+    )
+
+    out = StringIO.new
+    CalendarEntryEnricher.stub(:enrich, [enriched_entry]) do
+      CalendarEntriesEnrichment.run(@db, out: out)
+    end
+
+    updates = @dataset.updates[1]
+    assert_equal 'new.jpg', updates[:poster_url]
+    assert_equal 'Fresh synopsis', updates[:synopsis]
+    assert_in_delta 8.7, updates[:rating]
+    refute_includes updates.keys, :imdb_id
+  end
+
   class FakeDB
     attr_reader :database
 
