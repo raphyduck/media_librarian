@@ -25,6 +25,12 @@ const state = {
       language: '',
       country: '',
     },
+    search: {
+      query: '',
+      year: '',
+      loading: false,
+      results: [],
+    },
   },
   collection: {
     entries: [],
@@ -1351,6 +1357,133 @@ function buildCalendarGroups(entries, view) {
   return Array.from(groups.values()).sort((a, b) => a.sortKey - b.sortKey);
 }
 
+function buildCalendarEntryCard(entry, date = resolveCalendarDate(entry)) {
+  const item = document.createElement('article');
+  item.className = 'calendar-item';
+
+  const downloaded = isDownloaded(entry);
+  if (downloaded) {
+    item.classList.add('calendar-item--downloaded');
+  }
+
+  const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+  const mediaUrl = pickEntryValue(entry, ['poster_url', 'poster', 'backdrop_url', 'backdrop']);
+  const media = document.createElement('div');
+  media.className = 'calendar-media';
+  if (mediaUrl) {
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = mediaUrl;
+    img.alt = `${titleText} - visuel`;
+    media.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'calendar-media-fallback';
+    placeholder.textContent = titleText.charAt(0) || '?';
+    media.appendChild(placeholder);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'calendar-body';
+
+  const header = document.createElement('header');
+  const externalUrl = resolveExternalUrl(entry);
+  const titleEl = document.createElement('h4');
+  if (externalUrl) {
+    const link = document.createElement('a');
+    link.href = externalUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = titleText;
+    titleEl.appendChild(link);
+  } else {
+    titleEl.textContent = titleText;
+  }
+  const dateLabel = document.createElement('span');
+  dateLabel.className = 'calendar-meta';
+  dateLabel.textContent = date
+    ? new Intl.DateTimeFormat('fr-FR', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      }).format(date)
+    : 'Date inconnue';
+  header.append(titleEl, dateLabel);
+  body.appendChild(header);
+
+  const synopsisText = (() => {
+    const rawSynopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
+    return rawSynopsis == null ? '' : String(rawSynopsis).trim();
+  })();
+  if (synopsisText) {
+    const synopsisEl = document.createElement('p');
+    synopsisEl.className = 'calendar-synopsis';
+    synopsisEl.textContent = synopsisText;
+    body.appendChild(synopsisEl);
+  }
+
+  const badges = document.createElement('div');
+  badges.className = 'calendar-badges';
+  const type = pickEntryValue(entry, ['type', 'kind', 'category']);
+  if (type) {
+    badges.appendChild(makeCalendarBadge(type));
+  }
+  const rating = pickEntryValue(entry, ['imdb_rating', 'rating', 'score']);
+  if (rating !== undefined && rating !== null && rating !== '') {
+    badges.appendChild(makeCalendarBadge(`IMDb ${rating}`));
+  }
+  const votes = resolveVoteCount(entry);
+  if (votes !== null) {
+    badges.appendChild(makeCalendarBadge(`${formatVoteCount(votes)} votes`));
+  }
+  const genres = extractGenres(entry);
+  if (genres.length) {
+    badges.appendChild(makeCalendarBadge(genres.slice(0, 3).join(', ')));
+  }
+  if (downloaded) {
+    const badge = makeCalendarBadge('Téléchargé');
+    badge.classList.add('calendar-badge--success');
+    badges.appendChild(badge);
+  }
+  const inWatchlist = isInWatchlist(entry);
+  if (inWatchlist) {
+    badges.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
+  }
+  if (badges.childElementCount) {
+    body.appendChild(badges);
+  }
+
+  const metaSegments = [];
+  const language = pickEntryValue(entry, ['language', 'lang', 'original_language']);
+  const country = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
+  if (language) {
+    metaSegments.push(`Langue: ${language}`);
+  }
+  if (country) {
+    metaSegments.push(`Pays: ${country}`);
+  }
+  if (metaSegments.length) {
+    const meta = document.createElement('div');
+    meta.className = 'calendar-meta';
+    meta.textContent = metaSegments.join(' · ');
+    body.appendChild(meta);
+  }
+
+  if (!inWatchlist && !downloaded) {
+    const actions = document.createElement('div');
+    actions.className = 'calendar-actions-row';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Ajouter à la liste d’intérêt';
+    button.addEventListener('click', () => addToWatchlist(entry, button));
+    actions.appendChild(button);
+    body.appendChild(actions);
+  }
+
+  item.append(media, body);
+  return item;
+}
+
 function makeCalendarBadge(text) {
   const span = document.createElement('span');
   span.className = 'calendar-badge';
@@ -1524,130 +1657,7 @@ function renderCalendar(data = null) {
     group.items
       .sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))
       .forEach(({ entry, date }) => {
-        const item = document.createElement('article');
-        item.className = 'calendar-item';
-
-        const downloaded = isDownloaded(entry);
-        if (downloaded) {
-          item.classList.add('calendar-item--downloaded');
-        }
-
-        const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
-        const mediaUrl = pickEntryValue(entry, ['poster_url', 'poster', 'backdrop_url', 'backdrop']);
-        const media = document.createElement('div');
-        media.className = 'calendar-media';
-        if (mediaUrl) {
-          const img = document.createElement('img');
-          img.loading = 'lazy';
-          img.src = mediaUrl;
-          img.alt = `${titleText} - visuel`;
-          media.appendChild(img);
-        } else {
-          const placeholder = document.createElement('div');
-          placeholder.className = 'calendar-media-fallback';
-          placeholder.textContent = titleText.charAt(0) || '?';
-          media.appendChild(placeholder);
-        }
-
-        const body = document.createElement('div');
-        body.className = 'calendar-body';
-
-        const header = document.createElement('header');
-        const externalUrl = resolveExternalUrl(entry);
-        const titleEl = document.createElement('h4');
-        if (externalUrl) {
-          const link = document.createElement('a');
-          link.href = externalUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = titleText;
-          titleEl.appendChild(link);
-        } else {
-          titleEl.textContent = titleText;
-        }
-        const dateLabel = document.createElement('span');
-        dateLabel.className = 'calendar-meta';
-        dateLabel.textContent = date
-          ? new Intl.DateTimeFormat('fr-FR', {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'short',
-            }).format(date)
-          : 'Date inconnue';
-        header.append(titleEl, dateLabel);
-        body.appendChild(header);
-
-        const synopsisText = (() => {
-          const rawSynopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
-          return rawSynopsis == null ? '' : String(rawSynopsis).trim();
-        })();
-        if (synopsisText) {
-          const synopsisEl = document.createElement('p');
-          synopsisEl.className = 'calendar-synopsis';
-          synopsisEl.textContent = synopsisText;
-          body.appendChild(synopsisEl);
-        }
-
-        const badges = document.createElement('div');
-        badges.className = 'calendar-badges';
-        const type = pickEntryValue(entry, ['type', 'kind', 'category']);
-        if (type) {
-          badges.appendChild(makeCalendarBadge(type));
-        }
-        const rating = pickEntryValue(entry, ['imdb_rating', 'rating', 'score']);
-        if (rating !== undefined && rating !== null && rating !== '') {
-          badges.appendChild(makeCalendarBadge(`IMDb ${rating}`));
-        }
-        const votes = resolveVoteCount(entry);
-        if (votes !== null) {
-          badges.appendChild(makeCalendarBadge(`${formatVoteCount(votes)} votes`));
-        }
-        const genres = extractGenres(entry);
-        if (genres.length) {
-          badges.appendChild(makeCalendarBadge(genres.slice(0, 3).join(', ')));
-        }
-        if (downloaded) {
-          const badge = makeCalendarBadge('Téléchargé');
-          badge.classList.add('calendar-badge--success');
-          badges.appendChild(badge);
-        }
-        const inWatchlist = isInWatchlist(entry);
-        if (inWatchlist) {
-          badges.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
-        }
-        if (badges.childElementCount) {
-          body.appendChild(badges);
-        }
-
-        const metaSegments = [];
-        const language = pickEntryValue(entry, ['language', 'lang', 'original_language']);
-        const country = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
-        if (language) {
-          metaSegments.push(`Langue: ${language}`);
-        }
-        if (country) {
-          metaSegments.push(`Pays: ${country}`);
-        }
-        if (metaSegments.length) {
-          const meta = document.createElement('div');
-          meta.className = 'calendar-meta';
-          meta.textContent = metaSegments.join(' · ');
-          body.appendChild(meta);
-        }
-
-        if (!inWatchlist && !downloaded) {
-          const actions = document.createElement('div');
-          actions.className = 'calendar-actions-row';
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.textContent = 'Ajouter à la liste d’intérêt';
-          button.addEventListener('click', () => addToWatchlist(entry, button));
-          actions.appendChild(button);
-          body.appendChild(actions);
-        }
-
-        item.append(media, body);
-        list.appendChild(item);
+        list.appendChild(buildCalendarEntryCard(entry, date));
       });
 
     wrapper.appendChild(list);
@@ -1722,6 +1732,95 @@ async function refreshCalendarFeed() {
     showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
   } finally {
     loadCalendar({ preserveFilters: true, refreshGenres: true });
+  }
+}
+
+function readCalendarSearchForm() {
+  const query = document.getElementById('calendar-search-query')?.value?.trim() || '';
+  const rawYear = document.getElementById('calendar-search-year')?.value?.trim() || '';
+  const year = rawYear ? Number.parseInt(rawYear, 10) || '' : '';
+  return { query, year };
+}
+
+function renderCalendarSearchResults() {
+  const container = document.getElementById('calendar-search-results');
+  if (!container) {
+    return;
+  }
+
+  const { query, year, loading, results } = state.calendar.search;
+  if (!query && !loading && !results.length) {
+    container.hidden = true;
+    return;
+  }
+
+  container.hidden = false;
+  if (loading) {
+    container.innerHTML = '<p class="hint">Recherche en cours…</p>';
+    return;
+  }
+  if (!results.length) {
+    container.innerHTML = `<p class="hint">Aucun résultat pour “${query}”.</p>`;
+    return;
+  }
+
+  const heading = document.createElement('h3');
+  heading.textContent = `Résultats pour “${query}”${year ? ` (${year})` : ''}`;
+  const list = document.createElement('div');
+  list.className = 'calendar-items';
+  results.forEach((entry) => list.appendChild(buildCalendarEntryCard(entry)));
+  container.replaceChildren(heading, list);
+}
+
+async function searchCalendar(event) {
+  event?.preventDefault();
+  if (!state.authenticated) {
+    return;
+  }
+  const { query, year } = readCalendarSearchForm();
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    showNotification('Entrez un titre pour rechercher.', 'error');
+    return;
+  }
+
+  const params = new URLSearchParams({ per_page: 200 });
+  const startYear = year || 1900;
+  const endYear = year || 2100;
+  params.set('start_date', `${startYear}-01-01`);
+  params.set('end_date', `${endYear}-12-31`);
+
+  state.calendar.search.loading = true;
+  state.calendar.search.query = normalizedQuery;
+  state.calendar.search.year = year || '';
+  renderCalendarSearchResults();
+
+  try {
+    const data = await fetchJson(`/calendar?${params.toString()}`);
+    const entries = normalizeCalendarEntries(data || []);
+    const matches = entries.filter((entry) => {
+      const title = (pickEntryValue(entry, ['title', 'name']) || '').toString().toLowerCase();
+      if (!title.includes(normalizedQuery.toLowerCase())) {
+        return false;
+      }
+      if (!year) {
+        return true;
+      }
+      const releaseDate = resolveCalendarDate(entry);
+      const releaseYear = releaseDate?.getFullYear()
+        || Number.parseInt(pickEntryValue(entry, ['year', 'release_year']), 10)
+        || '';
+      return releaseYear === year;
+    });
+    state.calendar.search.results = matches;
+  } catch (error) {
+    state.calendar.search.results = [];
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  } finally {
+    state.calendar.search.loading = false;
+    renderCalendarSearchResults();
   }
 }
 
@@ -2938,6 +3037,20 @@ function setupCalendarEvents() {
   const refreshFeed = document.getElementById('refresh-calendar-feed');
   if (refreshFeed) {
     refreshFeed.addEventListener('click', refreshCalendarFeed);
+  }
+  const searchForm = document.getElementById('calendar-search-form');
+  if (searchForm) {
+    searchForm.addEventListener('submit', searchCalendar);
+  }
+  const searchQuery = document.getElementById('calendar-search-query');
+  if (searchQuery) {
+    searchQuery.addEventListener('input', () => {
+      if (!searchQuery.value.trim()) {
+        state.calendar.search.query = '';
+        state.calendar.search.results = [];
+        renderCalendarSearchResults();
+      }
+    });
   }
   const calendarView = document.getElementById('calendar-view');
   if (calendarView) {
