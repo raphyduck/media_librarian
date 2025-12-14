@@ -26,15 +26,33 @@ module CalendarEntryEnricher
       ids = normalized_ids(entry)
       ids['imdb'] ||= details.dig(:ids, 'imdb') || details.dig('ids', 'imdb')
       entry[:ids] = ids unless ids.empty?
-      entry[:rating] ||= details[:rating] || details['rating']
-      entry[:imdb_votes] ||= details[:imdb_votes] || details['imdb_votes']
-      entry[:poster_url] ||= details[:poster_url] || details['poster_url']
-      entry[:backdrop_url] ||= details[:backdrop_url] || details['backdrop_url']
-      entry[:release_date] ||= coerce_date(details[:release_date] || details['release_date'])
 
-      entry[:genres] = details[:genres] if Array(entry[:genres]).empty? && array_present?(details[:genres])
-      entry[:languages] = details[:languages] if Array(entry[:languages]).empty? && array_present?(details[:languages])
-      entry[:countries] = details[:countries] if Array(entry[:countries]).empty? && array_present?(details[:countries])
+      rating = details[:rating] || details['rating']
+      entry[:rating] = rating unless rating.nil?
+
+      votes = details[:imdb_votes] || details['imdb_votes']
+      entry[:imdb_votes] = votes unless votes.nil?
+
+      poster = details[:poster_url] || details['poster_url']
+      entry[:poster_url] = poster unless poster.to_s.strip.empty?
+
+      backdrop = details[:backdrop_url] || details['backdrop_url']
+      entry[:backdrop_url] = backdrop unless backdrop.to_s.strip.empty?
+
+      synopsis = details[:synopsis] || details['synopsis'] || details[:plot] || details['plot']
+      entry[:synopsis] = synopsis unless synopsis.to_s.strip.empty?
+
+      release_date = coerce_date(details[:release_date] || details['release_date'])
+      entry[:release_date] = release_date if release_date
+
+      genres = details[:genres]
+      entry[:genres] = genres if array_present?(genres)
+
+      languages = details[:languages]
+      entry[:languages] = languages if array_present?(languages)
+
+      countries = details[:countries]
+      entry[:countries] = countries if array_present?(countries)
 
       entry
     end

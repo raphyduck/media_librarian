@@ -42,23 +42,34 @@ module CalendarEntriesEnrichment
 
     def updates_for(original, enriched)
       updates = {}
-      updates[:title] = enriched[:title] if blank?(original[:title]) && present?(enriched[:title])
-      updates[:synopsis] = enriched[:synopsis] if blank?(original[:synopsis]) && present?(enriched[:synopsis])
-      updates[:poster_url] = enriched[:poster_url] if blank?(original[:poster_url]) && present?(enriched[:poster_url])
-      updates[:backdrop_url] = enriched[:backdrop_url] if blank?(original[:backdrop_url]) && present?(enriched[:backdrop_url])
+      updates[:title] = enriched[:title] if present?(enriched[:title]) && enriched[:title] != original[:title]
+
+      synopsis = text(enriched[:synopsis])
+      updates[:synopsis] = synopsis if present?(synopsis) && synopsis != original[:synopsis]
+
+      poster_url = text(enriched[:poster_url])
+      updates[:poster_url] = poster_url if present?(poster_url) && poster_url != original[:poster_url]
+
+      backdrop_url = text(enriched[:backdrop_url])
+      updates[:backdrop_url] = backdrop_url if present?(backdrop_url) && backdrop_url != original[:backdrop_url]
 
       release_date = parse_date(enriched[:release_date])
-      updates[:release_date] = release_date if original[:release_date].nil? && release_date
+      updates[:release_date] = release_date if release_date && release_date != original[:release_date]
 
-      updates[:genres] = json_array(enriched[:genres]) if original[:genres].empty? && enriched[:genres].any?
-      updates[:languages] = json_array(enriched[:languages]) if original[:languages].empty? && enriched[:languages].any?
-      updates[:countries] = json_array(enriched[:countries]) if original[:countries].empty? && enriched[:countries].any?
+      genres = Array(enriched[:genres])
+      updates[:genres] = json_array(genres) if genres.any? && genres != Array(original[:genres])
 
-      updates[:rating] = enriched[:rating].to_f if original[:rating].nil? && !enriched[:rating].nil?
-      updates[:imdb_votes] = enriched[:imdb_votes].to_i if original[:imdb_votes].nil? && !enriched[:imdb_votes].nil?
+      languages = Array(enriched[:languages])
+      updates[:languages] = json_array(languages) if languages.any? && languages != Array(original[:languages])
+
+      countries = Array(enriched[:countries])
+      updates[:countries] = json_array(countries) if countries.any? && countries != Array(original[:countries])
+
+      updates[:rating] = enriched[:rating].to_f if !enriched[:rating].nil? && enriched[:rating].to_f != original[:rating]
+      updates[:imdb_votes] = enriched[:imdb_votes].to_i if !enriched[:imdb_votes].nil? && enriched[:imdb_votes].to_i != original[:imdb_votes]
 
       ids = normalize_ids(enriched[:ids])
-      updates[:ids] = JSON.generate(ids) if original[:ids].empty? && ids.any?
+      updates[:ids] = JSON.generate(ids) if ids.any? && ids != normalize_ids(original[:ids])
 
       imdb_id = text(enriched[:imdb_id])
       updates[:imdb_id] = imdb_id if blank?(original[:imdb_id]) && present?(imdb_id)

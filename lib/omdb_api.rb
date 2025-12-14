@@ -158,6 +158,7 @@ class OmdbApi
       genres: list_from(record, :genres, :Genre),
       languages: list_from(record, :languages, :Language),
       countries: list_from(record, :countries, :Country),
+      synopsis: value_from(record, :synopsis, :plot, :Plot),
       rating: float_value(value_from(record, :rating, :imdbRating)),
       imdb_votes: votes_value(value_from(record, :imdb_votes, :imdbVotes)),
       poster_url: url_value(value_from(record, :poster_url, :Poster)),

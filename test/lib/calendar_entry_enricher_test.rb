@@ -40,6 +40,30 @@ class CalendarEntryEnricherTest < Minitest::Test
     assert_equal Date.new(2024, 1, 1), enriched[:release_date]
   end
 
+  def test_overwrites_metadata_but_preserves_imdb_id
+    api = OverwritingFakeApi.new
+    entry = {
+      title: 'Different Poster',
+      media_type: 'movie',
+      imdb_id: 'imdb777',
+      ids: { imdb: 'imdb777' },
+      synopsis: 'Old synopsis',
+      poster_url: 'https://example.test/old.jpg',
+      rating: 5.0,
+      release_date: Date.new(2020, 1, 1),
+      genres: ['Action']
+    }
+
+    enriched = CalendarEntryEnricher.stub(:omdb_api, api) { CalendarEntryEnricher.enrich([entry]).first }
+
+    assert_equal 'imdb777', enriched[:imdb_id]
+    assert_equal 'https://example.test/new.jpg', enriched[:poster_url]
+    assert_in_delta 9.2, enriched[:rating]
+    assert_equal 'Updated synopsis', enriched[:synopsis]
+    assert_equal Date.new(2024, 2, 2), enriched[:release_date]
+    assert_equal ['Drama', 'Mystery'], enriched[:genres]
+  end
+
   class FakeApi
     attr_reader :calls
 
@@ -64,6 +88,28 @@ class CalendarEntryEnricherTest < Minitest::Test
         release_date: Date.new(year || 2024, 1, 1),
         poster_url: 'https://example.test/poster.jpg'
       }
+    end
+  end
+
+  class OverwritingFakeApi
+    def title(*)
+      {
+        title: 'Different Poster',
+        ids: { 'imdb' => 'tt9999999' },
+        synopsis: 'Updated synopsis',
+        rating: 9.2,
+        imdb_votes: 5555,
+        poster_url: 'https://example.test/new.jpg',
+        backdrop_url: 'https://example.test/new_backdrop.jpg',
+        release_date: Date.new(2024, 2, 2),
+        genres: ['Drama', 'Mystery'],
+        languages: ['en'],
+        countries: ['US']
+      }
+    end
+
+    def find_by_title(*)
+      nil
     end
   end
 end
