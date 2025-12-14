@@ -8,22 +8,19 @@ module CalendarEntryEnricher
   class << self
     def enrich(entries)
       api = omdb_api
-      return entries unless api
+      raise StandardError, 'OMDb API configuration missing (set OMDB_API_KEY or config/omdb.api_key)' unless api
 
       entries.map { |entry| enrich_entry(entry.dup, api) }.compact
-    rescue StandardError
-      entries
     end
 
     private
 
     def enrich_entry(entry, api)
       return entry unless entry.is_a?(Hash)
-      return entry unless movie?(entry)
 
       imdb_id = imdb_identifier(entry)
       details = imdb_id ? api.title(imdb_id) : nil
-      details ||= api.find_by_title(title: entry[:title], year: entry[:release_date]&.year, type: entry[:media_type])
+      details ||= api.find_by_title(title: entry[:title], year: entry[:release_date]&.year, type: omdb_type(entry))
       return entry unless details.is_a?(Hash) && matches_title?(entry, details)
 
       ids = normalized_ids(entry)
@@ -40,12 +37,13 @@ module CalendarEntryEnricher
       entry[:countries] = details[:countries] if Array(entry[:countries]).empty? && array_present?(details[:countries])
 
       entry
-    rescue StandardError
-      entry
     end
 
-    def movie?(entry)
-      entry[:media_type].to_s.strip == 'movie'
+    def omdb_type(entry)
+      case entry[:media_type].to_s.strip.downcase
+      when 'movie', 'film' then 'movie'
+      when 'series', 'show' then 'series'
+      end
     end
 
     def imdb_identifier(entry)
