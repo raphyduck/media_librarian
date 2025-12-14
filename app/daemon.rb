@@ -120,6 +120,7 @@ class Daemon
             start_scheduler(scheduler) if scheduler
             start_quit_timer
             start_control_server
+            start_trakt_refresh_timer
             bootstrap_calendar_feed_if_needed
 
             wait_for_shutdown
@@ -633,6 +634,63 @@ class Daemon
     end
 
     private
+
+    def start_trakt_refresh_timer
+      return if @trakt_timer
+      return unless trakt_refresh_supported?
+
+      @trakt_timer = Concurrent::TimerTask.new(execution_interval: 300) { refresh_trakt_token }
+      refresh_trakt_token
+      @trakt_timer.execute
+    end
+
+    def trakt_refresh_supported?
+      app.respond_to?(:trakt) && app.trakt && app.respond_to?(:db) && app.db && app.respond_to?(:trakt_account)
+    end
+
+    def refresh_trakt_token
+      token = normalize_trakt_token(app.trakt&.token)
+      return unless trakt_refresh_due?(token)
+
+      previous = token.dup
+      app.trakt.account&.access_token
+      updated = normalize_trakt_token(app.trakt&.token)
+      return unless updated && updated != previous
+
+      persist_trakt_token(updated)
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'Trakt token refresh failed')
+    end
+
+    def trakt_refresh_due?(token)
+      return false unless token.is_a?(Hash)
+      return false if token['refresh_token'].to_s.empty?
+
+      expires_at = trakt_expiry_time(token)
+      expires_at && expires_at - 300 <= Time.now
+    end
+
+    def trakt_expiry_time(token)
+      created_at = token['created_at']
+      expires_in = token['expires_in']
+      return unless created_at && expires_in
+
+      Time.at(created_at.to_i + expires_in.to_i)
+    rescue StandardError
+      nil
+    end
+
+    def normalize_trakt_token(token)
+      token.is_a?(Hash) ? token.transform_keys(&:to_s) : nil
+    end
+
+    def persist_trakt_token(token)
+      account = app.trakt_account.to_s
+      return if account.empty?
+      return unless app.db&.respond_to?(:insert_row)
+
+      app.db.insert_row('trakt_auth', token.merge('account' => account), 1)
+    end
 
     def serialize_job(job)
       data = job.to_h
