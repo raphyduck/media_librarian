@@ -50,7 +50,6 @@ class EnrichCalendarEntriesTest < Minitest::Test
 
     output = out.string
     assert_includes output, 'Scanning 1 calendar entries'
-    assert_includes output, 'Found 1 entries needing enrichment'
     assert_includes output, 'Enriching 1 entries via OMDb'
     assert_includes output, 'Updated entry 1 (Verbose Film) with '
     assert_equal 'poster.jpg', @dataset.updates[1][:poster_url]
@@ -83,6 +82,35 @@ class EnrichCalendarEntriesTest < Minitest::Test
     assert_equal 'Fresh synopsis', updates[:synopsis]
     assert_in_delta 8.7, updates[:rating]
     refute_includes updates.keys, :imdb_id
+  end
+
+  def test_refreshes_existing_rating_and_votes
+    @entries.first.merge!(
+      synopsis: 'Current synopsis',
+      poster_url: 'existing.jpg',
+      backdrop_url: 'backdrop.jpg',
+      release_date: Date.new(2020, 1, 1),
+      genres: ['Drama'],
+      languages: ['en'],
+      countries: ['US'],
+      rating: 6.2,
+      imdb_votes: 42,
+      ids: { imdb: 'tt999' }
+    )
+
+    enriched_entry = @entries.first.merge(
+      rating: 8.4,
+      imdb_votes: 1200
+    )
+
+    out = StringIO.new
+    CalendarEntryEnricher.stub(:enrich, [enriched_entry]) do
+      CalendarEntriesEnrichment.run(@db, out: out)
+    end
+
+    updates = @dataset.updates[1]
+    assert_in_delta 8.4, updates[:rating]
+    assert_equal 1200, updates[:imdb_votes]
   end
 
   class FakeDB

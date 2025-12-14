@@ -34,12 +34,6 @@ module CalendarEntriesEnrichment
       nil
     end
 
-    def needs_enrichment?(entry)
-      blank?(entry[:title]) || blank?(entry[:poster_url]) || blank?(entry[:synopsis]) ||
-        entry[:release_date].nil? || entry[:genres].empty? || entry[:languages].empty? ||
-        entry[:countries].empty? || entry[:rating].nil? || entry[:imdb_votes].nil? || entry[:ids].empty?
-    end
-
     def updates_for(original, enriched)
       updates = {}
       updates[:title] = enriched[:title] if present?(enriched[:title]) && enriched[:title] != original[:title]
@@ -158,13 +152,11 @@ module CalendarEntriesEnrichment
     dataset = db.database[:calendar_entries]
     entries = dataset.map { |row| Helpers.normalize(row) }.compact
     out.puts("Scanning #{entries.size} calendar entr#{entries.size == 1 ? 'y' : 'ies'}...")
-    candidates = entries.select { |entry| Helpers.needs_enrichment?(entry) }
-    out.puts("Found #{candidates.size} entr#{candidates.size == 1 ? 'y' : 'ies'} needing enrichment.")
-    return out.puts('No calendar entries need enrichment.') if candidates.empty?
+    return out.puts('No calendar entries need enrichment.') if entries.empty?
 
-    out.puts("Enriching #{candidates.size} entr#{candidates.size == 1 ? 'y' : 'ies'} via OMDb...")
-    enriched = CalendarEntryEnricher.enrich(Helpers.deep_dup(candidates)) || []
-    originals = candidates.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
+    out.puts("Enriching #{entries.size} entr#{entries.size == 1 ? 'y' : 'ies'} via OMDb...")
+    enriched = CalendarEntryEnricher.enrich(Helpers.deep_dup(entries)) || []
+    originals = entries.each_with_object({}) { |entry, memo| memo[entry[:id]] = entry }
 
     updated = 0
     enriched.each do |entry|
