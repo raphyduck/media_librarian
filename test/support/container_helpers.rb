@@ -32,12 +32,10 @@ module TestSupport
     class StubApplication
       attr_accessor :librarian, :speaker, :args_dispatch,
                     :workers_pool_size, :queue_slots, :finished_jobs_per_queue, :container,
-                    :email, :email_templates
+                    :email, :email_templates, :db, :trakt, :trakt_account
       attr_reader :root, :loader, :template_dir, :pidfile,
                   :env_flags, :config_dir, :config_file, :config_example,
                   :tracker_dir, :api_config_file
-
-      attr_accessor :trakt
 
       def initialize(root:, speaker:, args_dispatch:)
         @root = root
