@@ -16,6 +16,7 @@ class CollectionRepositoryTest < Minitest::Test
     db_path = File.join(@environment.root_path, 'db.sqlite3')
     attach_db(Storage::Db.new(db_path, 0, migrations_path: nil))
     create_local_media_table
+    create_calendar_entries_table
     CollectionRepository.configure(app: @environment.application)
     @repository = CollectionRepository.new(app: @environment.application)
   end
@@ -76,6 +77,36 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal ['/tmp/media/Show.1x02.mkv'], seasons.first[:episodes].last[:files]
   end
 
+  def test_enriches_entries_with_calendar_metadata_when_available
+    insert_media([{ imdb_id: 'ttmeta', local_path: '/tmp/media/meta.mkv', created_at: '2023-02-01T00:00:00Z' }])
+    insert_calendar_entry(
+      imdb_id: 'ttmeta',
+      title: 'Metadata Title',
+      release_date: '2020-05-04',
+      poster_url: 'https://example.com/poster.jpg',
+      backdrop_url: 'https://example.com/backdrop.jpg',
+      synopsis: 'A story worth telling.',
+      ids: { imdb: 'ttmeta', tmdb: 42 },
+      source: 'tmdb',
+      external_id: 'movie-42'
+    )
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10)
+    entry = result[:entries].first
+
+    assert_equal 'Metadata Title', entry[:title]
+    assert_equal 'Metadata Title', entry[:name]
+    assert_equal 'https://example.com/poster.jpg', entry[:poster_url]
+    assert_equal 'https://example.com/backdrop.jpg', entry[:backdrop_url]
+    assert_equal 'A story worth telling.', entry[:synopsis]
+    assert_equal({ 'imdb' => 'ttmeta', 'tmdb' => 42 }, entry[:ids])
+    assert_equal 'tmdb', entry[:source]
+    assert_equal 'movie-42', entry[:external_id]
+    assert_equal 2020, entry[:year]
+    assert entry[:released_at].start_with?('2020-05-04')
+    assert_equal ['/tmp/media/meta.mkv'], entry[:files]
+  end
+
   private
 
   def attach_db(db)
@@ -94,6 +125,22 @@ class CollectionRepositoryTest < Minitest::Test
     end
   end
 
+  def insert_calendar_entry(row)
+    prepared = {
+      id: SecureRandom.random_number(1000),
+      source: 'tmdb',
+      external_id: 'movie-1',
+      title: 'Calendar Title',
+      media_type: 'movie',
+      release_date: '2020-01-01',
+      created_at: '2020-01-01',
+      updated_at: '2020-01-02'
+    }.merge(row)
+
+    prepared[:ids] = JSON.dump(prepared[:ids]) if prepared[:ids].is_a?(Hash)
+    @environment.application.db.insert_row(:calendar_entries, prepared, 1)
+  end
+
   def create_local_media_table
     @environment.application.db.execute(<<~SQL)
       CREATE TABLE IF NOT EXISTS local_media (
@@ -102,6 +149,26 @@ class CollectionRepositoryTest < Minitest::Test
         imdb_id TEXT,
         local_path TEXT,
         created_at TEXT
+      )
+    SQL
+  end
+
+  def create_calendar_entries_table
+    @environment.application.db.execute(<<~SQL)
+      CREATE TABLE IF NOT EXISTS calendar_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT,
+        external_id TEXT,
+        title TEXT,
+        media_type TEXT,
+        release_date TEXT,
+        poster_url TEXT,
+        backdrop_url TEXT,
+        synopsis TEXT,
+        ids TEXT,
+        imdb_id TEXT,
+        created_at TEXT,
+        updated_at TEXT
       )
     SQL
   end

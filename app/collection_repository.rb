@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'json'
 require 'time'
 require 'sequel'
 
@@ -83,7 +84,21 @@ class CollectionRepository
     return unless app.respond_to?(:db) && app.db.respond_to?(:database)
     return if app.db.respond_to?(:table_exists?) && !app.db.table_exists?(:local_media)
 
-    app.db.database[:local_media]
+    dataset = app.db.database[:local_media].select_all(:local_media)
+    return dataset unless calendar_table?
+
+    dataset
+      .left_join(:calendar_entries, Sequel[:calendar_entries][:imdb_id] => Sequel[:local_media][:imdb_id])
+      .select_append(
+        Sequel[:calendar_entries][:title],
+        Sequel[:calendar_entries][:release_date],
+        Sequel[:calendar_entries][:poster_url],
+        Sequel[:calendar_entries][:backdrop_url],
+        Sequel[:calendar_entries][:synopsis],
+        Sequel[:calendar_entries][:ids],
+        Sequel[:calendar_entries][:source],
+        Sequel[:calendar_entries][:external_id]
+      )
   end
 
   def empty_response(page, per_page)
@@ -107,7 +122,15 @@ class CollectionRepository
       media_type: fetch(primary, :media_type),
       imdb_id: fetch(primary, :imdb_id),
       title: derived_title(primary),
-      released_at: build_released_at(fetch(primary, :created_at)),
+      name: fetch(primary, :title) || derived_title(primary),
+      released_at: build_released_at(fetch(primary, :release_date) || fetch(primary, :created_at)),
+      year: extract_year(fetch(primary, :release_date)),
+      poster_url: fetch(primary, :poster_url),
+      backdrop_url: fetch(primary, :backdrop_url),
+      synopsis: fetch(primary, :synopsis),
+      ids: normalize_ids(fetch(primary, :ids)),
+      source: fetch(primary, :source),
+      external_id: fetch(primary, :external_id),
       local_path: fetch(primary, :local_path),
       created_at: fetch(primary, :created_at),
       files: rows.map { |row| fetch(row, :local_path) }.compact
@@ -122,13 +145,24 @@ class CollectionRepository
   end
 
   def derived_title(row)
-    File.basename(fetch(row, :local_path).to_s)
+    fetch(row, :title) || File.basename(fetch(row, :local_path).to_s)
   end
 
   def build_released_at(value)
     return nil if value.nil?
 
+    if value.is_a?(Date)
+      return Time.utc(value.year, value.month, value.day).iso8601
+    end
+
     Time.parse(value.to_s).utc.iso8601
+  rescue StandardError
+    nil
+  end
+
+  def extract_year(value)
+    date = value.is_a?(Date) ? value : Time.parse(value.to_s)
+    date.year
   rescue StandardError
     nil
   end
@@ -164,5 +198,18 @@ class CollectionRepository
     if (match = source.match(/(\d{1,2})x(\d{1,2})/))
       return match[1].to_i, match[2].to_i
     end
+  end
+
+  def normalize_ids(value)
+    return value if value.is_a?(Hash)
+
+    parsed = JSON.parse(value) if value.is_a?(String) && value.strip.start_with?('{', '[')
+    parsed.is_a?(Hash) ? parsed : {}
+  rescue JSON::ParserError
+    {}
+  end
+
+  def calendar_table?
+    app.respond_to?(:db) && app.db.respond_to?(:table_exists?) && app.db.table_exists?(:calendar_entries)
   end
 end
