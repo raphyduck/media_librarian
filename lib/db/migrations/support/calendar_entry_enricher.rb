@@ -23,6 +23,9 @@ module CalendarEntryEnricher
       details ||= api.find_by_title(title: entry[:title], year: entry[:release_date]&.year, type: omdb_type(entry))
       return entry unless details.is_a?(Hash) && matches_result?(entry, details, imdb_id)
 
+      title = details[:title] || details['title']
+      entry[:title] = title unless title.to_s.strip.empty?
+
       ids = normalized_ids(entry)
       ids['imdb'] ||= details.dig(:ids, 'imdb') || details.dig('ids', 'imdb')
       entry[:ids] = ids unless ids.empty?
@@ -86,10 +89,6 @@ module CalendarEntryEnricher
       return nil unless digits.match?(/\A\d+\z/)
 
       "tt#{digits}"
-    end
-
-    def imdb_identifier?(value)
-      value.to_s.match?(/\Att\d+/i)
     end
 
     def imdb_identifier?(value)
