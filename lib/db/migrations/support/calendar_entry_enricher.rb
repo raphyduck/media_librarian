@@ -66,9 +66,9 @@ module CalendarEntryEnricher
 
     def imdb_identifier(entry)
       ids = normalized_ids(entry)
-      [entry[:imdb_id], ids['imdb'], ids[:imdb], entry[:external_id]].map { |id| normalize_identifier(id) }.find do |candidate|
-        candidate && candidate.match?(/\Aimdb\d+/i)
-      end
+      [entry[:imdb_id], ids['imdb'], ids[:imdb], entry[:external_id]]
+        .map { |id| normalize_identifier(id) }
+        .find { |candidate| imdb_identifier?(candidate) }
     end
 
     def normalized_ids(entry)
@@ -82,7 +82,14 @@ module CalendarEntryEnricher
       token = value.to_s.strip
       return nil if token.empty?
 
-      token.start_with?('tt') ? "imdb#{token.delete_prefix('tt')}" : token
+      digits = token.sub(/\A(?:imdb|tt)/i, '')
+      return nil unless digits.match?(/\A\d+\z/)
+
+      "tt#{digits}"
+    end
+
+    def imdb_identifier?(value)
+      value.to_s.match?(/\Att\d+/i)
     end
 
     def matches_title?(entry, details)
