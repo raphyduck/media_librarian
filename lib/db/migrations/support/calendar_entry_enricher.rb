@@ -92,6 +92,10 @@ module CalendarEntryEnricher
       value.to_s.match?(/\Att\d+/i)
     end
 
+    def imdb_identifier?(value)
+      value.to_s.match?(/\Att\d+/i)
+    end
+
     def matches_result?(entry, details, imdb_id)
       detail_imdb = normalize_identifier(details.dig(:ids, 'imdb') || details.dig('ids', 'imdb') || details[:external_id] || details['external_id'])
       return true if imdb_identifier?(imdb_id) && !detail_imdb.to_s.empty? && detail_imdb.casecmp?(imdb_id)
