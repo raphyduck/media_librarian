@@ -481,7 +481,7 @@ module MediaLibrarian
           candidates.concat(ids.values) if ids.is_a?(Hash)
           candidates << entry[:imdb_id]
           candidates << entry[:external_id]
-          candidates.map { |id| normalize_identifier(id) }.find { |id| !id.empty? }
+          candidates.map { |id| normalize_identifier(id) }.find { |id| id && !id.empty? }
         end
       end
 
@@ -503,11 +503,22 @@ module MediaLibrarian
       end
 
       def normalize_identifier(value)
-        value.to_s.strip
+        token = value.to_s.strip
+        return '' if token.empty?
+
+        digits = token.sub(/\A(?:imdb|tt)/i, '')
+        return token unless digits.match?(/\A\d+\z/)
+
+        "tt#{digits}"
       end
 
       def omdb_titles_match?(entry, details)
         return false unless details.is_a?(Hash)
+
+        entry_imdb = normalize_identifier(entry[:imdb_id] || entry.dig(:ids, 'imdb'))
+        detail_imdb = normalize_identifier(details.dig(:ids, 'imdb'))
+        return true if imdb_identifier?(entry_imdb) && entry_imdb == detail_imdb
+
         clean_entry = normalized_title(entry[:title])
         clean_details = normalized_title(details[:title])
         return true if clean_entry.empty? || clean_details.empty?
