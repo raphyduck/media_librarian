@@ -59,8 +59,14 @@ def missing_release_date?(value)
   date.nil? || !date.respond_to?(:year)
 end
 
+def title_matches_imdb_id?(row)
+  title = row[:title].to_s.strip
+  imdb = row[:imdb_id].to_s.strip
+  !title.empty? && !imdb.empty? && title.casecmp?(imdb)
+end
+
 selected = rows.select do |row|
-  row[:title].to_s.strip.empty? || missing_release_date?(row[:release_date])
+  row[:title].to_s.strip.empty? || missing_release_date?(row[:release_date]) || title_matches_imdb_id?(row)
 end
 selected = selected.first(options[:limit]) if options[:limit]&.positive?
 
