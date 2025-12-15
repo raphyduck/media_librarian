@@ -88,10 +88,38 @@ class FileSystemScanServiceTest < Minitest::Test
     assert_equal 'movie', calendar[:media_type]
 
     local_media = @db.rows.find { |row| row[:table] == :local_media }
-    assert_equal 'movies', local_media[:media_type]
+    assert_equal 'movie', local_media[:media_type]
     assert_equal 'tt1234567', local_media[:imdb_id]
     assert_equal @file_path, local_media[:local_path]
     assert_equal 1, local_media[:replace]
+  end
+
+  def test_maps_tv_folder_to_show_media_type
+    show = Struct.new(:ids, :title).new({ 'imdb' => 'tt7654321' }, 'Example Show')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(
+      root_path: @tmp_dir,
+      type: 'TV Shows'
+    )
+
+    library = {
+      'showExample' => {
+        type: 'tv shows',
+        name: 'Example Show',
+        full_name: 'Example Show',
+        show: show,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    calendar = @db.rows.find { |row| row[:table] == :calendar_entries }
+    assert_equal 'show', calendar[:media_type]
+
+    local_media = @db.rows.find { |row| row[:table] == :local_media }
+    assert_equal 'show', local_media[:media_type]
   end
 
   def test_removes_watchlist_entry_for_detected_media
