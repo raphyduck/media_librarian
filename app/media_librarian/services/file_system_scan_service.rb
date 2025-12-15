@@ -28,6 +28,8 @@ module MediaLibrarian
       def persist_media_entries(library, type)
         return [] unless library.is_a?(Hash)
 
+        normalized_type = normalize_media_type(type)
+
         existing_calendar_ids = calendar_imdb_ids
         cached_calendar = {}
         cleaned_watchlist = Set.new
@@ -40,7 +42,9 @@ module MediaLibrarian
           imdb_id = normalize_imdb_id(extract_imdb_id(subject))
           next if imdb_id.empty?
 
-          cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, type, entry, existing_calendar_ids) unless cached_calendar.key?(imdb_id)
+          correct_existing_media_type(imdb_id, normalized_type)
+
+          cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, normalized_type, entry, existing_calendar_ids) unless cached_calendar.key?(imdb_id)
 
           files_persisted = false
 
@@ -49,7 +53,7 @@ module MediaLibrarian
             next unless local_path && File.file?(local_path)
 
             metadata = {
-              media_type: type,
+              media_type: normalized_type,
               imdb_id: imdb_id,
               local_path: local_path
             }
@@ -74,11 +78,11 @@ module MediaLibrarian
         value.to_s.strip.downcase
       end
 
-      def ensure_calendar_entry(imdb_id, type, entry, existing_ids)
+      def ensure_calendar_entry(imdb_id, media_type, entry, existing_ids)
         return if existing_ids.include?(imdb_id)
         return unless calendar_table?
 
-        seed = calendar_seed(imdb_id, type, entry)
+        seed = calendar_seed(imdb_id, media_type, entry)
         enriched = CalendarFeedService.enrich_entries([seed], app: app, speaker: speaker, db: app&.db)&.first || seed
         upsert_calendar_entry(enriched)
         existing_ids << imdb_id
@@ -88,7 +92,7 @@ module MediaLibrarian
         nil
       end
 
-      def calendar_seed(imdb_id, type, entry)
+      def calendar_seed(imdb_id, media_type, entry)
         subject = entry[:movie] || entry[:show]
         title = subject.respond_to?(:title) ? subject.title.to_s : (entry[:title] || entry['title']).to_s
         release_date = subject.respond_to?(:release_date) ? subject.release_date : (entry[:release_date] || entry['release_date'])
@@ -98,18 +102,30 @@ module MediaLibrarian
           external_id: imdb_id,
           imdb_id: imdb_id,
           title: title.empty? ? imdb_id : title,
-          media_type: normalize_media_type(type),
+          media_type: media_type,
           release_date: release_date,
           ids: { 'imdb' => imdb_id }
         }
       end
 
       def normalize_media_type(type)
-        normalized = type.to_s.strip
+        normalized = type.to_s.strip.downcase
         return 'movie' if normalized.start_with?('movie')
-        return 'show' if normalized.start_with?('show')
+        return 'show' if normalized.start_with?('show') || normalized.start_with?('tv') || normalized.start_with?('series')
 
         normalized
+      end
+
+      def correct_existing_media_type(imdb_id, normalized_type)
+        return unless app&.db
+        return unless normalized_type == 'show'
+
+        %i[calendar_entries local_media].each do |table|
+          next unless app.db.respond_to?(:table_exists?) && app.db.table_exists?(table)
+          next unless app.db.respond_to?(:update_rows)
+
+          app.db.update_rows(table.to_s, { media_type: normalized_type }, { imdb_id: imdb_id })
+        end
       end
 
       def upsert_calendar_entry(entry)
