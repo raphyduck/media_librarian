@@ -514,6 +514,11 @@ module MediaLibrarian
 
       def omdb_titles_match?(entry, details)
         return false unless details.is_a?(Hash)
+
+        entry_imdb = normalize_identifier(entry[:imdb_id] || entry.dig(:ids, 'imdb'))
+        detail_imdb = normalize_identifier(details.dig(:ids, 'imdb'))
+        return true if imdb_identifier?(entry_imdb) && entry_imdb == detail_imdb
+
         clean_entry = normalized_title(entry[:title])
         clean_details = normalized_title(details[:title])
         return true if clean_entry.empty? || clean_details.empty?

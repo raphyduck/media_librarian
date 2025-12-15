@@ -79,6 +79,7 @@ api = nil
 begin
   selected.each do |row|
     puts "Processing ##{row[:id]}: #{row[:title].inspect} (imdb_id=#{row[:imdb_id]})" if options[:verbose]
+    puts "  Existing row: #{row.inspect}" if options[:verbose]
 
     entry = row.dup
     entry[:release_date] = coerce_date(row[:release_date])
@@ -118,7 +119,16 @@ begin
       next
     end
 
-    app.db.update_rows(:calendar_entries, updates, id: row[:id])
+    dataset = app.db.database[:calendar_entries].where(id: row[:id])
+    prepared = app.db.send(:prepare_values, :calendar_entries, updates, true)
+    sql = dataset.update_sql(prepared)
+
+    if options[:verbose]
+      puts "  SQL: #{sql}"
+      puts "  Prepared updates: #{prepared.inspect}"
+    end
+
+    app.db.send(:run_write, :calendar_entries, sql) { dataset.update(prepared) }
     puts "  Updated: #{updates.keys.join(', ')}" if options[:verbose]
   end
 rescue StandardError => e
