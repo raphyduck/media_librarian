@@ -97,21 +97,20 @@ begin
     end
 
     updates = {}
-    updates[:title] = enriched[:title] if missing_value?(row[:title]) && enriched[:title]
-    updates[:release_date] = coerce_date(enriched[:release_date]) if missing_release_date?(row[:release_date]) && enriched[:release_date]
+    updates[:title] = enriched[:title] if enriched[:title]
+    updates[:release_date] = coerce_date(enriched[:release_date]) if enriched[:release_date]
 
     existing_ids = row[:ids].is_a?(Hash) ? row[:ids] : {}
     enriched_ids = enriched[:ids].is_a?(Hash) ? enriched[:ids] : {}
     merged_ids = existing_ids.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v }
-    enriched_ids.each { |k, v| merged_ids[k.to_s] ||= v }
+    enriched_ids.each { |k, v| merged_ids[k.to_s] = v }
     imdb_value = merged_ids['imdb'] || merged_ids[:imdb] || enriched[:imdb_id]
     merged_ids['imdb'] ||= imdb_value if imdb_value
     updates[:ids] = merged_ids if merged_ids.any? && merged_ids != row[:ids]
-    updates[:imdb_id] = imdb_value if missing_value?(row[:imdb_id]) && imdb_value
 
     %i[rating imdb_votes poster_url backdrop_url synopsis genres languages countries].each do |key|
       value = enriched[key]
-      updates[key] = value if missing_value?(row[key]) && !missing_value?(value)
+      updates[key] = value if !missing_value?(value)
     end
 
     if updates.empty?
