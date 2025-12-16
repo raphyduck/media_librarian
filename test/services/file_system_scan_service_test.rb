@@ -20,15 +20,15 @@ class FileSystemScanServiceTest < Minitest::Test
     end
 
     def insert_row(table, values, or_replace = 0)
-      @rows << values.merge(table: table.to_sym, replace: or_replace)
+      rows << values.merge(table: table.to_sym, replace: or_replace)
     end
 
     def get_rows(table, *_)
-      @rows.select { |row| row[:table] == table.to_sym }
+      rows.select { |row| row[:table] == table.to_sym }
     end
 
     def delete_rows(table, conditions, *_)
-      @deleted_rows << conditions.merge(table: table.to_sym)
+      deleted_rows << conditions.merge(table: table.to_sym)
       1
     end
 
@@ -123,18 +123,18 @@ class FileSystemScanServiceTest < Minitest::Test
   end
 
   def test_removes_watchlist_entry_for_detected_media
-    movie = Struct.new(:ids, :year).new({ 'imdb' => 'tt1234567' }, 2021)
+    show = Struct.new(:ids, :title).new({ 'imdb' => 'tt7654321' }, 'Example Show')
     request = MediaLibrarian::Services::FileSystemScanRequest.new(
       root_path: @tmp_dir,
-      type: 'movies'
+      type: 'TV Shows'
     )
 
     library = {
-      'movieExample2021' => {
-        type: 'movies',
-        name: 'Example',
-        full_name: 'Example (2021)',
-        movie: movie,
+      'showExample' => {
+        type: 'tv shows',
+        name: 'Example Show',
+        full_name: 'Example Show',
+        show: show,
         files: [{ name: @file_path }]
       }
     }
@@ -144,6 +144,6 @@ class FileSystemScanServiceTest < Minitest::Test
     end
 
     deletion = @db.deleted_rows.find { |row| row[:table] == :watchlist }
-    assert_equal({ table: :watchlist, imdb_id: 'tt1234567', type: 'movie' }, deletion)
+    assert_equal({ table: :watchlist, imdb_id: 'tt7654321', type: 'show' }, deletion)
   end
 end
