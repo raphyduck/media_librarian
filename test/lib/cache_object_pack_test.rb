@@ -4,6 +4,7 @@ $LOAD_PATH.unshift(File.expand_path('../support/stubs', __dir__))
 
 require 'bigdecimal'
 require 'date'
+require 'json'
 require 'minitest/autorun'
 
 cache_stub = Object.const_get(:Cache) if Object.const_defined?(:Cache)
@@ -53,5 +54,29 @@ class CacheObjectPackTest < Minitest::Test
     assert_equal('Object', result.first)
     assert_equal(['String', 'payload'], result.last['value'])
     refute_includes(result.last.keys, 'app')
+  end
+
+  def test_round_trip_primitives
+    values = ['value', 12, 4.5, true, nil]
+    values.each do |value|
+      packed = RealCache.object_pack(value)
+      json_string = JSON.generate(packed)
+      parsed = JSON.parse(json_string)
+      assert_equal RealCache.object_unpack(parsed), RealCache.object_unpack(json_string)
+    end
+  end
+
+  def test_round_trip_hash
+    packed = RealCache.object_pack({ 'a' => 1, :b => ['c'] })
+    json_string = JSON.generate(packed)
+    parsed = JSON.parse(json_string)
+    assert_equal RealCache.object_unpack(parsed), RealCache.object_unpack(json_string)
+  end
+
+  def test_round_trip_array
+    packed = RealCache.object_pack(['a', { 'b' => 2 }])
+    json_string = JSON.generate(packed)
+    parsed = JSON.parse(json_string)
+    assert_equal RealCache.object_unpack(parsed), RealCache.object_unpack(json_string)
   end
 end
