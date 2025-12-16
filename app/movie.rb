@@ -229,7 +229,7 @@ class Movie
     nil
   end
 
-  def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app)
+  def self.movie_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app, force_refresh: 0)
     Metadata.media_lookup(
       'movies',
       title,
@@ -239,7 +239,8 @@ class Movie
       [[Tmdb::Movie, :find], [TraktAgent, :search__movies]],
       no_prompt,
       original_filename,
-      ids
+      ids,
+      force_refresh: force_refresh
     )
   end
 end

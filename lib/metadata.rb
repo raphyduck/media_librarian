@@ -285,11 +285,11 @@ class Metadata
     missing_eps
   end
 
-  def self.media_lookup(type, title, cache_category, keys, item_fetch_method, search_providers, no_prompt = 0, original_filename = '', ids = {})
+  def self.media_lookup(type, title, cache_category, keys, item_fetch_method, search_providers, no_prompt = 0, original_filename = '', ids = {}, force_refresh: 0)
     cache_name = title.to_s + ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join + original_filename.to_s
     exact_title, item = title, nil
-    cached = Cache.cache_get(cache_category, cache_name)
-    return cached if cached
+    cached = Cache.cache_get(cache_category, cache_name, 120, force_refresh)
+    return cached if cached && cached[1] && force_refresh.to_i == 0
     Utils.lock_block("#{__method__}_#{type}_#{title}#{ids}") do
       exact_title, item = item_fetch_method.call(ids) unless ids.empty?
       search_providers.each do |o, m|
@@ -330,13 +330,12 @@ class Metadata
         end
       end
       exact_title, item = Kodi.kodi_lookup(type, original_filename, exact_title) if item.nil? && original_filename.to_s != ''
-      Cache.cache_add(cache_category, cache_name, [exact_title, item], item)
+      Cache.cache_add(cache_category, cache_name, [exact_title, item], item) if item
     end
     MediaLibrarian.app.speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0) if item.nil?
     return exact_title, item
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    Cache.cache_add(cache_category, cache_name, [title, nil], nil)
     return title, nil
   end
 

@@ -207,9 +207,9 @@ class TvSeries
     return '', nil
   end
 
-  def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app)
+  def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app, force_refresh: 0)
     Metadata.media_lookup('shows', title, 'tv_show_search', {'name' => 'name', 'url' => 'url', 'year' => 'year'},
                           ->(search_ids) { tv_show_get(search_ids, app: app) },
-                          [[TVMaze::Show, 'search'], [app.tvdb, 'search']], no_prompt, original_filename, TvSeries.formate_ids(ids))
+                          [[TVMaze::Show, 'search'], [app.tvdb, 'search']], no_prompt, original_filename, TvSeries.formate_ids(ids), force_refresh: force_refresh)
   end
 end
