@@ -1616,7 +1616,22 @@ async function addToWatchlist(entry, button) {
       state.calendar.entries = state.calendar.entries.map((item) => (item === entry ? entry : item));
     }
     renderCalendar();
+    const previousEntries = state.calendar.entries;
     await loadCalendar({ preserveFilters: true });
+    const optimisticIds = new Set(
+      (previousEntries || [])
+        .filter(isInWatchlist)
+        .map((item) => resolveIdentifier(item))
+        .filter(Boolean),
+    );
+    if (optimisticIds.size && Array.isArray(state.calendar.entries)) {
+      state.calendar.entries = state.calendar.entries.map((item) => (
+        optimisticIds.has(resolveIdentifier(item))
+          ? { ...item, in_watchlist: true, watchlist: true, in_interest_list: true }
+          : item
+      ));
+      renderCalendar();
+    }
   } catch (error) {
     if (!added) {
       Object.assign(entry, previousStatus);
