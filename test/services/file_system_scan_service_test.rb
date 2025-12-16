@@ -12,11 +12,12 @@ require_relative '../../app/media_librarian/services/file_system_scan_service'
 
 class FileSystemScanServiceTest < Minitest::Test
   class RecordingDb
-    attr_reader :rows, :deleted_rows
+    attr_reader :rows, :deleted_rows, :updated_rows
 
     def initialize
       @rows = []
       @deleted_rows = []
+      @updated_rows = []
     end
 
     def insert_row(table, values, or_replace = 0)
@@ -29,6 +30,11 @@ class FileSystemScanServiceTest < Minitest::Test
 
     def delete_rows(table, conditions, *_)
       @deleted_rows << conditions.merge(table: table.to_sym)
+      1
+    end
+
+    def update_rows(table, values, conditions)
+      @updated_rows << { table: table.to_sym, values: values, conditions: conditions }
       1
     end
 
@@ -120,6 +126,35 @@ class FileSystemScanServiceTest < Minitest::Test
 
     local_media = @db.rows.find { |row| row[:table] == :local_media }
     assert_equal 'show', local_media[:media_type]
+  end
+
+  def test_corrects_existing_tv_records_to_show
+    imdb_id = 'tt7654321'
+    @db.rows << { table: :calendar_entries, imdb_id: imdb_id, media_type: 'tv' }
+    @db.rows << { table: :local_media, imdb_id: imdb_id, media_type: 'tv', local_path: @file_path }
+
+    show = Struct.new(:ids, :title).new({ 'imdb' => imdb_id }, 'Example Show')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(
+      root_path: @tmp_dir,
+      type: 'series'
+    )
+
+    library = {
+      'showExample' => {
+        type: 'series',
+        name: 'Example Show',
+        full_name: 'Example Show',
+        show: show,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    assert_includes @db.updated_rows, { table: :calendar_entries, values: { media_type: 'show' }, conditions: { imdb_id: imdb_id } }
+    assert_includes @db.updated_rows, { table: :local_media, values: { media_type: 'show' }, conditions: { imdb_id: imdb_id } }
   end
 
   def test_removes_watchlist_entry_for_detected_media

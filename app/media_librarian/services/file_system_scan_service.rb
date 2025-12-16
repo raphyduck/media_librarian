@@ -42,6 +42,8 @@ module MediaLibrarian
           imdb_id = normalize_imdb_id(extract_imdb_id(subject))
           next if imdb_id.empty?
 
+          correct_existing_media_type(imdb_id, normalized_type)
+
           cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, normalized_type, entry, existing_calendar_ids) unless cached_calendar.key?(imdb_id)
 
           files_persisted = false
@@ -112,6 +114,18 @@ module MediaLibrarian
         return 'show' if normalized.start_with?('show') || normalized.start_with?('tv') || normalized.start_with?('series')
 
         normalized
+      end
+
+      def correct_existing_media_type(imdb_id, normalized_type)
+        return unless app&.db
+        return unless normalized_type == 'show'
+
+        %i[calendar_entries local_media].each do |table|
+          next unless app.db.respond_to?(:table_exists?) && app.db.table_exists?(table)
+          next unless app.db.respond_to?(:update_rows)
+
+          app.db.update_rows(table.to_s, { media_type: normalized_type }, { imdb_id: imdb_id })
+        end
       end
 
       def upsert_calendar_entry(entry)
