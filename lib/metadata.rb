@@ -322,7 +322,16 @@ class Metadata
                 end
             v = case type
                 when 'movies'
-                  item_fetch_method.call(v['ids'] || { 'tmdb' => v['id'] })[1]
+                  detail_ids = v['ids'] || { 'tmdb' => v['id'] }
+                  detail_item = item_fetch_method.call(detail_ids)
+                  detail_item = detail_item && detail_item[1]
+                  if detail_item.nil?
+                    msg = "[#{provider_call}] detail lookup returned nil for ids #{detail_ids}"
+                    Env.debug? ? MediaLibrarian.app.speaker.speak_up(msg, 0) : MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), title_norm)
+                    v.merge('ids' => detail_ids, 'name' => v['name'] || v['title'])
+                  else
+                    detail_item
+                  end
                 when 'shows'
                   TvSeries.new(v.merge({ 'ids' => v['ids'] || { 'thetvdb' => v['seriesid'], 'imdb' => v["imdb_id"] || v['IMDB_ID'] } }))
                 end
