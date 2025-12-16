@@ -297,6 +297,9 @@ class Metadata
         begin
 
           title_norm = detect_real_title(title, type, 0, 0)
+          provider_name = o.respond_to?(:name) ? o.name : o.class.name
+          provider_call = "#{provider_name}##{m}"
+          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] -> '#{title_norm}'", 0) if Env.debug?
           items = nil
           Timeout.timeout(15) do
             meth = m.to_s.gsub(/_{2,}/, '_') # "search__movies" -> "search_movies"
@@ -307,6 +310,9 @@ class Metadata
               items = o.send(:method_missing, m, title_norm)
             end
           end
+          raw_items = items
+          raw_info = raw_items.nil? ? 'nil' : "#{raw_items.class}[#{raw_items.respond_to?(:size) ? raw_items.size : '?'}]"
+          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] <= raw #{raw_info}", 0) if Env.debug?
           items = [items] unless items.is_a?(Array)
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']
@@ -323,6 +329,13 @@ class Metadata
             Cache.object_pack(v, 1) if v
           end
           items.compact!
+          result_count = items.size
+          summary = items.first
+          summary = summary['title'] || summary['name'] if summary.respond_to?(:[])
+          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] => #{result_count} #{summary}", 0) if Env.debug?
+          if result_count.zero?
+            MediaLibrarian.app.speaker.tell_error(StandardError.new("Provider #{provider_call} returned no results"), "#{title_norm}")
+          end
           exact_title, item = media_chose(title, items, keys, type, no_prompt.to_i)
           exact_title, item = item_fetch_method.call(item['ids'].merge({ 'force_title' => exact_title })) unless item.nil?
         rescue => e
