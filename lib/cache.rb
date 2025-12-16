@@ -1,3 +1,4 @@
+require 'json'
 require 'set'
 require File.dirname(__FILE__) + '/vash'
 require File.dirname(__FILE__) + '/bus_variable'
@@ -126,34 +127,47 @@ class Cache
 
   def self.object_unpack(object)
     object = begin
-               object.is_a?(String) && object.match(/^[{\[].*[}\]]$/) ? eval(object.clone) : object.clone
-             rescue Exception
-               object.clone
+               if object.is_a?(String) && object.match(/^[{\[].*[}\]]$/)
+                 JSON.parse(object)
+               else
+                 safe_duplicate(object)
+               end
+             rescue JSON::ParserError
+               safe_duplicate(object)
              end
     return object unless object.is_a?(Array) || object.is_a?(Hash)
     #TODO: Fix retore "Class" metadata
     if object.is_a?(Array) && object.count == 2 && object[1] == 'circular_reference'
-      object = 'circular_reference'
-    elsif object.is_a?(Array) && object.count == 2 && object[0].is_a?(String) && (Object.const_defined?(object[0]) rescue false)
-      if object[0] == 'Hash'
-        object = begin
-                   eval(object[1])
-                 rescue Exception
-                   object[1]
-                 end
-        object.keys.each { |k| object[k] = object_unpack(object[k]) }
-      elsif Object.const_get(object[0]).respond_to?('strptime')
-        object = begin
-                   Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%dT%H:%M:%S%z')
-                 rescue
-                   Object.const_get(object[0]).strptime(object_unpack(object[1]), '%Y-%m-%d %H:%M:%S %z')
-                 end
-      elsif Object.const_get(object[0]).respond_to?('new')
-        object = Object.const_get(object[0]).new(object_unpack(object[1]))
-      else
-        object = object_unpack(object[1])
+      return 'circular_reference'
+    elsif object.is_a?(Array) && object.count == 2 && object[0].is_a?(String)
+      klass_name = object[0]
+      klass_defined = begin
+                        Object.const_defined?(klass_name)
+                      rescue StandardError
+                        false
+                      end
+      if klass_defined
+        if klass_name == 'Hash'
+          unpacked = object[1]
+          unpacked.keys.each { |k| unpacked[k] = object_unpack(unpacked[k]) } if unpacked.is_a?(Hash)
+          return unpacked
+        end
+        klass = Object.const_get(klass_name)
+        unpacked_value = object_unpack(object[1])
+        if klass.respond_to?('strptime')
+          begin
+            return klass.strptime(unpacked_value, '%Y-%m-%dT%H:%M:%S%z')
+          rescue
+            return klass.strptime(unpacked_value, '%Y-%m-%d %H:%M:%S %z')
+          end
+        elsif klass.respond_to?('new')
+          return klass.new(unpacked_value)
+        else
+          return unpacked_value
+        end
       end
-    elsif object.is_a?(Array)
+    end
+    if object.is_a?(Array)
       object.each_with_index { |o, idx| object[idx] = object_unpack(o) }
     else
       object.keys.each { |k| object[k] = object_unpack(object[k]) }
