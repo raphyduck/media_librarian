@@ -313,7 +313,7 @@ class Metadata
           raw_items = items
           raw_info = raw_items.nil? ? 'nil' : "#{raw_items.class}[#{raw_items.respond_to?(:size) ? raw_items.size : '?'}]"
           MediaLibrarian.app.speaker.speak_up("[#{provider_call}] <= raw #{raw_info}", 0) if Env.debug?
-          items = [items] unless items.is_a?(Array)
+          items = Array(items).compact
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']
                   m['movie']
