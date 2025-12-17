@@ -313,7 +313,7 @@ class Metadata
           raw_items = items
           raw_info = raw_items.nil? ? 'nil' : "#{raw_items.class}[#{raw_items.respond_to?(:size) ? raw_items.size : '?'}]"
           MediaLibrarian.app.speaker.speak_up("[#{provider_call}] <= raw #{raw_info}", 0) if Env.debug?
-          items = [items] unless items.is_a?(Array)
+          items = Array(items).compact
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']
                   m['movie']
@@ -322,7 +322,12 @@ class Metadata
                 end
             v = case type
                 when 'movies'
-                  detail_ids = v['ids'] || { 'tmdb' => v['id'] }
+                  v = v.is_a?(Hash) ? v : { 'name' => v.to_s }
+                  detail_ids = v['ids'] || (v['id'] ? { 'tmdb' => v['id'] } : nil)
+                  unless detail_ids
+                    MediaLibrarian.app.speaker.tell_error(StandardError.new("[#{provider_call}] unexpected payload #{v.inspect}"), title_norm)
+                    next nil
+                  end
                   detail_item = item_fetch_method.call(detail_ids)
                   detail_item = detail_item && detail_item[1]
                   if detail_item.nil?
