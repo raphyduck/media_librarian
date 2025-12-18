@@ -1,5 +1,5 @@
-api_url: torznab_api_url (not set if not a torznab tracker)
-api_key: torznab_api_key
+api_url: "https://torznab.example/api" # ignored if left as the torznab_api_url placeholder
+api_key: "replace-with-api-key" # ignored if left as the torznab_api_key placeholder
 url_template: "https://tracker.example/search?title=%title%&year=%year%&imdb=%imdbid%"
 assume_quality: "vf" #Takes precedence on search qualities
 seed_time: 24
