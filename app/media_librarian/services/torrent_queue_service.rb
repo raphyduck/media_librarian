@@ -224,6 +224,7 @@ module MediaLibrarian
       end
 
       def build_download_options(torrent_row, torrent, tdid)
+        whitelisted_extensions = Array(torrent[:whitelisted_extensions]).flatten.compact.map(&:to_s).uniq
         {
           torrent_row[:name] => {
             tdid: tdid,
@@ -234,7 +235,7 @@ module MediaLibrarian
             entry_id: torrent_row[:identifiers].join,
             added_at: Time.now.to_i,
             category: torrent[:category]
-          }.merge(torrent.select { |key, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(key) })
+          }.merge(torrent.select { |key, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(key) }).merge(whitelisted_extensions: whitelisted_extensions)
         }
       end
 
