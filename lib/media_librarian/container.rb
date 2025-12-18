@@ -156,8 +156,9 @@ module MediaLibrarian
       tracker_configs.each_with_object({}) do |(tracker_name, opts), memo|
         api_url = opts['api_url']
         api_key = opts['api_key']
-        if [api_url, api_key].any? { |value| value.to_s.strip.empty? || value.to_s.match?(/torznab_api_(url|key)/) }
-          speaker.speak_up("Skipping tracker '#{tracker_name}': set a real api_url/api_key in trackers/#{tracker_name}.yml.") if speaker.respond_to?(:speak_up)
+        url_template = opts['url_template']
+        if [api_url, api_key, url_template].any? { |value| placeholder_value?(value) }
+          speaker.speak_up("Skipping tracker '#{tracker_name}': update trackers/#{tracker_name}.yml placeholders.") if speaker.respond_to?(:speak_up)
           next
         end
 
@@ -260,6 +261,14 @@ module MediaLibrarian
       else
         value
       end
+    end
+
+    def placeholder_value?(value)
+      return true if value.to_s.strip.empty?
+
+      value.to_s.match?(/torznab_api_(url|key)/) ||
+        %w[https://torznab.example/api replace-with-api-key].include?(value) ||
+        value.to_s.include?('tracker.example')
     end
 
     def deep_dup(value)

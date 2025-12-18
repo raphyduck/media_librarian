@@ -1,6 +1,6 @@
-api_url: "https://torznab.example/api" # ignored if left as the torznab_api_url placeholder
-api_key: "replace-with-api-key" # ignored if left as the torznab_api_key placeholder
-url_template: "https://tracker.example/search?title=%title%&year=%year%&imdb=%imdbid%"
+api_url: "https://torznab.example/api" # ignored if left as https://torznab.example/api
+api_key: "replace-with-api-key" # ignored if left as replace-with-api-key
+url_template: "https://tracker.example/search?title=%title%&year=%year%&imdb=%imdbid%" # ignored if left pointing to tracker.example
 assume_quality: "vf" #Takes precedence on search qualities
 seed_time: 24
 site_specific_kw:
