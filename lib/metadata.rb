@@ -313,6 +313,13 @@ class Metadata
           raw_items = items
           raw_info = raw_items.nil? ? 'nil' : "#{raw_items.class}[#{raw_items.respond_to?(:size) ? raw_items.size : '?'}]"
           MediaLibrarian.app.speaker.speak_up("[#{provider_call}] <= raw #{raw_info}", 0) if Env.debug?
+          if Env.debug? && raw_items
+            Array(raw_items).each_with_index do |raw, idx|
+              summary = raw.is_a?(Hash) ? (raw.dig('movie', 'title') || raw['title'] || raw['name']) : raw
+              ids = raw.is_a?(Hash) ? (raw.dig('movie', 'ids') || raw['ids']) : nil
+              MediaLibrarian.app.speaker.speak_up("[#{provider_call}] raw[#{idx}] #{summary.inspect} ids=#{ids.inspect}", 0)
+            end
+          end
           items = Array(items).compact
           items.map! do |m|
             v = if m.is_a?(Hash) && m['movie']
@@ -328,6 +335,7 @@ class Metadata
                     MediaLibrarian.app.speaker.tell_error(StandardError.new("[#{provider_call}] unexpected payload #{v.inspect}"), title_norm)
                     next nil
                   end
+                  MediaLibrarian.app.speaker.speak_up("[#{provider_call}] detail fetch #{detail_ids}", 0) if Env.debug?
                   detail_item = item_fetch_method.call(detail_ids)
                   detail_item = detail_item && detail_item[1]
                   if detail_item.nil?
