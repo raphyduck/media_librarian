@@ -46,7 +46,7 @@ VALID_MEDIA_TYPES = {
     :video => ['movies', 'shows']
 }
 EXTENSIONS_TYPE= {
-    :video => %w(mkv avi mp4 mpg m4v mpg divx iso ts m2ts)
+    :video => %w[mkv avi mp4 mpg m4v divx iso ts m2ts].uniq.freeze
 }
 VALID_VIDEO_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
