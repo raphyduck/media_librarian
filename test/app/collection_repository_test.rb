@@ -107,6 +107,20 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal ['/tmp/media/meta.mkv'], entry[:files]
   end
 
+  def test_search_matches_titles_from_media_and_calendar_entries
+    insert_media([
+      { imdb_id: 'ttlocal', title: 'Unique Title', local_path: '/tmp/media/local.mkv' },
+      { imdb_id: 'ttcalendar', local_path: '/tmp/media/calendar.mkv' }
+    ])
+    insert_calendar_entry(imdb_id: 'ttcalendar', title: 'Calendar Highlight')
+
+    local_result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, search: 'unique')
+    assert_equal ['Unique Title'], local_result[:entries].map { |entry| entry[:title] }
+
+    calendar_result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, search: ' highlight ')
+    assert_equal ['Calendar Highlight'], calendar_result[:entries].map { |entry| entry[:title] }
+  end
+
   private
 
   def attach_db(db)
@@ -147,6 +161,7 @@ class CollectionRepositoryTest < Minitest::Test
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         media_type TEXT,
         imdb_id TEXT,
+        title TEXT,
         local_path TEXT,
         created_at TEXT
       )

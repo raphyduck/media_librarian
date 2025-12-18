@@ -63,8 +63,15 @@ class CollectionRepository
   def apply_search(dataset, search)
     return dataset unless dataset && search.to_s.strip != ''
 
-    pattern = "%#{search.strip}%"
-    dataset.where(Sequel.ilike(:local_path, pattern) | Sequel.ilike(:imdb_id, pattern))
+    pattern = "%#{search.to_s.strip}%"
+    conditions = [
+      Sequel.ilike(Sequel[:local_media][:local_path], pattern),
+      Sequel.ilike(Sequel[:local_media][:imdb_id], pattern),
+      Sequel.ilike(Sequel[:local_media][:title], pattern)
+    ]
+    conditions << Sequel.ilike(Sequel[:calendar_entries][:title], pattern) if calendar_table?
+
+    dataset.where(Sequel.|(*conditions))
   end
 
   def clamp_per_page(per_page)
@@ -90,7 +97,7 @@ class CollectionRepository
     dataset
       .left_join(:calendar_entries, Sequel[:calendar_entries][:imdb_id] => Sequel[:local_media][:imdb_id])
       .select_append(
-        Sequel[:calendar_entries][:title],
+        Sequel[:calendar_entries][:title].as(:calendar_title),
         Sequel[:calendar_entries][:release_date],
         Sequel[:calendar_entries][:poster_url],
         Sequel[:calendar_entries][:backdrop_url],
@@ -145,7 +152,7 @@ class CollectionRepository
   end
 
   def derived_title(row)
-    fetch(row, :title) || File.basename(fetch(row, :local_path).to_s)
+    fetch(row, :calendar_title) || fetch(row, :title) || File.basename(fetch(row, :local_path).to_s)
   end
 
   def build_released_at(value)
