@@ -154,7 +154,12 @@ module MediaLibrarian
 
     def build_trackers
       tracker_configs.each_with_object({}) do |(tracker_name, opts), memo|
-        next unless opts['api_url'] && opts['api_key']
+        api_url = opts['api_url']
+        api_key = opts['api_key']
+        if [api_url, api_key].any? { |value| value.to_s.strip.empty? || value.to_s.match?(/torznab_api_(url|key)/) }
+          speaker.speak_up("Skipping tracker '#{tracker_name}': set a real api_url/api_key in trackers/#{tracker_name}.yml.") if speaker.respond_to?(:speak_up)
+          next
+        end
 
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue StandardError => e
