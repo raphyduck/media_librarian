@@ -164,7 +164,18 @@ module MediaLibrarian
 
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue StandardError => e
-        speaker.tell_error(e, Utils.arguments_dump(binding)) if speaker.respond_to?(:tell_error)
+        if speaker.respond_to?(:speak_up)
+          api_key_present = !api_key.to_s.empty?
+          speaker.speak_up("Tracker config error: name=#{tracker_name} file=trackers/#{tracker_name}.yml api_url=#{api_url.inspect} url_template=#{url_template.inspect} api_key_present=#{api_key_present}")
+        end
+        if speaker.respond_to?(:tell_error)
+          args = begin
+            Utils.arguments_dump(binding)
+          rescue StandardError
+            nil
+          end
+          speaker.tell_error(e, args)
+        end
       end
     end
 
