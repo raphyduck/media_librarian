@@ -166,9 +166,12 @@ module MediaLibrarian
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue Torznab::Errors::XmlError
         if speaker.respond_to?(:speak_up)
-          api_key_present = !api_key.to_s.empty?
-          caps_url, status, content_type, body_prefix = fetch_caps_diagnostic(api_url)
-          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} api_url=#{caps_url} status=#{status} content_type=#{content_type.inspect} body_prefix=#{body_prefix.inspect} api_key_present=#{api_key_present}")
+          body = fetch_caps_diagnostic(api_url)
+          error = Hash.from_xml(body.to_s) || {}
+          error = error.dig(:caps, :error) || error[:error] || {}
+          code = error.is_a?(Hash) ? error[:code] : nil
+          description = error.is_a?(Hash) ? error[:description] : nil
+          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect}")
         end
       rescue StandardError => e
         if speaker.respond_to?(:speak_up)
@@ -317,14 +320,10 @@ module MediaLibrarian
 
     def fetch_caps_diagnostic(api_url)
       uri = URI.parse(api_url.to_s)
-      redacted = uri.dup
-      redacted.query = nil
       response = Net::HTTP.get_response(uri)
-      body_prefix = response.body.to_s.gsub(/\s+/, ' ')[0, 200]
-      [redacted.to_s, response.code, response['content-type'], body_prefix]
+      response.body.to_s
     rescue StandardError
-      redacted = api_url.to_s.sub(/\?.*/, '')
-      [redacted, 'n/a', nil, '']
+      ''
     end
   end
 end
