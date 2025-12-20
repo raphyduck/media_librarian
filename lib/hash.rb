@@ -54,6 +54,7 @@ class Hash
     def from_xml(xml_io)
       begin
         result = Nokogiri::XML(xml_io)
+        return {} if result.root.nil?
         return {result.root.name.to_sym => xml_node_to_hash(result.root)}
       rescue Exception => e
         if MediaLibrarian.instance_variable_defined?(:@application)
