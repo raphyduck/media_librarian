@@ -327,7 +327,9 @@ module MediaLibrarian
 
     def fetch_caps_diagnostic(api_url)
       uri = URI.parse(api_url.to_s)
-      response = Net::HTTP.get_response(uri)
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
+        http.get(uri)
+      end
       body = response.body
       body_str = body.to_s
       prefix = body_str.length > 400 ? "#{body_str[0, 400]}...[truncated]" : body_str
