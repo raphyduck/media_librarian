@@ -220,6 +220,7 @@ module MediaLibrarian
           nil
         end
         download_criteria[:whitelisted_extensions] = FileUtils.get_valid_extensions(category) unless download_criteria[:whitelisted_extensions].is_a?(Array)
+        download_criteria[:whitelisted_extensions] = Array(download_criteria[:whitelisted_extensions]).flatten.compact.map(&:to_s).uniq
         download_criteria.merge(post_actions)
       end
 
