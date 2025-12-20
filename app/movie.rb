@@ -182,7 +182,7 @@ class Movie
           movie = Cache.object_pack(tmdb_movie, 1)
           src = 'tmdb'
         elsif Env.debug?
-          app.speaker.speak_up("TMDb lookup returned nil (id #{ids['tmdb'] || ids['imdb']}, source tmdb)")
+          app.speaker.speak_up("tmdb detail lookup returned nil for id=#{ids['tmdb'] || ids['imdb']}, source=tmdb")
         end
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
