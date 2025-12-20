@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'env'
+require 'httparty' unless defined?(HTTParty)
 
 class HttpDebugLogger
   MAX_BODY = 250
@@ -80,4 +81,49 @@ class HttpDebugLogger
 
     "#{base.chomp('/')}/#{path.to_s.sub(%r{\A/}, '')}"
   end
+
+  def self.provider_for(url)
+    text = url.to_s
+    return 'TMDb' if text.match?(/themoviedb\.org/i)
+    return 'Trakt' if text.match?(/trakt\.tv/i)
+
+    nil
+  end
+
+  def self.payload_for(options)
+    return nil unless options
+
+    options[:body] || options[:query] || options[:payload]
+  end
+
+  def self.full_url(client, path)
+    url = path.to_s
+    return url if url.match?(/\Ahttps?:\/\//i)
+
+    base = client.respond_to?(:base_uri) ? client.base_uri : nil
+    build_url(base, url)
+  end
+
+  module HTTPartyWrapper
+    %i[get post put delete].each do |method|
+      define_method(method) do |path, options = {}, &block|
+        full_url = HttpDebugLogger.full_url(self, path)
+        provider = HttpDebugLogger.provider_for(full_url)
+        return super(path, options, &block) unless provider && Env.debug?
+
+        payload = HttpDebugLogger.payload_for(options)
+        HttpDebugLogger.log_request(provider: provider, response: nil, method: method, url: full_url, payload: payload)
+        response = super(path, options, &block)
+        HttpDebugLogger.log_request(provider: provider, response: response, method: method, url: full_url, payload: payload)
+        response
+      rescue StandardError
+        HttpDebugLogger.log_request(provider: provider, response: nil, method: method, url: full_url, payload: payload)
+        raise
+      end
+    end
+  end
+end
+
+if defined?(HTTParty::ClassMethods) && !(HTTParty::ClassMethods < HttpDebugLogger::HTTPartyWrapper)
+  HTTParty::ClassMethods.prepend(HttpDebugLogger::HTTPartyWrapper)
 end

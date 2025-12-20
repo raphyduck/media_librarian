@@ -131,6 +131,7 @@ module MediaLibrarian
       require 'mechanize' unless defined?(Mechanize)
       require 'deluge/rpc' unless defined?(Deluge::Rpc::Client)
       require 'mediainfo' unless defined?(MediaInfo)
+      require_relative '../http_debug_logger'
       Numeric.class_eval do
         time_units = {
           second: 1,
