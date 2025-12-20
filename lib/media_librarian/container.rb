@@ -166,7 +166,7 @@ module MediaLibrarian
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue Torznab::Errors::XmlError
         if speaker.respond_to?(:speak_up)
-          body, body_prefix = fetch_caps_diagnostic(api_url)
+          body, body_prefix, status, content_type, body_empty = fetch_caps_diagnostic(api_url)
           body_str = body.to_s
           error = begin
             body_str.empty? ? {} : (Hash.from_xml(body_str) || {})
@@ -176,9 +176,8 @@ module MediaLibrarian
           error = error.dig(:caps, :error) || error[:error] || {}
           code = error.is_a?(Hash) ? error[:code] : nil
           description = error.is_a?(Hash) ? error[:description] : nil
-          body_empty = body_str.empty? ? ' body_empty=true' : ''
           body_prefix_log = body_prefix.to_s.empty? ? '' : " body_prefix=#{body_prefix.inspect}"
-          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect}#{body_prefix_log}#{body_empty}")
+          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect} status=#{status.inspect} content_type=#{content_type.inspect} body_empty=#{body_empty}#{body_prefix_log}")
         end
       rescue StandardError => e
         if speaker.respond_to?(:speak_up)
@@ -332,10 +331,11 @@ module MediaLibrarian
       end
       body = response.body
       body_str = body.to_s
+      body_empty = body_str.empty?
       prefix = body_str.length > 400 ? "#{body_str[0, 400]}...[truncated]" : body_str
-      [body, prefix]
+      [body, prefix, response.code, response['content-type'], body_empty]
     rescue StandardError
-      [nil, '']
+      [nil, '', nil, nil, true]
     end
   end
 end
