@@ -4,6 +4,55 @@ require 'trakt'
 
 require_relative '../boot/librarian'
 require_relative 'db'
+require_relative '../lib/http_debug_logger'
+
+if defined?(Trakt::Request)
+  class << Trakt::Request
+    unless instance_variable_defined?(:@http_debug_wrapped)
+      @http_debug_wrapped = true
+      alias_method :http_debug_original_get, :get
+      alias_method :http_debug_original_post, :post
+
+      def get(path, options = {}, &block)
+        url = HttpDebugLogger.build_url(base_uri, path)
+        payload = options[:body] || options[:query] || options[:payload]
+        HttpDebugLogger.log(provider: 'Trakt', method: :get, url: url, payload: payload)
+
+        response = http_debug_original_get(path, options, &block)
+        HttpDebugLogger.log_request(provider: 'Trakt', response: response, method: :get, url: url, payload: payload)
+        response
+      rescue StandardError => e
+        HttpDebugLogger.log(
+          provider: 'Trakt',
+          method: :get,
+          url: url,
+          payload: payload,
+          response: "exception #{e.class}: #{e.message}"
+        )
+        raise
+      end
+
+      def post(path, options = {}, &block)
+        url = HttpDebugLogger.build_url(base_uri, path)
+        payload = options[:body] || options[:query] || options[:payload]
+        HttpDebugLogger.log(provider: 'Trakt', method: :post, url: url, payload: payload)
+
+        response = http_debug_original_post(path, options, &block)
+        HttpDebugLogger.log_request(provider: 'Trakt', response: response, method: :post, url: url, payload: payload)
+        response
+      rescue StandardError => e
+        HttpDebugLogger.log(
+          provider: 'Trakt',
+          method: :post,
+          url: url,
+          payload: payload,
+          response: "exception #{e.class}: #{e.message}"
+        )
+        raise
+      end
+    end
+  end
+end
 
 app = MediaLibrarian::Boot.application
 trakt_config = app.config['trakt']
