@@ -181,6 +181,8 @@ class Movie
         if tmdb_movie
           movie = Cache.object_pack(tmdb_movie, 1)
           src = 'tmdb'
+        elsif Env.debug?
+          app.speaker.speak_up("TMDb lookup returned nil (id #{ids['tmdb'] || ids['imdb']}, source tmdb)")
         end
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
@@ -223,9 +225,11 @@ class Movie
     Timeout.timeout(15) { block.call }
   rescue *NETWORK_TIMEOUT_ERRORS => e
     app.speaker.tell_error(e, "Movie.movie_get #{source} lookup timed out")
+    app.speaker.speak_up("Movie.movie_get #{source} lookup #{e.class}: #{e.message}") if Env.debug?
     nil
   rescue StandardError => e
     app.speaker.tell_error(e, "Movie.movie_get #{source} lookup failed")
+    app.speaker.speak_up("Movie.movie_get #{source} lookup #{e.class}: #{e.message}") if Env.debug?
     nil
   end
 
