@@ -167,11 +167,18 @@ module MediaLibrarian
       rescue Torznab::Errors::XmlError
         if speaker.respond_to?(:speak_up)
           body, body_prefix = fetch_caps_diagnostic(api_url)
-          error = Hash.from_xml(body) || {}
+          body_str = body.to_s
+          error = begin
+            body_str.empty? ? {} : (Hash.from_xml(body_str) || {})
+          rescue StandardError
+            {}
+          end
           error = error.dig(:caps, :error) || error[:error] || {}
           code = error.is_a?(Hash) ? error[:code] : nil
           description = error.is_a?(Hash) ? error[:description] : nil
-          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect} body_prefix=#{body_prefix.inspect}")
+          body_empty = body_str.empty? ? ' body_empty=true' : ''
+          body_prefix_log = body_prefix.to_s.empty? ? '' : " body_prefix=#{body_prefix.inspect}"
+          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect}#{body_prefix_log}#{body_empty}")
         end
       rescue StandardError => e
         if speaker.respond_to?(:speak_up)
@@ -321,11 +328,12 @@ module MediaLibrarian
     def fetch_caps_diagnostic(api_url)
       uri = URI.parse(api_url.to_s)
       response = Net::HTTP.get_response(uri)
-      body = response.body.to_s
-      prefix = body.length > 400 ? "#{body[0, 400]}...[truncated]" : body
+      body = response.body
+      body_str = body.to_s
+      prefix = body_str.length > 400 ? "#{body_str[0, 400]}...[truncated]" : body_str
       [body, prefix]
     rescue StandardError
-      ['', '']
+      [nil, '']
     end
   end
 end
