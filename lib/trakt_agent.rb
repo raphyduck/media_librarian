@@ -60,12 +60,12 @@ class TraktAgent
                      response
                    end
     url = trakt_request_url(target, response_obj)
-    HttpDebugLogger.log(
+    HttpDebugLogger.log_request(
       provider: 'Trakt',
-      method: 'GET',
-      url: url || 'unknown',
-      payload: payload,
       response: response_obj,
+      method: 'GET',
+      url: url,
+      payload: payload,
       speaker: MediaLibrarian.app.speaker
     )
   end
