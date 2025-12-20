@@ -10,7 +10,9 @@ class HttpDebugLogger
 
     speaker ||= MediaLibrarian.app.speaker if defined?(MediaLibrarian)
     payload_text = payload.nil? ? 'nil' : payload.inspect
-    speaker&.speak_up("#{provider} #{method} #{url} payload=#{payload_text} response=#{response_summary(response)}", 0)
+    message = "#{provider} #{method} #{url} payload=#{payload_text}"
+    message += " response=#{response_summary(response)}" if response
+    speaker&.speak_up(message, 0)
   end
 
   def self.log_request(provider:, response:, method: nil, url: nil, payload: nil, speaker: nil)
@@ -70,5 +72,12 @@ class HttpDebugLogger
     return request.method if request.respond_to?(:method)
 
     nil
+  end
+
+  def self.build_url(base_uri, path)
+    base = base_uri.to_s
+    return path.to_s if base.empty?
+
+    "#{base.chomp('/')}/#{path.to_s.sub(%r{\A/}, '')}"
   end
 end
