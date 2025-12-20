@@ -229,12 +229,12 @@ class Movie
     if payload.is_a?(Hash) && !payload.empty?
       url = "#{url}?#{URI.encode_www_form(payload)}"
     end
-    HttpDebugLogger.log(
+    HttpDebugLogger.log_request(
       provider: 'TMDb',
+      response: response,
       method: 'GET',
       url: url,
       payload: payload,
-      response: response,
       speaker: app.speaker
     )
     response

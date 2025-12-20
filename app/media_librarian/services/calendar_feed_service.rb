@@ -1090,12 +1090,12 @@ module MediaLibrarian
         end
 
         def log_tmdb_request(path, params, response)
-          HttpDebugLogger.log(
+          HttpDebugLogger.log_request(
             provider: 'TMDb',
+            response: response,
             method: 'GET',
             url: tmdb_url(path, params),
             payload: params,
-            response: response,
             speaker: @speaker
           )
           response
