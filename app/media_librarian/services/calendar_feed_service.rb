@@ -5,7 +5,9 @@ require 'time'
 require 'themoviedb'
 require 'json'
 require 'httparty'
+require 'uri'
 require_relative '../../../init/global'
+require_relative '../../../lib/http_debug_logger'
 require_relative '../../../lib/omdb_api'
 require_relative '../../../lib/metadata'
 require_relative '../../../lib/simple_speaker'
@@ -1041,22 +1043,28 @@ module MediaLibrarian
             begin
               case kind
               when :movie
-                return client::Movie.upcoming if path == '/movie/upcoming' && client.const_defined?(:Movie) &&
-                                                 client::Movie.respond_to?(:upcoming)
-                return client::Movie.now_playing if path == '/movie/now_playing' && client.const_defined?(:Movie) &&
-                                                    client::Movie.respond_to?(:now_playing)
+                if path == '/movie/upcoming' && client.const_defined?(:Movie) && client::Movie.respond_to?(:upcoming)
+                  return log_tmdb_request(path, params, client::Movie.upcoming)
+                end
+                if path == '/movie/now_playing' && client.const_defined?(:Movie) && client::Movie.respond_to?(:now_playing)
+                  return log_tmdb_request(path, params, client::Movie.now_playing)
+                end
               when :tv
-                return client::TV.on_the_air if path == '/tv/on_the_air' && client.const_defined?(:TV) &&
-                                                 client::TV.respond_to?(:on_the_air)
-                return client::TV.airing_today if path == '/tv/airing_today' && client.const_defined?(:TV) &&
-                                                    client::TV.respond_to?(:airing_today)
+                if path == '/tv/on_the_air' && client.const_defined?(:TV) && client::TV.respond_to?(:on_the_air)
+                  return log_tmdb_request(path, params, client::TV.on_the_air)
+                end
+                if path == '/tv/airing_today' && client.const_defined?(:TV) && client::TV.respond_to?(:airing_today)
+                  return log_tmdb_request(path, params, client::TV.airing_today)
+                end
               end
             rescue ArgumentError
               nil
             end
           end
 
-          return client::Api.request(path, params) if client.const_defined?(:Api) && client::Api.respond_to?(:request)
+          if client.const_defined?(:Api) && client::Api.respond_to?(:request)
+            return log_tmdb_request(path, params, client::Api.request(path, params))
+          end
 
           http_request(path, params)
         rescue StandardError => e
@@ -1067,6 +1075,7 @@ module MediaLibrarian
         def http_request(path, params)
           query = params.merge(api_key: @api_key, language: language, region: region).compact
           response = HTTParty.get("https://api.themoviedb.org/3#{path}", query: query)
+          log_tmdb_request(path, query, response)
           return JSON.parse(response.body) if response.success?
 
           report_error(StandardError.new("TMDB #{response.code}"), "Calendar TMDB fetch failed for #{path}")
@@ -1078,6 +1087,25 @@ module MediaLibrarian
 
         def release_from(item, kind)
           parse_date(value_from(item, kind == :movie ? :release_date : :first_air_date))
+        end
+
+        def log_tmdb_request(path, params, response)
+          HttpDebugLogger.log(
+            provider: 'TMDb',
+            method: 'GET',
+            url: tmdb_url(path, params),
+            payload: params,
+            response: response,
+            speaker: @speaker
+          )
+          response
+        end
+
+        def tmdb_url(path, params)
+          base = "https://api.themoviedb.org/3#{path}"
+          return base if params.nil? || params.empty?
+
+          "#{base}?#{URI.encode_www_form(params)}"
         end
 
         def fetch_paths(kind, date_range)
