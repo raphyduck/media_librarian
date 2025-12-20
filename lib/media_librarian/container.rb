@@ -166,12 +166,12 @@ module MediaLibrarian
         memo[tracker_name] = TorznabTracker.new(opts, tracker_name)
       rescue Torznab::Errors::XmlError
         if speaker.respond_to?(:speak_up)
-          body = fetch_caps_diagnostic(api_url)
-          error = Hash.from_xml(body.to_s) || {}
+          body, body_prefix = fetch_caps_diagnostic(api_url)
+          error = Hash.from_xml(body) || {}
           error = error.dig(:caps, :error) || error[:error] || {}
           code = error.is_a?(Hash) ? error[:code] : nil
           description = error.is_a?(Hash) ? error[:description] : nil
-          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect}")
+          speaker.speak_up("Tracker caps XML error: name=#{tracker_name} file=trackers/#{tracker_name}.yml code=#{code.inspect} description=#{description.inspect} body_prefix=#{body_prefix.inspect}")
         end
       rescue StandardError => e
         if speaker.respond_to?(:speak_up)
@@ -321,9 +321,11 @@ module MediaLibrarian
     def fetch_caps_diagnostic(api_url)
       uri = URI.parse(api_url.to_s)
       response = Net::HTTP.get_response(uri)
-      response.body.to_s
+      body = response.body.to_s
+      prefix = body.length > 400 ? "#{body[0, 400]}...[truncated]" : body
+      [body, prefix]
     rescue StandardError
-      ''
+      ['', '']
     end
   end
 end
