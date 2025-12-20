@@ -30,7 +30,14 @@ class TraktAgent
 
     response
   rescue StandardError => e
-    MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.#{name}")
+    segments = name.to_s.split('__', 2)
+    args_formatted = DataUtils.format_string(args).join(', ')
+    info = []
+    info << "target=#{segments[0]}" if segments[0]
+    info << "method=#{segments[1]}" if segments[1]
+    info << "args=#{args_formatted}" unless args_formatted.empty?
+    suffix = info.empty? ? '' : " #{info.join(' ')}"
+    MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.#{name}#{suffix}")
   end
 
   def self.fetch_calendar_entries(type, start_date, days, fetcher: nil)
