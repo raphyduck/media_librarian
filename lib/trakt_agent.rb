@@ -1,5 +1,3 @@
-require_relative 'http_debug_logger'
-
 class TraktAgent
   def self.calendars__all_movies(start_date, days)
     fetch_calendar_entries(:movies, start_date, days)
@@ -15,8 +13,6 @@ class TraktAgent
 
     target = MediaLibrarian.app.trakt.public_send(segments[0])
     response = target.public_send(segments[1], *args)
-
-    log_trakt_request(target, response, args)
 
     response
   rescue StandardError => e
@@ -35,7 +31,6 @@ class TraktAgent
     return unless calendar
 
     response = call_calendar(calendar, type, start_date, days)
-    log_trakt_request(calendar, response, { type: type, start_date: start_date, days: days })
     response
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, "TraktAgent.calendars__#{type}")
@@ -53,34 +48,4 @@ class TraktAgent
     end
   end
 
-  def self.log_trakt_request(target, response, payload)
-    response_obj = if target.respond_to?(:last_response)
-                     target.last_response
-                   else
-                     response
-                   end
-    url = trakt_request_url(target, response_obj)
-    HttpDebugLogger.log_request(
-      provider: 'Trakt',
-      response: response_obj,
-      method: 'GET',
-      url: url,
-      payload: payload,
-      speaker: MediaLibrarian.app.speaker
-    )
-  end
-
-  def self.trakt_request_url(target, response)
-    if response.respond_to?(:request) && response.request.respond_to?(:uri)
-      return response.request.uri.to_s
-    end
-    return target.last_request_path if target.respond_to?(:last_request_path)
-    return target.endpoint if target.respond_to?(:endpoint)
-    return target.url if target.respond_to?(:url)
-
-    if target.respond_to?(:base_url) && target.respond_to?(:path)
-      return "#{target.base_url}#{target.path}"
-    end
-    target.base_url if target.respond_to?(:base_url)
-  end
 end

@@ -112,12 +112,11 @@ class HttpDebugLogger
         return super(path, options, &block) unless provider && Env.debug?
 
         payload = HttpDebugLogger.payload_for(options)
-        HttpDebugLogger.log_request(provider: provider, response: nil, method: method, url: full_url, payload: payload)
         response = super(path, options, &block)
         HttpDebugLogger.log_request(provider: provider, response: response, method: method, url: full_url, payload: payload)
         response
-      rescue StandardError
-        HttpDebugLogger.log_request(provider: provider, response: nil, method: method, url: full_url, payload: payload)
+      rescue StandardError => e
+        HttpDebugLogger.log(provider: provider, method: method, url: full_url, payload: payload, response: "exception #{e.class}: #{e.message}")
         raise
       end
     end
