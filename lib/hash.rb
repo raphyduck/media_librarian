@@ -56,7 +56,13 @@ class Hash
         result = Nokogiri::XML(xml_io)
         return {result.root.name.to_sym => xml_node_to_hash(result.root)}
       rescue Exception => e
-        MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+        if MediaLibrarian.instance_variable_defined?(:@application)
+          app = MediaLibrarian.instance_variable_get(:@application)
+          app.speaker.tell_error(e, Utils.arguments_dump(binding)) if app&.respond_to?(:speaker)
+        else
+          Kernel.warn(e.full_message)
+        end
+        nil
       end
     end
 
