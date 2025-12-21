@@ -341,7 +341,10 @@ class Metadata
                   if detail_item.nil?
                     msg = "[#{provider_call}] detail lookup returned nil for ids #{detail_ids}"
                     Env.debug? ? MediaLibrarian.app.speaker.speak_up(msg, 0) : MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), title_norm)
-                    v.merge('ids' => detail_ids, 'name' => v['name'] || v['title'])
+                    v['ids'] = detail_ids
+                    v['name'] ||= v['title']
+                    v['year'] ||= v['release_date'].to_s[0,4]
+                    v
                   else
                     detail_item
                   end
