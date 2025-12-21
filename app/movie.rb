@@ -165,6 +165,7 @@ class Movie
   end.freeze
 
   def self.movie_get(ids, type = 'movie_get', movie = nil, app: self.app)
+    ids = ids.transform_keys(&:to_s)
     cache_name = ids.map { |k, v| v.to_s.empty? ? nil : "#{k}#{v}" }.compact.join
     return '', nil if cache_name.empty?
 
