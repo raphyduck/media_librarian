@@ -175,14 +175,14 @@ class Movie
     full_save = movie
     case type
     when 'movie_get'
-      if movie.nil? && (ids['tmdb'].to_s != '' || ids['imdb'].to_s != '')
-        tmdb_id = ids['tmdb'] || ids['imdb']
+      if movie.nil? && ids['tmdb'].to_s != ''
+        tmdb_id = ids['tmdb']
         tmdb_movie = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(tmdb_id) }
         if tmdb_movie
           movie = Cache.object_pack(tmdb_movie, 1)
           src = 'tmdb'
         elsif Env.debug?
-          app.speaker.speak_up("tmdb detail lookup returned nil for id=#{ids['tmdb'] || ids['imdb']}, source=tmdb")
+          app.speaker.speak_up("tmdb detail lookup returned nil for id=#{ids['tmdb']}, source=tmdb")
         end
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
