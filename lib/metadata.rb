@@ -286,7 +286,8 @@ class Metadata
   end
 
   def self.media_lookup(type, title, cache_category, keys, item_fetch_method, search_providers, no_prompt = 0, original_filename = '', ids = {}, force_refresh: 0)
-    cache_name = title.to_s + ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join + original_filename.to_s
+    ids_part = ids.map { |k, v| k.to_s + v.to_s if v.to_s != '' }.join
+    cache_name = [title, ids_part, original_filename].map(&:to_s).join('|')
     exact_title, item = title, nil
     cached = Cache.cache_get(cache_category, cache_name, 120, force_refresh)
     return cached if cached && cached[1] && force_refresh.to_i == 0
