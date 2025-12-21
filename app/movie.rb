@@ -1,8 +1,5 @@
 require 'timeout'
 require 'socket'
-require 'uri'
-require_relative '../lib/http_debug_logger'
-
 class Movie
   include MediaLibrarian::AppContainerSupport
 
@@ -180,9 +177,7 @@ class Movie
     when 'movie_get'
       if movie.nil? && (ids['tmdb'].to_s != '' || ids['imdb'].to_s != '')
         tmdb_id = ids['tmdb'] || ids['imdb']
-        tmdb_movie = lookup_with_timeout(app, 'tmdb') do
-          log_tmdb_request("/movie/#{tmdb_id}", tmdb_id, Tmdb::Movie.detail(tmdb_id), app)
-        end
+        tmdb_movie = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(tmdb_id) }
         if tmdb_movie
           movie = Cache.object_pack(tmdb_movie, 1)
           src = 'tmdb'
@@ -209,7 +204,7 @@ class Movie
       end
       _, m = movie_get({ 'tmdb' => ids['tmdb'] }, app: app)
       if m&.set.to_s != ''
-        collection_detail = log_tmdb_request("/collection/#{m.set.id}", m.set.id, Tmdb::Collection.detail(m.set.id), app)
+        collection_detail = Tmdb::Collection.detail(m.set.id)
         movie = collection_detail.is_a?(Hash) ? MoviesSet.new(Cache.object_pack(collection_detail, 1), app: app) : collection_detail
       end
       title = movie.name if movie&.name.to_s != ''
@@ -222,22 +217,6 @@ class Movie
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add(type, cache_name, ['', nil], nil)
     return '', nil
-  end
-
-  def self.log_tmdb_request(path, payload, response, app)
-    url = "https://api.themoviedb.org/3#{path}"
-    if payload.is_a?(Hash) && !payload.empty?
-      url = "#{url}?#{URI.encode_www_form(payload)}"
-    end
-    HttpDebugLogger.log_request(
-      provider: 'TMDb',
-      response: response,
-      method: 'GET',
-      url: url,
-      payload: payload,
-      speaker: app.speaker
-    )
-    response
   end
 
   def self.lookup_with_timeout(app, source, &block)
@@ -270,6 +249,6 @@ class Movie
   end
 
   def self.tmdb_search(title)
-    log_tmdb_request('/search/movie', { query: title }, Tmdb::Movie.find(title), app)
+    Tmdb::Movie.find(title)
   end
 end
