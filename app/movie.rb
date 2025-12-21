@@ -181,8 +181,17 @@ class Movie
         if tmdb_movie
           movie = Cache.object_pack(tmdb_movie, 1)
           src = 'tmdb'
+          imdb_id = tmdb_movie['imdb_id']
+          ids['imdb'] = imdb_id if ids['imdb'].to_s == '' && imdb_id.to_s != ''
         elsif Env.debug?
           app.speaker.speak_up("tmdb detail lookup returned nil for id=#{ids['tmdb']}, source=tmdb")
+        end
+      end
+      if (movie.nil? || movie['title'].nil?)
+        if ids['imdb'].to_s == '' && ids['tmdb'].to_s != ''
+          tmdb_ids = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.external_ids(ids['tmdb']) }
+          imdb_id = tmdb_ids && (tmdb_ids['imdb_id'] || tmdb_ids.dig('external_ids', 'imdb_id'))
+          ids['imdb'] = imdb_id if imdb_id.to_s != ''
         end
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
