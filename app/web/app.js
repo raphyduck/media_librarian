@@ -223,6 +223,9 @@ const apiConfigFormState = {
   mode: 'form',
   inputs: [],
 };
+const trackerFormState = {
+  inputs: [],
+};
 const API_CONFIG_FORM_SCHEMA = [
   {
     title: 'Réseau',
@@ -271,6 +274,30 @@ const API_CONFIG_FORM_SCHEMA = [
       { key: 'api_token', label: 'API token', type: 'password', toggle: true },
       { key: 'control_token', label: 'Control token', type: 'password', toggle: true },
     ],
+  },
+];
+const TRACKER_FORM_SCHEMA = [
+  {
+    title: 'Accès',
+    section: null,
+    fields: [
+      { key: 'api_url', label: 'API URL', type: 'text', example: 'https://torznab.example/api' },
+      { key: 'api_key', label: 'API key', type: 'text', example: 'replace-with-api-key' },
+      {
+        key: 'url_template',
+        label: 'URL de recherche',
+        type: 'text',
+        example: 'https://tracker.example/search?title=%title%&year=%year%&imdb=%imdbid%',
+        description: 'Placeholders : %title%, %year%, %imdbid%.',
+      },
+      { key: 'assume_quality', label: 'Qualité présumée', type: 'text', example: 'vf' },
+      { key: 'seed_time', label: 'Seed time (h)', type: 'number', example: 24 },
+    ],
+  },
+  {
+    title: 'Spécifique au site',
+    section: 'site_specific_kw',
+    fields: [{ key: 'movies', label: 'Mot-clé movies', type: 'text', example: 'multi' }],
   },
 ];
 
@@ -495,8 +522,37 @@ function buildConfigForm(containerId, formState, schema, editorKey) {
   });
 }
 
-function hydrateConfigForm(content, formState) {
-  const data = parseConfigYaml(content);
+function mergeConfigDefaults(data, defaults = {}) {
+  if (!defaults || typeof defaults !== 'object') {
+    return data;
+  }
+  const merged = { ...defaults, ...data };
+  Object.keys(defaults).forEach((key) => {
+    const value = defaults[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      merged[key] = { ...value, ...(data[key] || {}) };
+    }
+  });
+  return merged;
+}
+
+function buildSchemaDefaults(schema = []) {
+  const data = {};
+  schema.forEach((section) => {
+    const target = section.section ? (data[section.section] = {}) : data;
+    section.fields.forEach((field) => {
+      if (field.example !== undefined) {
+        target[field.key] = field.example;
+      }
+    });
+  });
+  return data;
+}
+
+const TRACKER_FORM_DEFAULTS = buildSchemaDefaults(TRACKER_FORM_SCHEMA);
+
+function hydrateConfigForm(content, formState, defaults = {}) {
+  const data = mergeConfigDefaults(parseConfigYaml(content), defaults);
   formState.inputs.forEach(({ input, field, section }) => {
     const source = section ? data[section] || {} : data;
     const value = source[field.key];
@@ -1177,6 +1233,23 @@ function setupFileEditors() {
     reloadMessage: 'Fichier tracker rechargé.',
     disableWhenEmpty: true,
     selectionKeys: ['name', 'tracker'],
+    afterLoad: (editor, transformed) => {
+      const form = document.getElementById('trackers-form');
+      if (form) {
+        form.classList.toggle('hidden', !editor.getSelection());
+      }
+      if (editor.getSelection()) {
+        hydrateConfigForm(transformed.content || '', trackerFormState, TRACKER_FORM_DEFAULTS);
+      }
+    },
+    buildPayload: (payload, editor) => {
+      if (typeof payload.content === 'string') {
+        const content = configFormToYaml(editor, trackerFormState, TRACKER_FORM_SCHEMA);
+        editor.applyContent(content);
+        payload.content = content;
+      }
+      return payload;
+    },
   });
 }
 
@@ -3741,6 +3814,7 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', () => {
   buildConfigForm('config-form', configFormState, CONFIG_FORM_SCHEMA, 'config');
   buildConfigForm('api-config-form', apiConfigFormState, API_CONFIG_FORM_SCHEMA, 'apiConfig');
+  buildConfigForm('trackers-form', trackerFormState, TRACKER_FORM_SCHEMA, 'trackers');
   setConfigView('form', {
     formId: 'config-form',
     editorId: 'config-editor',
