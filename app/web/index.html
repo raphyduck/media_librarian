@@ -388,6 +388,20 @@
             <p class="hint">Les modifications sont validées côté serveur (syntaxe YAML) avant d'être enregistrées.</p>
           </section>
 
+          <section class="panel" id="api-config-panel">
+            <div class="panel-header">
+              <h2>API</h2>
+              <div class="actions">
+                <button id="toggle-api-config-view" type="button">YAML brut</button>
+                <button id="reload-api-config" type="button">Recharger</button>
+                <button id="save-api-config" type="button" class="primary">Sauvegarder</button>
+              </div>
+            </div>
+            <div id="api-config-form" class="config-form"></div>
+            <textarea id="api-config-editor" spellcheck="false" placeholder="Configuration YAML de l'API"></textarea>
+            <p class="hint">Les modifications sont validées côté serveur (syntaxe YAML) avant d'être enregistrées.</p>
+          </section>
+
           <section class="panel" id="scheduler-panel">
             <div class="panel-header">
               <h2>Planificateur</h2>

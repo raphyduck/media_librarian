@@ -1196,6 +1196,12 @@ class Daemon
         handle_config_request(req, res)
       end
 
+      @control_server.mount_proc('/api-config') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_api_config_request(req, res)
+      end
+
       @control_server.mount_proc('/templates') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1237,6 +1243,12 @@ class Daemon
         next unless require_authorization(req, res)
 
         handle_config_reload_request(req, res)
+      end
+
+      @control_server.mount_proc('/api-config/reload') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_api_config_reload_request(req, res)
       end
 
       @control_server.mount_proc('/scheduler/reload') do |req, res|
@@ -1735,6 +1747,11 @@ class Daemon
       handle_file_request(req, res, app.config_file, config_mutex, 'GET, PUT')
     end
 
+    def handle_api_config_request(req, res)
+      handle_file_request(req, res, app.api_config_file, api_config_mutex, 'GET, PUT',
+                          after_save: method(:reload_api_option_config))
+    end
+
     def handle_download_list_request(req, res)
       list_name = (req.query['list_name'] || 'download_list').to_s
       case req.request_method
@@ -2002,6 +2019,12 @@ class Daemon
       process_reload_request(res) { reload }
     end
 
+    def handle_api_config_reload_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      process_reload_request(res) { reload_api_option_config }
+    end
+
     def handle_scheduler_reload_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
       return error_response(res, status: 404, message: 'scheduler_not_configured') unless @scheduler_name
@@ -2068,6 +2091,10 @@ class Daemon
       @config_mutex ||= Mutex.new
     end
 
+    def api_config_mutex
+      @api_config_mutex ||= Mutex.new
+    end
+
     def scheduler_mutex
       @scheduler_mutex ||= Mutex.new
     end
@@ -2103,6 +2130,18 @@ class Daemon
 
     def auth_config
       @auth_config ||= {}
+    end
+
+    def reload_api_option_config
+      app.container.reload_api_option!
+      opts = app.api_option || {}
+      @api_token = resolve_api_token(opts)
+      @auth_config = normalize_auth_config(opts['auth'])
+      remove_instance_variable(:@session_secret) if defined?(@session_secret)
+      true
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      false
     end
 
     def control_interface_local?(address)
