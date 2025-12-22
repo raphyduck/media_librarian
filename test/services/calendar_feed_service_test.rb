@@ -243,6 +243,38 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'tt1234567', row[:ids][:imdb]
   end
 
+  def test_omdb_search_uses_series_type_for_shows
+    entry = base_entry.merge(media_type: 'show')
+    provider = FakeProvider.new([entry])
+    omdb_client = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = []
+      end
+
+      def title(id)
+        @calls << [:title, id]
+        nil
+      end
+
+      def find_by_title(title:, year:, type: nil)
+        @calls << [:find_by_title, title, year, type]
+        { title: title, ids: { 'imdb' => 'tt9999999' } }
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    assert_includes omdb_client.calls, [:find_by_title, entry[:title], entry[:release_date].year, 'series']
+  end
+
   def test_skips_enrichment_when_omdb_disabled
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil)
     provider = FakeProvider.new([entry])
