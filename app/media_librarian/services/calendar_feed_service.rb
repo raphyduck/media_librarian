@@ -30,6 +30,21 @@ module MediaLibrarian
         entries
       end
 
+      def self.log_calendar_provider(speaker:, provider:, media_type: nil, received: nil, valid: nil, filtered_date: nil, filtered_ids: nil, location: nil)
+        return unless speaker && provider
+
+        parts = ["calendar.provider=#{provider}"]
+        parts << "type=#{media_type}" if media_type && !media_type.to_s.strip.empty?
+        parts << "received=#{received}" unless received.nil?
+        parts << "valid=#{valid}" unless valid.nil?
+        parts << "filtered_date=#{filtered_date}" unless filtered_date.nil?
+        parts << "filtered_ids=#{filtered_ids}" unless filtered_ids.nil?
+        parts << "location=#{location}" if location && !location.to_s.strip.empty?
+        speaker.speak_up(parts.join(' '))
+      rescue StandardError
+        nil
+      end
+
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
@@ -230,6 +245,19 @@ module MediaLibrarian
         nil
       end
 
+      def log_calendar_provider(provider:, media_type: nil, received: nil, valid: nil, filtered_date: nil, filtered_ids: nil, location: nil)
+        self.class.log_calendar_provider(
+          speaker: speaker,
+          provider: provider,
+          media_type: media_type,
+          received: received,
+          valid: valid,
+          filtered_date: filtered_date,
+          filtered_ids: filtered_ids,
+          location: location
+        )
+      end
+
       def safe_fetch(provider, date_range, limit)
         provider&.upcoming(date_range: date_range, limit: limit)
       rescue StandardError => e
@@ -257,6 +285,11 @@ module MediaLibrarian
         )
 
         fetched = safe_fetch(provider, date_range, limit)
+        log_calendar_provider(
+          provider: source,
+          received: fetched.length,
+          location: provider_location(provider)
+        )
         stats[source][:fetched] += fetched.length
         stats[source][:location] ||= provider_location(provider)
         fetched
@@ -755,14 +788,47 @@ module MediaLibrarian
         items, error = validate_trakt_payload(payload, 'Calendar Trakt movies payload', error_message)
         return [[], error] if error
 
-        [
-          items.filter_map do |item|
-            movie = trakt_fetch(item, :movie)
-            next unless movie.is_a?(Hash)
+        received = items.length
+        valid = 0
+        filtered_date = 0
+        filtered_ids = 0
 
-            release_date = parse_date(trakt_fetch(item, :released, :release_date, :first_aired))
-            build_trakt_entry(movie, 'movie', release_date)
-          end,
+        entries = items.filter_map do |item|
+          movie = trakt_fetch(item, :movie)
+          unless movie.is_a?(Hash)
+            filtered_ids += 1
+            next
+          end
+
+          release_date = parse_date(trakt_fetch(item, :released, :release_date, :first_aired))
+          unless release_date
+            filtered_date += 1
+            next
+          end
+
+          ids = trakt_ids(movie)
+          external_id = trakt_external_id(ids)
+          title = trakt_fetch(movie, :title).to_s
+          if external_id.to_s.empty? || title.empty?
+            filtered_ids += 1
+            next
+          end
+
+          valid += 1
+          build_trakt_entry(movie, 'movie', release_date, ids, external_id, title)
+        end
+
+        log_calendar_provider(
+          provider: 'trakt',
+          media_type: 'movie',
+          received: received,
+          valid: valid,
+          filtered_date: filtered_date,
+          filtered_ids: filtered_ids
+        )
+
+        [
+          entries,
           nil
         ]
       end
@@ -771,14 +837,47 @@ module MediaLibrarian
         items, error = validate_trakt_payload(payload, 'Calendar Trakt shows payload', error_message)
         return [[], error] if error
 
-        [
-          items.filter_map do |item|
-            show = trakt_fetch(item, :show)
-            next unless show.is_a?(Hash)
+        received = items.length
+        valid = 0
+        filtered_date = 0
+        filtered_ids = 0
 
-            release_date = parse_date(trakt_fetch(item, :first_aired) || trakt_fetch(trakt_fetch(item, :episode), :first_aired))
-            build_trakt_entry(show, 'show', release_date)
-          end,
+        entries = items.filter_map do |item|
+          show = trakt_fetch(item, :show)
+          unless show.is_a?(Hash)
+            filtered_ids += 1
+            next
+          end
+
+          release_date = parse_date(trakt_fetch(item, :first_aired) || trakt_fetch(trakt_fetch(item, :episode), :first_aired))
+          unless release_date
+            filtered_date += 1
+            next
+          end
+
+          ids = trakt_ids(show)
+          external_id = trakt_external_id(ids)
+          title = trakt_fetch(show, :title).to_s
+          if external_id.to_s.empty? || title.empty?
+            filtered_ids += 1
+            next
+          end
+
+          valid += 1
+          build_trakt_entry(show, 'show', release_date, ids, external_id, title)
+        end
+
+        log_calendar_provider(
+          provider: 'trakt',
+          media_type: 'show',
+          received: received,
+          valid: valid,
+          filtered_date: filtered_date,
+          filtered_ids: filtered_ids
+        )
+
+        [
+          entries,
           nil
         ]
       end
@@ -857,12 +956,12 @@ module MediaLibrarian
         summary_parts.compact.join(' ')
       end
 
-      def build_trakt_entry(record, media_type, release_date)
+      def build_trakt_entry(record, media_type, release_date, ids = nil, external_id = nil, title = nil)
         return unless release_date
 
-        ids = trakt_ids(record)
-        external_id = trakt_external_id(ids)
-        title = trakt_fetch(record, :title).to_s
+        ids ||= trakt_ids(record)
+        external_id ||= trakt_external_id(ids)
+        title = title.to_s.empty? ? trakt_fetch(record, :title).to_s : title.to_s
         return if external_id.to_s.empty? || title.empty?
 
         {
@@ -961,6 +1060,8 @@ module MediaLibrarian
           movies = fetch_titles_for(:movie, date_range, limit)
           remaining = [limit - movies.length, 0].max
           shows = fetch_titles_for(:tv, date_range, remaining)
+          log_ready_entries(movies)
+          log_ready_entries(shows)
           (movies + shows).first(limit)
         end
 
@@ -986,12 +1087,13 @@ module MediaLibrarian
         end
 
         def fetch_titles_for(kind, date_range, limit)
-          fetch_paths(kind, date_range).each_with_object([]) do |path, results|
+          results = fetch_paths(kind, date_range).each_with_object([]) do |path, results|
             break results if results.length >= limit
 
             needed = limit - results.length
             results.concat(fetch_titles(path, kind, date_range, needed, date_params(kind, date_range)))
           end
+          results
         end
 
         def fetch_titles(path, kind, date_range, limit, params = {})
@@ -1026,11 +1128,13 @@ module MediaLibrarian
           payload = fetch_page("/search/#{kind == :tv ? 'tv' : 'movie'}", kind, 1, search_params(kind, title, year))
           return [] unless payload
 
-          Array(payload['results']).filter_map do |item|
+          results = Array(payload['results']).filter_map do |item|
             release_date = release_from(item, kind)
             details = fetch_details(kind, value_from(item, :id))
             build_entry(details, kind, release_date) if details
           end
+          log_ready_entries(results)
+          results
         end
 
         def fetch_page(path, kind, page, params = {})
@@ -1211,6 +1315,20 @@ module MediaLibrarian
         def report_error(error, message)
           @speaker&.tell_error(error, message)
         end
+
+        def log_ready_entries(entries)
+          return if entries.empty?
+
+          entries.group_by { |entry| entry[:media_type] }.each do |media_type, items|
+            CalendarFeedService.log_calendar_provider(
+              speaker: @speaker,
+              provider: source,
+              media_type: media_type,
+              received: items.length,
+              valid: items.length
+            )
+          end
+        end
       end
       class OmdbCalendarProvider
         attr_reader :source, :last_request_path
@@ -1238,7 +1356,9 @@ module MediaLibrarian
           return [] unless available?
 
           entry = omdb_client.find_by_title(title: title, year: year, type: omdb_type(type))
-          entry ? [entry] : []
+          entries = entry ? [entry] : []
+          log_ready_entries(entries)
+          entries
         rescue StandardError => e
           @speaker&.tell_error(e, 'Calendar OMDb search failed')
           []
@@ -1252,6 +1372,7 @@ module MediaLibrarian
           @last_request_path = fetcher.respond_to?(:last_request_path) ? fetcher.last_request_path : api_last_request_path(fetcher)
 
           normalized = entries.filter_map { |entry| normalize_entry(entry, date_range) }
+          log_ready_entries(normalized)
           if normalized.empty?
             @speaker&.speak_up("Calendar provider #{source} returned no entries for #{date_range.first}..#{date_range.last}")
           end
@@ -1380,6 +1501,20 @@ module MediaLibrarian
 
         def ids_for(imdb_id)
           imdb_id.to_s.empty? ? {} : { 'imdb' => imdb_id }
+        end
+
+        def log_ready_entries(entries)
+          return if entries.empty?
+
+          entries.group_by { |entry| entry[:media_type] }.each do |media_type, items|
+            CalendarFeedService.log_calendar_provider(
+              speaker: @speaker,
+              provider: source,
+              media_type: media_type,
+              received: items.length,
+              valid: items.length
+            )
+          end
         end
       end
 
