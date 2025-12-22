@@ -173,6 +173,7 @@ module MediaLibrarian
           info = BEncode.load(torrent, { ignore_trailing_junk: 1 }).dig('info')
           raise ArgumentError, "Missing torrent metadata for #{request.torrent_name}" unless info
           meta_id = Digest::SHA1.hexdigest(info.bencode)
+          request.options[:whitelisted_extensions] = Array(request.options[:whitelisted_extensions]).flatten.compact.map(&:to_s).uniq
           Cache.queue_state_add_or_update('deluge_options', { request.torrent_name => request.options.merge({ info_hash: meta_id }) })
           download = { type: 1, type_str: 'file', file: torrent, filename: File.basename(request.path) }
         elsif request.nodl.zero?
