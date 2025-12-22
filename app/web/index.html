@@ -234,73 +234,89 @@
 
             <div class="calendar-filters" aria-label="Filtres calendrier">
               <form id="calendar-search-form" class="calendar-search" role="search" autocomplete="off">
-                <label for="calendar-search-query">Recherche</label>
-                <input
-                  id="calendar-search-query"
-                  name="query"
-                  type="search"
-                  placeholder="Titre ou mots-clés"
-                  required
-                />
+                <div class="calendar-filter-field">
+                  <label for="calendar-search-query">Recherche</label>
+                  <input
+                    id="calendar-search-query"
+                    name="query"
+                    type="search"
+                    placeholder="Titre ou mots-clés"
+                    required
+                  />
+                </div>
 
-                <label for="calendar-search-year">Année</label>
-                <input
-                  id="calendar-search-year"
-                  name="year"
-                  type="number"
-                  inputmode="numeric"
-                  min="1900"
-                  max="2100"
-                />
+                <div class="calendar-filter-field">
+                  <label for="calendar-search-year">Année</label>
+                  <input
+                    id="calendar-search-year"
+                    name="year"
+                    type="number"
+                    inputmode="numeric"
+                    min="1900"
+                    max="2100"
+                  />
+                </div>
 
                 <button type="submit">Chercher</button>
               </form>
 
-              <label for="calendar-type">Type</label>
-              <select id="calendar-type" name="type">
-                <option value="">Tous</option>
-                <option value="movie">Films</option>
-                <option value="show">Séries</option>
-              </select>
-
-              <label for="calendar-genres">Genres</label>
-              <select id="calendar-genres" name="genres" multiple></select>
-
-              <label for="calendar-rating-min">Note OMDb/IMDb (min/max)</label>
-              <div class="calendar-range">
-                <input id="calendar-rating-min" name="rating-min" type="number" step="0.1" min="0" max="10" />
-                <span>–</span>
-                <input id="calendar-rating-max" name="rating-max" type="number" step="0.1" min="0" max="10" />
+              <div class="calendar-filter-field">
+                <label for="calendar-type">Type</label>
+                <select id="calendar-type" name="type">
+                  <option value="">Tous</option>
+                  <option value="movie">Films</option>
+                  <option value="show">Séries</option>
+                </select>
               </div>
 
-              <label for="calendar-votes-min">Votes OMDb/IMDb (min/max)</label>
-              <div class="calendar-range">
-                <input
-                  id="calendar-votes-min"
-                  name="votes-min"
-                  type="number"
-                  step="100"
-                  min="0"
-                  inputmode="numeric"
-                  placeholder="0"
-                />
-                <span>–</span>
-                <input
-                  id="calendar-votes-max"
-                  name="votes-max"
-                  type="number"
-                  step="100"
-                  min="0"
-                  inputmode="numeric"
-                  placeholder="20000"
-                />
+              <div class="calendar-filter-field">
+                <label for="calendar-genres">Genres</label>
+                <select id="calendar-genres" name="genres" multiple></select>
               </div>
 
-              <label for="calendar-language">Langue</label>
-              <input id="calendar-language" name="language" type="text" />
+              <div class="calendar-filter-field">
+                <label for="calendar-rating-min">Note OMDb/IMDb (min/max)</label>
+                <div class="calendar-range">
+                  <input id="calendar-rating-min" name="rating-min" type="number" step="0.1" min="0" max="10" />
+                  <span>–</span>
+                  <input id="calendar-rating-max" name="rating-max" type="number" step="0.1" min="0" max="10" />
+                </div>
+              </div>
 
-              <label for="calendar-country">Pays</label>
-              <input id="calendar-country" name="country" type="text" />
+              <div class="calendar-filter-field">
+                <label for="calendar-votes-min">Votes OMDb/IMDb (min/max)</label>
+                <div class="calendar-range">
+                  <input
+                    id="calendar-votes-min"
+                    name="votes-min"
+                    type="number"
+                    step="100"
+                    min="0"
+                    inputmode="numeric"
+                    placeholder="0"
+                  />
+                  <span>–</span>
+                  <input
+                    id="calendar-votes-max"
+                    name="votes-max"
+                    type="number"
+                    step="100"
+                    min="0"
+                    inputmode="numeric"
+                    placeholder="20000"
+                  />
+                </div>
+              </div>
+
+              <div class="calendar-filter-field">
+                <label for="calendar-language">Langue</label>
+                <input id="calendar-language" name="language" type="text" />
+              </div>
+
+              <div class="calendar-filter-field">
+                <label for="calendar-country">Pays</label>
+                <input id="calendar-country" name="country" type="text" />
+              </div>
             </div>
 
             <div id="calendar-search-results" class="calendar-content" hidden>

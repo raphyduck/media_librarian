@@ -708,8 +708,14 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
-  align-items: center;
+  align-items: start;
   margin-bottom: 1rem;
+}
+
+.calendar-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .calendar-filters label {
