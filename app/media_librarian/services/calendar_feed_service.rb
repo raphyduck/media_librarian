@@ -470,7 +470,8 @@ module MediaLibrarian
         return nil unless entry[:title]
 
         year = entry[:release_date]&.year
-        api.find_by_title(title: entry[:title], year: year, type: entry[:media_type]) if api.respond_to?(:find_by_title)
+        omdb_type = entry[:media_type] == 'show' ? 'series' : entry[:media_type]
+        api.find_by_title(title: entry[:title], year: year, type: omdb_type) if api.respond_to?(:find_by_title)
       end
 
       def omdb_details(api, imdb_id)
