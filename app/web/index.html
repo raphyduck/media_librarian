@@ -378,10 +378,12 @@
             <div class="panel-header">
               <h2>Configuration</h2>
               <div class="actions">
+                <button id="toggle-config-view" type="button">YAML brut</button>
                 <button id="reload-config" type="button">Recharger</button>
                 <button id="save-config" type="button" class="primary">Sauvegarder</button>
               </div>
             </div>
+            <div id="config-form" class="config-form"></div>
             <textarea id="config-editor" spellcheck="false" placeholder="Configuration YAML"></textarea>
             <p class="hint">Les modifications sont validées côté serveur (syntaxe YAML) avant d'être enregistrées.</p>
           </section>

@@ -54,6 +54,170 @@ const calendarWindow = typeof createCalendarWindowManager === 'function'
   : null;
 
 const fileEditors = new Map();
+const CONFIG_FORM_SCHEMA = [
+  {
+    title: 'Préférences',
+    section: null,
+    fields: [
+      { key: 'preferred_languages', label: 'Langues préférées', type: 'text', placeholder: 'fr en' },
+    ],
+  },
+  {
+    title: 'Daemon',
+    section: 'daemon',
+    fields: [
+      { key: 'workers_pool_size', label: 'Pool de workers', type: 'number' },
+      {
+        key: 'queue_slots',
+        label: 'Slots de queue',
+        type: 'number',
+        description: 'Deprecated; the worker queue is unbounded.',
+      },
+      {
+        key: 'finished_jobs_per_queue',
+        label: 'Jobs conservés',
+        type: 'number',
+        description: 'Keep the last 100 finished/failed/cancelled jobs per queue in memory.',
+      },
+    ],
+  },
+  {
+    title: 'Deluge',
+    section: 'deluge',
+    fields: [
+      { key: 'host', label: 'Hôte', type: 'text' },
+      { key: 'username', label: 'Utilisateur', type: 'text' },
+      { key: 'password', label: 'Mot de passe', type: 'password' },
+      { key: 'remove_on_completion', label: 'Suppression auto', type: 'number' },
+      {
+        key: 'max_download_rate',
+        label: 'Débit max (kbps)',
+        type: 'number',
+        description: 'In kbps',
+      },
+      { key: 'min_torrent_free_space', label: 'Espace libre min', type: 'number' },
+      { key: 'default_seed_time', label: 'Seed time par défaut', type: 'number' },
+    ],
+  },
+  {
+    title: 'Email',
+    section: 'email',
+    fields: [
+      { key: 'host', label: 'Hôte', type: 'text' },
+      { key: 'port', label: 'Port', type: 'number' },
+      { key: 'domain', label: 'Domaine', type: 'text' },
+      { key: 'username', label: 'Utilisateur', type: 'text' },
+      { key: 'password', label: 'Mot de passe', type: 'password' },
+      {
+        key: 'auth_type',
+        label: 'Auth type',
+        type: 'select',
+        options: ['plain', 'login', 'cram_md5'],
+      },
+      { key: 'notification_from', label: 'Notification From', type: 'text' },
+      { key: 'notification_to', label: 'Notification To', type: 'text' },
+      { key: 'notification_cc', label: 'Notification CC', type: 'text' },
+      { key: 'notification_bcc', label: 'Notification BCC', type: 'text' },
+    ],
+  },
+  {
+    title: 'FFmpeg',
+    section: 'ffmpeg_settings',
+    fields: [
+      { key: 'crf', label: 'CRF', type: 'number' },
+      {
+        key: 'preset',
+        label: 'Preset',
+        type: 'select',
+        options: ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'],
+      },
+    ],
+  },
+  {
+    title: 'Calendrier',
+    section: 'calendar',
+    fields: [
+      { key: 'refresh_every', label: 'Refresh every', type: 'text' },
+      { key: 'refresh_on_start', label: 'Refresh au démarrage', type: 'checkbox' },
+      { key: 'window_past_days', label: 'Fenêtre passée (jours)', type: 'number' },
+      { key: 'window_future_days', label: 'Fenêtre future (jours)', type: 'number' },
+      { key: 'refresh_limit', label: 'Limite de refresh', type: 'number' },
+      { key: 'providers', label: 'Providers', type: 'text', placeholder: 'imdb|trakt|tmdb' },
+    ],
+  },
+  {
+    title: 'IMDb (optionnel)',
+    section: 'imdb',
+    fields: [
+      {
+        key: 'enabled',
+        label: 'Activé',
+        type: 'checkbox',
+        description: 'Optional toggle; remove or set to false to disable the IMDb feed',
+      },
+    ],
+  },
+  {
+    title: 'Kodi',
+    section: 'kodi',
+    fields: [
+      { key: 'host', label: 'Hôte', type: 'text' },
+      { key: 'username', label: 'Utilisateur', type: 'text' },
+      { key: 'password', label: 'Mot de passe', type: 'password' },
+    ],
+  },
+  {
+    title: 'Trakt',
+    section: 'trakt',
+    fields: [
+      {
+        key: 'account_id',
+        label: 'Account ID',
+        type: 'text',
+        description: 'Used for metadata lookups; list automation is retired',
+      },
+      { key: 'client_id', label: 'Client ID', type: 'text' },
+      { key: 'client_secret', label: 'Client secret', type: 'text' },
+      {
+        key: 'ca_path',
+        label: 'CA path',
+        type: 'text',
+        description: 'Optional override; defaults to system trust store',
+      },
+      {
+        key: 'enable_crl_checks',
+        label: 'CRL checks',
+        type: 'checkbox',
+        description: 'Opt-in CRL checking; will fall back if unsupported',
+      },
+      {
+        key: 'disable_crl_checks',
+        label: 'Désactiver CRL checks',
+        type: 'checkbox',
+        description: 'Legacy override to forcefully disable CRL checks',
+      },
+    ],
+  },
+  {
+    title: 'TMDB',
+    section: 'tmdb',
+    fields: [{ key: 'api_key', label: 'API key', type: 'text' }],
+  },
+  {
+    title: 'TVDB',
+    section: 'tvdb',
+    fields: [{ key: 'api_key', label: 'API key', type: 'text' }],
+  },
+  {
+    title: 'OMDb',
+    section: 'omdb',
+    fields: [{ key: 'api_key', label: 'API key', type: 'text' }],
+  },
+];
+const configFormState = {
+  mode: 'form',
+  inputs: [],
+};
 
 const API_BASE_PATH = (() => {
   const { pathname } = window.location;
@@ -80,6 +244,263 @@ const normalizeTrackerTemplatesFn = typeof normalizeTrackerTemplates === 'functi
 const buildTrackerSearchUrlFn = typeof buildTrackerSearchUrl === 'function'
   ? buildTrackerSearchUrl
   : () => '';
+
+function parseConfigScalar(raw) {
+  if (raw == null) {
+    return '';
+  }
+  const trimmed = String(raw).trim();
+  if (trimmed === '') {
+    return '';
+  }
+  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed === 'true') {
+    return true;
+  }
+  if (trimmed === 'false') {
+    return false;
+  }
+  const numeric = Number(trimmed);
+  if (!Number.isNaN(numeric) && trimmed !== '') {
+    return numeric;
+  }
+  return trimmed;
+}
+
+function parseConfigYaml(content) {
+  const data = {};
+  let currentSection = null;
+  (content || '').split(/\r?\n/).forEach((line) => {
+    if (!line.trim() || line.trim().startsWith('#')) {
+      return;
+    }
+    const match = line.replace(/\s+#.*$/, '').match(/^(\s*)([^:]+):\s*(.*)$/);
+    if (!match) {
+      return;
+    }
+    const indent = match[1].length;
+    const key = match[2].trim();
+    const value = match[3] ?? '';
+    if (indent === 0) {
+      if (value === '') {
+        currentSection = key;
+        data[currentSection] = data[currentSection] || {};
+        return;
+      }
+      data[key] = parseConfigScalar(value);
+      currentSection = null;
+      return;
+    }
+    if (currentSection) {
+      data[currentSection] = data[currentSection] || {};
+      data[currentSection][key] = parseConfigScalar(value);
+    }
+  });
+  return data;
+}
+
+function stringifyConfigScalar(value) {
+  if (value === null || value === undefined) {
+    return "''";
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  const text = String(value);
+  if (text === '') {
+    return "''";
+  }
+  if (/[:#\n]/.test(text) || /^\s|\s$/.test(text)) {
+    return `'${text.replace(/'/g, "''")}'`;
+  }
+  return text;
+}
+
+function buildConfigYaml(data = {}) {
+  const lines = [];
+  const handledTop = new Set();
+  const handledSections = new Set();
+
+  CONFIG_FORM_SCHEMA.forEach((section) => {
+    if (!section.section) {
+      section.fields.forEach((field) => {
+        handledTop.add(field.key);
+        const value = data[field.key];
+        lines.push(`${field.key}: ${stringifyConfigScalar(value)}`);
+      });
+      return;
+    }
+    handledSections.add(section.section);
+    lines.push(`${section.section}:`);
+    const block = data[section.section] || {};
+    section.fields.forEach((field) => {
+      const value = block[field.key];
+      lines.push(`  ${field.key}: ${stringifyConfigScalar(value)}`);
+    });
+  });
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (handledTop.has(key) || handledSections.has(key)) {
+      return;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      lines.push(`${key}:`);
+      Object.entries(value).forEach(([childKey, childValue]) => {
+        lines.push(`  ${childKey}: ${stringifyConfigScalar(childValue)}`);
+      });
+      return;
+    }
+    lines.push(`${key}: ${stringifyConfigScalar(value)}`);
+  });
+
+  return `${lines.join('\n')}\n`;
+}
+
+function buildConfigForm() {
+  const container = document.getElementById('config-form');
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  configFormState.inputs = [];
+  CONFIG_FORM_SCHEMA.forEach((section) => {
+    const block = document.createElement('section');
+    block.className = 'config-section';
+    const title = document.createElement('h3');
+    title.textContent = section.title;
+    block.appendChild(title);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    section.fields.forEach((field) => {
+      const label = document.createElement('label');
+      label.textContent = field.label;
+      let input;
+      if (field.type === 'select') {
+        input = document.createElement('select');
+        (field.options || []).forEach((optionValue) => {
+          const option = document.createElement('option');
+          option.value = optionValue;
+          option.textContent = optionValue;
+          input.appendChild(option);
+        });
+      } else {
+        input = document.createElement('input');
+        input.type = field.type === 'checkbox' ? 'checkbox' : field.type || 'text';
+      }
+      if (field.placeholder) {
+        input.placeholder = field.placeholder;
+      }
+      input.dataset.section = section.section || '';
+      input.dataset.key = field.key;
+      if (field.type === 'checkbox') {
+        input.value = '1';
+      }
+      if (field.description) {
+        input.title = field.description;
+      }
+      label.appendChild(input);
+      if (field.description) {
+        const hint = document.createElement('span');
+        hint.className = 'field-hint';
+        hint.textContent = field.description;
+        label.appendChild(hint);
+      }
+      input.addEventListener('change', () => {
+        const editor = getEditor('config');
+        if (editor) {
+          editor.setDirty(true);
+        }
+      });
+      configFormState.inputs.push({ input, field, section: section.section });
+      grid.appendChild(label);
+    });
+    block.appendChild(grid);
+    container.appendChild(block);
+  });
+}
+
+function hydrateConfigForm(content) {
+  const data = parseConfigYaml(content);
+  configFormState.inputs.forEach(({ input, field, section }) => {
+    const source = section ? data[section] || {} : data;
+    const value = source[field.key];
+    if (field.type === 'checkbox') {
+      input.checked = Boolean(value);
+    } else if (value == null) {
+      input.value = '';
+    } else {
+      if (field.type === 'select' && value !== '' && !Array.from(input.options).some((opt) => opt.value === String(value))) {
+        const option = document.createElement('option');
+        option.value = String(value);
+        option.textContent = String(value);
+        input.appendChild(option);
+      }
+      input.value = String(value);
+    }
+  });
+}
+
+function collectConfigFormData() {
+  const data = {};
+  configFormState.inputs.forEach(({ input, field, section }) => {
+    const target = section ? (data[section] = data[section] || {}) : data;
+    if (field.type === 'checkbox') {
+      target[field.key] = input.checked;
+      return;
+    }
+    if (input.type === 'number') {
+      const numeric = Number(input.value);
+      target[field.key] = input.value === '' || Number.isNaN(numeric) ? '' : numeric;
+      return;
+    }
+    target[field.key] = input.value;
+  });
+  return data;
+}
+
+function configFormToYaml(editor) {
+  const base = parseConfigYaml(editor?.textarea?.value || '');
+  const updates = collectConfigFormData();
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      base[key] = { ...(base[key] || {}), ...value };
+      return;
+    }
+    base[key] = value;
+  });
+  return buildConfigYaml(base);
+}
+
+function setConfigView(mode) {
+  const form = document.getElementById('config-form');
+  const editor = document.getElementById('config-editor');
+  const toggle = document.getElementById('toggle-config-view');
+  if (!form || !editor || !toggle) {
+    return;
+  }
+  if (mode === 'yaml') {
+    const configEditor = getEditor('config');
+    if (configEditor) {
+      const content = configFormToYaml(configEditor);
+      configEditor.applyContent(content);
+    }
+    form.classList.add('hidden');
+    editor.classList.remove('hidden');
+    toggle.textContent = 'Formulaire';
+    configFormState.mode = 'yaml';
+    return;
+  }
+  hydrateConfigForm(editor.value);
+  form.classList.remove('hidden');
+  editor.classList.add('hidden');
+  toggle.textContent = 'YAML brut';
+  configFormState.mode = 'form';
+}
 
 function getLogTail(content, maxLines = LOG_MAX_LINES) {
   if (!content) {
@@ -599,6 +1020,19 @@ function setupFileEditors() {
     reloadButtonId: 'reload-config',
     saveMessage: 'Configuration sauvegardée.',
     reloadMessage: 'Configuration rechargée.',
+    afterLoad: (editor, transformed) => {
+      if (configFormState.mode === 'form') {
+        hydrateConfigForm(transformed.content || '');
+      }
+    },
+    buildPayload: (payload, editor) => {
+      if (configFormState.mode === 'form' && typeof payload.content === 'string') {
+        const content = configFormToYaml(editor);
+        editor.applyContent(content);
+        payload.content = content;
+      }
+      return payload;
+    },
   });
 
   registerFileEditor('scheduler', {
@@ -3151,6 +3585,12 @@ function setupCollectionEvents() {
 
 function setupEventListeners() {
   setupTabs();
+  const toggleConfigView = document.getElementById('toggle-config-view');
+  if (toggleConfigView) {
+    toggleConfigView.addEventListener('click', () => {
+      setConfigView(configFormState.mode === 'form' ? 'yaml' : 'form');
+    });
+  }
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
   document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
   document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
@@ -3178,6 +3618,8 @@ function setupEventListeners() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  buildConfigForm();
+  setConfigView('form');
   setupFileEditors();
   setupEventListeners();
   setActiveTab(state.activeTab, { skipLoad: true });

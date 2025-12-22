@@ -317,6 +317,53 @@ main {
   color: inherit;
 }
 
+.config-form {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.config-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.config-section h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.config-section .grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.config-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.config-section input,
+.config-section select {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(17, 24, 39, 0.6);
+  color: inherit;
+}
+
+.config-section .field-hint {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .download-list-table {
   margin-top: 0.5rem;
 }
