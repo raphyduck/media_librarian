@@ -5,6 +5,7 @@ const state = {
   activeTab: 'jobs',
   dirty: {
     config: false,
+    apiConfig: false,
     scheduler: false,
     templates: false,
     trackers: false,
@@ -218,6 +219,60 @@ const configFormState = {
   mode: 'form',
   inputs: [],
 };
+const apiConfigFormState = {
+  mode: 'form',
+  inputs: [],
+};
+const API_CONFIG_FORM_SCHEMA = [
+  {
+    title: 'Réseau',
+    section: null,
+    fields: [
+      { key: 'bind_address', label: 'Adresse de bind', type: 'text', placeholder: '127.0.0.1' },
+      { key: 'listen_port', label: 'Port d’écoute', type: 'number' },
+    ],
+  },
+  {
+    title: 'Authentification',
+    section: 'auth',
+    fields: [
+      { key: 'username', label: 'Utilisateur', type: 'text' },
+      {
+        key: 'password_hash',
+        label: 'Hash bcrypt',
+        type: 'password',
+        toggle: true,
+      },
+      {
+        key: 'session_secret',
+        label: 'Secret de session',
+        type: 'password',
+        toggle: true,
+        description: 'Optionnel : laissez vide pour une génération automatique dans ~/.medialibrarian/session_secret',
+      },
+    ],
+  },
+  {
+    title: 'TLS',
+    section: null,
+    fields: [
+      { key: 'ssl_enabled', label: 'TLS activé', type: 'checkbox' },
+      { key: 'ssl_certificate_path', label: 'Chemin certificat', type: 'text' },
+      { key: 'ssl_private_key_path', label: 'Chemin clé privée', type: 'text' },
+      { key: 'ssl_ca_path', label: 'Chemin CA', type: 'text' },
+      { key: 'ssl_verify_mode', label: 'Mode de vérification', type: 'text' },
+      { key: 'ssl_client_verify_mode', label: 'Mode de vérification client', type: 'text' },
+    ],
+  },
+  {
+    title: 'Tokens',
+    section: null,
+    fields: [
+      { key: 'api_token', label: 'API token', type: 'password', toggle: true },
+      { key: 'control_token', label: 'Control token', type: 'password', toggle: true },
+    ],
+  },
+];
 
 const API_BASE_PATH = (() => {
   const { pathname } = window.location;
@@ -321,12 +376,12 @@ function stringifyConfigScalar(value) {
   return text;
 }
 
-function buildConfigYaml(data = {}) {
+function buildConfigYaml(data = {}, schema = CONFIG_FORM_SCHEMA) {
   const lines = [];
   const handledTop = new Set();
   const handledSections = new Set();
 
-  CONFIG_FORM_SCHEMA.forEach((section) => {
+  schema.forEach((section) => {
     if (!section.section) {
       section.fields.forEach((field) => {
         handledTop.add(field.key);
@@ -361,14 +416,14 @@ function buildConfigYaml(data = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-function buildConfigForm() {
-  const container = document.getElementById('config-form');
+function buildConfigForm(containerId, formState, schema, editorKey) {
+  const container = document.getElementById(containerId);
   if (!container) {
     return;
   }
   container.innerHTML = '';
-  configFormState.inputs = [];
-  CONFIG_FORM_SCHEMA.forEach((section) => {
+  formState.inputs = [];
+  schema.forEach((section) => {
     const block = document.createElement('section');
     block.className = 'config-section';
     const title = document.createElement('h3');
@@ -403,7 +458,23 @@ function buildConfigForm() {
       if (field.description) {
         input.title = field.description;
       }
-      label.appendChild(input);
+      if (field.toggle) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'field-input-row';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'field-toggle';
+        toggle.textContent = 'Afficher';
+        toggle.addEventListener('click', () => {
+          const show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          toggle.textContent = show ? 'Masquer' : 'Afficher';
+        });
+        wrapper.append(input, toggle);
+        label.appendChild(wrapper);
+      } else {
+        label.appendChild(input);
+      }
       if (field.description) {
         const hint = document.createElement('span');
         hint.className = 'field-hint';
@@ -411,12 +482,12 @@ function buildConfigForm() {
         label.appendChild(hint);
       }
       input.addEventListener('change', () => {
-        const editor = getEditor('config');
+        const editor = getEditor(editorKey);
         if (editor) {
           editor.setDirty(true);
         }
       });
-      configFormState.inputs.push({ input, field, section: section.section });
+      formState.inputs.push({ input, field, section: section.section });
       grid.appendChild(label);
     });
     block.appendChild(grid);
@@ -424,9 +495,9 @@ function buildConfigForm() {
   });
 }
 
-function hydrateConfigForm(content) {
+function hydrateConfigForm(content, formState) {
   const data = parseConfigYaml(content);
-  configFormState.inputs.forEach(({ input, field, section }) => {
+  formState.inputs.forEach(({ input, field, section }) => {
     const source = section ? data[section] || {} : data;
     const value = source[field.key];
     if (field.type === 'checkbox') {
@@ -445,9 +516,9 @@ function hydrateConfigForm(content) {
   });
 }
 
-function collectConfigFormData() {
+function collectConfigFormData(formState) {
   const data = {};
-  configFormState.inputs.forEach(({ input, field, section }) => {
+  formState.inputs.forEach(({ input, field, section }) => {
     const target = section ? (data[section] = data[section] || {}) : data;
     if (field.type === 'checkbox') {
       target[field.key] = input.checked;
@@ -463,9 +534,9 @@ function collectConfigFormData() {
   return data;
 }
 
-function configFormToYaml(editor) {
+function configFormToYaml(editor, formState, schema) {
   const base = parseConfigYaml(editor?.textarea?.value || '');
-  const updates = collectConfigFormData();
+  const updates = collectConfigFormData(formState);
   Object.entries(updates).forEach(([key, value]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       base[key] = { ...(base[key] || {}), ...value };
@@ -473,33 +544,33 @@ function configFormToYaml(editor) {
     }
     base[key] = value;
   });
-  return buildConfigYaml(base);
+  return buildConfigYaml(base, schema);
 }
 
-function setConfigView(mode) {
-  const form = document.getElementById('config-form');
-  const editor = document.getElementById('config-editor');
-  const toggle = document.getElementById('toggle-config-view');
+function setConfigView(mode, { formId, editorId, toggleId, formState, editorKey, schema }) {
+  const form = document.getElementById(formId);
+  const editor = document.getElementById(editorId);
+  const toggle = document.getElementById(toggleId);
   if (!form || !editor || !toggle) {
     return;
   }
   if (mode === 'yaml') {
-    const configEditor = getEditor('config');
+    const configEditor = getEditor(editorKey);
     if (configEditor) {
-      const content = configFormToYaml(configEditor);
+      const content = configFormToYaml(configEditor, formState, schema);
       configEditor.applyContent(content);
     }
     form.classList.add('hidden');
     editor.classList.remove('hidden');
     toggle.textContent = 'Formulaire';
-    configFormState.mode = 'yaml';
+    formState.mode = 'yaml';
     return;
   }
-  hydrateConfigForm(editor.value);
+  hydrateConfigForm(editor.value, formState);
   form.classList.remove('hidden');
   editor.classList.add('hidden');
   toggle.textContent = 'YAML brut';
-  configFormState.mode = 'form';
+  formState.mode = 'form';
 }
 
 function getLogTail(content, maxLines = LOG_MAX_LINES) {
@@ -1022,12 +1093,36 @@ function setupFileEditors() {
     reloadMessage: 'Configuration rechargée.',
     afterLoad: (editor, transformed) => {
       if (configFormState.mode === 'form') {
-        hydrateConfigForm(transformed.content || '');
+        hydrateConfigForm(transformed.content || '', configFormState);
       }
     },
     buildPayload: (payload, editor) => {
       if (configFormState.mode === 'form' && typeof payload.content === 'string') {
-        const content = configFormToYaml(editor);
+        const content = configFormToYaml(editor, configFormState, CONFIG_FORM_SCHEMA);
+        editor.applyContent(content);
+        payload.content = content;
+      }
+      return payload;
+    },
+  });
+
+  registerFileEditor('apiConfig', {
+    textareaId: 'api-config-editor',
+    loadPath: '/api-config',
+    savePath: '/api-config',
+    reloadPath: '/api-config/reload',
+    saveButtonId: 'save-api-config',
+    reloadButtonId: 'reload-api-config',
+    saveMessage: 'Configuration API sauvegardée.',
+    reloadMessage: 'Configuration API rechargée.',
+    afterLoad: (editor, transformed) => {
+      if (apiConfigFormState.mode === 'form') {
+        hydrateConfigForm(transformed.content || '', apiConfigFormState);
+      }
+    },
+    buildPayload: (payload, editor) => {
+      if (apiConfigFormState.mode === 'form' && typeof payload.content === 'string') {
+        const content = configFormToYaml(editor, apiConfigFormState, API_CONFIG_FORM_SCHEMA);
         editor.applyContent(content);
         payload.content = content;
       }
@@ -3273,6 +3368,10 @@ async function loadConfigurationTab(options = {}) {
   if (!state.authenticated) {
     return;
   }
+  await loadEditor('apiConfig', options);
+  if (!state.authenticated) {
+    return;
+  }
   await loadEditor('scheduler', options);
   if (!state.authenticated) {
     return;
@@ -3588,7 +3687,27 @@ function setupEventListeners() {
   const toggleConfigView = document.getElementById('toggle-config-view');
   if (toggleConfigView) {
     toggleConfigView.addEventListener('click', () => {
-      setConfigView(configFormState.mode === 'form' ? 'yaml' : 'form');
+      setConfigView(configFormState.mode === 'form' ? 'yaml' : 'form', {
+        formId: 'config-form',
+        editorId: 'config-editor',
+        toggleId: 'toggle-config-view',
+        formState: configFormState,
+        editorKey: 'config',
+        schema: CONFIG_FORM_SCHEMA,
+      });
+    });
+  }
+  const toggleApiConfigView = document.getElementById('toggle-api-config-view');
+  if (toggleApiConfigView) {
+    toggleApiConfigView.addEventListener('click', () => {
+      setConfigView(apiConfigFormState.mode === 'form' ? 'yaml' : 'form', {
+        formId: 'api-config-form',
+        editorId: 'api-config-editor',
+        toggleId: 'toggle-api-config-view',
+        formState: apiConfigFormState,
+        editorKey: 'apiConfig',
+        schema: API_CONFIG_FORM_SCHEMA,
+      });
     });
   }
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
@@ -3601,6 +3720,8 @@ function setupEventListeners() {
   }
   bindEditorAction('save-config', 'config', 'save');
   bindEditorAction('reload-config', 'config', 'reload');
+  bindEditorAction('save-api-config', 'apiConfig', 'save');
+  bindEditorAction('reload-api-config', 'apiConfig', 'reload');
   bindEditorAction('save-scheduler', 'scheduler', 'save');
   bindEditorAction('reload-scheduler', 'scheduler', 'reload');
   bindEditorAction('save-templates', 'templates', 'save');
@@ -3618,8 +3739,24 @@ function setupEventListeners() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  buildConfigForm();
-  setConfigView('form');
+  buildConfigForm('config-form', configFormState, CONFIG_FORM_SCHEMA, 'config');
+  buildConfigForm('api-config-form', apiConfigFormState, API_CONFIG_FORM_SCHEMA, 'apiConfig');
+  setConfigView('form', {
+    formId: 'config-form',
+    editorId: 'config-editor',
+    toggleId: 'toggle-config-view',
+    formState: configFormState,
+    editorKey: 'config',
+    schema: CONFIG_FORM_SCHEMA,
+  });
+  setConfigView('form', {
+    formId: 'api-config-form',
+    editorId: 'api-config-editor',
+    toggleId: 'toggle-api-config-view',
+    formState: apiConfigFormState,
+    editorKey: 'apiConfig',
+    schema: API_CONFIG_FORM_SCHEMA,
+  });
   setupFileEditors();
   setupEventListeners();
   setActiveTab(state.activeTab, { skipLoad: true });
