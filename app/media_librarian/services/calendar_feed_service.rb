@@ -414,11 +414,6 @@ module MediaLibrarian
         return entries unless api
 
         entries.each do |entry|
-          unless entry[:media_type] == 'movie'
-            omdb_enrichment_debug("OMDb enrichment skipped for #{entry[:title] || entry[:external_id]} (media_type=#{entry[:media_type].inspect})")
-            next
-          end
-
           imdb_id = imdb_id_for(entry)
           omdb_enrichment_debug("OMDb enrichment fetching #{entry[:title] || entry[:external_id]} via IMDb #{imdb_id}") if imdb_id
           details = imdb_id ? omdb_details(api, imdb_id) : nil
