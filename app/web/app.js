@@ -2803,6 +2803,25 @@ async function validateTorrent(entry) {
   }
 }
 
+async function deleteTorrent(entry) {
+  const identifier = entry?.identifier || entry?.name;
+  if (!identifier) {
+    showNotification('Identifiant de torrent introuvable.', 'error');
+    return;
+  }
+  try {
+    await fetchJson('/torrents/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier }),
+    });
+    showNotification('Torrent supprimé.');
+    loadPendingTorrents();
+  } catch (error) {
+    showNotification(error?.message || 'Impossible de supprimer le torrent.', 'error');
+  }
+}
+
 function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   const tbody = document.getElementById(rowsId);
   const emptyHint = document.getElementById(emptyId);
@@ -2818,9 +2837,7 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   }
   emptyHint.classList.add('hidden');
 
-  const baseLabels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
-  const includeActions = normalized.some((entry) => Number(entry?.status) === 1);
-  const labels = includeActions ? [...baseLabels, 'Actions'] : baseLabels;
+  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant', 'Actions'];
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const cells = [
@@ -2839,20 +2856,26 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
       row.appendChild(cell);
     });
 
-    if (includeActions) {
-      const cell = document.createElement('td');
-      cell.dataset.label = 'Actions';
-      if (Number(entry?.status) === 1) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = 'Valider';
-        button.addEventListener('click', () => validateTorrent(entry));
-        cell.appendChild(button);
-      } else {
-        cell.textContent = '—';
-      }
-      row.appendChild(cell);
+    const cell = document.createElement('td');
+    cell.dataset.label = 'Actions';
+    if (Number(entry?.status) === 1) {
+      const validateButton = document.createElement('button');
+      validateButton.type = 'button';
+      validateButton.textContent = 'Valider';
+      validateButton.addEventListener('click', () => validateTorrent(entry));
+      cell.appendChild(validateButton);
     }
+    if ([1, 2].includes(Number(entry?.status))) {
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.textContent = 'Supprimer';
+      deleteButton.addEventListener('click', () => deleteTorrent(entry));
+      cell.appendChild(deleteButton);
+    }
+    if (!cell.childNodes.length) {
+      cell.textContent = '—';
+    }
+    row.appendChild(cell);
 
     tbody.appendChild(row);
   });

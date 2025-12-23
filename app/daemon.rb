@@ -1178,6 +1178,12 @@ class Daemon
         handle_validate_torrent_request(req, res)
       end
 
+      @control_server.mount_proc('/torrents/delete') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_delete_torrent_request(req, res)
+      end
+
       @control_server.mount_proc('/calendar/refresh') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1589,6 +1595,25 @@ class Daemon
       error_response(res, status: 500, message: e.message)
     end
 
+    def handle_delete_torrent_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      identifier = extract_torrent_identifier(parse_payload(req))
+      return error_response(res, status: 400, message: 'Identifiant de torrent manquant') unless identifier
+
+      torrent = find_pending_torrent_any_status(identifier)
+      return error_response(res, status: 404, message: 'Torrent introuvable') unless torrent
+
+      criteria = { status: [1, 2], name: torrent[:name] }
+      criteria[:identifier] = torrent[:identifier] if torrent[:identifier]
+      deleted = app.db.delete_rows('torrents', criteria)
+      return error_response(res, status: 500, message: 'Impossible de supprimer le torrent') unless deleted.to_i.positive?
+
+      json_response(res, body: { 'status' => 'deleted', 'identifier' => torrent[:identifier] || torrent[:name] })
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
     def pending_torrents_snapshot
       rows = app.db.get_rows('torrents', { status: [1, 2] })
       rows.each_with_object({ validation: [], downloads: [] }) do |row, memo|
@@ -1628,6 +1653,14 @@ class Daemon
 
       db.get_rows('torrents', { status: 1, identifier: identifier }).first ||
         db.get_rows('torrents', { status: 1, name: identifier }).first
+    end
+
+    def find_pending_torrent_any_status(identifier)
+      db = app.respond_to?(:db) ? app.db : nil
+      return nil unless db
+
+      db.get_rows('torrents', { status: [1, 2], identifier: identifier }).first ||
+        db.get_rows('torrents', { status: [1, 2], name: identifier }).first
     end
 
     def normalize_list_param(value)
