@@ -2838,9 +2838,9 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   emptyHint.classList.add('hidden');
 
   const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
-  const actionLabel = 'Actions';
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
+    const status = Number(entry?.status);
     const cells = [
       entry?.name || '—',
       entry?.tracker || '—',
@@ -2859,21 +2859,21 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
 
     const cell = document.createElement('td');
     cell.className = 'actions-cell';
-    cell.dataset.label = actionLabel;
-    if (Number(entry?.status) === 2) {
+    cell.dataset.label = 'Actions';
+    if (status === 2) {
       const pendingLabel = document.createElement('span');
       pendingLabel.className = 'calendar-badge';
       pendingLabel.textContent = 'En attente de téléchargement';
       cell.appendChild(pendingLabel);
     }
-    if (Number(entry?.status) === 1) {
+    if (status === 1) {
       const validateButton = document.createElement('button');
       validateButton.type = 'button';
       validateButton.textContent = 'Valider';
       validateButton.addEventListener('click', () => validateTorrent(entry));
       cell.appendChild(validateButton);
     }
-    if ([1, 2].includes(Number(entry?.status))) {
+    if (status === 1 || status === 2) {
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
       deleteButton.textContent = 'Supprimer';
