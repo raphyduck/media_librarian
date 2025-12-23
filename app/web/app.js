@@ -2837,7 +2837,8 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant', 'Actions'];
+  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
+  const actionLabel = 'Actions';
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const cells = [
@@ -2857,7 +2858,14 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
     });
 
     const cell = document.createElement('td');
-    cell.dataset.label = 'Actions';
+    cell.className = 'actions-cell';
+    cell.dataset.label = actionLabel;
+    if (Number(entry?.status) === 2) {
+      const pendingLabel = document.createElement('span');
+      pendingLabel.className = 'calendar-badge';
+      pendingLabel.textContent = 'En attente de téléchargement';
+      cell.appendChild(pendingLabel);
+    }
     if (Number(entry?.status) === 1) {
       const validateButton = document.createElement('button');
       validateButton.type = 'button';
@@ -2882,8 +2890,10 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
 }
 
 function renderPendingTorrents(data = {}) {
-  renderPendingTorrentList('pending-validation-rows', 'pending-validation-empty', data.validation);
-  renderPendingTorrentList('pending-download-rows', 'pending-download-empty', data.downloads);
+  const validation = Array.isArray(data.validation) ? data.validation : [];
+  const downloads = Array.isArray(data.downloads) ? data.downloads : [];
+  renderPendingTorrentList('pending-validation-rows', 'pending-validation-empty', validation);
+  renderPendingTorrentList('pending-download-rows', 'pending-download-empty', downloads);
 }
 
 async function loadPendingTorrents() {
