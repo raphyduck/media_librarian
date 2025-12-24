@@ -788,8 +788,8 @@ function extractEntries(data = {}) {
 }
 
 function registerFileEditor(key, options) {
-  const textarea = document.getElementById(options.textareaId);
-  if (!textarea) {
+  const textarea = options.textareaId ? document.getElementById(options.textareaId) : null;
+  if (!textarea && !options.allowMissingTextarea) {
     return null;
   }
   const select = options.selectId ? document.getElementById(options.selectId) : null;
@@ -825,7 +825,9 @@ function registerFileEditor(key, options) {
 
   editor.setEnabled = (enabled) => {
     editor.disabled = !enabled;
-    textarea.disabled = !enabled;
+    if (textarea) {
+      textarea.disabled = !enabled;
+    }
     if (saveButton) {
       saveButton.disabled = !enabled;
     }
@@ -874,7 +876,9 @@ function registerFileEditor(key, options) {
   };
 
   editor.applyContent = (content) => {
-    textarea.value = content || '';
+    if (textarea) {
+      textarea.value = content || '';
+    }
   };
 
   editor.handleLoadSuccess = (data = {}) => {
@@ -968,7 +972,7 @@ function registerFileEditor(key, options) {
 
   editor.buildPayload = ({ includeContent = true, includeSelection = true } = {}) => {
     const payload = {};
-    if (includeContent) {
+    if (includeContent && textarea) {
       payload.content = textarea.value;
     }
     if (includeSelection && select) {
@@ -983,7 +987,7 @@ function registerFileEditor(key, options) {
       }
     }
     return typeof options.buildPayload === 'function'
-      ? options.buildPayload(payload, editor)
+      ? options.buildPayload(payload, editor, { includeContent, includeSelection })
       : payload;
   };
 
@@ -1069,7 +1073,9 @@ function registerFileEditor(key, options) {
     editor.setEnabled(enabledByDefault);
   };
 
-  textarea.addEventListener('input', () => editor.setDirty(true));
+  if (textarea) {
+    textarea.addEventListener('input', () => editor.setDirty(true));
+  }
   if (select) {
     select.addEventListener('change', () => {
       if (editor.isDirty()) {
@@ -1219,7 +1225,7 @@ function setupFileEditors() {
   });
 
   registerFileEditor('trackers', {
-    textareaId: 'trackers-editor',
+    allowMissingTextarea: true,
     selectId: 'trackers-select',
     loadPath: '/trackers',
     savePath: '/trackers',
@@ -1242,10 +1248,13 @@ function setupFileEditors() {
         hydrateConfigForm(transformed.content || '', trackerFormState, TRACKER_FORM_DEFAULTS);
       }
     },
-    buildPayload: (payload, editor) => {
-      if (typeof payload.content === 'string') {
-        const content = configFormToYaml(editor, trackerFormState, TRACKER_FORM_SCHEMA);
-        editor.applyContent(content);
+    buildPayload: (payload, editor, { includeContent }) => {
+      if (includeContent) {
+        const updates = collectConfigFormData(trackerFormState);
+        const content = buildConfigYaml(
+          mergeConfigDefaults(updates, TRACKER_FORM_DEFAULTS),
+          TRACKER_FORM_SCHEMA
+        );
         payload.content = content;
       }
       return payload;
