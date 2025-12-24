@@ -3247,10 +3247,12 @@ function addBaseCommandKey(commands = []) {
 }
 
 function normalizeCommandEntries(entries) {
-  if (!Array.isArray(entries)) {
-    return [];
-  }
-  return entries
+  const list = Array.isArray(entries)
+    ? entries
+    : Array.isArray(entries?.commands)
+      ? entries.commands
+      : [];
+  return list
     .map((entry) => {
       if (entry == null) {
         return null;
@@ -3458,9 +3460,9 @@ async function loadSchedulerTasks() {
   }
 
   try {
-    const templateData = await fetchJson('/templates');
+    const templateData = await fetchJson('/template_commands');
     templateCommands = addBaseCommandKey(
-      normalizeCommandEntries(extractEntries(templateData))
+      normalizeCommandEntries(templateData)
     );
     renderUnscheduledTemplateCommands(templateCommands, scheduledKeys);
   } catch (error) {
