@@ -593,14 +593,20 @@ function collectConfigFormData(formState) {
 function configFormToYaml(editor, formState, schema) {
   const base = parseConfigYaml(editor?.textarea?.value || '');
   const updates = collectConfigFormData(formState);
+  const merged = mergeConfigUpdates(base, updates);
+  return buildConfigYaml(merged, schema);
+}
+
+function mergeConfigUpdates(base, updates) {
+  const merged = { ...(base || {}) };
   Object.entries(updates).forEach(([key, value]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      base[key] = { ...(base[key] || {}), ...value };
+      merged[key] = { ...(merged[key] || {}), ...value };
       return;
     }
-    base[key] = value;
+    merged[key] = value;
   });
-  return buildConfigYaml(base, schema);
+  return merged;
 }
 
 function setConfigView(mode, { formId, editorId, toggleId, formState, editorKey, schema }) {
@@ -1244,17 +1250,17 @@ function setupFileEditors() {
       if (form) {
         form.classList.toggle('hidden', !editor.getSelection());
       }
+      const content = transformed.content || '';
+      editor.cachedConfig = editor.getSelection() ? parseConfigYaml(content) : {};
       if (editor.getSelection()) {
-        hydrateConfigForm(transformed.content || '', trackerFormState, TRACKER_FORM_DEFAULTS);
+        hydrateConfigForm(content, trackerFormState, TRACKER_FORM_DEFAULTS);
       }
     },
     buildPayload: (payload, editor, { includeContent }) => {
       if (includeContent) {
         const updates = collectConfigFormData(trackerFormState);
-        const content = buildConfigYaml(
-          mergeConfigDefaults(updates, TRACKER_FORM_DEFAULTS),
-          TRACKER_FORM_SCHEMA
-        );
+        const baseConfig = mergeConfigDefaults(editor?.cachedConfig || {}, TRACKER_FORM_DEFAULTS);
+        const content = buildConfigYaml(mergeConfigUpdates(baseConfig, updates), TRACKER_FORM_SCHEMA);
         payload.content = content;
       }
       return payload;
