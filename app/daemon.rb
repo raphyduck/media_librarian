@@ -1238,12 +1238,6 @@ class Daemon
         handle_tracker_info_request(req, res)
       end
 
-      @control_server.mount_proc('/download_list') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_download_list_request(req, res)
-      end
-
       @control_server.mount_proc('/config/reload') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1770,44 +1764,6 @@ class Daemon
     def handle_api_config_request(req, res)
       handle_file_request(req, res, app.api_config_file, api_config_mutex, 'GET, PUT',
                           after_save: method(:reload_api_option_config))
-    end
-
-    def handle_download_list_request(req, res)
-      case req.request_method
-      when 'GET'
-        entries = WatchlistStore.fetch_with_details(type: req.query['type'])
-        json_response(res, body: { 'entries' => entries })
-      when 'POST'
-        payload = parse_payload(req)
-        imdb_id = (payload['imdb_id'] || payload['imdb'] || payload['external_id'] || payload['id']).to_s.strip
-        title = payload['title'].to_s.strip
-        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
-        return error_response(res, status: 422, message: 'missing_title') if title.empty?
-
-        entry = {
-          imdb_id: imdb_id,
-          title: title,
-          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
-        }
-        WatchlistStore.upsert([entry])
-        json_response(res, body: { 'status' => 'ok' })
-      when 'DELETE'
-        payload = parse_payload(req)
-        imdb_id = (payload['imdb_id'] || payload['imdb'] || payload['external_id'] || payload['id'] || req.query['imdb_id'] || req.query['imdb'] || req.query['external_id'] || req.query['id']).to_s.strip
-        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
-
-        removed = WatchlistStore.delete(
-          imdb_id: imdb_id,
-          type: payload['type'] || req.query['type']
-        )
-        json_response(res, body: { 'removed' => removed.to_i })
-      else
-        method_not_allowed(res, 'GET, POST, DELETE')
-      end
-    rescue JSON::ParserError => e
-      error_response(res, status: 422, message: e.message)
-    rescue StandardError => e
-      error_response(res, status: 422, message: e.message)
     end
 
     def handle_tracker_info_request(req, res)
