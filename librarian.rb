@@ -240,9 +240,14 @@ class Librarian
         app.librarian.load_requirements unless app.librarian.loaded?
         thread = Thread.current
         LibraryBus.initialize_queue(thread)
-        ThreadState.around(thread) do |_snapshot|
-          thread[:child_job_override] = 1 if thread[:is_active].to_i > 0
+        ThreadState.around(thread) do |snapshot|
+          nested = thread[:is_active].to_i > 0
+          thread[:child_job_override] = 1 if nested
           run_command(args, direct_flag)
+          if nested && snapshot[:email_msg]
+            snapshot[:email_msg] << thread[:email_msg].to_s
+            snapshot[:send_email] = thread[:send_email] if thread[:send_email].to_i.positive?
+          end
         end
       end
     end
