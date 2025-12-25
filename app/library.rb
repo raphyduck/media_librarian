@@ -564,8 +564,8 @@ class Library
 
   # Import a CSV into the watchlist
   # Usage:
-  #   Library.import_list_csv('to_download', '/path/to/list.csv', '1')  # replace rows
-  def self.import_list_csv(list_name, csv_path, replace = '1')
+  #   Library.import_list_csv(list_name: 'to_download', csv_path: '/path/to/list.csv', replace: '1') # replace rows
+  def self.import_list_csv(list_name: nil, csv_path: nil, replace: '1')
     begin
       raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
       raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
