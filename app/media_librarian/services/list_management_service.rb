@@ -41,7 +41,7 @@ module MediaLibrarian
 
         search_list = {}
         existing_files = {}
-        cache_name = "#{request.source_type}#{request.category}#{request.source['existing_folder'][request.category]}#{request.source['list_name']}"
+        cache_name = "#{request.source_type}#{request.category}#{request.source['existing_folder'][request.category]}"
         Utils.lock_block(__method__.to_s + cache_name) do
           search_list, existing_files = build_search_list(request, cache_name)
         end
@@ -54,37 +54,26 @@ module MediaLibrarian
       def build_search_list(request, cache_name)
         search_list = {}
         existing_files = {}
-      case request.source_type
-      when 'filesystem'
-        search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
-        existing_files[request.category] = search_list[cache_name].dup
-      when 'watchlist', 'download_list'
-        rows = WatchlistStore.fetch_with_details(type: request.category)
-        calendar_entries = []
-        rows.each do |row|
-          ids = normalize_metadata(row[:ids] || row['ids'])
-          imdb_id = imdb_identifier(row, ids)
-          next if imdb_id.to_s.empty?
-          ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
-          ids['imdb'] = imdb_id if imdb_id
-          attrs = { already_followed: 1, watchlist: 1, imdb_id: imdb_id }
-          year = row[:year] || row['year']
-          title = build_watchlist_title(row[:title] || row['title'], year)
-          search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
-          calendar_entries << build_calendar_entry(row, ids, imdb_id, request.category)
-        end
-        search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
-        when 'lists'
-          speaker.speak_up("Parsing search list '#{request.source['list_name']}', can take a long time...", 0)
-          list_name = (request.source['list_name'] || 'default').to_s
-          entries = ListStore.fetch_list(list_name)
-          entries.each do |row|
-            ttype = ('movies'.include?(row[:type]) ? 'movies' : row[:type]) || 'movies'
-            key = row[:title].to_s + row[:year].to_s + ttype.to_s
-            next if key.empty?
-
-            search_list[cache_name] = Library.parse_media({ type: 'lists', name: "#{row[:title]} (#{row[:year]})".gsub('/', ' ') }, ttype, request.no_prompt, search_list[cache_name] || {}, {}, {}, { obj_title: row[:title], obj_year: row[:year], obj_url: row[:url], obj_type: ttype }, '', { 'tmdb' => row[:tmdb], 'imdb' => row[:imdb] })
+        case request.source_type
+        when 'filesystem'
+          search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
+          existing_files[request.category] = search_list[cache_name].dup
+        when 'watchlist', 'download_list', 'lists'
+          rows = WatchlistStore.fetch_with_details(type: request.category)
+          calendar_entries = []
+          rows.each do |row|
+            ids = normalize_metadata(row[:ids] || row['ids'])
+            imdb_id = imdb_identifier(row, ids)
+            next if imdb_id.to_s.empty?
+            ids = ids.transform_keys { |k| k.is_a?(String) ? k : k.to_s }
+            ids['imdb'] = imdb_id if imdb_id
+            attrs = { already_followed: 1, watchlist: 1, imdb_id: imdb_id }
+            year = row[:year] || row['year']
+            title = build_watchlist_title(row[:title] || row['title'], year)
+            search_list[cache_name] = Library.parse_media({ type: 'lists', name: title }, request.category, request.no_prompt, search_list[cache_name] || {}, {}, {}, attrs, '', ids)
+            calendar_entries << build_calendar_entry(row, ids, imdb_id, request.category)
           end
+          search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
         end
         existing_files[request.category] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
         existing_files[request.category][:shows] = search_list[cache_name][:shows] if search_list[cache_name]&.dig(:shows) && request.category.to_s == 'shows'

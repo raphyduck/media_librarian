@@ -16,7 +16,6 @@ require 'base64'
 require 'get_process_mem'
 
 require_relative '../lib/logger'
-require_relative '../lib/list_store'
 require_relative '../lib/watchlist_store'
 require_relative '../lib/utils'
 require_relative 'client'
@@ -1774,42 +1773,34 @@ class Daemon
     end
 
     def handle_download_list_request(req, res)
-      list_name = (req.query['list_name'] || 'download_list').to_s
       case req.request_method
       when 'GET'
-        entries = ListStore.fetch_list(list_name)
-        json_response(res, body: { 'entries' => entries, 'list_name' => list_name })
+        entries = WatchlistStore.fetch_with_details(type: req.query['type'])
+        json_response(res, body: { 'entries' => entries })
       when 'POST'
         payload = parse_payload(req)
-        list_name = (payload['list_name'] || list_name).to_s
+        imdb_id = (payload['imdb_id'] || payload['imdb'] || payload['external_id'] || payload['id']).to_s.strip
         title = payload['title'].to_s.strip
+        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
         return error_response(res, status: 422, message: 'missing_title') if title.empty?
 
-        type = Utils.regularise_media_type((payload['type'] || 'movies').to_s)
-        ListStore.upsert_item(
-          list_name: list_name,
+        entry = {
+          imdb_id: imdb_id,
           title: title,
-          type: type,
-          year: payload['year'],
-          alt_titles: payload['alt_titles'],
-          url: payload['url'],
-          imdb: payload['imdb'],
-          tmdb: payload['tmdb']
-        )
-        json_response(res, body: { 'status' => 'ok', 'list_name' => list_name })
+          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
+        }
+        WatchlistStore.upsert([entry])
+        json_response(res, body: { 'status' => 'ok' })
       when 'DELETE'
         payload = parse_payload(req)
-        list_name = (payload['list_name'] || list_name).to_s
-        title = payload['title'] || req.query['title']
-        return error_response(res, status: 422, message: 'missing_title') if title.to_s.strip.empty?
+        imdb_id = (payload['imdb_id'] || payload['imdb'] || payload['external_id'] || payload['id'] || req.query['imdb_id'] || req.query['imdb'] || req.query['external_id'] || req.query['id']).to_s.strip
+        return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
 
-        removed = ListStore.delete_item(
-          list_name: list_name,
-          title: title,
-          year: payload['year'] || req.query['year'],
+        removed = WatchlistStore.delete(
+          imdb_id: imdb_id,
           type: payload['type'] || req.query['type']
         )
-        json_response(res, body: { 'removed' => removed.to_i, 'list_name' => list_name })
+        json_response(res, body: { 'removed' => removed.to_i })
       else
         method_not_allowed(res, 'GET, POST, DELETE')
       end
