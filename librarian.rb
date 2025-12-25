@@ -240,7 +240,10 @@ class Librarian
         app.librarian.load_requirements unless app.librarian.loaded?
         thread = Thread.current
         LibraryBus.initialize_queue(thread)
-        ThreadState.around(thread) { |_snapshot| run_command(args, direct_flag) }
+        ThreadState.around(thread) do |_snapshot|
+          thread[:child_job_override] = 1 if thread[:is_active].to_i > 0
+          run_command(args, direct_flag)
+        end
       end
     end
 
