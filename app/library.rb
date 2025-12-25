@@ -1,3 +1,4 @@
+require 'csv'
 require_relative 'local_media_repository'
 
 class Library
@@ -374,7 +375,11 @@ class Library
             fs.uniq.each do |f|
               app.speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." # if Env.debug?
               ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
-              ok = app.db.delete_rows('media_lists',{:list_name => f[:list_name], :type => f[:obj_type], :title => f[:obj_title], :year => f[:obj_year], :url => f[:obj_url]}) if f[:type] == 'lists'
+              if f[:type] == 'lists'
+                imdb_id = (f[:imdb_id] || f[:external_id] || f[:obj_imdb]).to_s.strip
+                watchlist_type = f[:obj_type] || f[:f_type]
+                ok = WatchlistStore.delete(imdb_id: imdb_id, type: watchlist_type) if imdb_id != ''
+              end
             end
             Cache.queue_state_remove('file_handling', i) if ok
           end
@@ -402,7 +407,7 @@ class Library
     existing_files = {}
     missing = {}
     case source_type
-    when 'watchlist', 'download_list'
+    when 'watchlist', 'download_list', 'lists'
       entries = WatchlistStore.fetch_with_details(type: category)
       app.speaker.speak_up('No entries found in watchlist') if entries.empty?
       entries.each do |row|
@@ -557,15 +562,38 @@ class Library
     destination
   end
 
-  # Import a CSV into the DB-backed lists
+  # Import a CSV into the watchlist
   # Usage:
   #   Library.import_list_csv('to_download', '/path/to/list.csv', '1')  # replace rows
   def self.import_list_csv(list_name, csv_path, replace = '1')
     begin
-      raise ArgumentError, 'list_name must be provided' if list_name.to_s.strip.empty?
       raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
-      count = ListStore.import_csv(list_name, csv_path, replace: replace.to_s == '1')
-      app.speaker.speak_up("import_list_csv: imported #{count} rows into list '#{list_name}'", 0) if defined?(app.speaker)
+      raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
+      list_name = list_name.to_s.strip
+      rows = []
+      CSV.foreach(csv_path, headers: true) do |row|
+        title = row['title']&.to_s&.strip
+        imdb_id = (row['imdb_id'] || row['imdb'] || row['external_id'])&.to_s&.strip
+        next if title.nil? || title.empty? || imdb_id.nil? || imdb_id.empty?
+
+        type = Utils.regularise_media_type((row['type'] || 'movies').to_s)
+        year = row['year']&.to_s&.strip
+        year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
+        alts = row['alt_titles']&.to_s&.strip
+        url = row['url']&.to_s&.strip
+        tmdb = (row['tmdb_id'] || row['tmdb'])&.to_s&.strip
+        metadata = {}
+        metadata[:list_name] = list_name unless list_name.empty?
+        metadata[:year] = year_i if year_i
+        metadata[:alt_titles] = alts if alts && !alts.empty?
+        metadata[:url] = url if url && !url.empty?
+        metadata[:tmdb] = tmdb if tmdb && !tmdb.empty?
+        rows << { imdb_id: imdb_id, title: title, type: type, metadata: metadata.empty? ? nil : metadata }
+      end
+      return 0 if rows.empty?
+
+      count = WatchlistStore.upsert(rows)
+      app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
       count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
