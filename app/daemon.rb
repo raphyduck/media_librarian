@@ -1153,6 +1153,12 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
+      @control_server.mount_proc('/calendar/import') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_import_request(req, res)
+      end
+
       @control_server.mount_proc('/calendar/search') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1547,6 +1553,35 @@ class Daemon
       error_response(res, status: 500, message: e.message)
     end
 
+    def handle_calendar_import_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      payload = parse_payload(req)
+      entry, error = normalize_calendar_import_payload(payload)
+      return error_response(res, status: 422, message: error) unless entry
+
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
+      persisted = service.persist_entry(entry)
+      return error_response(res, status: 422, message: 'invalid_entry') unless persisted
+
+      watchlist_status = 'skipped'
+      if truthy?(payload['watchlist'] || payload['interest'] || payload['add_to_watchlist'])
+        WatchlistStore.upsert([{
+          imdb_id: persisted[:imdb_id],
+          title: persisted[:title],
+          type: Utils.regularise_media_type((persisted[:media_type] || 'movies').to_s)
+        }])
+        watchlist_status = 'added'
+      end
+
+      Calendar.clear_cache
+      json_response(res, body: { 'calendar' => 'imported', 'watchlist' => watchlist_status })
+    rescue JSON::ParserError => e
+      error_response(res, status: 422, message: e.message)
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
     def handle_collection_request(req, res)
       return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
 
@@ -1583,6 +1618,133 @@ class Daemon
       json_response(res, body: { 'job' => job&.to_h })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
+    end
+
+    def normalize_calendar_import_payload(payload)
+      return [nil, 'invalid_payload'] unless payload.is_a?(Hash)
+
+      imdb_id = normalize_imdb_identifier(payload['imdb_id'] || payload.dig('ids', 'imdb') || payload.dig('ids', 'imdb_id'))
+      return [nil, 'missing_imdb_id'] unless imdb_identifier?(imdb_id)
+
+      title = payload['title'].to_s.strip
+      return [nil, 'missing_title'] if title.empty?
+
+      media_type = normalize_calendar_media_type(payload['type'] || payload['media_type'])
+      return [nil, 'missing_type'] unless media_type
+
+      ids = normalize_calendar_ids(payload['ids'])
+      return [nil, 'invalid_ids'] if ids == :invalid
+      ids['imdb'] ||= imdb_id
+
+      release_date_raw = payload['release_date']
+      release_date = normalize_calendar_date(release_date_raw)
+      return [nil, 'invalid_release_date'] if release_date_raw && release_date.nil?
+
+      synopsis = normalize_calendar_text(payload['synopsis'])
+      poster_url = normalize_calendar_url(payload['poster_url'] || payload['poster'])
+      backdrop_url = normalize_calendar_url(payload['backdrop_url'] || payload['backdrop'])
+
+      [
+        {
+          source: normalize_calendar_text(payload['source']) || 'manual',
+          external_id: normalize_calendar_text(payload['external_id'] || payload['id']) || imdb_id,
+          imdb_id: imdb_id,
+          title: title,
+          media_type: media_type,
+          genres: normalize_calendar_list(payload['genres']),
+          languages: normalize_calendar_list(payload['languages']),
+          countries: normalize_calendar_list(payload['countries']),
+          rating: normalize_calendar_float(payload['rating'] || payload['imdb_rating']),
+          imdb_votes: normalize_calendar_integer(payload['imdb_votes']),
+          poster_url: poster_url,
+          backdrop_url: backdrop_url,
+          synopsis: synopsis,
+          release_date: release_date,
+          ids: ids
+        },
+        nil
+      ]
+    end
+
+    def normalize_calendar_media_type(value)
+      case value.to_s.downcase
+      when 'movie', 'movies', 'film', 'films'
+        'movie'
+      when 'show', 'shows', 'tv', 'series'
+        'show'
+      else
+        nil
+      end
+    end
+
+    def normalize_calendar_ids(value)
+      return {} if value.nil?
+      return :invalid unless value.is_a?(Hash)
+
+      value.each_with_object({}) do |(key, val), memo|
+        key = key.to_s.strip
+        next if key.empty? || val.nil?
+
+        memo[key] = val
+      end
+    end
+
+    def normalize_calendar_list(value)
+      case value
+      when Array
+        value.map { |entry| entry.to_s.strip }.reject(&:empty?)
+      when String
+        value.split(',').map { |entry| entry.to_s.strip }.reject(&:empty?)
+      else
+        []
+      end
+    end
+
+    def normalize_calendar_text(value)
+      text = value.to_s.strip
+      text.empty? ? nil : text
+    end
+
+    def normalize_calendar_url(value)
+      normalize_calendar_text(value)
+    end
+
+    def normalize_calendar_date(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+
+      Time.parse(value.to_s)
+    rescue ArgumentError
+      nil
+    end
+
+    def normalize_calendar_float(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+
+      Float(value)
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    def normalize_calendar_integer(value)
+      return nil if value.nil? || value.to_s.strip.empty?
+
+      Integer(value)
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    def normalize_imdb_identifier(value)
+      token = value.to_s.strip
+      return '' if token.empty?
+
+      digits = token.sub(/\A(?:imdb|tt)/i, '')
+      return token unless digits.match?(/\A\d+\z/)
+
+      "tt#{digits}"
+    end
+
+    def imdb_identifier?(value)
+      value.to_s.match?(/\Att\d+\z/i)
     end
 
     def handle_pending_torrents_request(req, res)

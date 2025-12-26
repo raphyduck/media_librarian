@@ -1705,18 +1705,23 @@ function pickEntryValue(entry, keys) {
   return keys.map((key) => entry[key]).find((value) => value !== undefined && value !== null) ?? null;
 }
 
-function resolveExternalUrl(entry) {
+function resolveImdbId(entry) {
   const clean = (value) => (value == null ? '' : String(value).trim());
   const ids = entry?.ids || {};
   const source = clean(pickEntryValue(entry, ['source'])).toLowerCase();
-  const mediaType = (pickEntryValue(entry, ['media_type', 'type', 'kind', 'category']) || '').toString().toLowerCase();
-  const isShow = /tv|show|serie/.test(mediaType);
-
-  const imdbId =
-    clean(ids.imdb)
+  return clean(ids.imdb)
     || clean(ids.imdb_id)
     || clean(pickEntryValue(entry, ['imdb_id', 'imdb']))
     || (source === 'imdb' ? clean(pickEntryValue(entry, ['external_id'])) : '');
+}
+
+function resolveExternalUrl(entry) {
+  const clean = (value) => (value == null ? '' : String(value).trim());
+  const ids = entry?.ids || {};
+  const mediaType = (pickEntryValue(entry, ['media_type', 'type', 'kind', 'category']) || '').toString().toLowerCase();
+  const isShow = /tv|show|serie/.test(mediaType);
+
+  const imdbId = resolveImdbId(entry);
   if (imdbId) {
     return `https://www.imdb.com/title/${imdbId}`;
   }
@@ -2212,17 +2217,77 @@ function isInWatchlist(entry) {
   return Boolean(flag);
 }
 
-async function importCalendarEntry(entry, button) {
+function buildCalendarImportPayload(entry, options = {}) {
+  const imdbId = resolveImdbId(entry);
+  const title = (pickEntryValue(entry, ['title', 'name']) || '').toString().trim();
+  const type = (pickEntryValue(entry, ['media_type', 'type', 'kind', 'category']) || '').toString().toLowerCase();
+  if (!imdbId || !title || !type) {
+    return null;
+  }
+
+  const ids = { ...(entry?.ids || {}) };
+  ['imdb', 'imdb_id', 'tmdb', 'tmdb_id', 'tvdb', 'tvdb_id', 'trakt', 'trakt_id'].forEach((key) => {
+    const value = pickEntryValue(entry, [key]);
+    if (value) {
+      ids[key] = value;
+    }
+  });
+  const cleanIds = Object.fromEntries(Object.entries(ids).filter(([, value]) => value));
+
+  const payload = {
+    imdb_id: imdbId,
+    title,
+    type,
+  };
+  if (Object.keys(cleanIds).length) {
+    payload.ids = cleanIds;
+  }
+
+  const releaseDate = resolveCalendarDate(entry);
+  if (releaseDate instanceof Date && !Number.isNaN(releaseDate.getTime())) {
+    payload.release_date = releaseDate.toISOString();
+  }
+  const synopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
+  if (synopsis) {
+    payload.synopsis = synopsis;
+  }
+  const poster = pickEntryValue(entry, ['poster', 'poster_url']);
+  if (poster) {
+    payload.poster = poster;
+  }
+  const backdrop = pickEntryValue(entry, ['backdrop', 'backdrop_url']);
+  if (backdrop) {
+    payload.backdrop = backdrop;
+  }
+  const rating = pickEntryValue(entry, ['imdb_rating', 'rating', 'score']);
+  if (rating !== null && rating !== undefined && rating !== '') {
+    payload.rating = rating;
+  }
+  const votes = pickEntryValue(entry, ['imdb_votes', 'votes', 'vote_count']);
+  if (votes !== null && votes !== undefined && votes !== '') {
+    payload.imdb_votes = votes;
+  }
+  const externalId = pickEntryValue(entry, ['external_id', 'id', 'slug']);
+  if (externalId) {
+    payload.external_id = externalId;
+  }
+  const source = pickEntryValue(entry, ['source']);
+  if (source) {
+    payload.source = source;
+  }
+  if (options.watchlist) {
+    payload.watchlist = true;
+  }
+  return payload;
+}
+
+async function submitCalendarImport(entry, button, options = {}) {
   if (!state.authenticated) {
     return;
   }
-  const payload = {
-    id: resolveIdentifier(entry),
-    type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
-    title: pickEntryValue(entry, ['title', 'name']) || '',
-  };
-  if (!payload.id && !payload.title) {
-    showNotification("Impossible d'importer cet élément.", 'error');
+  const payload = buildCalendarImportPayload(entry, options);
+  if (!payload) {
+    showNotification(options.errorMessage || "Impossible d'importer cet élément.", 'error');
     return;
   }
   const originalLabel = button?.textContent;
@@ -2235,12 +2300,21 @@ async function importCalendarEntry(entry, button) {
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
-    showNotification('Ajouté au calendrier.');
-    if (button) {
-      button.textContent = 'Importé';
+    if (options.watchlist) {
+      entry.in_watchlist = true;
+      entry.watchlist = true;
+      entry.in_interest_list = true;
+      if (Array.isArray(state.calendar.entries)) {
+        state.calendar.entries = state.calendar.entries.map((item) => (item === entry ? entry : item));
+      }
     }
+    showNotification(options.successMessage || 'Ajouté au calendrier.');
+    if (button && options.buttonText) {
+      button.textContent = options.buttonText;
+    }
+    await loadCalendar({ preserveFilters: true });
   } catch (error) {
-    showNotification(error.message, 'error');
+    showNotification(error.message || options.errorMessage || "Impossible d'importer cet élément.", 'error');
     if (button) {
       button.disabled = false;
       button.textContent = originalLabel || button.textContent;
@@ -2248,104 +2322,21 @@ async function importCalendarEntry(entry, button) {
   }
 }
 
-async function addToWatchlist(entry, button) {
-  const identifier = resolveIdentifier(entry);
-  const payload = {
-    id: identifier,
-    type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
-    title: pickEntryValue(entry, ['title', 'name']) || '',
-  };
-
-  const metadata = {};
-  const releaseDate = resolveCalendarDate(entry);
-  const releaseYear = pickEntryValue(entry, ['year', 'release_year']) || releaseDate?.getFullYear();
-  const ids = { ...(entry?.ids || {}) };
-  ['imdb', 'imdb_id', 'tmdb', 'tmdb_id', 'tvdb', 'tvdb_id', 'trakt', 'trakt_id'].forEach((key) => {
-    const value = pickEntryValue(entry, [key]);
-    if (value) {
-      ids[key] = value;
-    }
+async function importCalendarEntry(entry, button) {
+  return submitCalendarImport(entry, button, {
+    successMessage: 'Ajouté au calendrier.',
+    buttonText: 'Importé',
+    errorMessage: "Impossible d'importer cet élément.",
   });
+}
 
-  if (releaseYear) {
-    metadata.year = releaseYear;
-  }
-  if (releaseDate instanceof Date && !Number.isNaN(releaseDate.getTime())) {
-    metadata.release_date = releaseDate.toISOString();
-  }
-  const imdbId = ids.imdb || ids.imdb_id;
-  if (imdbId) {
-    payload.imdb_id = imdbId;
-  }
-  const cleanIds = Object.fromEntries(Object.entries(ids).filter(([, value]) => value));
-  if (Object.keys(cleanIds).length) {
-    metadata.ids = cleanIds;
-  }
-  const url = resolveExternalUrl(entry);
-  if (url) {
-    metadata.url = url;
-  }
-  if (Object.keys(metadata).length) {
-    payload.metadata = metadata;
-  }
-  if (!payload.id && !payload.title) {
-    showNotification("Impossible d'ajouter cet élément.", 'error');
-    return;
-  }
-  const originalLabel = button?.textContent;
-  if (button) {
-    button.disabled = true;
-  }
-  const previousStatus = {
-    in_watchlist: entry.in_watchlist,
-    watchlist: entry.watchlist,
-    in_interest_list: entry.in_interest_list,
-  };
-  let added = false;
-  try {
-    await fetchJson('/watchlist', {
-      method: 'POST',
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(payload),
-    });
-    added = true;
-    showNotification('Ajouté à la liste d’intérêt.');
-    entry.in_watchlist = true;
-    entry.watchlist = true;
-    entry.in_interest_list = true;
-    if (button) {
-      button.textContent = 'Ajouté à la liste d’intérêt';
-    }
-    if (Array.isArray(state.calendar.entries)) {
-      state.calendar.entries = state.calendar.entries.map((item) => (item === entry ? entry : item));
-    }
-    renderCalendar();
-    const previousEntries = state.calendar.entries;
-    await loadCalendar({ preserveFilters: true });
-    const optimisticIds = new Set(
-      (previousEntries || [])
-        .filter(isInWatchlist)
-        .map((item) => resolveIdentifier(item))
-        .filter(Boolean),
-    );
-    if (optimisticIds.size && Array.isArray(state.calendar.entries)) {
-      state.calendar.entries = state.calendar.entries.map((item) => (
-        optimisticIds.has(resolveIdentifier(item))
-          ? { ...item, in_watchlist: true, watchlist: true, in_interest_list: true }
-          : item
-      ));
-      renderCalendar();
-    }
-  } catch (error) {
-    if (!added) {
-      Object.assign(entry, previousStatus);
-    }
-    showNotification(error.message, 'error');
-    if (button) {
-      button.disabled = false;
-      button.textContent = originalLabel || button.textContent;
-    }
-  }
+async function addToWatchlist(entry, button) {
+  return submitCalendarImport(entry, button, {
+    watchlist: true,
+    successMessage: 'Ajouté à la liste d’intérêt.',
+    buttonText: 'Ajouté à la liste d’intérêt',
+    errorMessage: "Impossible d'ajouter cet élément.",
+  });
 }
 
 function renderCalendar(data = null) {

@@ -67,6 +67,12 @@ module MediaLibrarian
         normalized
       end
 
+      def persist_entry(entry)
+        return nil unless entry.is_a?(Hash)
+
+        persist_entries([entry]).first
+      end
+
       private
 
       attr_reader :db, :providers
