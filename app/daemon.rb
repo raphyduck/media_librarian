@@ -1153,6 +1153,12 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
+      @control_server.mount_proc('/calendar/search') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_calendar_search_request(req, res)
+      end
+
       @control_server.mount_proc('/collection') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1511,6 +1517,32 @@ class Daemon
 
       calendar = Calendar.new(app: app)
       json_response(res, body: calendar.entries(filters))
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def handle_calendar_search_request(req, res)
+      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
+
+      title = req.query['title'].to_s.strip
+      return error_response(res, status: 400, message: 'missing_title') if title.empty?
+
+      year = req.query['year'].to_s.strip
+      year = year.empty? ? nil : year.to_i
+      type = req.query['type'].to_s.strip
+      type = nil if type.empty?
+      sources = normalize_list_param(req.query['sources'])
+                .map { |source| source.to_s.strip.downcase }
+                .reject(&:empty?)
+                .map { |source| source == 'imdb' ? 'omdb' : source }
+      limit = clamp_positive_integer(req.query['limit'], default: 50, max: 50)
+
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
+      entries = service.search(title: title, year: year, type: type)
+      entries = entries.select { |entry| sources.include?(entry[:source].to_s.downcase) } if sources.any?
+      entries = entries.first(limit)
+
+      json_response(res, body: { 'entries' => entries })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
     end
