@@ -903,6 +903,31 @@ button:disabled {
   margin-left: auto;
 }
 
+.calendar-search-results {
+  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.calendar-search-results .hint {
+  grid-column: 1 / -1;
+}
+
+.calendar-search-item {
+  grid-template-columns: 1fr;
+}
+
+.calendar-search-year {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.calendar-search-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 @media (max-width: 640px) {
   body {
     padding: 0 1rem 3rem;
