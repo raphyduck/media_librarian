@@ -66,8 +66,7 @@ class CollectionRepository
     pattern = "%#{search.to_s.strip}%"
     conditions = [
       Sequel.ilike(Sequel[:local_media][:local_path], pattern),
-      Sequel.ilike(Sequel[:local_media][:imdb_id], pattern),
-      Sequel.ilike(Sequel[:local_media][:title], pattern)
+      Sequel.ilike(Sequel[:local_media][:imdb_id], pattern)
     ]
     conditions << Sequel.ilike(Sequel[:calendar_entries][:title], pattern) if calendar_table?
 
