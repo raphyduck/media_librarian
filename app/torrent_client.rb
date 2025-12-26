@@ -1,6 +1,8 @@
 class TorrentClient
   include MediaLibrarian::AppContainerSupport
 
+  class AddTorrentError < StandardError; end
+
   attr_reader :app
   # Constants
   DEFAULT_SEED_TIME = 1 # hours
@@ -212,7 +214,7 @@ class TorrentClient
 
     safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
   rescue => e
-    app.speaker.tell_error(e, "app.t_client.#{debug_message}")
+    app.speaker.tell_error(e, error_context(debug_message, sanitized_args))
     raise e unless invalid_torrent_error?(e)
   end
 
@@ -239,19 +241,60 @@ class TorrentClient
     end
   rescue => e
     return handle_invalid_torrent(args) if invalid_torrent_error?(e)
+    if add_torrent_error?(e) || rpc_error?(e)
+      app.speaker.tell_error(e, error_context(debug_message, args))
+      raise AddTorrentError, e.message, e.backtrace if add_torrent_error?(e)
+      raise e
+    end
 
     reset_connection
     if tries_remaining > 1
       sleep 5
       safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
     else
-      app.speaker.tell_error(e, "app.t_client.#{debug_message}")
+      app.speaker.tell_error(e, error_context(debug_message, args))
       raise e
     end
   end
 
   def invalid_torrent_error?(error)
     [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('InvalidTorrentError') }
+  end
+
+  def add_torrent_error?(error)
+    [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('AddTorrentError') }
+  end
+
+  def rpc_error?(error)
+    (defined?(Deluge::Rpc::Connection::RPCError) && error.is_a?(Deluge::Rpc::Connection::RPCError)) ||
+      error.class.to_s.include?('Deluge::Rpc::Connection::RPCError')
+  end
+
+  def error_context(debug_message, args)
+    identifiers = torrent_identifiers(args)
+    return "app.t_client.#{debug_message}" if identifiers.empty?
+
+    "app.t_client.#{debug_message} (#{identifiers.map { |k, v| "#{k}=#{v}" }.join(', ')})"
+  end
+
+  def torrent_identifiers(args)
+    identifiers = {}
+    Array(args).each do |arg|
+      case arg
+      when Hash
+        arg.each do |key, value|
+          next unless %w[info_hash torrent_id tid].include?(key.to_s)
+
+          identifiers[key.to_s] = value if value.to_s != ''
+        end
+      when Array
+        candidate = arg.first
+        identifiers['torrent_id'] ||= candidate if candidate.is_a?(String) && candidate.to_s != ''
+      when String
+        identifiers['torrent_id'] ||= arg if arg.to_s != ''
+      end
+    end
+    identifiers
   end
 
   def handle_invalid_torrent(args)
