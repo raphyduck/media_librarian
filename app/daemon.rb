@@ -1441,6 +1441,8 @@ class Daemon
         'command' => command_parts,
         'args' => command_arguments(action)
       }
+      arg_values = template_command_arg_values(data)
+      entry['arg_values'] = arg_values if arg_values&.any?
       queue = template_command_queue(data, action)
       entry['queue'] = queue if queue
       entry
@@ -1473,6 +1475,17 @@ class Daemon
       return queue if queue.is_a?(String) && !queue.empty?
 
       command_queue(action)
+    end
+
+    def template_command_arg_values(data)
+      args = data['args'] || data[:args]
+      return unless args.is_a?(Hash)
+
+      args.each_with_object({}) do |(key, value), memo|
+        next if value.nil?
+
+        memo[key.to_s] = value.is_a?(String) ? value : value.to_s
+      end
     end
 
     def template_directories
