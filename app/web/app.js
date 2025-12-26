@@ -3626,12 +3626,38 @@ function setupCalendarEvents() {
   if (refreshFeed) {
     refreshFeed.addEventListener('click', refreshCalendarFeed);
   }
+  const titleFilter = document.getElementById('calendar-title-filter');
+  const imdbSearchButton = document.getElementById('calendar-imdb-search');
+  const toggleImdbButton = () => {
+    if (!imdbSearchButton || !titleFilter) {
+      return;
+    }
+    const query = titleFilter.value.trim();
+    const shouldShow = Boolean(query);
+    imdbSearchButton.hidden = !shouldShow;
+    imdbSearchButton.disabled = !shouldShow;
+  };
   const calendarView = document.getElementById('calendar-view');
   if (calendarView) {
     calendarView.addEventListener('change', () => loadCalendar({ preserveFilters: true, resetWindow: true }));
   }
+  if (titleFilter) {
+    titleFilter.addEventListener('input', () => {
+      toggleImdbButton();
+      loadCalendar({ preserveFilters: true });
+    });
+  }
+  if (imdbSearchButton) {
+    imdbSearchButton.addEventListener('click', () => {
+      const query = titleFilter?.value.trim();
+      if (!query) {
+        return;
+      }
+      const target = `https://www.imdb.com/find?q=${encodeURIComponent(query)}`;
+      window.open(target, '_blank', 'noopener');
+    });
+  }
   const ids = [
-    'calendar-title-filter',
     'calendar-type',
     'calendar-genres',
     'calendar-rating-min',
@@ -3648,6 +3674,7 @@ function setupCalendarEvents() {
       const event = input.tagName === 'SELECT' ? 'change' : 'input';
       input.addEventListener(event, () => loadCalendar({ preserveFilters: true }));
     });
+  toggleImdbButton();
   wireCalendarNavigation(
     {
       previous: document.getElementById('calendar-prev'),
