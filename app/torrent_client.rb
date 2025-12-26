@@ -62,7 +62,7 @@ class TorrentClient
     options['add_paused'] = true unless download[:type] > 1
     case download[:type]
     when 1
-      app.t_client.add_torrent_file(download[:filename], Base64.encode64(download[:file]), options)
+      app.t_client.add_torrent_file(download[:filename], Base64.strict_encode64(download[:file]), options)
       if meta_id.to_s != ''
         status = app.t_client.get_torrent_status(meta_id, ['name', 'progress', 'queue'])
         raise 'Download failed' if status.nil? || status.empty?
