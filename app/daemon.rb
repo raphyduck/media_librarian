@@ -1153,12 +1153,6 @@ class Daemon
         handle_calendar_request(req, res)
       end
 
-      @control_server.mount_proc('/calendar/search') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_calendar_search_request(req, res)
-      end
-
       @control_server.mount_proc('/collection') do |req, res|
         next unless require_authorization(req, res)
 
@@ -1521,23 +1515,6 @@ class Daemon
       error_response(res, status: 500, message: e.message)
     end
 
-    def handle_calendar_search_request(req, res)
-      return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
-
-      title = req.query['title'] || req.query['titre']
-      return error_response(res, status: 400, message: 'Titre manquant') if title.to_s.strip.empty?
-
-      year = parse_year_param(req.query['year'] || req.query['annee'])
-      type = req.query['type']
-
-      entries = calendar_repository.search(title: title, year: year, type: type)
-      entries = calendar_search(title: title, year: year, type: type) if entries.empty?
-
-      json_response(res, body: { 'entries' => entries.map { |entry| calendar_search_payload(entry) } })
-    rescue StandardError => e
-      error_response(res, status: 500, message: e.message)
-    end
-
     def handle_collection_request(req, res)
       return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
 
@@ -1719,31 +1696,8 @@ class Daemon
       start_date + (calendar_window_length(query) - 1) * 86_400
     end
 
-    def parse_year_param(value)
-      return nil if value.to_s.strip.empty?
-
-      Integer(value)
-    rescue ArgumentError
-      nil
-    end
-
     def calendar_repository
       @calendar_repository ||= CalendarEntriesRepository.new(app: app)
-    end
-
-    def calendar_search(title:, year:, type:)
-      CalendarFeed.calendar_service.search(title: title, year: year, type: type)
-    end
-
-    def calendar_search_payload(entry)
-      {
-        'type' => entry[:type] || entry[:media_type],
-        'title' => entry[:title],
-        'year' => entry[:release_date]&.year || entry[:year],
-        'ids' => entry[:ids] || {},
-        'poster_url' => entry[:poster_url],
-        'backdrop_url' => entry[:backdrop_url]
-      }
     end
 
     def calendar_window_length(query)
