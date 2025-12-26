@@ -21,6 +21,8 @@ module MediaLibrarian
     end
 
     class TorrentQueueService < BaseService
+      FAILED_STATUS = 6
+
       def initialize(app: self.class.app, speaker: nil, file_system: nil, client:)
         super(app: app, speaker: speaker, file_system: file_system)
         @client = client
@@ -71,6 +73,10 @@ module MediaLibrarian
               queue_file_handling: torrent[:files].is_a?(Array) && !torrent[:files].empty? ? { torrent_row[:identifier] => torrent[:files] } : {}
             )
             success = process_download_request(request)
+            if !success && failed_torrent?(torrent_row[:name])
+              speaker.speak_up "Marking torrent '#{torrent_row[:name]}' as failed, skipping retries"
+              break
+            end
             speaker.speak_up "Download of torrent '#{torrent_row[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl.zero?
             FileUtils.rm(app.temp_dir + "/#{tdid}.torrent") rescue nil
           end
@@ -197,6 +203,10 @@ module MediaLibrarian
         true
       rescue StandardError => e
         Cache.queue_state_remove('deluge_options', request.torrent_name)
+        if add_torrent_error?(e)
+          app.db.update_rows('torrents', { status: FAILED_STATUS }, { name: request.torrent_name })
+          return false
+        end
         speaker.tell_error(
           e,
           "torrentclient.process_download_torrent('#{request.torrent_type}', '#{request.path}', '#{request.options}', '#{request.tracker}')"
@@ -222,6 +232,15 @@ module MediaLibrarian
 
       def invalid_torrent_error?(error)
         [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('InvalidTorrentError') }
+      end
+
+      def add_torrent_error?(error)
+        error.is_a?(TorrentClient::AddTorrentError) ||
+          [error.class.to_s, error.message.to_s].any? { |msg| msg.include?('AddTorrentError') }
+      end
+
+      def failed_torrent?(torrent_name)
+        app.db.get_rows('torrents', { name: torrent_name }).first&.dig(:status).to_i == FAILED_STATUS
       end
 
       def build_download_options(torrent_row, torrent, tdid)
