@@ -3310,6 +3310,7 @@ function renderCommandList(container, commands = [], emptyMessage) {
     argsContainer.className = 'command-args';
 
     const inputs = [];
+    const argValues = command.arg_values || command.argValues || {};
     if (Array.isArray(command.args) && command.args.length) {
       command.args.forEach((arg) => {
         if (!arg?.name) {
@@ -3324,6 +3325,10 @@ function renderCommandList(container, commands = [], emptyMessage) {
         input.dataset.argName = arg.name;
         input.placeholder = arg.required ? 'Requis' : 'Optionnel';
         input.required = Boolean(arg.required);
+        const value = argValues[arg.name];
+        if (value != null) {
+          input.value = String(value);
+        }
         wrapper.appendChild(input);
         argsContainer.appendChild(wrapper);
         inputs.push(input);
