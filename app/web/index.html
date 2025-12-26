@@ -309,6 +309,30 @@
 
         <section
           class="tab-panel"
+          data-tab="calendar-search"
+          role="tabpanel"
+          aria-labelledby="tab-calendar-search"
+          hidden
+        >
+          <section class="panel" id="calendar-search-panel">
+            <div class="panel-header">
+              <h2>Recherche calendrier</h2>
+              <div class="panel-tools">
+                <form id="calendar-search-form" class="collection-search" role="search" autocomplete="off">
+                  <label for="calendar-search-query">Rechercher</label>
+                  <input id="calendar-search-query" name="query" type="search" placeholder="Titre" />
+                  <button type="submit">Rechercher</button>
+                </form>
+              </div>
+            </div>
+            <div id="calendar-search-results" class="calendar-items calendar-search-results">
+              <p class="hint">Entrez une recherche pour démarrer.</p>
+            </div>
+          </section>
+        </section>
+
+        <section
+          class="tab-panel"
           data-tab="collection"
           role="tabpanel"
           aria-labelledby="tab-collection"

@@ -28,6 +28,11 @@ const state = {
       country: '',
     },
   },
+  calendarSearch: {
+    query: '',
+    results: [],
+    loading: false,
+  },
   collection: {
     entries: [],
     sort: 'released_at',
@@ -2102,6 +2107,51 @@ function buildCalendarEntryCard(entry, date = resolveCalendarDate(entry)) {
   return item;
 }
 
+function buildCalendarSearchCard(entry) {
+  const item = document.createElement('article');
+  item.className = 'calendar-item calendar-search-item';
+
+  const body = document.createElement('div');
+  body.className = 'calendar-body';
+  const header = document.createElement('header');
+  const title = document.createElement('h4');
+  title.textContent = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+  header.appendChild(title);
+
+  const year = pickEntryValue(entry, ['year', 'release_year']) || resolveCalendarDate(entry)?.getFullYear();
+  if (year) {
+    const yearLabel = document.createElement('span');
+    yearLabel.className = 'calendar-search-year';
+    yearLabel.textContent = String(year);
+    header.appendChild(yearLabel);
+  }
+  body.appendChild(header);
+
+  const synopsis = pickEntryValue(entry, ['synopsis', 'overview', 'summary', 'description', 'plot']);
+  if (synopsis) {
+    const description = document.createElement('p');
+    description.className = 'calendar-synopsis';
+    description.textContent = synopsis;
+    body.appendChild(description);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'calendar-search-actions';
+  const importButton = document.createElement('button');
+  importButton.type = 'button';
+  importButton.textContent = 'Importer dans le calendrier';
+  importButton.addEventListener('click', () => importCalendarEntry(entry, importButton));
+  const watchlistButton = document.createElement('button');
+  watchlistButton.type = 'button';
+  watchlistButton.textContent = "Ajouter à la liste d’intérêt";
+  watchlistButton.addEventListener('click', () => addToWatchlist(entry, watchlistButton));
+  actions.append(importButton, watchlistButton);
+  body.appendChild(actions);
+
+  item.appendChild(body);
+  return item;
+}
+
 function makeCalendarBadge(text) {
   const span = document.createElement('span');
   span.className = 'calendar-badge';
@@ -2160,6 +2210,42 @@ function isInWatchlist(entry) {
     return normalized.includes('watch') || normalized.includes('interest');
   }
   return Boolean(flag);
+}
+
+async function importCalendarEntry(entry, button) {
+  if (!state.authenticated) {
+    return;
+  }
+  const payload = {
+    id: resolveIdentifier(entry),
+    type: pickEntryValue(entry, ['type', 'kind', 'category']) || '',
+    title: pickEntryValue(entry, ['title', 'name']) || '',
+  };
+  if (!payload.id && !payload.title) {
+    showNotification("Impossible d'importer cet élément.", 'error');
+    return;
+  }
+  const originalLabel = button?.textContent;
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    await fetchJson('/calendar/import', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification('Ajouté au calendrier.');
+    if (button) {
+      button.textContent = 'Importé';
+    }
+  } catch (error) {
+    showNotification(error.message, 'error');
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel || button.textContent;
+    }
+  }
 }
 
 async function addToWatchlist(entry, button) {
@@ -2300,6 +2386,21 @@ function renderCalendar(data = null) {
   container.replaceChildren(...fragments);
 }
 
+function renderCalendarSearchResults(data = null) {
+  const container = document.getElementById('calendar-search-results');
+  if (!container) {
+    return;
+  }
+  const entries = normalizeCalendarEntries(data ?? state.calendarSearch.results ?? []);
+  state.calendarSearch.results = entries;
+  if (!entries.length) {
+    container.innerHTML = '<p class="hint">Aucun résultat.</p>';
+    return;
+  }
+  const cards = entries.map((entry) => buildCalendarSearchCard(entry));
+  container.replaceChildren(...cards);
+}
+
 async function loadCalendarGenres() {
   if (!state.authenticated || state.calendar.loadingGenres) {
     return;
@@ -2354,6 +2455,44 @@ async function loadCalendar(options = {}) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
+  }
+}
+
+async function loadCalendarSearch(query) {
+  if (!state.authenticated || state.calendarSearch.loading) {
+    return;
+  }
+  const input = document.getElementById('calendar-search-query');
+  const normalized = (query ?? input?.value ?? state.calendarSearch.query ?? '').toString().trim();
+  state.calendarSearch.query = normalized;
+  if (input && input.value !== normalized) {
+    input.value = normalized;
+  }
+  const container = document.getElementById('calendar-search-results');
+  if (!normalized) {
+    state.calendarSearch.results = [];
+    if (container) {
+      container.innerHTML = '<p class="hint">Entrez une recherche pour démarrer.</p>';
+    }
+    return;
+  }
+  if (container) {
+    container.innerHTML = '<p class="hint">Recherche en cours…</p>';
+  }
+  state.calendarSearch.loading = true;
+  try {
+    const search = new URLSearchParams({ query: normalized });
+    const data = await fetchJson(`/calendar/search?${search.toString()}`);
+    renderCalendarSearchResults(data);
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+    if (container) {
+      container.innerHTML = '<p class="hint">Recherche indisponible.</p>';
+    }
+  } finally {
+    state.calendarSearch.loading = false;
   }
 }
 
@@ -3482,6 +3621,7 @@ const TAB_LOADERS = {
   scheduler: () => loadSchedulerTasks(),
   config: (options = {}) => loadConfigurationTab(options),
   calendar: (options = {}) => loadCalendar(options),
+  'calendar-search': () => loadCalendarSearch(state.calendarSearch.query),
   collection: (options = {}) => loadCollection(options),
   downloads: () => loadDownloadsTab(),
 };
@@ -3685,6 +3825,17 @@ function setupCalendarEvents() {
   );
 }
 
+function setupCalendarSearchEvents() {
+  const form = document.getElementById('calendar-search-form');
+  const input = document.getElementById('calendar-search-query');
+  if (form && input) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadCalendarSearch(input.value);
+    });
+  }
+}
+
 function setupCollectionEvents() {
   const searchForm = document.getElementById('collection-search-form');
   const searchInput = document.getElementById('collection-search');
@@ -3789,6 +3940,7 @@ function setupEventListeners() {
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-button').addEventListener('click', logout);
   setupCalendarEvents();
+  setupCalendarSearchEvents();
   setupCollectionEvents();
 }
 
