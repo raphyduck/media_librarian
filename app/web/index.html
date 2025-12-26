@@ -233,32 +233,10 @@
             </div>
 
             <div class="calendar-filters" aria-label="Filtres calendrier">
-              <form id="calendar-search-form" class="calendar-search" role="search" autocomplete="off">
-                <div class="calendar-filter-field">
-                  <label for="calendar-search-query">Recherche</label>
-                  <input
-                    id="calendar-search-query"
-                    name="query"
-                    type="search"
-                    placeholder="Titre ou mots-clés"
-                    required
-                  />
-                </div>
-
-                <div class="calendar-filter-field">
-                  <label for="calendar-search-year">Année</label>
-                  <input
-                    id="calendar-search-year"
-                    name="year"
-                    type="number"
-                    inputmode="numeric"
-                    min="1900"
-                    max="2100"
-                  />
-                </div>
-
-                <button type="submit">Chercher</button>
-              </form>
+              <div class="calendar-filter-field">
+                <label for="calendar-title-filter">Titre</label>
+                <input id="calendar-title-filter" name="title" type="search" placeholder="Titre" />
+              </div>
 
               <div class="calendar-filter-field">
                 <label for="calendar-type">Type</label>
@@ -317,11 +295,6 @@
                 <label for="calendar-country">Pays</label>
                 <input id="calendar-country" name="country" type="text" />
               </div>
-            </div>
-
-            <div id="calendar-search-results" class="calendar-content" hidden>
-              <h3>Résultats de recherche</h3>
-              <p class="hint">Aucun résultat pour le moment.</p>
             </div>
 
             <div id="calendar-content" class="calendar-content">

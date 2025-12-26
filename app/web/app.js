@@ -17,6 +17,7 @@ const state = {
     availableGenres: [],
     loadingGenres: false,
     filters: {
+      title: '',
       type: '',
       genres: [],
       ratingMin: '',
@@ -25,12 +26,6 @@ const state = {
       votesMax: '',
       language: '',
       country: '',
-    },
-    search: {
-      query: '',
-      year: '',
-      loading: false,
-      results: [],
     },
   },
   collection: {
@@ -1811,6 +1806,7 @@ function readCalendarFilters() {
   const viewSelect = document.getElementById('calendar-view');
   state.calendar.view = viewSelect?.value || 'week';
 
+  filters.title = (document.getElementById('calendar-title-filter')?.value || '').trim().toLowerCase();
   filters.type = (document.getElementById('calendar-type')?.value || '').toLowerCase();
   const genreSelect = document.getElementById('calendar-genres');
   filters.genres = genreSelect
@@ -1885,6 +1881,11 @@ function updateCalendarWindowDisplay(range) {
 }
 
 function entryMatchesFilters(entry, filters) {
+  const title = (pickEntryValue(entry, ['title', 'name']) || '').toString().toLowerCase();
+  if (filters.title && !title.includes(filters.title)) {
+    return false;
+  }
+
   const type = (pickEntryValue(entry, ['type', 'kind', 'category']) || '').toString().toLowerCase();
   if (filters.type && filters.type !== type) {
     return false;
@@ -2364,95 +2365,6 @@ async function refreshCalendarFeed() {
     showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
   } finally {
     loadCalendar({ preserveFilters: true, refreshGenres: true });
-  }
-}
-
-function readCalendarSearchForm() {
-  const query = document.getElementById('calendar-search-query')?.value?.trim() || '';
-  const rawYear = document.getElementById('calendar-search-year')?.value?.trim() || '';
-  const year = rawYear ? Number.parseInt(rawYear, 10) || '' : '';
-  return { query, year };
-}
-
-function renderCalendarSearchResults() {
-  const container = document.getElementById('calendar-search-results');
-  if (!container) {
-    return;
-  }
-
-  const { query, year, loading, results } = state.calendar.search;
-  if (!query && !loading && !results.length) {
-    container.hidden = true;
-    return;
-  }
-
-  container.hidden = false;
-  if (loading) {
-    container.innerHTML = '<p class="hint">Recherche en cours…</p>';
-    return;
-  }
-  if (!results.length) {
-    container.innerHTML = `<p class="hint">Aucun résultat pour “${query}”.</p>`;
-    return;
-  }
-
-  const heading = document.createElement('h3');
-  heading.textContent = `Résultats pour “${query}”${year ? ` (${year})` : ''}`;
-  const list = document.createElement('div');
-  list.className = 'calendar-items';
-  results.forEach((entry) => list.appendChild(buildCalendarEntryCard(entry)));
-  container.replaceChildren(heading, list);
-}
-
-async function searchCalendar(event) {
-  event?.preventDefault();
-  if (!state.authenticated) {
-    return;
-  }
-  const { query, year } = readCalendarSearchForm();
-  const normalizedQuery = query.trim();
-  if (!normalizedQuery) {
-    showNotification('Entrez un titre pour rechercher.', 'error');
-    return;
-  }
-
-  const params = new URLSearchParams({ per_page: 200 });
-  const startYear = year || 1900;
-  const endYear = year || 2100;
-  params.set('start_date', `${startYear}-01-01`);
-  params.set('end_date', `${endYear}-12-31`);
-
-  state.calendar.search.loading = true;
-  state.calendar.search.query = normalizedQuery;
-  state.calendar.search.year = year || '';
-  renderCalendarSearchResults();
-
-  try {
-    const data = await fetchJson(`/calendar?${params.toString()}`);
-    const entries = normalizeCalendarEntries(data || []);
-    const matches = entries.filter((entry) => {
-      const title = (pickEntryValue(entry, ['title', 'name']) || '').toString().toLowerCase();
-      if (!title.includes(normalizedQuery.toLowerCase())) {
-        return false;
-      }
-      if (!year) {
-        return true;
-      }
-      const releaseDate = resolveCalendarDate(entry);
-      const releaseYear = releaseDate?.getFullYear()
-        || Number.parseInt(pickEntryValue(entry, ['year', 'release_year']), 10)
-        || '';
-      return releaseYear === year;
-    });
-    state.calendar.search.results = matches;
-  } catch (error) {
-    state.calendar.search.results = [];
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  } finally {
-    state.calendar.search.loading = false;
-    renderCalendarSearchResults();
   }
 }
 
@@ -3714,25 +3626,12 @@ function setupCalendarEvents() {
   if (refreshFeed) {
     refreshFeed.addEventListener('click', refreshCalendarFeed);
   }
-  const searchForm = document.getElementById('calendar-search-form');
-  if (searchForm) {
-    searchForm.addEventListener('submit', searchCalendar);
-  }
-  const searchQuery = document.getElementById('calendar-search-query');
-  if (searchQuery) {
-    searchQuery.addEventListener('input', () => {
-      if (!searchQuery.value.trim()) {
-        state.calendar.search.query = '';
-        state.calendar.search.results = [];
-        renderCalendarSearchResults();
-      }
-    });
-  }
   const calendarView = document.getElementById('calendar-view');
   if (calendarView) {
     calendarView.addEventListener('change', () => loadCalendar({ preserveFilters: true, resetWindow: true }));
   }
   const ids = [
+    'calendar-title-filter',
     'calendar-type',
     'calendar-genres',
     'calendar-rating-min',
