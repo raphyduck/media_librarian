@@ -2263,11 +2263,24 @@ class Daemon
     end
 
     def reload_api_option_config
+      old_secret = defined?(@session_secret) ? @session_secret : nil
       app.container.reload_api_option!
       opts = app.api_option || {}
       @api_token = resolve_api_token(opts)
       @auth_config = normalize_auth_config(opts['auth'])
-      remove_instance_variable(:@session_secret) if defined?(@session_secret)
+      configured_secret = @auth_config['session_secret']
+      configured_secret = configured_secret.to_s unless configured_secret.nil?
+      configured_secret = nil if configured_secret.to_s.empty?
+      persisted_secret = nil
+
+      if configured_secret.nil?
+        path = File.join(app.config_dir, 'session_secret')
+        persisted_secret = load_persisted_session_secret if File.file?(path) || old_secret.nil?
+      end
+
+      new_secret = configured_secret || persisted_secret || old_secret
+      # Rotating the session secret invalidates existing sessions; avoid regeneration on reload unless it changed.
+      @session_secret = new_secret if old_secret != new_secret
       true
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
