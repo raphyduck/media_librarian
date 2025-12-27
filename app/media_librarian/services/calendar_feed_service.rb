@@ -5,6 +5,7 @@ require 'time'
 require 'themoviedb'
 require 'json'
 require 'httparty'
+require 'set'
 require_relative '../../../init/global'
 require_relative '../../../lib/omdb_api'
 require_relative '../../../lib/metadata'
@@ -63,6 +64,7 @@ module MediaLibrarian
 
         date_range = year ? Date.new(year.to_i, 1, 1)..Date.new(year.to_i, 12, 31) : nil
         normalized = normalize_entries(provider_search(title: title, year: year, type: type), date_range)
+        normalized = filter_existing_entries(normalized)
         persist_entries(normalized)
         normalized
       end
@@ -79,6 +81,30 @@ module MediaLibrarian
 
       def calendar_table_available?
         db && db.table_exists?(:calendar_entries)
+      end
+
+      def filter_existing_entries(entries)
+        return entries if entries.empty?
+
+        existing = existing_calendar_ids
+        return entries if existing.empty?
+
+        entries.reject do |entry|
+          id = persist_imdb_id_for(entry)
+          !id.to_s.empty? && existing.include?(id)
+        end
+      end
+
+      def existing_calendar_ids
+        rows = db.get_rows(:calendar_entries)
+        rows.each_with_object(Set.new) do |row, memo|
+          imdb_id = normalize_identifier(row[:imdb_id] || row['imdb_id'])
+          memo << imdb_id unless imdb_id.empty?
+          external_id = normalize_identifier(row[:external_id] || row['external_id'])
+          memo << external_id unless external_id.empty?
+        end
+      rescue StandardError
+        Set.new
       end
 
       def collect_entries(date_range, limit, sources)
