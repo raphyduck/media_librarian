@@ -2432,6 +2432,7 @@ async function loadCalendar(options = {}) {
   if (filters.votesMax !== '') search.set('imdb_votes_max', filters.votesMax);
   if (filters.language) search.set('language', filters.language);
   if (filters.country) search.set('country', filters.country);
+  if (filters.title) search.set('title', filters.title);
   if (range) {
     search.set('start_date', formatCalendarDate(range.start));
     search.set('end_date', formatCalendarDate(range.end));

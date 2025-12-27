@@ -40,11 +40,15 @@ class CalendarEntriesRepository
   private
 
   def apply_filters(entries, filters)
-    start_date = parse_time(filters[:start_date])
-    end_date = parse_time(filters[:end_date])
+    title_filter = filters[:title].to_s.strip
+    has_title_filter = !title_filter.empty?
+    start_date = has_title_filter ? nil : parse_time(filters[:start_date])
+    end_date = has_title_filter ? nil : parse_time(filters[:end_date])
+    title_needle = has_title_filter ? normalize_text(title_filter) : ''
 
     entries.select do |entry|
-      release_date_match?(entry[:release_date], start_date, end_date) &&
+      (!has_title_filter || title_filter_match?(entry[:title], title_needle)) &&
+        release_date_match?(entry[:release_date], start_date, end_date) &&
         type_match?(entry, filters[:type]) &&
         genres_match?(entry, filters[:genres]) &&
         rating_match?(entry, filters[:imdb_min], filters[:imdb_max]) &&
@@ -72,6 +76,12 @@ class CalendarEntriesRepository
 
   def title_match?(value, needle)
     normalize_text(value) == needle
+  end
+
+  def title_filter_match?(value, needle)
+    return true if needle.empty?
+
+    normalize_text(value).include?(needle)
   end
 
   def normalize_text(value)
