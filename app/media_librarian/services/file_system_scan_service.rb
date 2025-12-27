@@ -57,7 +57,8 @@ module MediaLibrarian
             metadata = {
               media_type: normalized_type,
               imdb_id: imdb_id,
-              local_path: local_path
+              local_path: local_path,
+              created_at: file_created_at(local_path)
             }
             persist(metadata)
             memo << metadata
@@ -163,6 +164,13 @@ module MediaLibrarian
 
       def persist(metadata)
         app.db.insert_row('local_media', metadata, 1)
+      end
+
+      def file_created_at(path)
+        stat = File.stat(path)
+        return stat.birthtime if stat.respond_to?(:birthtime) && stat.birthtime
+
+        stat.ctime || stat.mtime
       end
 
       def remove_from_watchlist(imdb_id, type, cleaned_watchlist)
