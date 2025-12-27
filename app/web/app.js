@@ -3785,8 +3785,8 @@ function setupCalendarEvents() {
       if (!query) {
         return;
       }
-      const target = `https://www.imdb.com/find?q=${encodeURIComponent(query)}`;
-      window.open(target, '_blank', 'noopener');
+      setActiveTab('calendar-search');
+      loadCalendarSearch(query);
     });
   }
   const ids = [
