@@ -2473,7 +2473,7 @@ async function loadCalendarSearch(query) {
   }
   state.calendarSearch.loading = true;
   try {
-    const search = new URLSearchParams({ query: normalized });
+    const search = new URLSearchParams({ title: normalized });
     const data = await fetchJson(`/calendar/search?${search.toString()}`);
     renderCalendarSearchResults(data);
   } catch (error) {
