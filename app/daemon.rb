@@ -1512,6 +1512,7 @@ class Daemon
         imdb_votes_max: req.query['imdb_votes_max'],
         language: req.query['language'],
         country: req.query['country'],
+        title: req.query['title'],
         downloaded: req.query['downloaded'],
         interest: req.query['interest'],
         sort: req.query['sort'],
