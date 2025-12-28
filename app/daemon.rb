@@ -1487,11 +1487,29 @@ class Daemon
       args = data['args'] || data[:args]
       return unless args.is_a?(Hash)
 
-      args.each_with_object({}) do |(key, value), memo|
+      template_name = (args['template_name'] || args[:template_name]).to_s
+      template_name = template_name.sub(/\.(yml|yaml)\z/i, '')
+      template_values = {}
+      if template_name != ''
+        template = app.args_dispatch.load_template(template_name, app.template_dir)
+        template_values = app.args_dispatch.parse_template_args(template, app.template_dir)
+        template_values = template_values['args'] if template_values.is_a?(Hash) && template_values['args'].is_a?(Hash)
+        template_values = {} unless template_values.is_a?(Hash)
+      end
+
+      merged = template_values.each_with_object({}) do |(key, value), memo|
         next if value.nil?
 
         memo[key.to_s] = value.is_a?(String) ? value : value.to_s
       end
+
+      args.each do |key, value|
+        next if key.to_s == 'template_name' || value.nil?
+
+        merged[key.to_s] = value.is_a?(String) ? value : value.to_s
+      end
+
+      merged
     end
 
     def template_directories
