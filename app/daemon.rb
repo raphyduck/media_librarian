@@ -1495,7 +1495,8 @@ class Daemon
         template_values = {} unless template_values.is_a?(Hash)
       end
 
-      merged = template_values.each_with_object({}) do |(key, value), memo|
+      template_defaults = template_values['args'].is_a?(Hash) ? template_values['args'] : template_values
+      merged = template_defaults.each_with_object({}) do |(key, value), memo|
         next if value.nil?
 
         memo[key.to_s] = value.is_a?(String) ? value : value.to_s
