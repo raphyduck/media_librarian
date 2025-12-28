@@ -1948,6 +1948,7 @@ function entryMatchesFilters(entry, filters) {
 }
 
 function buildCalendarGroups(entries, view) {
+  const currentYear = new Date().getFullYear();
   const groups = new Map();
   const startOfWeek = (date) => {
     const copy = new Date(date);
@@ -1968,13 +1969,25 @@ function buildCalendarGroups(entries, view) {
       const label = (() => {
         if (!date) return 'Sans date';
         if (view === 'month') {
-          return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(date);
+          const options = { month: 'long' };
+          if (date.getFullYear() !== currentYear) {
+            options.year = 'numeric';
+          }
+          return new Intl.DateTimeFormat('fr-FR', options).format(date);
         }
         const start = startOfWeek(date);
         const end = new Date(start);
         end.setDate(start.getDate() + 6);
+        const showYear =
+          start.getFullYear() !== currentYear ||
+          end.getFullYear() !== currentYear ||
+          start.getFullYear() !== end.getFullYear();
         const format = (value) =>
-          new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(value);
+          new Intl.DateTimeFormat('fr-FR', {
+            day: 'numeric',
+            month: 'short',
+            ...(showYear ? { year: 'numeric' } : {}),
+          }).format(value);
         return `Semaine du ${format(start)} au ${format(end)}`;
       })();
       groups.set(key, { label, sortKey: date ? date.getTime() : Number.POSITIVE_INFINITY, items: [] });
