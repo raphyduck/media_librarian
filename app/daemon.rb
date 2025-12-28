@@ -1561,7 +1561,7 @@ class Daemon
       limit = clamp_positive_integer(req.query['limit'], default: 50, max: 50)
 
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
-      entries = service.search(title: title, year: year, type: type)
+      entries = service.search(title: title, year: year, type: type, persist: false)
       entries = entries.select { |entry| sources.include?(entry[:source].to_s.downcase) } if sources.any?
       entries = entries.first(limit)
 
