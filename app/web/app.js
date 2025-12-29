@@ -30,6 +30,7 @@ const state = {
   },
   calendarSearch: {
     query: '',
+    lastLoadedQuery: '',
     results: [],
     loading: false,
   },
@@ -2470,6 +2471,13 @@ async function loadCalendarSearch(query) {
   const input = document.getElementById('calendar-search-query');
   const normalized = (query ?? input?.value ?? state.calendarSearch.query ?? '').toString().trim();
   state.calendarSearch.query = normalized;
+  if (
+    normalized
+    && normalized === state.calendarSearch.lastLoadedQuery
+    && state.calendarSearch.results.length
+  ) {
+    return;
+  }
   if (input && input.value !== normalized) {
     input.value = normalized;
   }
@@ -2489,6 +2497,7 @@ async function loadCalendarSearch(query) {
     const search = new URLSearchParams({ title: normalized });
     const data = await fetchJson(`/calendar/search?${search.toString()}`);
     renderCalendarSearchResults(data);
+    state.calendarSearch.lastLoadedQuery = normalized;
   } catch (error) {
     if (state.authenticated) {
       showNotification(error.message, 'error');
