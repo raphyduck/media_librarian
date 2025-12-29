@@ -1488,14 +1488,16 @@ class Daemon
       return unless args.is_a?(Hash)
 
       template_name = args['template_name'] || args[:template_name]
-      template_values = {}
-      if template_name.to_s != ''
-        template = app.args_dispatch.load_template(template_name, app.template_dir)
-        template_values = app.args_dispatch.parse_template_args(template, app.template_dir)
-        template_values = {} unless template_values.is_a?(Hash)
-      end
-
-      merged = template_values.each_with_object({}) do |(key, value), memo|
+      template_defaults = if template_name.to_s != ''
+                            app.args_dispatch.parse_template_args(
+                              app.args_dispatch.load_template(template_name, app.template_dir),
+                              app.template_dir
+                            )
+                          else
+                            {}
+                          end
+      template_defaults = {} unless template_defaults.is_a?(Hash)
+      merged = template_defaults.each_with_object({}) do |(key, value), memo|
         next if value.nil?
 
         memo[key.to_s] = value.is_a?(String) ? value : value.to_s
