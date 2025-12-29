@@ -1484,16 +1484,13 @@ class Daemon
     end
 
     def template_command_arg_values(data)
-      args = data['args'] || data[:args]
-      return unless args.is_a?(Hash)
+      template_params = data['args'] || data[:args]
+      return unless template_params.is_a?(Hash)
 
-      template_name = args['template_name'] || args[:template_name]
-      template_values = {}
-      if template_name.to_s != ''
-        template = app.args_dispatch.load_template(template_name, app.template_dir)
-        template_values = app.args_dispatch.parse_template_args(template, app.template_dir)
-        template_values = {} unless template_values.is_a?(Hash)
-      end
+      template_name = template_params['template_name'] || template_params[:template_name]
+      template = app.args_dispatch.load_template(template_name, app.template_dir)
+      template_values = app.args_dispatch.parse_template_args(template, app.template_dir)
+      template_values = {} unless template_values.is_a?(Hash)
 
       template_defaults = template_values['args'].is_a?(Hash) ? template_values['args'] : template_values
       merged = template_defaults.each_with_object({}) do |(key, value), memo|
@@ -1502,7 +1499,7 @@ class Daemon
         memo[key.to_s] = value.is_a?(String) ? value : value.to_s
       end
 
-      args.each do |key, value|
+      template_params.each do |key, value|
         next if key.to_s == 'template_name' || value.nil?
 
         merged[key.to_s] = value.is_a?(String) ? value : value.to_s
