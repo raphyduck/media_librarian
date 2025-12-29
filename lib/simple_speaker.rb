@@ -75,9 +75,13 @@ module SimpleSpeaker
     def tell_error(e, src, in_mail = 1, thread = Thread.current)
       err = e.is_a?(Exception) ? e : StandardError.new(e.to_s)
       @logger_error.error(err) if @logger_error
-      speak_up("ERROR in '#{src}'" + @new_line, in_mail, thread)
-      speak_up(err.to_s + @new_line, in_mail, thread)
-      speak_up(Array(err.backtrace)[0..2].join(@new_line) + @new_line, in_mail, thread)
+      parts = []
+      parts << "jid=#{thread[:jid]}" if thread[:jid].to_s != ''
+      parts << "obj=#{thread[:object]}" if thread[:object].to_s != ''
+      prefix = parts.empty? ? '' : "[#{parts.join(' ')}] "
+      speak_up("#{prefix}ERROR in '#{src}'" + @new_line, in_mail, thread)
+      speak_up(prefix + err.to_s + @new_line, in_mail, thread)
+      speak_up(prefix + Array(err.backtrace)[0..2].join(@new_line) + @new_line, in_mail, thread)
     end
 
     def user_input(input)
