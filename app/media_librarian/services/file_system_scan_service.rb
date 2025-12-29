@@ -163,6 +163,9 @@ module MediaLibrarian
       end
 
       def persist(metadata)
+        existing = existing_local_media(metadata)
+        return if existing && same_local_media?(existing, metadata)
+
         app.db.insert_row('local_media', metadata, 1)
       end
 
@@ -170,7 +173,26 @@ module MediaLibrarian
         stat = File.stat(path)
         return stat.birthtime if stat.respond_to?(:birthtime) && stat.birthtime
 
-        stat.ctime || stat.mtime
+        stat.mtime
+      end
+
+      def existing_local_media(metadata)
+        return unless app&.db
+        return if metadata[:media_type].to_s.empty? || metadata[:imdb_id].to_s.empty?
+
+        app.db.get_rows(:local_media, { media_type: metadata[:media_type], imdb_id: metadata[:imdb_id] }).first
+      end
+
+      def same_local_media?(existing, metadata)
+        existing[:local_path].to_s == metadata[:local_path].to_s &&
+          normalize_timestamp(existing[:created_at]) == normalize_timestamp(metadata[:created_at])
+      end
+
+      def normalize_timestamp(value)
+        return '' if value.nil?
+        return value.iso8601 if value.respond_to?(:iso8601)
+
+        value.to_s
       end
 
       def remove_from_watchlist(imdb_id, type, cleaned_watchlist)
