@@ -3168,12 +3168,12 @@ function parseSchedulerTemplate(content, parsed) {
   return null;
 }
 
-function normalizeSchedulerArgs(args, type) {
+function normalizeSchedulerParameters(parameters, type) {
   const list = [];
-  if (Array.isArray(args)) {
-    args.forEach((value) => list.push(String(value)));
-  } else if (args && typeof args === 'object') {
-    Object.entries(args).forEach(([key, value]) => {
+  if (Array.isArray(parameters)) {
+    parameters.forEach((value) => list.push(String(value)));
+  } else if (parameters && typeof parameters === 'object') {
+    Object.entries(parameters).forEach(([key, value]) => {
       list.push(`--${key}=${value}`);
     });
   }
@@ -3206,13 +3206,13 @@ function extractSchedulerTasks(template) {
       if (!base.length) {
         return;
       }
-      const args = normalizeSchedulerArgs(entry.args, type);
+      const parameters = normalizeSchedulerParameters(entry.arg_values || entry.argValues, type);
       const schedule = entry.every || entry.cron || entry.interval || '';
       tasks.push({
         name: name || base.join(' '),
         type,
         schedule: schedule ? String(schedule) : '',
-        command: [...base, ...args],
+        command: [...base, ...parameters],
         queue: entry.queue || '',
         task: name || '',
         description: entry.description || '',

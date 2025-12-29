@@ -2006,10 +2006,28 @@ class Daemon
             nil
           end
 
-        json_response(res, body: { 'content' => content, 'entries' => parsed })
+        json_response(res, body: { 'content' => content, 'entries' => scheduler_template_args(parsed) })
       else
         handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
       end
+    end
+
+    def scheduler_template_args(template)
+      return template unless template.is_a?(Hash)
+
+      %w[periodic continuous].each do |section|
+        entries = template[section]
+        next unless entries.is_a?(Hash)
+
+        entries.each_value do |entry|
+          next unless entry.is_a?(Hash)
+
+          values = template_command_arg_values(entry)
+          entry['arg_values'] = values if values&.any?
+        end
+      end
+
+      template
     end
 
     def handle_watchlist_request(req, res)
