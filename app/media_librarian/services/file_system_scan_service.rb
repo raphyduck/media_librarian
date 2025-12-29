@@ -164,8 +164,16 @@ module MediaLibrarian
 
       def persist(metadata)
         existing = existing_local_media(metadata)
-        return if existing && same_local_media?(existing, metadata)
+        if existing && same_local_media?(existing, metadata)
+          log_scan("Scan skip: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{existing[:created_at]}")
+          return
+        end
 
+        if existing
+          log_scan("Scan update: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{existing[:created_at]} -> #{metadata[:created_at]}")
+        else
+          log_scan("Scan insert: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{metadata[:created_at]}")
+        end
         app.db.insert_row('local_media', metadata, 1)
       end
 
@@ -193,6 +201,10 @@ module MediaLibrarian
         return value.iso8601 if value.respond_to?(:iso8601)
 
         value.to_s
+      end
+
+      def log_scan(message)
+        speaker&.speak_up(message, 0) if Env.debug?
       end
 
       def remove_from_watchlist(imdb_id, type, cleaned_watchlist)
