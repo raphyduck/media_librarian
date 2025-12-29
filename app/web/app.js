@@ -1639,6 +1639,25 @@ function renderJobs(data = {}) {
   }
 }
 
+function updateLogFilter(logEntry) {
+  const logContent = logEntry.querySelector('.log-content');
+  const filterInput = logEntry.querySelector('.log-filter');
+  if (!logContent || !filterInput) {
+    return;
+  }
+  const logText = logEntry.dataset.logText || '';
+  const query = filterInput.value.trim().toLowerCase();
+  if (!query) {
+    logContent.textContent = logText || '—';
+    return;
+  }
+  const filtered = logText
+    .split('\n')
+    .filter((line) => line.toLowerCase().includes(query))
+    .join('\n');
+  logContent.textContent = filtered || '—';
+}
+
 function renderLogs(logs = {}) {
   const container = document.getElementById('logs-container');
   const template = document.getElementById('log-entry-template');
@@ -1653,6 +1672,9 @@ function renderLogs(logs = {}) {
       logEntry = fragment.querySelector('.log-entry');
       logEntry.dataset.logName = name;
       fragment.querySelector('.log-name').textContent = name;
+      fragment.querySelector('.log-filter')?.addEventListener('input', () => {
+        updateLogFilter(logEntry);
+      });
       fragment.querySelector('.copy-log').addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(logEntry.dataset.logText || '');
@@ -1665,15 +1687,9 @@ function renderLogs(logs = {}) {
     }
 
     const { text: displayContent, truncated } = getLogTail(content || '');
-    const logContent = logEntry.querySelector('.log-content');
-    const previousText = logContent.textContent || '';
-    const normalizedText = displayContent || '—';
-    if (!previousText || !displayContent || !displayContent.startsWith(previousText)) {
-      logContent.textContent = normalizedText;
-    } else if (displayContent.length > previousText.length) {
-      logContent.append(displayContent.slice(previousText.length));
-    }
     logEntry.dataset.logText = displayContent || '';
+    updateLogFilter(logEntry);
+    const logContent = logEntry.querySelector('.log-content');
 
     let hint = logEntry.querySelector('.log-hint');
     if (truncated) {
