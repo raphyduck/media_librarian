@@ -1414,24 +1414,24 @@ class Daemon
     def build_template_commands
       template_directories.flat_map do |directory|
         Dir.glob(File.join(directory, '*.yml')).flat_map do |path|
-          template_file_commands(path)
+          template_file_commands(path, directory)
         end
       end.compact
     end
 
-    def template_file_commands(path)
+    def template_file_commands(path, directory)
       template = YAML.safe_load(File.read(path), aliases: true)
       return [] unless template.is_a?(Hash)
 
       commands = []
-      commands << build_template_command_entry(File.basename(path, '.yml'), template)
+      commands << build_template_command_entry(File.basename(path, '.yml'), template, directory)
 
       %w[periodic continuous].each do |section|
         entries = template[section]
         next unless entries.is_a?(Hash)
 
         entries.each do |name, data|
-          commands << build_template_command_entry(name, data)
+          commands << build_template_command_entry(name, data, directory)
         end
       end
 
@@ -1441,7 +1441,7 @@ class Daemon
       []
     end
 
-    def build_template_command_entry(name, data)
+    def build_template_command_entry(name, data, template_dir)
       return unless data.is_a?(Hash)
 
       command_parts = normalize_command_parts(data['command'] || data[:command])
@@ -1453,7 +1453,7 @@ class Daemon
         'command' => command_parts,
         'args' => command_arguments(action)
       }
-      arg_values = template_command_arg_values(data)
+      arg_values = template_command_arg_values(data, template_dir)
       entry['arg_values'] = arg_values if arg_values&.any?
       queue = template_command_queue(data, action)
       entry['queue'] = queue if queue
@@ -1489,13 +1489,19 @@ class Daemon
       command_queue(action)
     end
 
-    def template_command_arg_values(data)
+    def template_command_arg_values(data, template_dir = nil)
       template_params = data['args'] || data[:args]
       return unless template_params.is_a?(Hash)
 
       template_name = template_params['template_name'] || template_params[:template_name]
-      template = app.args_dispatch.load_template(template_name, app.template_dir)
-      template_values = app.args_dispatch.parse_template_args(template, app.template_dir)
+      template_values = {}
+      if template_name
+        resolved_dir = resolve_template_dir(template_name, template_dir)
+        if resolved_dir
+          template = app.args_dispatch.load_template(template_name, resolved_dir)
+          template_values = app.args_dispatch.parse_template_args(template, resolved_dir)
+        end
+      end
       template_values = {} unless template_values.is_a?(Hash)
 
       template_defaults = template_values['args'].is_a?(Hash) ? template_values['args'] : template_values
@@ -1515,9 +1521,21 @@ class Daemon
     end
 
     def template_directories
-      [app.template_dir, File.expand_path('~/.media_librarian/templates')].uniq.select do |dir|
+      [
+        app.template_dir,
+        File.expand_path('~/.medialibrarian/templates'),
+        File.expand_path('~/.media_librarian/templates')
+      ].uniq.select do |dir|
         File.directory?(dir)
       end
+    end
+
+    def resolve_template_dir(template_name, template_dir)
+      template_directories
+        .unshift(template_dir)
+        .compact
+        .uniq
+        .find { |dir| File.exist?(File.join(dir, "#{template_name}.yml")) }
     end
 
     def handle_calendar_request(req, res)
