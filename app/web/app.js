@@ -3627,6 +3627,14 @@ async function restartDaemon() {
   });
 }
 
+async function restartDaemonWithUpdate() {
+  await controlDaemon({
+    path: '/restart-update',
+    buttonId: 'restart-daemon-update',
+    message: 'Mise à jour + redémarrage en cours…',
+  });
+}
+
 async function stopDaemon() {
   await controlDaemon({
     path: '/stop',
@@ -3938,6 +3946,7 @@ function setupEventListeners() {
   document.getElementById('refresh-status').addEventListener('click', loadStatus);
   document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
   document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
+  document.getElementById('restart-daemon-update').addEventListener('click', restartDaemonWithUpdate);
   document.getElementById('refresh-logs').addEventListener('click', loadLogs);
   const refreshSchedulerTasks = document.getElementById('refresh-scheduler-tasks');
   if (refreshSchedulerTasks) {
