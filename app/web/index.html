@@ -574,7 +574,15 @@
       <article class="log-entry">
         <header>
           <h3 class="log-name"></h3>
-          <button type="button" class="copy-log">Copier</button>
+          <div class="log-actions">
+            <input
+              type="search"
+              class="log-filter"
+              placeholder="Filtrer"
+              aria-label="Filtrer ce log"
+            />
+            <button type="button" class="copy-log">Copier</button>
+          </div>
         </header>
         <pre class="log-content"></pre>
       </article>
