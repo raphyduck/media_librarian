@@ -2043,13 +2043,19 @@ function buildCalendarEntryCard(entry, date = resolveCalendarDate(entry)) {
   }
   const dateLabel = document.createElement('span');
   dateLabel.className = 'calendar-meta';
-  dateLabel.textContent = date
-    ? new Intl.DateTimeFormat('fr-FR', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      }).format(date)
-    : 'Date inconnue';
+  if (!date) {
+    dateLabel.textContent = 'Date inconnue';
+  } else {
+    const options = {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    };
+    if (date.getFullYear() !== new Date().getFullYear()) {
+      options.year = 'numeric';
+    }
+    dateLabel.textContent = new Intl.DateTimeFormat('fr-FR', options).format(date);
+  }
   header.append(titleEl, dateLabel);
   body.appendChild(header);
 
