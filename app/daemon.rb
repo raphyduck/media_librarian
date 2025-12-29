@@ -1825,7 +1825,7 @@ class Daemon
     def format_pending_torrent(row)
       attributes = row[:tattributes]
       attributes = Cache.object_unpack(attributes) unless attributes.is_a?(Hash)
-      attributes ||= {}
+      attributes = {} unless attributes.is_a?(Hash)
 
       {
         name: row[:name].to_s,
