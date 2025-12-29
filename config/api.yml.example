@@ -6,6 +6,7 @@ auth:
   password_hash: "$2a$12$REPLACE_WITH_BCRYPT_HASH"
   # Optionnel : laissez vide pour une génération automatique dans ~/.medialibrarian/session_secret
   session_secret:
+update_root:
 ssl_enabled: false
 ssl_certificate_path:
 ssl_private_key_path:

@@ -1147,6 +1147,12 @@ class Daemon
         handle_restart_request(req, res)
       end
 
+      @control_server.mount_proc('/restart-update') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_restart_update_request(req, res)
+      end
+
       @control_server.mount_proc('/calendar') do |req, res|
         next unless require_authorization(req, res)
 
@@ -2192,6 +2198,22 @@ class Daemon
       end
     end
 
+    def handle_restart_update_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      outcome = schedule_update_and_restart
+      case outcome
+      when :scheduled
+        json_response(res, status: 202, body: { 'status' => 'update_restarting' })
+      when :already_updating
+        error_response(res, status: 409, message: 'update_in_progress')
+      when :not_running
+        error_response(res, status: 503, message: 'not_running')
+      else
+        error_response(res, status: 500, message: 'update_failed')
+      end
+    end
+
     def process_reload_request(res)
       unless running?
         return error_response(res, status: 503, message: 'not_running')
@@ -2209,6 +2231,73 @@ class Daemon
 
     def restart_requested_flag
       @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
+    end
+
+    def update_requested_flag
+      @update_requested_flag ||= Concurrent::AtomicBoolean.new(false)
+    end
+
+    def update_root
+      opts = app.api_option || {}
+      root = opts['update_root'].to_s.strip
+      root = app.root if root.empty?
+      File.expand_path(root)
+    end
+
+    def schedule_update_and_restart
+      return :not_running unless running?
+
+      flag = update_requested_flag
+      return :already_updating if flag.true?
+
+      root = update_root
+      return :failed unless File.directory?(root) && File.directory?(File.join(root, '.git'))
+
+      flag.make_true
+      Thread.new do
+        begin
+          update_and_restart(root)
+        ensure
+          flag.make_false
+        end
+      end
+      :scheduled
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      flag.make_false if flag
+      :failed
+    end
+
+    def update_and_restart(root)
+      return unless run_git_command(root, ['git', 'fetch', '--all'])
+      return unless run_git_command(root, ['git', 'pull', '--ff-only'])
+
+      restart_from_disk
+    end
+
+    def run_git_command(root, command)
+      system(*command, chdir: root)
+    end
+
+    def restart_from_disk
+      return :not_running unless ensure_daemon
+
+      command = restart_command
+      stop
+      return :scheduled unless command
+
+      exec(*command)
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      :failed
+    end
+
+    def restart_command
+      args = app.librarian&.args
+      program = $PROGRAM_NAME.to_s
+      return if program.empty? || args.nil?
+
+      [program, *args]
     end
 
     def json_response(res, body: nil, status: 200)

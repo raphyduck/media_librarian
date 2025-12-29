@@ -199,6 +199,7 @@ module MediaLibrarian
       'bind_address' => '127.0.0.1',
       'listen_port' => 8888,
       'auth' => {},
+      'update_root' => nil,
       'ssl_enabled' => false,
       'ssl_certificate_path' => nil,
       'ssl_private_key_path' => nil,
