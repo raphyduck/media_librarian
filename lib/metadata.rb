@@ -360,7 +360,10 @@ class Metadata
           summary = summary['title'] || summary['name'] if summary.respond_to?(:[])
           MediaLibrarian.app.speaker.speak_up("[#{provider_call}] => #{result_count} #{summary}", 0) if Env.debug?
           if result_count.zero?
-            MediaLibrarian.app.speaker.tell_error(StandardError.new("Provider #{provider_call} returned no results"), "#{title_norm}")
+            ids_info = ids_part.to_s == '' ? ids : ids_part
+            msg = "Provider #{provider_call} returned no results title=#{title.inspect} normalized=#{title_norm.inspect} ids=#{ids_info} raw=#{raw_info}"
+            msg << " file=#{original_filename}" if original_filename.to_s != ''
+            MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), "#{title_norm}")
           end
           exact_title, item = media_chose(title, items, keys, type, no_prompt.to_i)
           exact_title, item = item_fetch_method.call(item['ids'].merge({ 'force_title' => exact_title })) unless item.nil?
