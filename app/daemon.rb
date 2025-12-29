@@ -97,6 +97,7 @@ class Daemon
       daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
       return app.speaker.speak_up('Daemon already started') if running?
 
+      @restart_command ||= [$PROGRAM_NAME.to_s, *ARGV.map(&:to_s)]
       restart_flag = restart_requested_flag
       manage_pid = daemonize
       daemonized = false
@@ -2304,9 +2305,12 @@ class Daemon
       return :not_running unless ensure_daemon
 
       command = restart_command
-      stop
-      return :scheduled unless command
+      unless command
+        app.speaker.speak_up('Restart command missing; cannot restart daemon')
+        return :failed
+      end
 
+      stop
       exec(*command)
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
@@ -2314,10 +2318,10 @@ class Daemon
     end
 
     def restart_command
-      args = app.librarian&.args
-      program = $PROGRAM_NAME.to_s
-      return if program.empty? || args.nil?
+      command = @restart_command
+      return if command.nil? || command.empty?
 
+      program, *args = command
       program_path = if File.file?(File.join(app.root, program))
                        File.expand_path(program, app.root)
                      else
