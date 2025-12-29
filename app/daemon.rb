@@ -195,6 +195,39 @@ class Daemon
       :failed
     end
 
+    def update_and_restart
+      return :not_running unless ensure_daemon
+
+      restart_flag = restart_requested_flag
+      update_flag = update_requested_flag
+      return :already_restarting if restart_flag.true? || update_flag.true?
+
+      update_flag.make_true
+      Thread.new do
+        begin
+          if update_repository
+            restart
+          end
+        rescue StandardError => e
+          app.speaker.tell_error(e, Utils.arguments_dump(binding))
+        ensure
+          update_flag.make_false if update_flag
+        end
+      end
+      :scheduled
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+      :failed
+    end
+
+    def update_repository
+      root = app.root
+      return false unless root && Dir.exist?(root)
+      return false unless Dir.exist?(File.join(root, '.git'))
+
+      system('git', '-C', root, 'pull', '--ff-only')
+    end
+
     def reload
       return unless ensure_daemon
 
@@ -1145,6 +1178,12 @@ class Daemon
         next unless require_authorization(req, res)
 
         handle_restart_request(req, res)
+      end
+
+      @control_server.mount_proc('/restart-update') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_restart_update_request(req, res)
       end
 
       @control_server.mount_proc('/calendar') do |req, res|
@@ -2192,6 +2231,22 @@ class Daemon
       end
     end
 
+    def handle_restart_update_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      outcome = update_and_restart
+      case outcome
+      when :scheduled
+        json_response(res, status: 202, body: { 'status' => 'updating' })
+      when :already_restarting
+        error_response(res, status: 409, message: 'restart_in_progress')
+      when :not_running
+        error_response(res, status: 503, message: 'not_running')
+      else
+        error_response(res, status: 500, message: 'update_failed')
+      end
+    end
+
     def process_reload_request(res)
       unless running?
         return error_response(res, status: 503, message: 'not_running')
@@ -2209,6 +2264,10 @@ class Daemon
 
     def restart_requested_flag
       @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
+    end
+
+    def update_requested_flag
+      @update_requested_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
     def json_response(res, body: nil, status: 200)
