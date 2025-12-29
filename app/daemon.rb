@@ -15,6 +15,7 @@ require 'fileutils'
 require 'base64'
 require 'get_process_mem'
 
+require_relative '../lib/cache'
 require_relative '../lib/logger'
 require_relative '../lib/watchlist_store'
 require_relative '../lib/utils'
@@ -1822,7 +1823,9 @@ class Daemon
     end
 
     def format_pending_torrent(row)
-      attributes = row[:tattributes].is_a?(Hash) ? row[:tattributes] : {}
+      attributes = row[:tattributes]
+      attributes = Cache.object_unpack(attributes) unless attributes.is_a?(Hash)
+      attributes ||= {}
 
       {
         name: row[:name].to_s,
