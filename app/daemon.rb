@@ -2297,7 +2297,13 @@ class Daemon
       program = $PROGRAM_NAME.to_s
       return if program.empty? || args.nil?
 
-      [program, *args]
+      program_path = if File.file?(File.join(app.root, program))
+                       File.expand_path(program, app.root)
+                     else
+                       program
+                     end
+
+      [program_path, *args]
     end
 
     def json_response(res, body: nil, status: 200)
