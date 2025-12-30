@@ -1646,16 +1646,24 @@ function updateLogFilter(logEntry) {
     return;
   }
   const logText = logEntry.dataset.logText || '';
+  const fullLogText = logEntry.dataset.fullLogText || logText;
+  const hint = logEntry.querySelector('.log-hint');
   const query = filterInput.value.trim().toLowerCase();
   if (!query) {
     logContent.textContent = logText || '—';
+    if (hint && logEntry.dataset.logTruncated === 'true') {
+      hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
+    }
     return;
   }
-  const filtered = logText
+  const filtered = fullLogText
     .split('\n')
     .filter((line) => line.toLowerCase().includes(query))
     .join('\n');
   logContent.textContent = filtered || '—';
+  if (hint) {
+    hint.textContent = "Filtrage sur l'ensemble du log.";
+  }
 }
 
 function renderLogs(logs = {}) {
@@ -1677,7 +1685,7 @@ function renderLogs(logs = {}) {
       });
       fragment.querySelector('.copy-log').addEventListener('click', async () => {
         try {
-          await navigator.clipboard.writeText(logEntry.dataset.logText || '');
+          await navigator.clipboard.writeText(logEntry.dataset.fullLogText || logEntry.dataset.logText || '');
           showNotification(`Log « ${name} » copié dans le presse-papiers.`);
         } catch (error) {
           showNotification(`Impossible de copier le log « ${name} ».`, 'error');
@@ -1686,8 +1694,11 @@ function renderLogs(logs = {}) {
       container.appendChild(fragment);
     }
 
-    const { text: displayContent, truncated } = getLogTail(content || '');
+    const fullLogText = content || '';
+    const { text: displayContent, truncated } = getLogTail(fullLogText);
+    logEntry.dataset.fullLogText = fullLogText;
     logEntry.dataset.logText = displayContent || '';
+    logEntry.dataset.logTruncated = truncated ? 'true' : 'false';
     updateLogFilter(logEntry);
     const logContent = logEntry.querySelector('.log-content');
 
