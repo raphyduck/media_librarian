@@ -1429,22 +1429,37 @@ class Daemon
       template = YAML.safe_load(File.read(path), aliases: true)
       return [] unless template.is_a?(Hash)
 
-      commands = []
-      commands << build_template_command_entry(File.basename(path, '.yml'), template, directory)
-
-      %w[periodic continuous].each do |section|
-        entries = template[section]
-        next unless entries.is_a?(Hash)
-
-        entries.each do |name, data|
-          commands << build_template_command_entry(name, data, directory)
-        end
+      base_name = File.basename(path, '.yml')
+      template_command_nodes(template, base_name).filter_map do |entry|
+        build_template_command_entry(entry[:name], entry[:data], directory)
       end
-
-      commands.compact
     rescue Psych::SyntaxError => e
       app.speaker.tell_error(e, "Invalid template at #{path}")
       []
+    end
+
+    def template_command_nodes(template, fallback_name)
+      return [] unless template.is_a?(Hash)
+
+      nodes = []
+      nodes << { name: fallback_name, data: template } if command_hash?(template)
+
+      template.each do |key, value|
+        case value
+        when Hash
+          nodes.concat(template_command_nodes(value, key))
+        when Array
+          value.each do |item|
+            nodes.concat(template_command_nodes(item, fallback_name)) if item.is_a?(Hash)
+          end
+        end
+      end
+
+      nodes
+    end
+
+    def command_hash?(data)
+      data.key?('command') || data.key?(:command)
     end
 
     def build_template_command_entry(name, data, template_dir)
