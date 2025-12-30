@@ -3376,7 +3376,7 @@ function normalizeCommandEntries(entries) {
 
 function renderCommandList(container, commands = [], emptyMessage, options = {}) {
   container.innerHTML = '';
-  const { titleSource } = options;
+  const { titleSource, titleFormat } = options;
 
   if (!commands.length) {
     const hint = document.createElement('p');
@@ -3395,7 +3395,11 @@ function renderCommandList(container, commands = [], emptyMessage, options = {})
 
     const title = document.createElement('h3');
     const commandTitle = (command.command || []).join(' ');
-    title.textContent = titleSource === 'command' ? commandTitle : (command.name || commandTitle);
+    let titleText = titleSource === 'command' ? commandTitle : (command.name || commandTitle);
+    if (titleFormat === 'commandWithTemplate') {
+      titleText = command.name ? `${commandTitle} - ${command.name}` : commandTitle;
+    }
+    title.textContent = titleText;
     body.appendChild(title);
 
     const queueLabel = command.queue ? [`File : ${command.queue}`] : [];
@@ -3488,7 +3492,9 @@ function renderUnscheduledTemplateCommands(commands = [], scheduledKeys = new Se
     ? commands.filter((command) => command.baseKey && !scheduledKeys.has(command.baseKey))
     : [];
 
-  renderCommandList(container, unscheduled, 'Aucune commande de template disponible.', { titleSource: 'command' });
+  renderCommandList(container, unscheduled, 'Aucune commande de template disponible.', {
+    titleFormat: 'commandWithTemplate',
+  });
 }
 
 function renderAvailableCommands(commands = [], scheduledKeys = new Set(), templateKeys = new Set()) {
