@@ -3129,13 +3129,33 @@ class Daemon
 
         if @executor
           @executor.shutdown
-          @executor.wait_for_termination
+          wait_for_executor_shutdown
         end
       rescue StandardError => e
         app.speaker.tell_error(e, Utils.arguments_dump(binding))
       ensure
         @stop_event&.set
       end
+    end
+
+    def wait_for_executor_shutdown
+      return @executor.wait_for_termination unless restart_shutdown?
+
+      timeout = restart_shutdown_timeout
+      return @executor.wait_for_termination if timeout.nil?
+      return if @executor.wait_for_termination(timeout)
+
+      app.speaker.speak_up("Restart/update shutdown timed out after #{timeout}s; forcing executor shutdown")
+      @executor.kill if @executor.respond_to?(:kill)
+    end
+
+    def restart_shutdown?
+      restart_requested_flag.true? || update_requested_flag.true?
+    end
+
+    def restart_shutdown_timeout
+      timeout = ENV.fetch('MEDIA_LIBRARIAN_RESTART_SHUTDOWN_TIMEOUT', '20').to_f
+      timeout.positive? ? timeout : nil
     end
 
     def wait_for_shutdown
