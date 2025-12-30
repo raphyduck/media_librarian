@@ -1497,6 +1497,16 @@ class Daemon
 
     def template_command_arg_values(data, template_dir = nil)
       template_params = data['args'] || data[:args]
+      if template_params.is_a?(Array)
+        template_params = template_params.each_with_object({}) do |arg, memo|
+          next unless arg.is_a?(String) && arg.start_with?('--')
+
+          key, value = arg[2..].split('=', 2)
+          next if key.nil? || key.empty?
+
+          memo[key] = value
+        end
+      end
       return unless template_params.is_a?(Hash)
 
       template_name = template_params['template_name'] || template_params[:template_name]
