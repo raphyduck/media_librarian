@@ -3374,8 +3374,9 @@ function normalizeCommandEntries(entries) {
     .filter(Boolean);
 }
 
-function renderCommandList(container, commands = [], emptyMessage) {
+function renderCommandList(container, commands = [], emptyMessage, options = {}) {
   container.innerHTML = '';
+  const { titleFromCommand = false } = options;
 
   if (!commands.length) {
     const hint = document.createElement('p');
@@ -3393,7 +3394,8 @@ function renderCommandList(container, commands = [], emptyMessage) {
     body.className = 'task-body';
 
     const title = document.createElement('h3');
-    title.textContent = command.name || (command.command || []).join(' ');
+    const commandTitle = (command.command || []).join(' ');
+    title.textContent = titleFromCommand ? commandTitle : (command.name || commandTitle);
     body.appendChild(title);
 
     const queueLabel = command.queue ? [`File : ${command.queue}`] : [];
@@ -3409,11 +3411,11 @@ function renderCommandList(container, commands = [], emptyMessage) {
 
     const inputs = [];
     const argValues = command.arg_values || command.argValues || {};
-    if (Array.isArray(command.args) && command.args.length) {
-      command.args.forEach((arg) => {
-        if (!arg?.name) {
-          return;
-        }
+    const argList = Array.isArray(command.args) && command.args.length
+      ? command.args.filter((arg) => arg?.name)
+      : Object.keys(argValues).map((name) => ({ name, required: false }));
+    if (argList.length) {
+      argList.forEach((arg) => {
         const wrapper = document.createElement('label');
         wrapper.className = 'command-arg';
         wrapper.textContent = arg.name;
@@ -3489,7 +3491,8 @@ function renderUnscheduledTemplateCommands(commands = [], scheduledKeys = new Se
   renderCommandList(
     container,
     unscheduled,
-    'Aucune commande de template disponible.'
+    'Aucune commande de template disponible.',
+    { titleFromCommand: true }
   );
 }
 
