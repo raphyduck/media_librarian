@@ -2256,6 +2256,8 @@ class Daemon
       case outcome
       when :scheduled
         json_response(res, status: 202, body: { 'status' => 'update_restarting' })
+      when :restart_only
+        json_response(res, status: 202, body: { 'status' => 'restart_only' })
       when :already_updating
         error_response(res, status: 409, message: 'update_in_progress')
       when :not_running
@@ -2298,20 +2300,31 @@ class Daemon
     def schedule_update_and_restart
       return :not_running unless running?
 
-      flag = update_requested_flag
-      return :already_updating if flag.true?
+      update_flag = update_requested_flag
+      return :already_updating if update_flag.true?
 
-      return :failed unless restart_command
+      restart_flag = restart_requested_flag
+      unless restart_command
+        app.speaker.speak_up('Update ignored: restart command missing; restarting without update')
+        restart_flag.make_true
+        stop
+        return :restart_only
+      end
 
       root = update_root
-      return :failed unless File.directory?(root) && File.directory?(File.join(root, '.git'))
+      unless File.directory?(root) && File.directory?(File.join(root, '.git'))
+        app.speaker.speak_up("Update ignored: no git repository at #{root}; restarting without update")
+        restart_flag.make_true
+        stop
+        return :restart_only
+      end
 
-      flag.make_true
+      update_flag.make_true
       stop
       :scheduled
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
-      flag.make_false if flag
+      update_flag.make_false if update_flag
       :failed
     end
 
