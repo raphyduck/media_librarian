@@ -125,6 +125,10 @@ class Daemon
             bootstrap_calendar_feed_if_needed
 
             wait_for_shutdown
+            if update_requested_flag.true?
+              update_requested_flag.make_false
+              update_and_restart(update_root)
+            end
           rescue StandardError => e
             app.speaker.tell_error(e, Utils.arguments_dump(binding))
           ensure
@@ -2276,13 +2280,7 @@ class Daemon
       return :failed unless File.directory?(root) && File.directory?(File.join(root, '.git'))
 
       flag.make_true
-      Thread.new do
-        begin
-          update_and_restart(root)
-        ensure
-          flag.make_false
-        end
-      end
+      stop
       :scheduled
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
@@ -2294,7 +2292,13 @@ class Daemon
       return unless run_git_command(root, ['git', 'fetch', '--all'])
       return unless run_git_command(root, ['git', 'pull', '--ff-only'])
 
-      restart_from_disk
+      command = restart_command
+      unless command
+        app.speaker.speak_up('Restart command missing; cannot restart daemon')
+        return :failed
+      end
+
+      exec(*command)
     end
 
     def run_git_command(root, command)
