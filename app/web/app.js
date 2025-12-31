@@ -703,7 +703,11 @@ async function parseErrorMessage(response) {
   try {
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === 'object') {
-      return parsed.error || parsed.message || JSON.stringify(parsed);
+      const message = parsed.error || parsed.message;
+      if (message === 'update_restarting' || message === 'restart_only') {
+        return '';
+      }
+      return message || JSON.stringify(parsed);
     }
   } catch (error) {
     // ignore JSON errors, fall back to text

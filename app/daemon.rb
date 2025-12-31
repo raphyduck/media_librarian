@@ -2258,7 +2258,6 @@ class Daemon
         return error_response(res, status: 500, message: 'update_failed')
       end
 
-      update_stop_requested_flag.make_true
       json_response(res, status: 202, body: { 'status' => 'update_stopping' })
       Thread.new { stop }
     end
@@ -2280,10 +2279,6 @@ class Daemon
 
     def restart_requested_flag
       @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
-    end
-
-    def update_stop_requested_flag
-      @update_stop_requested_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
     def update_root
@@ -3114,12 +3109,12 @@ class Daemon
       return @executor.wait_for_termination if timeout.nil?
       return if @executor.wait_for_termination(timeout)
 
-      app.speaker.speak_up("Restart/update shutdown timed out after #{timeout}s; forcing executor shutdown")
+      app.speaker.speak_up("Restart shutdown timed out after #{timeout}s; forcing executor shutdown")
       @executor.kill if @executor.respond_to?(:kill)
     end
 
     def restart_shutdown?
-      restart_requested_flag.true? || update_stop_requested_flag.true?
+      restart_requested_flag.true?
     end
 
     def restart_shutdown_timeout
