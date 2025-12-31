@@ -125,10 +125,6 @@ class Daemon
             bootstrap_calendar_feed_if_needed
 
             wait_for_shutdown
-            if update_requested_flag.true?
-              update_requested_flag.make_false
-              restart_flag.make_true unless update_and_restart(update_root)
-            end
           rescue StandardError => e
             app.speaker.tell_error(e, Utils.arguments_dump(binding))
           ensure
@@ -1153,10 +1149,10 @@ class Daemon
         handle_restart_request(req, res)
       end
 
-      @control_server.mount_proc('/restart-update') do |req, res|
+      @control_server.mount_proc('/update-stop') do |req, res|
         next unless require_authorization(req, res)
 
-        handle_restart_update_request(req, res)
+        handle_update_stop_request(req, res)
       end
 
       @control_server.mount_proc('/calendar') do |req, res|
@@ -2249,22 +2245,22 @@ class Daemon
       end
     end
 
-    def handle_restart_update_request(req, res)
+    def handle_update_stop_request(req, res)
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+      return error_response(res, status: 503, message: 'not_running') unless running?
 
-      outcome = schedule_update_and_restart
-      case outcome
-      when :scheduled
-        json_response(res, status: 202, body: { 'status' => 'update_restarting' })
-      when :restart_only
-        json_response(res, status: 202, body: { 'status' => 'restart_only' })
-      when :already_updating
-        error_response(res, status: 409, message: 'update_in_progress')
-      when :not_running
-        error_response(res, status: 503, message: 'not_running')
-      else
-        error_response(res, status: 500, message: 'update_failed')
+      root = update_root
+      unless File.directory?(root) && File.directory?(File.join(root, '.git'))
+        return error_response(res, status: 404, message: 'update_root_missing')
       end
+
+      unless update_code(root)
+        return error_response(res, status: 500, message: 'update_failed')
+      end
+
+      update_stop_requested_flag.make_true
+      json_response(res, status: 202, body: { 'status' => 'update_stopping' })
+      Thread.new { stop }
     end
 
     def process_reload_request(res)
@@ -2286,8 +2282,8 @@ class Daemon
       @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
-    def update_requested_flag
-      @update_requested_flag ||= Concurrent::AtomicBoolean.new(false)
+    def update_stop_requested_flag
+      @update_stop_requested_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
     def update_root
@@ -2297,49 +2293,9 @@ class Daemon
       File.expand_path(root)
     end
 
-    def schedule_update_and_restart
-      return :not_running unless running?
-
-      update_flag = update_requested_flag
-      return :already_updating if update_flag.true?
-
-      restart_flag = restart_requested_flag
-      unless restart_command
-        app.speaker.speak_up('Update ignored: restart command missing; restarting without update')
-        restart_flag.make_true
-        stop
-        return :restart_only
-      end
-
-      root = update_root
-      unless File.directory?(root) && File.directory?(File.join(root, '.git'))
-        app.speaker.speak_up("Update ignored: no git repository at #{root}; restarting without update")
-        restart_flag.make_true
-        stop
-        return :restart_only
-      end
-
-      update_flag.make_true
-      stop
-      :scheduled
-    rescue StandardError => e
-      app.speaker.tell_error(e, Utils.arguments_dump(binding))
-      update_flag.make_false if update_flag
-      :failed
-    end
-
-    def update_and_restart(root)
+    def update_code(root)
       return false unless run_git_command(root, ['git', 'fetch', '--all'])
       return false unless run_git_command(root, ['git', 'pull', '--ff-only'])
-
-      command = restart_command
-      unless command
-        app.speaker.speak_up('Restart command missing; cannot restart daemon')
-        return false
-      end
-
-      exec(*command)
-      true
     end
 
     def run_git_command(root, command)
@@ -3163,7 +3119,7 @@ class Daemon
     end
 
     def restart_shutdown?
-      restart_requested_flag.true? || update_requested_flag.true?
+      restart_requested_flag.true? || update_stop_requested_flag.true?
     end
 
     def restart_shutdown_timeout
