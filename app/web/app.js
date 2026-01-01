@@ -3339,15 +3339,6 @@ function baseCommandKey(command = []) {
     .join(' ');
 }
 
-function addBaseCommandKey(commands = []) {
-  return (Array.isArray(commands) ? commands : [])
-    .map((command) => {
-      const baseKey = baseCommandKey(command?.command);
-      return baseKey ? { ...command, baseKey } : null;
-    })
-    .filter(Boolean);
-}
-
 function normalizeCommandEntries(entries) {
   const list = Array.isArray(entries)
     ? entries
@@ -3486,22 +3477,7 @@ function renderCommandList(container, commands = [], emptyMessage, options = {})
   });
 }
 
-function renderUnscheduledTemplateCommands(commands = [], scheduledKeys = new Set()) {
-  const container = document.getElementById('unscheduled-template-list');
-  if (!container) {
-    return;
-  }
-
-  const unscheduled = Array.isArray(commands)
-    ? commands.filter((command) => command.baseKey && !scheduledKeys.has(command.baseKey))
-    : [];
-
-  renderCommandList(container, unscheduled, 'Aucune commande de template disponible.', {
-    titleFormat: 'commandWithTemplate',
-  });
-}
-
-function renderAvailableCommands(commands = [], scheduledKeys = new Set(), templateKeys = new Set()) {
+function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
   const container = document.getElementById('available-command-list');
   if (!container) {
     return;
@@ -3510,7 +3486,7 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set(), templ
   const available = Array.isArray(commands)
     ? commands.filter((command) => {
         const key = baseCommandKey(command.command);
-        return key && !scheduledKeys.has(key) && !templateKeys.has(key);
+        return key && !scheduledKeys.has(key);
       })
     : [];
 
@@ -3556,7 +3532,6 @@ async function loadSchedulerTasks() {
   }
   let tasks = [];
   let scheduledKeys = new Set();
-  let templateCommands = [];
   try {
     const data = await fetchJson('/scheduler');
     const template = parseSchedulerTemplate(data?.content, data?.entries);
@@ -3571,26 +3546,11 @@ async function loadSchedulerTasks() {
   }
 
   try {
-    const templateData = await fetchJson('/template_commands');
-    templateCommands = addBaseCommandKey(
-      normalizeCommandEntries(templateData)
-    );
-    renderUnscheduledTemplateCommands(templateCommands, scheduledKeys);
-  } catch (error) {
-    renderUnscheduledTemplateCommands([], scheduledKeys);
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
-  }
-
-  const templateKeys = buildCommandKeySet(templateCommands);
-
-  try {
     const commandData = await fetchJson('/commands');
     const commands = normalizeCommandEntries(commandData?.commands);
-    renderAvailableCommands(commands, scheduledKeys, templateKeys);
+    renderAvailableCommands(commands, scheduledKeys);
   } catch (error) {
-    renderAvailableCommands([], scheduledKeys, templateKeys);
+    renderAvailableCommands([], scheduledKeys);
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
