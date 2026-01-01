@@ -33,17 +33,16 @@ module MediaLibrarian
       end
 
       def get_search_list(request)
-        unless request.source.is_a?(Hash) && request.source['existing_folder'] && request.source['existing_folder'][request.category]
-          speaker.speak_up("get_search_list: empty/invalid source for category=#{request.category}, returning empty", 0) if speaker
+        existing_files_from_db = media_repository.library_index(type: request.category)
+        if request.source_type == 'filesystem' && existing_files_from_db.empty?
+          speaker.speak_up("get_search_list: no existing media in DB for category=#{request.category}, returning empty", 0) if speaker
           return [{ request.category => {} }, {}]
         end
-        return [{}, {}] unless request.source['existing_folder'][request.category]
-
         search_list = {}
         existing_files = {}
-        cache_name = "#{request.source_type}#{request.category}#{request.source['existing_folder'][request.category]}"
+        cache_name = "#{request.source_type}#{request.category}"
         Utils.lock_block(__method__.to_s + cache_name) do
-          search_list, existing_files = build_search_list(request, cache_name)
+          search_list, existing_files = build_search_list(request, cache_name, existing_files_from_db)
         end
         result_list = (search_list[cache_name] || {}).deep_dup
         result_list[:calendar_entries] = search_list[:calendar_entries].deep_dup if search_list[:calendar_entries]
@@ -51,12 +50,12 @@ module MediaLibrarian
       end
 
       private
-      def build_search_list(request, cache_name)
+      def build_search_list(request, cache_name, existing_files_from_db)
         search_list = {}
         existing_files = {}
         case request.source_type
         when 'filesystem'
-          search_list[cache_name] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
+          search_list[cache_name] = existing_files_from_db
           existing_files[request.category] = search_list[cache_name].dup
         when 'watchlist', 'download_list', 'lists'
           rows = WatchlistStore.fetch_with_details(type: request.category)
@@ -75,7 +74,7 @@ module MediaLibrarian
           end
           search_list[:calendar_entries] = calendar_entries unless calendar_entries.empty?
         end
-        existing_files[request.category] = media_repository.library_index(type: request.category, folder: request.source['existing_folder'][request.category])
+        existing_files[request.category] ||= existing_files_from_db
         existing_files[request.category][:shows] = search_list[cache_name][:shows] if search_list[cache_name]&.dig(:shows) && request.category.to_s == 'shows'
         annotate_calendar_downloads(search_list, existing_files, request.category)
         [search_list, existing_files]

@@ -442,7 +442,7 @@ class Library
           ids
         )
       end
-      existing_files[category] = existing_media_from_db(category, source.dig('existing_folder', category))
+      existing_files[category] = existing_media_from_db(category)
     when 'search'
       keywords = source['keywords']
       keywords = [keywords] if keywords.is_a?(String)
@@ -533,9 +533,7 @@ class Library
     {}
   end
 
-  def self.existing_media_from_db(category, folder)
-    return {} if folder.to_s.empty?
-
+  def self.existing_media_from_db(category, folder = nil)
     LocalMediaRepository.new(app: app).library_index(type: category, folder: folder) || {}
   end
 
