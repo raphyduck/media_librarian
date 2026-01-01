@@ -373,7 +373,6 @@ class Library
           Utils.lock_block("file_handling_found_#{i}") do
             ok = false
             fs.uniq.each do |f|
-              app.speaker.speak_up "Found a '#{f[:type]}'#{' (' + f[:name].to_s + ')' if [:type] == 'file'} to remove for file '#{File.basename(file[:name])}' (identifier '#{i}'), removing now..." # if Env.debug?
               ok = !File.exist?(f[:name]) || FileUtils.rm(f[:name]) if f[:type] == 'file'
               if f[:type] == 'lists'
                 imdb_id = (f[:imdb_id] || f[:external_id] || f[:obj_imdb]).to_s.strip
