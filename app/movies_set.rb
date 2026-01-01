@@ -44,7 +44,6 @@ class MoviesSet
       app.speaker.speak_up("Checking movies set '#{collec_title}' for missing part") if Env.debug?
       collections << collec_title
       collection.movies.each do |m|
-        begin ##REMOVEME
           app.speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
           next if (m.release_date.to_s == '' && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
           next if Metadata.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))
@@ -62,9 +61,6 @@ class MoviesSet
               identifiers,
               info
           )
-        rescue => e ##REMOVEME
-          app.speaker.tell_error(e, "Block in MovieSet.list_missing_movie() m='#{Cache.object_pack(m,1)}'") ##REMOVEME
-        end ##REMOVEME
       end
     end
     missing_movies
