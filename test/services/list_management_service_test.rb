@@ -56,20 +56,30 @@ class ListManagementServiceTest < Minitest::Test
       source_type: 'filesystem',
       category: 'movies',
       source: {
-        'existing_folder' => { 'movies' => '/media/movies' },
         'list_name' => 'watchlist'
       }
     )
 
-    cache_name = "filesystemmovies/media/movieswatchlist"
-    existing_files = { cache_name => ['/media/movies/file.mkv'] }
+    cache_name = 'filesystemmovies'
+    existing_files = { cache_name => ['file.mkv'] }
     search_results = { cache_name => { 'file.mkv' => { size: 123 } } }
+    repository = Class.new do
+      def initialize(response)
+        @response = response
+      end
 
-    @service.stub(:build_search_list, [search_results, existing_files]) do
-      files, list = @service.get_search_list(request)
+      def library_index(**_args)
+        @response
+      end
+    end.new({ 'tt001' => { identifier: 'tt001' } })
 
-      assert_equal(['/media/movies/file.mkv'], files[cache_name])
-      assert_equal({ 'file.mkv' => { size: 123 } }, list)
+    @service.stub(:media_repository, repository) do
+      @service.stub(:build_search_list, [search_results, existing_files]) do
+        files, list = @service.get_search_list(request)
+
+        assert_equal(['file.mkv'], files[cache_name])
+        assert_equal({ 'file.mkv' => { size: 123 } }, list)
+      end
     end
   end
 
@@ -102,7 +112,7 @@ class ListManagementServiceTest < Minitest::Test
       request = MediaLibrarian::Services::SearchListRequest.new(
         source_type: 'watchlist',
         category: 'movies',
-        source: { 'existing_folder' => { 'movies' => '/media/movies' } }
+        source: {}
       )
 
       parsed_media = { 'tt0042' => { already_followed: 1 } }
@@ -117,7 +127,7 @@ class ListManagementServiceTest < Minitest::Test
             assert_equal parsed_media['tt0042'], search_list['tt0042']
             assert_equal true, search_list[:calendar_entries].first[:downloaded]
             assert_equal 'tt0042', search_list[:calendar_entries].first[:imdb_id]
-            assert_equal [{ type: 'movies', folder: '/media/movies' }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
+            assert_equal [{ type: 'movies', folder: nil }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
           end
         end
       end
@@ -131,7 +141,6 @@ class ListManagementServiceTest < Minitest::Test
       source_type: 'filesystem',
       category: 'movies',
       source: {
-        'existing_folder' => { 'movies' => '/media/movies' },
         'list_name' => 'library'
       }
     )
@@ -145,7 +154,7 @@ class ListManagementServiceTest < Minitest::Test
 
         assert_equal repo_data, files['movies']
         assert_equal repo_data, search_list
-        assert_equal [{ type: 'movies', folder: '/media/movies' }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
+        assert_equal [{ type: 'movies', folder: nil }], repo.calls.map { |call| { type: call[:type], folder: call[:folder] } }.uniq
       end
     end
   end

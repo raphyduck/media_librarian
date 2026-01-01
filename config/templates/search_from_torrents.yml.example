@@ -9,9 +9,6 @@ torrent_sources:
           timeframe: 3 hours
 filter_sources:
   filesystem:
-    existing_folder:
-      movies: '/folder/of/movies'
-      shows: '/folder/of/tvseries'
     include_specials: 1 #For tv shows
     filter_criteria:
       days_newer:
@@ -30,23 +27,14 @@ filter_sources:
     delta: 10
     upgrade: 1 #if '1', will try to download episodes of better qualities if available
     get_missing_set: 1 #If '1', will look for missing movies from a given set
-    existing_folder:
-      movies: '/folder/of/movies'
-      shows: '/folder/of/tvseries'
   lists:
     list_name: 'watchlist'
     include_specials: 1 #For tv shows
     delta: 10
     upgrade: 1 #if '1', will try to download episodes of better qualities if available
     get_missing_set: 1 #If '1', will look for missing movies from a given set
-    existing_folder:
-      movies: '/folder/of/movies'
-      shows: '/folder/of/tvseries'
   watchlist:
     # Loads entries from the Watchlist filled from the calendrier / intérêt pane.
-    existing_folder:
-      movies: '/folder/of/movies'
-      shows: '/folder/of/tvseries'
 category: shows
 search_category: optional_can_be_one_of_movies_shows
 no_prompt: 0
