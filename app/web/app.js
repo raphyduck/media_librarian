@@ -3214,21 +3214,6 @@ function parseSchedulerTemplate(content, parsed) {
   return null;
 }
 
-function normalizeSchedulerArgs(args, type) {
-  const list = [];
-  if (Array.isArray(args)) {
-    args.forEach((value) => list.push(String(value)));
-  } else if (args && typeof args === 'object') {
-    Object.entries(args).forEach(([key, value]) => {
-      list.push(`--${key}=${value}`);
-    });
-  }
-  if (type === 'continuous') {
-    list.push('--continuous=1');
-  }
-  return list;
-}
-
 function extractSchedulerTasks(template) {
   if (!template || typeof template !== 'object') {
     return [];
@@ -3252,16 +3237,19 @@ function extractSchedulerTasks(template) {
       if (!base.length) {
         return;
       }
-      const args = normalizeSchedulerArgs(entry.args, type);
       const schedule = entry.every || entry.cron || entry.interval || '';
+      const typeLabel = type === 'continuous' ? 'Continu' : 'Périodique';
+      const scheduleText = schedule ? `${typeLabel} · ${schedule}` : typeLabel;
       tasks.push({
         name: name || base.join(' '),
         type,
         schedule: schedule ? String(schedule) : '',
-        command: [...base, ...args],
+        command: base,
         queue: entry.queue || '',
         task: name || '',
         description: entry.description || '',
+        arg_values: entry.arg_values || entry.argValues || {},
+        meta: scheduleText ? [scheduleText] : [],
       });
     });
   });
@@ -3281,51 +3269,7 @@ function renderSchedulerTasks(tasks = [], { message } = {}) {
   if (!container) {
     return;
   }
-  container.innerHTML = '';
-  if (!tasks.length) {
-    const hint = document.createElement('p');
-    hint.className = 'hint';
-    hint.textContent = message || 'Aucune tâche planifiée.';
-    container.appendChild(hint);
-    return;
-  }
-
-  tasks.forEach((task) => {
-    const item = document.createElement('article');
-    item.className = 'scheduler-task';
-
-    const body = document.createElement('div');
-    body.className = 'task-body';
-
-    const title = document.createElement('h3');
-    title.textContent = task.name || task.command.join(' ');
-    body.appendChild(title);
-
-    const meta = document.createElement('div');
-    meta.className = 'task-meta';
-    meta.textContent = `${task.type === 'continuous' ? 'Continu' : 'Périodique'}${
-      task.schedule ? ` · ${task.schedule}` : ''
-    }`;
-    body.appendChild(meta);
-
-    if (task.command?.length) {
-      const commandLine = document.createElement('code');
-      commandLine.textContent = task.command.join(' ');
-      body.appendChild(commandLine);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'task-actions';
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'Lancer';
-    button.addEventListener('click', () => runSchedulerTask(task, button));
-    actions.appendChild(button);
-
-    item.appendChild(body);
-    item.appendChild(actions);
-    container.appendChild(item);
-  });
+  renderCommandList(container, tasks, message || 'Aucune tâche planifiée.');
 }
 
 function baseCommandKey(command = []) {
@@ -3397,11 +3341,21 @@ function renderCommandList(container, commands = [], emptyMessage, options = {})
     title.textContent = titleText;
     body.appendChild(title);
 
-    const queueLabel = command.queue ? [`File : ${command.queue}`] : [];
-    if (queueLabel.length) {
+    const metaLabels = [];
+    if (command.meta) {
+      if (Array.isArray(command.meta)) {
+        metaLabels.push(...command.meta.filter(Boolean));
+      } else if (command.meta) {
+        metaLabels.push(String(command.meta));
+      }
+    }
+    if (command.queue) {
+      metaLabels.push(`File : ${command.queue}`);
+    }
+    if (metaLabels.length) {
       const meta = document.createElement('div');
       meta.className = 'task-meta';
-      meta.textContent = queueLabel.join(' · ');
+      meta.textContent = metaLabels.join(' · ');
       body.appendChild(meta);
     }
 

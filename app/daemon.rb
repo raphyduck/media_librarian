@@ -2055,11 +2055,30 @@ class Daemon
           rescue Psych::SyntaxError
             nil
           end
+        parsed = expand_scheduler_entries(parsed, File.dirname(path))
 
         json_response(res, body: { 'content' => content, 'entries' => parsed })
       else
         handle_file_request(req, res, path, scheduler_mutex, 'GET, PUT')
       end
+    end
+
+    def expand_scheduler_entries(entries, template_dir)
+      return entries unless entries.is_a?(Hash)
+
+      %w[periodic continuous].each do |type|
+        section = entries[type]
+        next unless section.is_a?(Hash)
+
+        section.each_value do |task|
+          next unless task.is_a?(Hash)
+
+          arg_values = template_command_arg_values(task, template_dir)
+          task['arg_values'] = arg_values if arg_values&.any?
+        end
+      end
+
+      entries
     end
 
     def handle_watchlist_request(req, res)
