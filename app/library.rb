@@ -459,7 +459,9 @@ class Library
             :move_completed => (destination[category] || File.dirname(DEFAULT_MEDIA_DESTINATION[category])) }
         )
       end
-    when 'local_files', 'trakt', 'lists'
+    when 'local_files'
+      existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
+    when 'trakt', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
         next if id.is_a?(Symbol)
@@ -469,7 +471,7 @@ class Library
           already_exists = get_duplicates(existing_files[category][id], 1)
           already_exists.each do |ae|
             if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", no_prompt.to_i, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
-              search_list[id][:files] << ae unless source_type == 'local_files'
+              search_list[id][:files] << ae
             elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
               search_list.delete(id)
             end

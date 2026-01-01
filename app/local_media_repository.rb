@@ -8,7 +8,8 @@ class LocalMediaRepository
   end
 
   def library_index(type:, folder: nil)
-    rows = fetch_rows(type, folder)
+    normalized_type = normalize_type(type)
+    rows = fetch_rows(normalized_type, folder)
     rows.each_with_object({}) do |row, memo|
       identifiers = build_identifiers(row)
       next if identifiers.empty?
@@ -20,6 +21,10 @@ class LocalMediaRepository
   end
 
   private
+
+  def normalize_type(type)
+    { 'movies' => 'movie', 'shows' => 'show' }.fetch(type.to_s, type.to_s)
+  end
 
   def build_identifiers(row)
     id = (row[:imdb_id] || row['imdb_id'] || row[:external_id] || row['external_id']).to_s
