@@ -459,24 +459,19 @@ class Library
             :move_completed => (destination[category] || File.dirname(DEFAULT_MEDIA_DESTINATION[category])) }
         )
       end
-    when 'filesystem', 'trakt', 'lists'
+    when 'local_files', 'trakt', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
         next if id.is_a?(Symbol)
         case category
         when 'movies'
           search_list[id][:files] = [] unless search_list[id][:files].is_a?(Array)
-          if (source['upgrade'].to_i > 0 && Quality.qualities_file_filter(existing_files[category][id], qualities)) ||
-            source['get_missing_set'].to_i > 0
-            search_list.delete(id)
-          else
-            already_exists = get_duplicates(existing_files[category][id], 1)
-            already_exists.each do |ae|
-              if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", [no_prompt.to_i, source['upgrade'].to_i].max, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
-                search_list[id][:files] << ae unless source_type == 'filesystem'
-              elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
-                search_list.delete(id)
-              end
+          already_exists = get_duplicates(existing_files[category][id], 1)
+          already_exists.each do |ae|
+            if app.speaker.ask_if_needed("Replace already existing file #{ae[:name]}? (y/n)", no_prompt.to_i, source_type == 'trakt' ? 'n' : 'y').to_s == 'y'
+              search_list[id][:files] << ae unless source_type == 'local_files'
+            elsif app.speaker.ask_if_needed("Remove #{search_list[id][:name]} from the search list? (y/n)", no_prompt.to_i, 'y').to_s == 'y'
+              search_list.delete(id)
             end
           end
         when 'shows'
@@ -489,8 +484,8 @@ class Library
         no_prompt,
         (source['delta'] || 10),
         source['include_specials'],
-        source['upgrade'].to_i > 0 ? qualities : {}
-      ) unless (category == 'movies' && source['get_missing_set'].to_i == 0)
+        {}
+      )
       ['movies', 'shows'].each { |t| search_list.merge!(missing[t]) if missing[t] }
       search_list.keep_if { |_, f| !f.is_a?(Hash) || f[:type] != 'movies' || (!f[:release_date].nil? && f[:release_date] < Time.now) }
     end
