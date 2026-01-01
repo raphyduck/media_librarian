@@ -178,14 +178,12 @@ class Quality
   end
 
   def self.qualities_merge(oq, aq, lang = '', category = '')
-    MediaLibrarian.app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug? #REMOVEME
     quality = ''
     Q_SORT.each do |t|
       cq = parse_qualities(oq.to_s, eval(t), lang, category).join('.')
       cq = parse_qualities((aq.to_s), eval(t), lang, category).join('.') if cq.to_s == ''
       quality += ".#{cq}"
     end
-    MediaLibrarian.app.speaker.speak_up "Qualities_merge = #{quality}" #REMOVEME
     quality
   end
 

@@ -462,7 +462,6 @@ class Library
     when 'filesystem', 'trakt', 'lists'
       existing_files, search_list = get_search_list(source_type, category, source, no_prompt)
       search_list.keys.each do |id|
-        app.speaker.speak_up(id) #REMOVEME
         next if id.is_a?(Symbol)
         case category
         when 'movies'
