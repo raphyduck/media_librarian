@@ -8,15 +8,9 @@ torrent_sources:
       - https://feed.second:
           timeframe: 3 hours
 filter_sources:
-  filesystem:
+  local_files:
     include_specials: 1 #For tv shows
-    filter_criteria:
-      days_newer:
-      days_older:
-    item_name: '' #If set, will only look for files containing this string
     delta: 10
-    upgrade: 1 #if '1', will try to download episodes of better qualities if available
-    get_missing_set: 1 #If '1', will look for missing movies from a given set
   search:
     keywords:
       - 'keyword'
@@ -25,14 +19,10 @@ filter_sources:
     list_name: 'watchlist'
     include_specials: 1 #For tv shows
     delta: 10
-    upgrade: 1 #if '1', will try to download episodes of better qualities if available
-    get_missing_set: 1 #If '1', will look for missing movies from a given set
   lists:
     list_name: 'watchlist'
     include_specials: 1 #For tv shows
     delta: 10
-    upgrade: 1 #if '1', will try to download episodes of better qualities if available
-    get_missing_set: 1 #If '1', will look for missing movies from a given set
   watchlist:
     # Loads entries from the Watchlist filled from the calendrier / intérêt pane.
 category: shows

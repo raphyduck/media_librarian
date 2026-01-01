@@ -34,7 +34,7 @@ module MediaLibrarian
 
       def get_search_list(request)
         existing_files_from_db = media_repository.library_index(type: request.category)
-        if request.source_type == 'filesystem' && existing_files_from_db.empty?
+        if request.source_type == 'local_files' && existing_files_from_db.empty?
           speaker.speak_up("get_search_list: no existing media in DB for category=#{request.category}, returning empty", 0) if speaker
           return [{ request.category => {} }, {}]
         end
@@ -54,7 +54,7 @@ module MediaLibrarian
         search_list = {}
         existing_files = {}
         case request.source_type
-        when 'filesystem'
+        when 'local_files'
           search_list[cache_name] = existing_files_from_db
           existing_files[request.category] = search_list[cache_name].dup
         when 'watchlist', 'download_list', 'lists'

@@ -39,7 +39,7 @@ class ListManagementServiceTest < Minitest::Test
 
   def test_get_search_list_returns_empty_when_source_invalid
     request = MediaLibrarian::Services::SearchListRequest.new(
-      source_type: 'filesystem',
+      source_type: 'local_files',
       category: 'movies',
       source: {}
     )
@@ -53,14 +53,14 @@ class ListManagementServiceTest < Minitest::Test
 
   def test_get_search_list_uses_cached_results_when_source_valid
     request = MediaLibrarian::Services::SearchListRequest.new(
-      source_type: 'filesystem',
+      source_type: 'local_files',
       category: 'movies',
       source: {
         'list_name' => 'watchlist'
       }
     )
 
-    cache_name = 'filesystemmovies'
+    cache_name = 'local_filesmovies'
     existing_files = { cache_name => ['file.mkv'] }
     search_results = { cache_name => { 'file.mkv' => { size: 123 } } }
     repository = Class.new do
@@ -136,9 +136,9 @@ class ListManagementServiceTest < Minitest::Test
     end
   end
 
-  def test_filesystem_source_reads_existing_media_from_db_only
+  def test_local_files_source_reads_existing_media_from_db_only
     request = MediaLibrarian::Services::SearchListRequest.new(
-      source_type: 'filesystem',
+      source_type: 'local_files',
       category: 'movies',
       source: {
         'list_name' => 'library'

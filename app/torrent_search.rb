@@ -243,7 +243,7 @@ class TorrentSearch
   def self.search_from_torrents(torrent_sources:, filter_sources:, category:, destination: {}, no_prompt: 0, qualities: {}, download_criteria: {}, search_category: nil, no_waiting: 0, grab_all: 0)
     search_list, existing_files = {}, {}
     filter_sources.each do |t, s|
-      unless %w[search filesystem trakt lists watchlist download_list].include?(t.to_s)
+      unless %w[search local_files trakt lists watchlist download_list].include?(t.to_s)
         app.speaker.speak_up "Unknown filter source '#{t}', skipping"
         next
       end
