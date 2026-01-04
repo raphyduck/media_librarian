@@ -230,6 +230,14 @@ class Utils
     type
   end
 
+  def self.canonical_media_type(type)
+    normalized = type.to_s.strip.downcase
+    return 'movie' if normalized.start_with?('movie')
+    return 'show' if normalized.start_with?('show') || normalized.start_with?('tv') || normalized.start_with?('series')
+
+    normalized
+  end
+
   def self.timeperiod_to_sec(argument)
     return argument if argument.class < Integer
     if argument.class == String
