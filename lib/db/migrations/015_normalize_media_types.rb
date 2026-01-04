@@ -9,11 +9,14 @@ Sequel.migration do
       if table == :local_media
         normalized_types = %w[movies movie shows show tv series]
         normalized = Sequel.case(
-          { %w[movies movie] => 'movie', %w[shows show tv series] => 'show' },
+          {
+            Sequel.lit("lower(media_type) IN ?", %w[movies movie]) => 'movie',
+            Sequel.lit("lower(media_type) IN ?", %w[shows show tv series]) => 'show'
+          },
           Sequel.function(:lower, :media_type)
         )
         candidates = dataset.where(Sequel.function(:lower, :media_type) => normalized_types)
-        keep_ids = candidates.select { min(:id).as(:id) }.group(:imdb_id, normalized)
+        keep_ids = candidates.select(Sequel.function(:min, :id).as(:id)).group(:imdb_id, normalized)
         candidates.exclude(id: keep_ids).delete
       end
 
