@@ -38,15 +38,14 @@ class CollectionRepository
     order = []
 
     rows.each do |row|
-      key = fetch(row, :imdb_id).to_s
-      key = fetch(row, :id).to_s if key.empty?
+      key = group_key(row)
       next if key.empty?
 
       order << key unless groups.key?(key)
       (groups[key] ||= []) << row
     end
 
-    order.map { |key| serialize_group(groups[key]) }
+    order.map { |key| serialize_group(groups[key], key) }
   end
 
   def apply_sort(dataset, sort)
@@ -124,14 +123,15 @@ class CollectionRepository
     (page - 1) * per_page
   end
 
-  def serialize_group(rows)
+  def serialize_group(rows, group_key = nil)
     primary = rows.first
+    series_title = series_title(rows, group_key) if fetch(primary, :media_type) == 'show'
     entry = {
       id: fetch(primary, :id),
       media_type: fetch(primary, :media_type),
       imdb_id: fetch(primary, :imdb_id),
-      title: derived_title(primary),
-      name: fetch(primary, :title) || derived_title(primary),
+      title: series_title || derived_title(primary),
+      name: series_title || fetch(primary, :title) || derived_title(primary),
       released_at: build_released_at(fetch(primary, :release_date) || fetch(primary, :created_at)),
       year: extract_year(fetch(primary, :release_date)),
       poster_url: fetch(primary, :poster_url),
@@ -149,12 +149,58 @@ class CollectionRepository
     entry
   end
 
+  def group_key(row)
+    if fetch(row, :media_type) == 'show'
+      series = series_key(row)
+      return series unless series.empty?
+    end
+
+    key = fetch(row, :imdb_id).to_s
+    key = fetch(row, :id).to_s if key.empty?
+    key
+  end
+
+  def series_key(row)
+    series = series_name_from(row)
+    series.empty? ? '' : series.downcase
+  end
+
   def fetch(row, key)
     row[key] || row[key.to_s]
   end
 
   def derived_title(row)
     fetch(row, :calendar_title) || fetch(row, :title) || File.basename(fetch(row, :local_path).to_s)
+  end
+
+  def series_title(rows, group_key)
+    calendar_title = rows.map { |row| fetch(row, :calendar_title) }.find { |value| value.to_s.strip != '' }
+    return calendar_title if calendar_title
+
+    name = rows.map { |row| series_name_from(row) }.find { |value| value.to_s.strip != '' }
+    return name if name
+
+    group_key.to_s
+  end
+
+  def series_name_from(row)
+    source = fetch(row, :title).to_s
+    source = File.basename(fetch(row, :local_path).to_s) if source.empty?
+    return '' if source.empty?
+
+    if (match = source.match(/(.+?)[ ._-]*[sS]\d{1,2}[ ._-]*[eE]\d{1,2}/))
+      return normalize_series_name(match[1])
+    end
+
+    if (match = source.match(/(.+?)\d{1,2}x\d{1,2}/))
+      return normalize_series_name(match[1])
+    end
+
+    normalize_series_name(source)
+  end
+
+  def normalize_series_name(value)
+    value.to_s.tr('._', ' ').gsub(/\s+/, ' ').strip
   end
 
   def build_released_at(value)
