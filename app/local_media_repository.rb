@@ -23,7 +23,7 @@ class LocalMediaRepository
   private
 
   def normalize_type(type)
-    { 'movies' => 'movie', 'shows' => 'show' }.fetch(type.to_s, type.to_s)
+    Utils.canonical_media_type(type)
   end
 
   def build_identifiers(row)

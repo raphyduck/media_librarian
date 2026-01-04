@@ -28,7 +28,7 @@ module MediaLibrarian
       def persist_media_entries(library, type)
         return [] unless library.is_a?(Hash)
 
-        normalized_type = normalize_media_type(type)
+        normalized_type = Utils.canonical_media_type(type)
 
         existing_calendar_ids = calendar_imdb_ids
         cached_calendar = {}
@@ -130,14 +130,6 @@ module MediaLibrarian
           release_date: release_date,
           ids: { 'imdb' => imdb_id }
         }
-      end
-
-      def normalize_media_type(type)
-        normalized = type.to_s.strip.downcase
-        return 'movie' if normalized.start_with?('movie')
-        return 'show' if normalized.start_with?('show') || normalized.start_with?('tv') || normalized.start_with?('series')
-
-        normalized
       end
 
       def upsert_calendar_entry(entry)
