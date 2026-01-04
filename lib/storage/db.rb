@@ -205,17 +205,24 @@ module Storage
     end
 
     def normalize_values(table, values)
-      case values
-      when Hash
-        values.each_with_object({}) do |(key, value), memo|
-          memo[key.to_sym] = value
-        end
-      when Array
-        columns = schema_info(table).keys
-        Hash[columns.zip(values)].compact
-      else
-        {}
+      normalized_table = table.to_sym
+      normalized = case values
+                   when Hash
+                     values.each_with_object({}) do |(key, value), memo|
+                       memo[key.to_sym] = value
+                     end
+                   when Array
+                     columns = schema_info(table).keys
+                     Hash[columns.zip(values)].compact
+                   else
+                     {}
+                   end
+
+      if normalized[:media_type] && %i[local_media calendar_entries].include?(normalized_table)
+        normalized[:media_type] = Utils.canonical_media_type(normalized[:media_type])
       end
+
+      normalized
     end
 
     def serialize_value(value)
