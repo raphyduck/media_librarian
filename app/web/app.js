@@ -2571,7 +2571,7 @@ function resolveCollectionSortOption(sort) {
 
 function resolveCollectionType(value) {
   const type = value?.toString().trim();
-  return ['movie', 'tv', 'all'].includes(type) ? type : '';
+  return ['movie', 'show', 'all'].includes(type) ? type : '';
 }
 
 function normalizeFileEntries(files) {
@@ -2746,7 +2746,7 @@ function renderCollectionCard(entry) {
     body.appendChild(files);
   }
 
-  if (entry.media_type === 'tv') {
+  if (entry.media_type === 'show') {
     const seasons = Array.isArray(entry.seasons) ? entry.seasons : [];
     const seasonButton = document.createElement('button');
     seasonButton.type = 'button';

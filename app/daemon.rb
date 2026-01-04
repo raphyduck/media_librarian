@@ -1918,7 +1918,10 @@ class Daemon
 
     def normalize_collection_type(value)
       type = value.to_s.strip.downcase
-      %w[movie tv all].include?(type) ? type : nil
+      return 'movie' if %w[movie movies].include?(type)
+      return 'show' if %w[show shows tv series].include?(type)
+
+      type == 'all' ? 'all' : nil
     end
 
     def normalize_collection_sort(value)
