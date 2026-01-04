@@ -50,13 +50,16 @@ class CollectionRepository
   end
 
   def apply_sort(dataset, sort)
+    created_at = Sequel[:local_media][:created_at]
+    local_path = Sequel[:local_media][:local_path]
+
     case sort
     when 'title'
-      dataset.order(Sequel.asc(:local_path))
+      dataset.order(Sequel.asc(local_path))
     when 'released_at', 'year'
-      dataset.order(Sequel.desc(:created_at), Sequel.asc(:local_path))
+      dataset.order(Sequel.desc(created_at), Sequel.asc(local_path))
     else
-      dataset.order(Sequel.desc(:created_at))
+      dataset.order(Sequel.desc(created_at))
     end
   end
 
@@ -83,7 +86,7 @@ class CollectionRepository
     return dataset unless dataset
     return dataset if type.to_s.strip.empty? || type == 'all'
 
-    %w[movie show].include?(type) ? dataset.where(media_type: type) : dataset
+    %w[movie show].include?(type) ? dataset.where(Sequel[:local_media][:media_type] => type) : dataset
   end
 
   def collection_dataset
