@@ -83,7 +83,7 @@ class CollectionRepository
     return dataset unless dataset
     return dataset if type.to_s.strip.empty? || type == 'all'
 
-    %w[movie tv].include?(type) ? dataset.where(media_type: type) : dataset
+    %w[movie show].include?(type) ? dataset.where(media_type: type) : dataset
   end
 
   def collection_dataset
@@ -142,7 +142,7 @@ class CollectionRepository
       files: rows.map { |row| fetch(row, :local_path) }.compact
     }.compact
 
-    entry[:seasons] = build_seasons(rows) if entry[:media_type] == 'tv'
+    entry[:seasons] = build_seasons(rows) if entry[:media_type] == 'show'
     entry
   end
 
