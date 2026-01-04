@@ -45,7 +45,8 @@ class CollectionRepository
       (groups[key] ||= []) << row
     end
 
-    order.map { |key| serialize_group(groups[key], key) }
+    series_rows = all_show_series_rows(rows)
+    order.map { |key| serialize_group(groups[key], key, series_rows) }
   end
 
   def apply_sort(dataset, sort)
@@ -123,7 +124,7 @@ class CollectionRepository
     (page - 1) * per_page
   end
 
-  def serialize_group(rows, group_key = nil)
+  def serialize_group(rows, group_key = nil, series_rows = {})
     primary = rows.first
     series_title = series_title(rows, group_key) if fetch(primary, :media_type) == 'show'
     entry = {
@@ -145,8 +146,27 @@ class CollectionRepository
       files: rows.map { |row| fetch(row, :local_path) }.compact
     }.compact
 
-    entry[:seasons] = build_seasons(rows) if entry[:media_type] == 'show'
+    if entry[:media_type] == 'show'
+      entry[:seasons] = build_seasons(series_rows[group_key] || rows)
+    end
     entry
+  end
+
+  def all_show_series_rows(rows)
+    return {} unless rows.any? { |row| fetch(row, :media_type) == 'show' }
+    return {} unless app.respond_to?(:db) && app.db.respond_to?(:database)
+
+    dataset = app.db.database[:local_media]
+    return {} if app.db.respond_to?(:table_exists?) && !app.db.table_exists?(:local_media)
+
+    grouped = Hash.new { |h, k| h[k] = [] }
+    dataset.where(media_type: 'show').select(:local_path, :title).all.each do |row|
+      key = series_key(row)
+      next if key.empty?
+
+      grouped[key] << row
+    end
+    grouped
   end
 
   def group_key(row)
