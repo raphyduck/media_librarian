@@ -1679,6 +1679,23 @@ function renderErrorBlocks(logEntry, text) {
   if (!logContent) {
     return;
   }
+  const refreshButton = document.getElementById('refresh-logs');
+  const updateRefreshLabel = (hasOpen) => {
+    if (!refreshButton) {
+      return;
+    }
+    if (!refreshButton.dataset.defaultText) {
+      refreshButton.dataset.defaultText = refreshButton.textContent;
+    }
+    refreshButton.textContent = hasOpen
+      ? `${refreshButton.dataset.defaultText} (auto: pause)`
+      : refreshButton.dataset.defaultText;
+  };
+  const openBlockTitles = new Set(
+    Array.from(logContent.querySelectorAll('details.log-error[open]'))
+      .map((details) => details.querySelector('.log-error-title')?.textContent || '')
+      .filter(Boolean),
+  );
   const lines = (text || '').split('\n');
   const blocks = [];
   let current = null;
@@ -1697,8 +1714,10 @@ function renderErrorBlocks(logEntry, text) {
   }
   if (!blocks.length) {
     logContent.textContent = text || '—';
+    updateRefreshLabel(false);
     return;
   }
+  let hasOpenBlock = false;
   const fragments = blocks.map((block) => {
     const details = document.createElement('details');
     details.className = 'log-error';
@@ -1731,9 +1750,21 @@ function renderErrorBlocks(logEntry, text) {
     if (block.length > 1) {
       details.appendChild(body);
     }
+    if (openBlockTitles.has(block[0])) {
+      details.open = true;
+      hasOpenBlock = true;
+      stopAutoRefresh();
+    }
+    details.addEventListener('toggle', () => {
+      if (details.open) {
+        stopAutoRefresh();
+      }
+      updateRefreshLabel(Boolean(logContent.querySelector('details.log-error[open]')));
+    });
     return details;
   });
   logContent.replaceChildren(...fragments);
+  updateRefreshLabel(hasOpenBlock);
 }
 
 function renderLogs(logs = {}) {
