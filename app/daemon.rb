@@ -1563,7 +1563,8 @@ class Daemon
                  key if key && !key.empty?
                end
              when Hash
-               template_params.keys.map(&:to_s)
+               template_args = template_params['args'] || template_params[:args]
+               (template_args.is_a?(Hash) ? template_args : template_params).keys.map(&:to_s)
              else
                []
              end
@@ -1574,7 +1575,10 @@ class Daemon
         if resolved_dir
           template = app.args_dispatch.load_template(template_name, resolved_dir)
           template = app.args_dispatch.parse_template_args(template, resolved_dir)
-          keys.concat(template.keys.map(&:to_s)) if template.is_a?(Hash)
+          if template.is_a?(Hash)
+            template_args = template['args'] || template[:args]
+            keys.concat((template_args.is_a?(Hash) ? template_args : template).keys.map(&:to_s))
+          end
         end
       end
 
