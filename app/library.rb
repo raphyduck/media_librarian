@@ -333,7 +333,7 @@ class Library
     missing_media[cache_name]
   end
 
-  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '')
+  def self.parse_media(file, type, no_prompt = 0, files = {}, folder_hierarchy = {}, rename = {}, file_attrs = {}, base_folder = '', ids = {}, item = nil, item_name = '', set_original_audio_default = 0)
     item_name, item = Metadata.identify_title(file[:name], type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder, ids) unless item && item_name.to_s != ''
     unless (no_prompt.to_i == 0 && item_name.to_s != '') || item
       if Env.debug?
@@ -366,6 +366,10 @@ class Library
     )
     return files if identifiers.empty? || full_name == ''
     return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
+    if set_original_audio_default.to_i > 0 && file[:type].to_s == 'file'
+      original_lang = info[:language].to_s
+      VideoUtils.set_default_original_audio!(path: file[:name], original_lang: original_lang) if original_lang != ''
+    end
     app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
       Cache.queue_state_get('file_handling').each do |i, fs|
@@ -493,7 +497,7 @@ class Library
     return search_list, existing_files
   end
 
-  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL)
+  def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL, set_original_audio_default: 0)
     app.speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
     files, raw_filtered, cache_name, media_list = nil, [], folder.to_s + type.to_s, {}
     file_criteria = { 'regex' => '.*' + item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*' }
@@ -504,7 +508,7 @@ class Library
         FileUtils.search_folder(folder, file_criteria.deep_merge(DEFAULT_FILTER_PROCESSFOLDER[type]) { |_, x1, x2| x1 + x2 }).each do |f|
           next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
           Librarian.route_cmd(
-            ['Library', 'parse_media', { :type => 'file', :name => f[0] }, type, no_prompt, {}, folder_hierarchy, rename, {}, folder],
+            ['Library', 'parse_media', { :type => 'file', :name => f[0] }, type, no_prompt, {}, folder_hierarchy, rename, {}, folder, {}, nil, '', set_original_audio_default],
             1,
             Thread.current[:object],
             8
