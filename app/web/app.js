@@ -1654,7 +1654,11 @@ function updateLogFilter(logEntry) {
   const hint = logEntry.querySelector('.log-hint');
   const query = filterInput.value.trim().toLowerCase();
   if (!query) {
-    logContent.textContent = logText || '—';
+    if (logEntry.dataset.logName === 'medialibrarian_errors.log') {
+      renderErrorBlocks(logEntry, fullLogText);
+    } else {
+      logContent.textContent = logText || '—';
+    }
     if (hint && logEntry.dataset.logTruncated === 'true') {
       hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
     }
@@ -1668,6 +1672,62 @@ function updateLogFilter(logEntry) {
   if (hint) {
     hint.textContent = "Filtrage sur l'ensemble du log.";
   }
+}
+
+function renderErrorBlocks(logEntry, text) {
+  const logContent = logEntry.querySelector('.log-content');
+  if (!logContent) {
+    return;
+  }
+  const lines = (text || '').split('\n');
+  const blocks = [];
+  let current = null;
+  lines.forEach((line) => {
+    if (line.startsWith('E, [')) {
+      if (current) {
+        blocks.push(current);
+      }
+      current = [line];
+    } else if (current) {
+      current.push(line);
+    }
+  });
+  if (current) {
+    blocks.push(current);
+  }
+  if (!blocks.length) {
+    logContent.textContent = text || '—';
+    return;
+  }
+  const fragments = blocks.map((block) => {
+    const details = document.createElement('details');
+    details.className = 'log-error';
+    const summary = document.createElement('summary');
+    summary.textContent = block[0];
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'log-error-copy';
+    copy.textContent = 'Copier';
+    copy.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(block.join('\n'));
+        showNotification('Erreur copiée dans le presse-papiers.');
+      } catch (error) {
+        showNotification("Impossible de copier l'erreur.", 'error');
+      }
+    });
+    summary.appendChild(copy);
+    const body = document.createElement('pre');
+    body.textContent = block.slice(1).join('\n');
+    details.appendChild(summary);
+    if (block.length > 1) {
+      details.appendChild(body);
+    }
+    return details;
+  });
+  logContent.replaceChildren(...fragments);
 }
 
 function renderLogs(logs = {}) {
