@@ -659,13 +659,17 @@ button.danger:hover {
 }
 
 .log-error summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
+  display: block;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(248, 113, 113, 0.6);
   cursor: pointer;
   list-style: none;
   color: #fecaca;
+}
+
+.log-error summary:hover {
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .log-error summary::-webkit-details-marker {
@@ -675,16 +679,6 @@ button.danger:hover {
 .log-error pre {
   margin: 0.5rem 0 0;
   white-space: pre-wrap;
-}
-
-.log-error-copy {
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(15, 23, 42, 0.6);
-  color: inherit;
-  border-radius: 0.6rem;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
-  cursor: pointer;
 }
 
 .log-hint {
