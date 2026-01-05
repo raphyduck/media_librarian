@@ -1649,12 +1649,17 @@ function updateLogFilter(logEntry) {
   if (!logContent || !filterInput) {
     return;
   }
+  const isErrorLog = logEntry.dataset.logName === 'medialibrarian_errors.log';
   const logText = logEntry.dataset.logText || '';
   const fullLogText = logEntry.dataset.fullLogText || logText;
   const hint = logEntry.querySelector('.log-hint');
   const query = filterInput.value.trim().toLowerCase();
   if (!query) {
-    logContent.textContent = logText || '—';
+    if (isErrorLog) {
+      renderErrorBlocks(logContent, logText);
+    } else {
+      logContent.textContent = logText || '—';
+    }
     if (hint && logEntry.dataset.logTruncated === 'true') {
       hint.textContent = `Affichage des ${LOG_MAX_LINES.toLocaleString('fr-FR')} dernières lignes.`;
     }
@@ -1668,6 +1673,45 @@ function updateLogFilter(logEntry) {
   if (hint) {
     hint.textContent = "Filtrage sur l'ensemble du log.";
   }
+}
+
+function renderErrorBlocks(container, logText) {
+  const lines = logText.split('\n');
+  const blocks = [];
+  let current = null;
+  lines.forEach((line) => {
+    if (line.startsWith('E, [')) {
+      if (current) {
+        blocks.push(current);
+      }
+      current = [line];
+      return;
+    }
+    if (current) {
+      current.push(line);
+    }
+  });
+  if (current) {
+    blocks.push(current);
+  }
+  if (!blocks.length) {
+    container.textContent = logText || '—';
+    return;
+  }
+  const nodes = blocks.map((block) => {
+    const details = document.createElement('details');
+    details.className = 'log-error';
+    const summary = document.createElement('summary');
+    summary.textContent = block[0];
+    details.appendChild(summary);
+    if (block.length > 1) {
+      const rest = document.createElement('pre');
+      rest.textContent = block.slice(1).join('\n');
+      details.appendChild(rest);
+    }
+    return details;
+  });
+  container.replaceChildren(...nodes);
 }
 
 function renderLogs(logs = {}) {
