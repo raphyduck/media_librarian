@@ -1920,6 +1920,7 @@ class Daemon
       type = value.to_s.strip.downcase
       return 'movie' if %w[movie movies].include?(type)
       return 'show' if %w[show shows tv series].include?(type)
+      return 'unmatched' if type == 'unmatched'
 
       type == 'all' ? 'all' : nil
     end
