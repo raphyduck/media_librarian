@@ -127,7 +127,7 @@ class Utils
   end
 
   def self.lock_block(process_name, nonex = 0, &block)
-    process_name.gsub!(/[\{\}\(\)]/, '')
+    process_name = process_name.to_s.gsub(/[\{\}\(\)]/, '')
     lock_name = "lock_#{process_name}_on"
     if Thread.current[lock_name] == 1
       r = block.call
