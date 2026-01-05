@@ -647,6 +647,46 @@ button.danger:hover {
   overflow-wrap: anywhere;
 }
 
+.log-error {
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(127, 29, 29, 0.2);
+}
+
+.log-error + .log-error {
+  margin-top: 0.5rem;
+}
+
+.log-error summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  color: #fecaca;
+}
+
+.log-error summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-error pre {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+}
+
+.log-error-copy {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: inherit;
+  border-radius: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 .log-hint {
   margin: 0.75rem 0 0;
   color: var(--muted);
