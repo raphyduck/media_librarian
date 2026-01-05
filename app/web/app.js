@@ -1744,6 +1744,11 @@ function renderErrorBlocks(logEntry, text) {
     actions.appendChild(copyButton);
     summary.appendChild(summaryText);
     summary.appendChild(actions);
+    summary.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      details.open = !details.open;
+    });
     const body = document.createElement('pre');
     body.textContent = block.slice(1).join('\n');
     details.appendChild(summary);
