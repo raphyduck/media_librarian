@@ -3502,9 +3502,12 @@ function renderCommandList(container, commands = [], emptyMessage, options = {})
 
     const inputs = [];
     const argValues = command.arg_values || command.argValues || {};
-    const argList = Array.isArray(command.args) && command.args.length
-      ? command.args.filter((arg) => arg?.name)
-      : Object.keys(argValues).map((name) => ({ name, required: false }));
+    const templateArgs = command.template_args || command.templateArgs || [];
+    const argList = Array.isArray(templateArgs) && templateArgs.length
+      ? templateArgs.map((name) => ({ name, required: false }))
+      : Array.isArray(command.args) && command.args.length
+        ? command.args.filter((arg) => arg?.name)
+        : Object.keys(argValues).map((name) => ({ name, required: false }));
     if (argList.length) {
       argList.forEach((arg) => {
         const wrapper = document.createElement('label');
@@ -3586,10 +3589,18 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
 }
 
 function filterTemplateCommands(commands = []) {
+  const commandArgs = (command) => {
+    const templateArgs = command?.template_args || command?.templateArgs;
+    if (Array.isArray(templateArgs)) {
+      return templateArgs;
+    }
+    if (Array.isArray(command?.args)) {
+      return command.args.map((arg) => arg?.name).filter(Boolean);
+    }
+    return [];
+  };
   return Array.isArray(commands)
-    ? commands.filter((command) =>
-        Array.isArray(command.args) && command.args.some((arg) => arg?.name === 'command')
-      )
+    ? commands.filter((command) => commandArgs(command).includes('command'))
     : [];
 }
 

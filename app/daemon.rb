@@ -1472,6 +1472,11 @@ class Daemon
       }
       arg_values = template_command_arg_values(data, template_dir)
       entry['arg_values'] = arg_values if arg_values&.any?
+      template_args = template_command_arg_keys(data, template_dir)
+      if arg_values&.any?
+        template_args = (template_args + arg_values.keys).map(&:to_s).uniq
+      end
+      entry['template_args'] = template_args if template_args&.any?
       queue = template_command_queue(data, action)
       entry['queue'] = queue if queue
       entry
@@ -1545,6 +1550,35 @@ class Daemon
       end
 
       merged
+    end
+
+    def template_command_arg_keys(data, template_dir = nil)
+      template_params = data['args'] || data[:args]
+      keys = case template_params
+             when Array
+               template_params.filter_map do |arg|
+                 next unless arg.is_a?(String) && arg.start_with?('--')
+
+                 key, = arg[2..].split('=', 2)
+                 key if key && !key.empty?
+               end
+             when Hash
+               template_params.keys.map(&:to_s)
+             else
+               []
+             end
+
+      template_name = template_params.is_a?(Hash) ? (template_params['template_name'] || template_params[:template_name]) : nil
+      if template_name
+        resolved_dir = resolve_template_dir(template_name, template_dir)
+        if resolved_dir
+          template = app.args_dispatch.load_template(template_name, resolved_dir)
+          template = app.args_dispatch.parse_template_args(template, resolved_dir)
+          keys.concat(template.keys.map(&:to_s)) if template.is_a?(Hash)
+        end
+      end
+
+      keys.reject { |key| key == 'template_name' }.uniq
     end
 
     def template_directories
