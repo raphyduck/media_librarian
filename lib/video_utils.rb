@@ -20,4 +20,49 @@ class VideoUtils
     end
     skipping
   end
+
+  def self.set_default_original_audio!(path:, original_lang:)
+    target_lang = Languages.get_code(original_lang.to_s)
+    return false if target_lang.to_s == ''
+
+    audio_tracks = FileInfo.new(path).getaudiochannels
+    return false if audio_tracks.empty?
+
+    selected_index = nil
+    audio_tracks.each_with_index do |audio, index|
+      next unless audio
+      lang = audio.language.to_s.strip.downcase
+      next if lang == '' || %w[und undefined].include?(lang)
+      title = audio.respond_to?(:title) ? audio.title.to_s : ''
+      next if title.downcase.include?('commentary')
+      commentary = if audio.respond_to?(:commentary)
+        audio.commentary.to_s.downcase
+      elsif audio.respond_to?(:commentary?)
+        audio.commentary?.to_s.downcase
+      else
+        ''
+      end
+      next if %w[yes true 1].include?(commentary)
+
+      track_lang = Languages.get_code(lang.split('-').first)
+      next if track_lang.to_s == ''
+      if track_lang == target_lang
+        selected_index = index + 1
+        break
+      end
+    end
+
+    return false unless selected_index
+    return false unless File.extname(path).downcase == '.mkv'
+    return false unless system('command -v mkvpropedit >/dev/null 2>&1')
+
+    args = ['mkvpropedit', path]
+    audio_tracks.each_index do |index|
+      flag = (index + 1 == selected_index) ? '1' : '0'
+      args += ['--edit', "track:a#{index + 1}", '--set', "flag-default=#{flag}"]
+    end
+    return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
+
+    system(*args)
+  end
 end
