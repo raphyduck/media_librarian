@@ -1526,6 +1526,7 @@ class Daemon
       return unless template_params.is_a?(Hash)
 
       template_name = template_params['template_name'] || template_params[:template_name]
+      template_args = template_params['args'] || template_params[:args]
       template_values = {}
       if template_name
         resolved_dir = resolve_template_dir(template_name, template_dir)
@@ -1544,9 +1545,17 @@ class Daemon
       end
 
       template_params.each do |key, value|
-        next if key.to_s == 'template_name' || value.nil?
+        next if key.to_s == 'template_name' || key.to_s == 'args' || value.nil?
 
         merged[key.to_s] = value.is_a?(String) ? value : value.to_s
+      end
+
+      if template_args.is_a?(Hash)
+        template_args.each do |key, value|
+          next if key.to_s == 'template_name' || value.nil?
+
+          merged[key.to_s] = value.is_a?(String) ? value : value.to_s
+        end
       end
 
       merged
