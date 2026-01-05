@@ -42,8 +42,9 @@ module MediaLibrarian
           imdb_id = normalize_imdb_id(extract_imdb_id(subject))
           watchlist_id = imdb_id
           watchlist_id = normalize_imdb_id(extract_watchlist_id(entry, subject)) if watchlist_id.empty?
+          imdb_id = nil if imdb_id.empty?
 
-          cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, normalized_type, entry, existing_calendar_ids) unless imdb_id.empty? || cached_calendar.key?(imdb_id)
+          cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, normalized_type, entry, existing_calendar_ids) if imdb_id && !cached_calendar.key?(imdb_id)
 
           files_found = false
 
@@ -52,8 +53,6 @@ module MediaLibrarian
             next unless local_path && File.file?(local_path)
 
             files_found = true
-            next if imdb_id.empty?
-
             metadata = {
               media_type: normalized_type,
               imdb_id: imdb_id,
@@ -178,7 +177,15 @@ module MediaLibrarian
 
       def existing_local_media(metadata)
         return unless app&.db
-        return if metadata[:media_type].to_s.empty? || metadata[:imdb_id].to_s.empty?
+        return if metadata[:media_type].to_s.empty?
+
+        imdb_id = metadata[:imdb_id].to_s
+        if imdb_id.empty?
+          local_path = metadata[:local_path].to_s
+          return if local_path.empty?
+
+          return app.db.get_rows(:local_media, { media_type: metadata[:media_type], local_path: local_path }).first
+        end
 
         app.db.get_rows(:local_media, { media_type: metadata[:media_type], imdb_id: metadata[:imdb_id] }).first
       end
