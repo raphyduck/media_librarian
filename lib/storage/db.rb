@@ -284,7 +284,7 @@ module Storage
       return speaker&.speak_up("Would #{sql}") if Env.pretend?
       raise 'ReadOnly Db' if readonly
 
-      Utils.lock_block("db_#{table}") { yield }
+      Utils.lock_block('db_write') { yield }
     end
 
     def skip_write?(sql)
