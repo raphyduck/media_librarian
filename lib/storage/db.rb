@@ -13,7 +13,8 @@ module Storage
 
     def initialize(db_path, readonly = 0, migrations_path: default_migrations_path)
       @readonly = readonly.to_i.positive?
-      @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly)
+      @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
+      configure_sqlite if @database.database_type == :sqlite
       run_migrations(migrations_path) unless @readonly
     rescue StandardError => e
       log_error(e)
@@ -273,6 +274,11 @@ module Storage
       return unless path && Dir.exist?(path)
 
       Sequel::Migrator.run(database, path)
+    end
+
+    def configure_sqlite
+      database.run('PRAGMA journal_mode = WAL')
+      database.run('PRAGMA synchronous = NORMAL')
     end
 
     def normalize_key(key)
