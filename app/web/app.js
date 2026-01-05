@@ -1699,15 +1699,39 @@ function renderErrorBlocks(logEntry, text) {
   const lines = (text || '').split('\n');
   const blocks = [];
   let current = null;
+  const extractErrorPrefix = (line) => {
+    const match = line.match(/^(E, \[[^\]]+\] ERROR -- :)(.*)$/);
+    if (!match) {
+      return null;
+    }
+    return { prefix: match[1], message: match[2] || '' };
+  };
+  let previousPrefix = null;
   lines.forEach((line) => {
-    if (line.startsWith('E, [')) {
-      if (current) {
-        blocks.push(current);
+    const parsed = extractErrorPrefix(line);
+    if (parsed) {
+      const normalizedMessage = parsed.message.startsWith(' ')
+        ? parsed.message.slice(1)
+        : parsed.message;
+      const isContinuation = Boolean(current)
+        && (parsed.prefix === previousPrefix
+          || /^\s/.test(normalizedMessage)
+          || /^from\b/.test(normalizedMessage));
+      if (!current || !isContinuation) {
+        if (current) {
+          blocks.push(current);
+        }
+        current = [line];
+      } else {
+        current.push(line);
       }
-      current = [line];
-    } else if (current) {
+      previousPrefix = parsed.prefix;
+      return;
+    }
+    if (current) {
       current.push(line);
     }
+    previousPrefix = null;
   });
   if (current) {
     blocks.push(current);
