@@ -86,7 +86,18 @@ class CollectionRepository
     return dataset unless dataset
     return dataset if type.to_s.strip.empty? || type == 'all'
 
-    %w[movie show].include?(type) ? dataset.where(Sequel[:local_media][:media_type] => type) : dataset
+    if %w[movie show].include?(type)
+      dataset.where(Sequel[:local_media][:media_type] => type)
+    elsif type == 'unmatched'
+      imdb_id = Sequel[:local_media][:imdb_id]
+      conditions = [imdb_id => nil, imdb_id => '']
+      if dataset.columns.include?(:matched)
+        conditions << { Sequel[:local_media][:matched] => false }
+      end
+      dataset.where(Sequel.|(*conditions))
+    else
+      dataset
+    end
   end
 
   def collection_dataset

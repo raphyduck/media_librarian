@@ -2709,7 +2709,7 @@ function resolveCollectionSortOption(sort) {
 
 function resolveCollectionType(value) {
   const type = value?.toString().trim();
-  return ['movie', 'show', 'all'].includes(type) ? type : '';
+  return ['movie', 'show', 'all', 'unmatched'].includes(type) ? type : '';
 }
 
 function normalizeFileEntries(files) {
