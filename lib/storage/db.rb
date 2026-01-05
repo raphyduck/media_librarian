@@ -223,6 +223,10 @@ module Storage
         normalized[:media_type] = Utils.canonical_media_type(normalized[:media_type])
       end
 
+      if normalized_table == :local_media && normalized.key?(:imdb_id)
+        normalized[:imdb_id] = nil if normalized[:imdb_id].to_s.strip.empty?
+      end
+
       normalized
     end
 
