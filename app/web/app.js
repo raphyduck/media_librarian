@@ -1825,15 +1825,27 @@ function renderLogs(logs = {}) {
     }
 
     const fullLogText = content || '';
-    const { text: displayContent, truncated } = getLogTail(fullLogText);
+    const isErrorLog = name === 'medialibrarian_errors.log';
+    const { text: displayContent, truncated } = isErrorLog
+      ? { text: fullLogText, truncated: false }
+      : getLogTail(fullLogText);
     logEntry.dataset.fullLogText = fullLogText;
     logEntry.dataset.logText = displayContent || '';
     logEntry.dataset.logTruncated = truncated ? 'true' : 'false';
-    updateLogFilter(logEntry);
+    if (isErrorLog) {
+      const query = logEntry.querySelector('.log-filter')?.value.trim();
+      if (query) {
+        updateLogFilter(logEntry);
+      } else {
+        renderErrorBlocks(logEntry, fullLogText);
+      }
+    } else {
+      updateLogFilter(logEntry);
+    }
     const logContent = logEntry.querySelector('.log-content');
 
     let hint = logEntry.querySelector('.log-hint');
-    if (truncated) {
+    if (!isErrorLog && truncated) {
       if (!hint) {
         hint = document.createElement('p');
         hint.className = 'log-hint';
