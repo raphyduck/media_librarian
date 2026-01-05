@@ -3585,6 +3585,30 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
   renderCommandList(container, available, 'Aucune commande CLI disponible.');
 }
 
+function filterTemplateCommands(commands = []) {
+  return Array.isArray(commands)
+    ? commands.filter((command) =>
+        Array.isArray(command.args) && command.args.some((arg) => arg?.name === 'command')
+      )
+    : [];
+}
+
+function renderTemplateCommands(commands = [], { message } = {}) {
+  const container = document.getElementById('template-command-list');
+  if (!container) {
+    return;
+  }
+
+  const filtered = filterTemplateCommands(commands);
+
+  renderCommandList(
+    container,
+    filtered,
+    message || 'Aucun template de commande disponible.',
+    { titleFormat: 'commandWithTemplate' }
+  );
+}
+
 async function runSchedulerTask(task, button) {
   if (!task?.command?.length) {
     return;
@@ -3643,6 +3667,18 @@ async function loadSchedulerTasks() {
     renderAvailableCommands(commands, scheduledKeys);
   } catch (error) {
     renderAvailableCommands([], scheduledKeys);
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  }
+
+  try {
+    const templateData = await fetchJson('/template_commands');
+    const templates = normalizeCommandEntries(templateData?.commands);
+    const filteredTemplates = filterTemplateCommands(templates);
+    renderTemplateCommands(filteredTemplates);
+  } catch (error) {
+    renderTemplateCommands([], { message: error.message });
     if (state.authenticated) {
       showNotification(error.message, 'error');
     }
