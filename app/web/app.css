@@ -659,13 +659,37 @@ button.danger:hover {
 }
 
 .log-error summary {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.35rem 0.5rem;
   border-radius: 0.5rem;
   border: 1px solid rgba(248, 113, 113, 0.6);
   cursor: pointer;
   list-style: none;
   color: #fecaca;
+}
+
+.log-error-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-error .log-actions {
+  flex-shrink: 0;
+}
+
+.log-error .copy-error {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.log-error .copy-error:hover {
+  background: rgba(248, 113, 113, 0.2);
 }
 
 .log-error summary:hover {
