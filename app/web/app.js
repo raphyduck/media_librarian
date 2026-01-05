@@ -1703,7 +1703,28 @@ function renderErrorBlocks(logEntry, text) {
     const details = document.createElement('details');
     details.className = 'log-error';
     const summary = document.createElement('summary');
-    summary.textContent = block[0];
+    const summaryText = document.createElement('span');
+    summaryText.className = 'log-error-title';
+    summaryText.textContent = block[0];
+    const actions = document.createElement('span');
+    actions.className = 'log-actions';
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'copy-error';
+    copyButton.textContent = 'Copier';
+    copyButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(block.join('\n'));
+        showNotification("Bloc d'erreur copié dans le presse-papiers.");
+      } catch (error) {
+        showNotification("Impossible de copier ce bloc d'erreur.", 'error');
+      }
+    });
+    actions.appendChild(copyButton);
+    summary.appendChild(summaryText);
+    summary.appendChild(actions);
     const body = document.createElement('pre');
     body.textContent = block.slice(1).join('\n');
     details.appendChild(summary);
