@@ -647,6 +647,17 @@ button.danger:hover {
   overflow-wrap: anywhere;
 }
 
+.log-error summary {
+  color: #f87171;
+  border-left: 3px solid #f87171;
+  padding-left: 0.5rem;
+  cursor: pointer;
+}
+
+.log-error summary:hover {
+  color: #fca5a5;
+}
+
 .log-hint {
   margin: 0.75rem 0 0;
   color: var(--muted);
