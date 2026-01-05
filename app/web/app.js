@@ -1655,7 +1655,7 @@ function updateLogFilter(logEntry) {
   const query = filterInput.value.trim().toLowerCase();
   if (!query) {
     if (logEntry.dataset.logName === 'medialibrarian_errors.log') {
-      renderErrorBlocks(logEntry, fullLogText);
+      renderErrorBlocks(logEntry, logText);
     } else {
       logContent.textContent = logText || '—';
     }
@@ -1704,21 +1704,6 @@ function renderErrorBlocks(logEntry, text) {
     details.className = 'log-error';
     const summary = document.createElement('summary');
     summary.textContent = block[0];
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'log-error-copy';
-    copy.textContent = 'Copier';
-    copy.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(block.join('\n'));
-        showNotification('Erreur copiée dans le presse-papiers.');
-      } catch (error) {
-        showNotification("Impossible de copier l'erreur.", 'error');
-      }
-    });
-    summary.appendChild(copy);
     const body = document.createElement('pre');
     body.textContent = block.slice(1).join('\n');
     details.appendChild(summary);
