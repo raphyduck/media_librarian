@@ -243,6 +243,7 @@ module FileUtils
       filter_criteria = {} if filter_criteria.nil?
       return [] unless folder && File.directory?(folder)
       search_folder = []
+      max_results = filter_criteria['max_results'].to_i
       Find.find(folder).each do |path|
         path = File.absolute_path(path)
         next if path == File.absolute_path(folder)
@@ -264,6 +265,7 @@ module FileUtils
             MediaLibrarian.app.str_closeness.getDistance(File.basename(path), filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i &&
             MediaLibrarian.app.str_closeness.getDistance(parent, filter_criteria['str_closeness_comp']) < filter_criteria['str_closeness'].to_i
         search_folder << [path, parent] if breakflag == 0
+        break if max_results > 0 && search_folder.length >= max_results
         if filter_criteria['maxdepth'].to_i > 0 && depth >= filter_criteria['maxdepth'].to_i
           Find.prune if FileTest.directory?(path)
         end
