@@ -170,6 +170,14 @@ class Library
       type = otype.downcase
       ttype = handling[type] && handling[type]['media_type'] ? handling[type]['media_type'] : type
       extension = FileUtils.get_extension(torrent_name)
+      if torrent_name.match(Regexp.new(VALID_VIDEO_EXT)) &&
+         %w[movies shows].include?(ttype) &&
+         File.extname(full_p).downcase == '.mkv' &&
+         system('command -v mkvpropedit >/dev/null 2>&1')
+        _, _, info = Metadata.parse_media_filename(full_p, ttype, nil, '', 1, folder_hierarchy, completed_folder + '/' + otype, { :name => full_p })
+        original_lang = info[:language].to_s
+        VideoUtils.set_default_original_audio!(path: full_p, original_lang: original_lang) if original_lang != ''
+      end
       if ['rar', 'zip'].include?(extension)
         FileUtils.rm_r(torrent_path + '/extfls') if File.exist?(torrent_path + '/extfls')
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
