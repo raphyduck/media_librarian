@@ -509,11 +509,14 @@ class Library
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
     Utils.lock_block(__method__.to_s + cache_name) {
       media_list = BusVariable.new('media_list', Vash)
-      if media_list[cache_name].nil? || media_list[cache_name].empty? || remove_duplicates.to_i > 0 || (rename && !rename.empty?)
+      sample_names = []
+      cache_hit = !(media_list[cache_name].nil? || media_list[cache_name].empty? || remove_duplicates.to_i > 0 || (rename && !rename.empty?))
+      if !cache_hit
         limit = max_results.to_i if max_results
         count = 0
         FileUtils.search_folder(folder, file_criteria.deep_merge(DEFAULT_FILTER_PROCESSFOLDER[type]) { |_, x1, x2| x1 + x2 }).each do |f|
           next unless f[0].match(Regexp.new(VALID_VIDEO_EXT))
+          sample_names << f[0].to_s if Env.debug? && sample_names.length < 5
           Librarian.route_cmd(
             ['Library', 'parse_media', { :type => 'file', :name => f[0] }, type, no_prompt, {}, folder_hierarchy, rename, {}, folder, {}, nil, '', set_original_audio_default],
             1,
@@ -525,8 +528,11 @@ class Library
         end
         media_list[cache_name, cache_expiration.to_i] = Daemon.consolidate_children
         media_list[cache_name, cache_expiration.to_i] = handle_duplicates(media_list[cache_name] || {}, remove_duplicates, no_prompt)
-      elsif Env.debug?
-        app.speaker.speak_up("Cache of media_list [#{cache_name}] exists, returning it directly", 0)
+      end
+      if Env.debug?
+        cache = media_list[cache_name] || {}
+        sample = sample_names.empty? ? cache.keys.reject { |k| k.is_a?(Symbol) }[0, 5] : sample_names
+        app.speaker.speak_up("process_folder cache #{cache_hit ? 'hit' : 'recomputed'} [#{cache_name}] size=#{cache.size} sample=#{sample}", 0)
       end
     }
     if filter_criteria && !filter_criteria.empty? && !media_list[cache_name].empty?
