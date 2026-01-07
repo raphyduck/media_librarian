@@ -25,20 +25,12 @@ class VideoUtils
     file_info = FileInfo.new(path)
     audio_tracks = file_info.getaudiochannels
     return false if audio_tracks.empty?
-    target_lang = Languages.get_code(
-      audio_tracks.find do |audio|
-        audio && audio.language.to_s.strip.downcase != '' && !%w[und undefined].include?(audio.language.to_s.strip.downcase)
-      end&.language.to_s.split('-').first
-    )
-    return false if target_lang.to_s == ''
-
-    selected_index = nil
-    audio_tracks.each_with_index do |audio, index|
-      next unless audio
+    valid_audio = lambda do |audio|
+      return false unless audio
       lang = audio.language.to_s.strip.downcase
-      next if lang == '' || %w[und undefined].include?(lang)
+      return false if lang == '' || %w[und undefined].include?(lang)
       title = audio.respond_to?(:title) ? audio.title.to_s : ''
-      next if title.downcase.include?('commentary')
+      return false if title.downcase.include?('commentary')
       commentary = if audio.respond_to?(:commentary)
         audio.commentary.to_s.downcase
       elsif audio.respond_to?(:commentary?)
@@ -46,7 +38,15 @@ class VideoUtils
       else
         ''
       end
-      next if %w[yes true 1].include?(commentary)
+      !%w[yes true 1].include?(commentary)
+    end
+    target_lang = Languages.get_code(audio_tracks.find(&valid_audio)&.language.to_s.split('-').first)
+    return false if target_lang.to_s == ''
+
+    selected_index = nil
+    audio_tracks.each_with_index do |audio, index|
+      next unless valid_audio.call(audio)
+      lang = audio.language.to_s.strip.downcase
 
       track_lang = Languages.get_code(lang.split('-').first)
       next if track_lang.to_s == ''
