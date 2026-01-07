@@ -12,10 +12,14 @@ module Storage
     attr_reader :database
 
     def initialize(db_path, readonly = 0, migrations_path: default_migrations_path)
+      @db_path = db_path
       @readonly = readonly.to_i.positive?
       @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
       configure_sqlite if @database.database_type == :sqlite
       run_migrations(migrations_path) unless @readonly
+    rescue SQLite3::CorruptException => e
+      log_corruption(e, 'connect')
+      raise
     rescue StandardError => e
       log_error(e)
       raise
@@ -25,8 +29,11 @@ module Storage
       dataset = build_dataset(table, conditions, additionals)
       sql = dataset.delete_sql
       run_write(table, sql) { dataset.delete }
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, sql)
+      nil
     rescue StandardError => e
-      log_error(e)
+      log_error(e, sql)
       nil
     end
 
@@ -43,6 +50,10 @@ module Storage
       return if skip_write?(raw_sql)
 
       database.run(raw_sql)
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, raw_sql)
+    rescue StandardError => e
+      log_error(e, raw_sql)
     end
 
     def get_main_column(table)
@@ -61,8 +72,11 @@ module Storage
       log_sql(dataset.sql)
       rows = Utils.lock_block("db_#{table}") { dataset.all }
       rows.map { |row| deserialize_row(row) }
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, dataset.sql)
+      []
     rescue StandardError => e
-      log_error(e)
+      log_error(e, dataset.sql)
       []
     end
 
@@ -72,8 +86,11 @@ module Storage
       prepared = prepare_values(table, values)
       sql = dataset.insert_sql(prepared)
       run_write(table, sql) { dataset.insert(prepared) }
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, sql)
+      nil
     rescue StandardError => e
-      log_error(e)
+      log_error(e, sql)
       nil
     end
 
@@ -90,8 +107,11 @@ module Storage
       sql = Array(dataset.multi_insert_sql(prepared_rows)).join('; ')
       run_write(table, sql) { dataset.multi_insert(prepared_rows) }
       true
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, sql)
+      false
     rescue StandardError => e
-      log_error(e)
+      log_error(e, sql)
       false
     end
 
@@ -109,8 +129,11 @@ module Storage
       return 0 if prepared.empty?
       sql = dataset.update_sql(prepared)
       run_write(table, sql) { dataset.update(prepared) }
+    rescue SQLite3::CorruptException => e
+      handle_corruption(e, sql)
+      nil
     rescue StandardError => e
-      log_error(e)
+      log_error(e, sql)
       nil
     end
 
@@ -307,6 +330,22 @@ module Storage
     def log_sql(sql, write: false)
       return if sql.to_s.empty?
       speaker&.speak_up("Executing SQL query: '#{sql}'", 0) if Env.debug?
+    end
+
+    def handle_corruption(error, sql)
+      log_corruption(error, sql)
+      nil
+    end
+
+    def log_corruption(error, sql)
+      db_path = @db_path.to_s
+      query = sql.to_s
+      if error.message.to_s.include?('database disk image is malformed')
+        speaker&.speak_up("SQLite corruption detected for #{db_path} while running: #{query}")
+      end
+      speaker&.speak_up("Run an integrity check/restore for #{db_path}. Query: #{query}")
+      context = { db_path: db_path, query: query }
+      speaker&.tell_error(error, Utils.arguments_dump(binding, 2, 'Storage::Db', context))
     end
 
     def log_error(error, sql = nil)
