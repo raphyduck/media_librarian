@@ -509,7 +509,7 @@ class Library
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
     Utils.lock_block(__method__.to_s + cache_name) {
       media_list = BusVariable.new('media_list', Vash)
-      if media_list[cache_name].nil? || remove_duplicates.to_i > 0 || (rename && !rename.empty?)
+      if media_list[cache_name].nil? || media_list[cache_name].empty? || remove_duplicates.to_i > 0 || (rename && !rename.empty?)
         limit = max_results.to_i if max_results
         count = 0
         FileUtils.search_folder(folder, file_criteria.deep_merge(DEFAULT_FILTER_PROCESSFOLDER[type]) { |_, x1, x2| x1 + x2 }).each do |f|
