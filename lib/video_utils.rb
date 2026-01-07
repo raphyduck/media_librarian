@@ -22,6 +22,8 @@ class VideoUtils
   end
 
   def self.set_default_original_audio!(path:)
+    return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
+
     file_info = FileInfo.new(path)
     audio_tracks = file_info.getaudiochannels
     return false if audio_tracks.empty?
