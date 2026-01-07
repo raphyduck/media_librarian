@@ -21,12 +21,16 @@ class VideoUtils
     skipping
   end
 
-  def self.set_default_original_audio!(path:, original_lang:)
-    target_lang = Languages.get_code(original_lang.to_s)
-    return false if target_lang.to_s == ''
-
-    audio_tracks = FileInfo.new(path).getaudiochannels
+  def self.set_default_original_audio!(path:)
+    file_info = FileInfo.new(path)
+    audio_tracks = file_info.getaudiochannels
     return false if audio_tracks.empty?
+    target_lang = Languages.get_code(
+      audio_tracks.find do |audio|
+        audio && audio.language.to_s.strip.downcase != '' && !%w[und undefined].include?(audio.language.to_s.strip.downcase)
+      end&.language.to_s.split('-').first
+    )
+    return false if target_lang.to_s == ''
 
     selected_index = nil
     audio_tracks.each_with_index do |audio, index|

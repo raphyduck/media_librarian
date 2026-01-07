@@ -174,9 +174,7 @@ class Library
          %w[movies shows].include?(ttype) &&
          File.extname(full_p).downcase == '.mkv' &&
          system('command -v mkvpropedit >/dev/null 2>&1')
-        _, _, info = Metadata.parse_media_filename(full_p, ttype, nil, '', 1, folder_hierarchy, completed_folder + '/' + otype, { :name => full_p })
-        original_lang = info[:language].to_s
-        VideoUtils.set_default_original_audio!(path: full_p, original_lang: original_lang) if original_lang != ''
+        VideoUtils.set_default_original_audio!(path: full_p)
       end
       if ['rar', 'zip'].include?(extension)
         FileUtils.rm_r(torrent_path + '/extfls') if File.exist?(torrent_path + '/extfls')
@@ -375,8 +373,7 @@ class Library
     return files if identifiers.empty? || full_name == ''
     return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
     if set_original_audio_default.to_i > 0 && file[:type].to_s == 'file'
-      original_lang = info[:language].to_s
-      VideoUtils.set_default_original_audio!(path: file[:name], original_lang: original_lang) if original_lang != ''
+      VideoUtils.set_default_original_audio!(path: file[:name])
     end
     app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
