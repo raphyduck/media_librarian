@@ -27,56 +27,45 @@ class VideoUtils
   def self.set_default_original_audio!(path:)
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
-    file_info = FileInfo.new(path)
-    audio_tracks = file_info.getaudiochannels
+    return false unless File.extname(path).downcase == '.mkv'
+    return false unless system('command -v mkvpropedit >/dev/null 2>&1')
+    track_map = mkv_audio_track_map(path)
+    return false if track_map.empty?
     if Env.debug?
-      track_langs = audio_tracks.map { |a| a&.language.to_s.strip.downcase }.reject(&:empty?)
+      track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
       MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
     end
-    return false if audio_tracks.empty?
     valid_audio = lambda do |audio|
       return false unless audio
-      lang = audio.language.to_s.strip.downcase
+      lang = audio[:lang].to_s.strip.downcase
       return false if lang == '' || %w[und undefined].include?(lang)
-      title = audio.respond_to?(:title) ? audio.title.to_s : ''
+      title = audio[:name].to_s
       return false if title.downcase.include?('commentary')
-      commentary = if audio.respond_to?(:commentary)
-        audio.commentary.to_s.downcase
-      elsif audio.respond_to?(:commentary?)
-        audio.commentary?.to_s.downcase
-      else
-        ''
-      end
+      commentary = audio[:commentary].to_s.downcase
       !%w[yes true 1].include?(commentary)
     end
-    target_lang = Languages.get_code(audio_tracks.find(&valid_audio)&.language.to_s.split('-').first)
+    target_lang = Languages.get_code(track_map.find(&valid_audio)&.dig(:lang).to_s.split('-').first)
     MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
     return false if target_lang.to_s == ''
 
-    selected_index = nil
-    audio_tracks.each_with_index do |audio, index|
+    selected_track_id = nil
+    track_map.each do |audio|
       next unless valid_audio.call(audio)
-      lang = audio.language.to_s.strip.downcase
+      lang = audio[:lang].to_s.strip.downcase
 
       track_lang = Languages.get_code(lang.split('-').first)
       next if track_lang.to_s == ''
       if track_lang == target_lang
-        selected_index = index + 1
+        selected_track_id = audio[:id]
         break
       end
     end
 
-    return false unless File.extname(path).downcase == '.mkv'
-    return false unless selected_index
-    return false unless system('command -v mkvpropedit >/dev/null 2>&1')
-    track_map = mkv_audio_track_map(path)
-    return false if track_map.empty?
+    return false unless selected_track_id
 
     args = ['mkvpropedit', path]
-    audio_tracks.each_index do |index|
-      track = track_map[index]
-      next unless track
-      flag = (index + 1 == selected_index) ? '1' : '0'
+    track_map.each do |track|
+      flag = (track[:id] == selected_track_id) ? '1' : '0'
       args += ['--edit', "track:@#{track[:id]}", '--set', "flag-default=#{flag}"]
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
@@ -97,7 +86,13 @@ class VideoUtils
     tracks = JSON.parse(stdout).fetch('tracks', [])
     tracks.filter_map do |track|
       next unless track['type'] == 'audio'
-      { id: track['id'], lang: track.dig('properties', 'language').to_s.downcase }
+      properties = track.fetch('properties', {})
+      {
+        id: track['id'],
+        lang: properties['language'].to_s.downcase,
+        name: properties['track_name'].to_s,
+        commentary: properties['flag_commentary']
+      }
     end
   rescue JSON::ParserError
     []
