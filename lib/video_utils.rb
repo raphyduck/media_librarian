@@ -81,7 +81,12 @@ class VideoUtils
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
-    system(*args)
+    _stdout, stderr, status = Open3.capture3(*args)
+    return true if status.success?
+
+    err_line = stderr.to_s.split("\n").first.to_s.strip
+    MediaLibrarian.app.speaker.speak_up("mkvpropedit failed: #{err_line}. Run: #{args.join(' ')}")
+    false
   end
 
   def self.mkv_audio_track_map(path)
