@@ -1,3 +1,6 @@
+require 'json'
+require 'open3'
+
 class VideoUtils
   def self.convert_videos(path, dest_file, input_format, output_format)
     MediaLibrarian.app.speaker.speak_up(Utils.arguments_dump(binding)) if Env.debug?
@@ -63,17 +66,35 @@ class VideoUtils
       end
     end
 
-    return false unless selected_index
     return false unless File.extname(path).downcase == '.mkv'
+    return false unless selected_index
     return false unless system('command -v mkvpropedit >/dev/null 2>&1')
+    track_map = mkv_audio_track_map(path)
+    return false if track_map.empty?
 
     args = ['mkvpropedit', path]
     audio_tracks.each_index do |index|
+      track = track_map[index]
+      next unless track
       flag = (index + 1 == selected_index) ? '1' : '0'
-      args += ['--edit', "track:a#{index + 1}", '--set', "flag-default=#{flag}"]
+      args += ['--edit', "track:@#{track[:id]}", '--set', "flag-default=#{flag}"]
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
     system(*args)
+  end
+
+  def self.mkv_audio_track_map(path)
+    return [] unless system('command -v mkvmerge >/dev/null 2>&1')
+    stdout, status = Open3.capture2('mkvmerge', '-J', path)
+    return [] unless status.success?
+
+    tracks = JSON.parse(stdout).fetch('tracks', [])
+    tracks.filter_map do |track|
+      next unless track['type'] == 'audio'
+      { id: track['id'], lang: track.dig('properties', 'language').to_s.downcase }
+    end
+  rescue JSON::ParserError
+    []
   end
 end
