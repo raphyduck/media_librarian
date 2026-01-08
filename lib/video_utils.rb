@@ -26,6 +26,10 @@ class VideoUtils
 
     file_info = FileInfo.new(path)
     audio_tracks = file_info.getaudiochannels
+    if Env.debug?
+      track_langs = audio_tracks.map { |a| a&.language.to_s.strip.downcase }.reject(&:empty?)
+      MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
+    end
     return false if audio_tracks.empty?
     valid_audio = lambda do |audio|
       return false unless audio
@@ -43,6 +47,7 @@ class VideoUtils
       !%w[yes true 1].include?(commentary)
     end
     target_lang = Languages.get_code(audio_tracks.find(&valid_audio)&.language.to_s.split('-').first)
+    MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
     return false if target_lang.to_s == ''
 
     selected_index = nil
