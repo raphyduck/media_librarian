@@ -109,8 +109,9 @@ class VideoUtils
     tracks.filter_map do |track|
       next unless track['type'] == 'audio'
       properties = track.fetch('properties', {})
+      edit_id = properties['number'] || properties['track_number'] || track['id']
       {
-        id: track['id'],
+        id: edit_id,
         lang: properties['language'].to_s.downcase,
         name: properties['track_name'].to_s,
         commentary: properties['flag_commentary'],
