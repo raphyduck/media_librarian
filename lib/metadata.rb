@@ -92,12 +92,12 @@ class Metadata
     in_path = FileUtils.is_in_path(media_folders[type].keys, filename)
     return media_folders[type][in_path] if in_path && !media_folders[type][in_path].nil?
     filename, _ = FileUtils.get_only_folder_levels(filename.gsub(base_folder, ''), folder_level.to_i)
+    MediaLibrarian.app.speaker.speak_up("identify_title: type=#{type} folder_level=#{folder_level} base_folder=#{base_folder} filename=#{filename}", 0) if Env.debug?
     r_folder, jk = filename, 0
     while item.nil?
       t_folder, r_folder = FileUtils.get_top_folder(r_folder)
       next if t_folder.to_s == ''
       MediaLibrarian.app.speaker.speak_up("identify_title: search=#{t_folder} remaining=#{r_folder}", 0) if Env.debug?
-      MediaLibrarian.app.speaker.speak_up("identify_title: type=#{type} folder_level=#{folder_level} base_folder=#{base_folder} filename=#{filename}", 0) if Env.debug?
       case type
       when 'movies'
         if item.nil? && t_folder == r_folder
