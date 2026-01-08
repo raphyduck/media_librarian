@@ -60,6 +60,12 @@ This program is made to answer my various needs for automation in the management
   bundle exec ruby librarian.rb --config ~/.medialibrarian/conf.yml
   ```
 
+* Example: process a folder and force the original audio track as default when parsing media files:
+
+  ```bash
+  bundle exec ruby librarian.rb library process_folder --type=shows --folder=/path/to/folder --set_original_audio_default=1
+  ```
+
 The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `conf.yml`.
 Finished job history is capped per queue (defaults to `finished_jobs_per_queue: 100` in `~/.medialibrarian/conf.yml`) to keep the
 in-memory registry bounded; raise or lower the limit to tune how many completed entries remain visible via `/status`.
