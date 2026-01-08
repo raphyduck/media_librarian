@@ -96,6 +96,8 @@ class Metadata
     while item.nil?
       t_folder, r_folder = FileUtils.get_top_folder(r_folder)
       next if t_folder.to_s == ''
+      MediaLibrarian.app.speaker.speak_up("identify_title: search=#{t_folder} remaining=#{r_folder}", 0) if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("identify_title: type=#{type} folder_level=#{folder_level} base_folder=#{base_folder} filename=#{filename}", 0) if Env.debug?
       case type
       when 'movies'
         if item.nil? && t_folder == r_folder
@@ -384,17 +386,24 @@ class Metadata
   def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, file = {})
     item_name, item = Metadata.identify_title(filename, type, no_prompt, (folder_hierarchy[type] || FOLDER_HIERARCHY[type]), base_folder) if item.nil? || item_name.to_s == ''
     full_name, ids, info, parts = '', [], {}, []
-    return full_name, ids, info unless no_prompt.to_i == 0 || item
+    unless no_prompt.to_i == 0 || item
+      MediaLibrarian.app.speaker.speak_up("parse_media_filename skipping: no item for #{filename} (type=#{type})", 0) if Env.debug?
+      return full_name, ids, info
+    end
     case type
     when 'movies'
-      release = item&.release_date ? item.release_date : Time.new(Metadata.identify_release_year(item_name))
-      ids = [Movie.identifier(item_name, item.year)]
+      year = item&.year.to_i
+      year = Metadata.identify_release_year(item_name) if year.zero?
+      year = Metadata.identify_release_year(filename) if year.zero?
+      year = Time.now.year if year.zero?
+      release = item&.release_date || Time.new(year)
+      ids = [Movie.identifier(item_name, year)]
       full_name = item_name
       info = {
         :movies_name => item_name,
         :movie => item,
         :release_date => release,
-        :titles => item.alt_titles
+        :titles => item&.alt_titles
       }
       parts = Movie.identify_split_files(filename)
     when 'shows'
