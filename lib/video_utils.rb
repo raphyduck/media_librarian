@@ -70,12 +70,34 @@ class VideoUtils
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
-    _stdout, stderr, status = Open3.capture3(*args)
-    return true if status.success?
+    stdout, stderr, status = Open3.capture3(*args)
+    unless status.success?
+      message = "mkvpropedit failed: #{stderr.to_s.strip}"
+      stdout_line = stdout.to_s.strip
+      message += " stdout: #{stdout_line}" unless stdout_line.empty?
+      MediaLibrarian.app.speaker.speak_up("#{message}. Run: #{args.join(' ')}")
+      return false
+    end
 
-    err_line = stderr.to_s.split("\n").first.to_s.strip
-    MediaLibrarian.app.speaker.speak_up("mkvpropedit failed: #{err_line}. Run: #{args.join(' ')}")
-    false
+    post_tracks = mkv_audio_track_map(path)
+    if post_tracks.empty?
+      MediaLibrarian.app.speaker.speak_up("Post-check failed: unable to read audio tracks via mkvmerge -J for #{path}.")
+      return false
+    end
+
+    default_tracks = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+    if default_tracks.size != 1
+      MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{default_tracks.size} for #{path}.")
+      return false
+    end
+
+    default_lang = Languages.get_code(default_tracks.first[:lang].to_s.split('-').first)
+    if default_lang != target_lang
+      MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{default_lang} does not match target #{target_lang} for #{path}.")
+      return false
+    end
+
+    true
   end
 
   def self.mkv_audio_track_map(path)
@@ -91,7 +113,8 @@ class VideoUtils
         id: track['id'],
         lang: properties['language'].to_s.downcase,
         name: properties['track_name'].to_s,
-        commentary: properties['flag_commentary']
+        commentary: properties['flag_commentary'],
+        default: properties['default_track']
       }
     end
   rescue JSON::ParserError
