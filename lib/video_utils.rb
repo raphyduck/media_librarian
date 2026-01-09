@@ -109,13 +109,13 @@ class VideoUtils
     tracks.filter_map do |track|
       next unless track['type'] == 'audio'
       properties = track.fetch('properties', {})
-      edit_id = properties['number'] || properties['track_number'] || track['id']
-      id_source = if properties.key?('number')
-                    "properties['number']"
-                  elsif properties.key?('track_number')
-                    "properties['track_number']"
-                  else
+      edit_id = track['id'] || properties['number'] || properties['track_number']
+      id_source = if track.key?('id')
                     "track['id']"
+                  elsif properties.key?('number')
+                    "properties['number']"
+                  else
+                    "properties['track_number']"
                   end
       MediaLibrarian.app.speaker.speak_up("mkv audio edit id from #{id_source}: #{edit_id}", 0) if Env.debug?
       next if edit_id.nil?
