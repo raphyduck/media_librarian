@@ -24,13 +24,15 @@ class VideoUtils
     skipping
   end
 
-  def self.set_default_original_audio!(path:, type: nil, item_name: '', item: nil, no_prompt: 1, folder_hierarchy: {}, base_folder: Dir.home)
+  def self.set_default_original_audio!(path:, target_lang: nil)
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
     return false unless File.extname(path).downcase == '.mkv'
     return false unless system('command -v mkvpropedit >/dev/null 2>&1')
     track_map = mkv_audio_track_map(path)
     return false if track_map.empty?
+    target_lang = Languages.get_code(target_lang.to_s.split('-').first)
+    return false if target_lang.to_s == ''
     if Env.debug?
       track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
       MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
@@ -44,20 +46,7 @@ class VideoUtils
       commentary = audio[:commentary].to_s.downcase
       !%w[yes true 1].include?(commentary)
     end
-    target_lang = Metadata.original_language_for(
-      path: path,
-      type: type,
-      item_name: item_name,
-      item: item,
-      no_prompt: no_prompt,
-      folder_hierarchy: folder_hierarchy,
-      base_folder: base_folder
-    )
-    if target_lang.to_s == ''
-      target_lang = Languages.get_code(track_map.find(&valid_audio)&.dig(:lang).to_s.split('-').first)
-    end
     MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
-    return false if target_lang.to_s == ''
 
     selected_track_index = nil
     track_map.each do |audio|
