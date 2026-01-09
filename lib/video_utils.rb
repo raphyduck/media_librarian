@@ -48,7 +48,7 @@ class VideoUtils
     MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
     return false if target_lang.to_s == ''
 
-    selected_track_id = nil
+    selected_track_index = nil
     track_map.each do |audio|
       next unless valid_audio.call(audio)
       lang = audio[:lang].to_s.strip.downcase
@@ -56,17 +56,17 @@ class VideoUtils
       track_lang = Languages.get_code(lang.split('-').first)
       next if track_lang.to_s == ''
       if track_lang == target_lang
-        selected_track_id = audio[:id]
+        selected_track_index = audio[:audio_index]
         break
       end
     end
 
-    return false unless selected_track_id
+    return false unless selected_track_index
 
     args = ['mkvpropedit', path]
     track_map.each do |track|
-      flag = (track[:id] == selected_track_id) ? '1' : '0'
-      args += ['--edit', "track:#{track[:id]}", '--set', "flag-default=#{flag}"]
+      flag = (track[:audio_index] == selected_track_index) ? '1' : '0'
+      args += ['--edit', "track:a#{track[:audio_index]}", '--set', "flag-default=#{flag}"]
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
@@ -106,8 +106,10 @@ class VideoUtils
     return [] unless status.success?
 
     tracks = JSON.parse(stdout).fetch('tracks', [])
+    audio_index = 0
     tracks.filter_map do |track|
       next unless track['type'] == 'audio'
+      audio_index += 1
       properties = track.fetch('properties', {})
       edit_id = track['id'] || properties['number'] || properties['track_number']
       id_source = if track.key?('id')
@@ -121,6 +123,7 @@ class VideoUtils
       next if edit_id.nil?
       {
         id: edit_id,
+        audio_index: audio_index,
         lang: properties['language'].to_s.downcase,
         name: properties['track_name'].to_s,
         commentary: properties['flag_commentary'],
