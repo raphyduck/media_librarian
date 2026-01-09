@@ -72,6 +72,8 @@ class VideoUtils
 
     stdout, stderr, status = Open3.capture3(*args)
     combined_text = "#{stderr} #{stdout}".to_s
+    post_tracks = nil
+    bak_path = nil
     if combined_text.match?(/Tracks/i) && combined_text.match?(/failed|échoué/i) && combined_text.match?(/unknown error|erreur inconnue/i)
       dir = File.dirname(path)
       tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
@@ -87,8 +89,15 @@ class VideoUtils
         MediaLibrarian.app.speaker.speak_up("mkvpropedit failed on remuxed file: #{tmp_err.to_s.strip} stdout: #{tmp_out.to_s.strip} (mkvpropedit: #{combined_text.strip})")
         return false
       end
-      FileUtils.mv(path, "#{path}.bak")
+      bak_path = "#{path}.bak"
+      FileUtils.mv(path, bak_path)
       FileUtils.mv(tmp_path, path)
+      post_tracks = mkv_audio_track_map(path)
+      if post_tracks.empty?
+        MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept at #{bak_path} for manual recovery.")
+        return false
+      end
+      FileUtils.rm_f(bak_path)
     elsif !status.success?
       message = "mkvpropedit failed: #{stderr.to_s.strip}"
       stdout_line = stdout.to_s.strip
@@ -97,7 +106,7 @@ class VideoUtils
       return false
     end
 
-    post_tracks = mkv_audio_track_map(path)
+    post_tracks ||= mkv_audio_track_map(path)
     if post_tracks.empty?
       MediaLibrarian.app.speaker.speak_up("Post-check failed: unable to read audio tracks via mkvmerge -J for #{path}.")
       return false
