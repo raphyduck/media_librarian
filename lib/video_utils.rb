@@ -66,7 +66,7 @@ class VideoUtils
     args = ['mkvpropedit', path]
     track_map.each do |track|
       flag = (track[:id] == selected_track_id) ? '1' : '0'
-      args += ['--edit', "track:@#{track[:id]}", '--set', "flag-default=#{flag}"]
+      args += ['--edit', "track:#{track[:id]}", '--set', "flag-default=#{flag}"]
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
@@ -109,7 +109,16 @@ class VideoUtils
     tracks.filter_map do |track|
       next unless track['type'] == 'audio'
       properties = track.fetch('properties', {})
-      edit_id = track['id'] || properties['number'] || properties['track_number']
+      edit_id = properties['number'] || properties['track_number'] || track['id']
+      id_source = if properties.key?('number')
+                    "properties['number']"
+                  elsif properties.key?('track_number')
+                    "properties['track_number']"
+                  else
+                    "track['id']"
+                  end
+      MediaLibrarian.app.speaker.speak_up("mkv audio edit id from #{id_source}: #{edit_id}", 0) if Env.debug?
+      next if edit_id.nil?
       {
         id: edit_id,
         lang: properties['language'].to_s.downcase,
