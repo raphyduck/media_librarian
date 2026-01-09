@@ -24,7 +24,7 @@ class VideoUtils
     skipping
   end
 
-  def self.set_default_original_audio!(path:)
+  def self.set_default_original_audio!(path:, type: nil, item_name: '', item: nil, no_prompt: 1, folder_hierarchy: {}, base_folder: Dir.home)
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
     return false unless File.extname(path).downcase == '.mkv'
@@ -44,7 +44,18 @@ class VideoUtils
       commentary = audio[:commentary].to_s.downcase
       !%w[yes true 1].include?(commentary)
     end
-    target_lang = Languages.get_code(track_map.find(&valid_audio)&.dig(:lang).to_s.split('-').first)
+    target_lang = Metadata.original_language_for(
+      path: path,
+      type: type,
+      item_name: item_name,
+      item: item,
+      no_prompt: no_prompt,
+      folder_hierarchy: folder_hierarchy,
+      base_folder: base_folder
+    )
+    if target_lang.to_s == ''
+      target_lang = Languages.get_code(track_map.find(&valid_audio)&.dig(:lang).to_s.split('-').first)
+    end
     MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
     return false if target_lang.to_s == ''
 
