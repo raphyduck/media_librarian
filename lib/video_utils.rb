@@ -75,6 +75,7 @@ class VideoUtils
     post_tracks = nil
     bak_path = nil
     if combined_text.match?(/Tracks/i) && combined_text.match?(/failed|échoué/i) && combined_text.match?(/unknown error|erreur inconnue/i)
+      MediaLibrarian.app.speaker.speak_up("mkvpropedit failed on #{path}, trying to remux first with mkvmerge (this may take a while)") if Env.debug?
       dir = File.dirname(path)
       tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
       remux_out, remux_err, remux_status = Open3.capture3('mkvmerge', '-o', tmp_path, path)
