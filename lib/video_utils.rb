@@ -28,7 +28,7 @@ class VideoUtils
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
     return false unless File.extname(path).downcase == '.mkv'
-    return false unless system('command -v mkvpropedit >/dev/null 2>&1')
+    return false unless system('command -v mkvmerge >/dev/null 2>&1')
     track_map = mkv_audio_track_map(path)
     return false if track_map.empty?
     target_lang = Languages.get_code(target_lang.to_s.split('-').first)
@@ -61,56 +61,34 @@ class VideoUtils
 
     return false unless selected_track_index
 
-    args = ['mkvpropedit', path]
+    dir = File.dirname(path)
+    tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
+    args = ['mkvmerge', '-o', tmp_path]
     track_map.each do |track|
-      flag = (track[:audio_index] == selected_track_index) ? '1' : '0'
-      args += ['--edit', "track:a#{track[:audio_index]}", '--set', "flag-default=#{flag}"]
+      flag = (track[:audio_index] == selected_track_index) ? 'yes' : 'no'
+      args += ['--default-track', "#{track[:id]}:#{flag}"]
     end
+    args << path
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
-    MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvpropedit. Running command: #{args.join(' ')}") if Env.debug?
+    MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvmerge. Running command: #{args.join(' ')}") if Env.debug?
     stdout, stderr, status = Open3.capture3(*args)
-    combined_text = "#{stderr} #{stdout}".to_s
-    post_tracks = nil
-    bak_path = nil
-    if combined_text.match?(/Tracks/i) && combined_text.match?(/failed|échoué/i) && combined_text.match?(/unknown error|erreur inconnue/i)
-      MediaLibrarian.app.speaker.speak_up("mkvpropedit failed on #{path}, trying to remux first with mkvmerge (this may take a while)") if Env.debug?
-      dir = File.dirname(path)
-      tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
-      remux_out, remux_err, remux_status = Open3.capture3('mkvmerge', '-o', tmp_path, path)
-      unless remux_status.success?
-        MediaLibrarian.app.speaker.speak_up("mkvmerge remux failed: #{remux_err.to_s.strip} stdout: #{remux_out.to_s.strip} (mkvpropedit: #{combined_text.strip})")
-        return false
-      end
-      tmp_args = args.dup
-      tmp_args[1] = tmp_path
-      tmp_out, tmp_err, tmp_status = Open3.capture3(*tmp_args)
-      unless tmp_status.success?
-        MediaLibrarian.app.speaker.speak_up("mkvpropedit failed on remuxed file: #{tmp_err.to_s.strip} stdout: #{tmp_out.to_s.strip} (mkvpropedit: #{combined_text.strip})")
-        return false
-      end
-      bak_path = "#{path}.bak"
-      FileUtils.mv(path, bak_path)
-      FileUtils.mv(tmp_path, path)
-      post_tracks = mkv_audio_track_map(path)
-      if post_tracks.empty?
-        MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept at #{bak_path} for manual recovery.")
-        return false
-      end
-      FileUtils.rm_f(bak_path)
-    elsif !status.success?
-      message = "mkvpropedit failed: #{stderr.to_s.strip}"
+    unless status.success?
+      message = "mkvmerge remux failed: #{stderr.to_s.strip}"
       stdout_line = stdout.to_s.strip
       message += " stdout: #{stdout_line}" unless stdout_line.empty?
       MediaLibrarian.app.speaker.speak_up("#{message}. Run: #{args.join(' ')}")
       return false
     end
 
-    post_tracks ||= mkv_audio_track_map(path)
+    bak_path = "#{path}.bak"
+    FileUtils.mv(path, bak_path)
+    FileUtils.mv(tmp_path, path)
+    post_tracks = mkv_audio_track_map(path)
     if post_tracks.empty?
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: unable to read audio tracks via mkvmerge -J for #{path}.")
+      MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept at #{bak_path} for manual recovery.")
       return false
     end
-
+    FileUtils.rm_f(bak_path)
     default_tracks = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
     if default_tracks.size != 1
       MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{default_tracks.size} for #{path}.")
