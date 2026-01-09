@@ -84,6 +84,15 @@ class Metadata
     metadata
   end
 
+  def self.original_language_for(path:, type:, item_name: '', item: nil, no_prompt: 1, folder_hierarchy: {}, base_folder: Dir.home)
+    return '' if type.to_s == ''
+    _, _, info = parse_media_filename(path, type, item, item_name, no_prompt, folder_hierarchy, base_folder, {})
+    language = info[:language].to_s
+    return '' if language == ''
+    normalized = Languages.get_code(language.split('-').first)
+    normalized.to_s == '' ? language : normalized
+  end
+
   def self.identify_title(filename, type, no_prompt = 0, folder_level = 2, base_folder = Dir.home, ids = {})
     ids = {} if ids.nil?
     title, item, original_filename = nil, nil, nil
