@@ -352,6 +352,7 @@ class Library
       app.speaker.speak_up("File '#{File.basename(file[:name])}' not identified, skipping. (folder_hierarchy='#{folder_hierarchy}', base_folder='#{base_folder}', ids='#{ids}')", 0) if Env.debug?
       return files
     end
+    renamed = false
     unless rename.nil? || rename.empty? || rename['rename_media'].to_i == 0 || file[:type].to_s != 'file'
       f_path = rename_media_file(file[:name],
                                  (rename['destination'] && rename['destination'][type] ? rename['destination'][type] : DEFAULT_MEDIA_DESTINATION[type]),
@@ -361,9 +362,15 @@ class Library
                                  no_prompt,
                                  0,
                                  0,
-                                 folder_hierarchy
+                                 folder_hierarchy,
+                                 '',
+                                 base_folder,
+                                 set_original_audio_default
       )
-      file[:name] = f_path unless f_path == ''
+      unless f_path == ''
+        file[:name] = f_path
+        renamed = true
+      end
     end
     full_name, identifiers, info = Metadata.parse_media_filename(
       file[:name],
@@ -377,7 +384,7 @@ class Library
     )
     return files if identifiers.empty? || full_name == ''
     return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
-    if set_original_audio_default.to_i > 0 && file[:type].to_s == 'file'
+    if set_original_audio_default.to_i > 0 && file[:type].to_s == 'file' && !renamed
       VideoUtils.set_default_original_audio!(path: file[:name], target_lang: info[:language])
     end
     app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
@@ -556,7 +563,7 @@ class Library
     LocalMediaRepository.new(app: app).library_index(type: category, folder: folder) || {}
   end
 
-  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home)
+  def self.rename_media_file(original, destination, type, item_name = '', item = nil, no_prompt = 0, hard_link = 0, replaced_outdated = 0, folder_hierarchy = {}, ensure_qualities = '', base_folder = Dir.home, set_original_audio_default = 0)
     app.speaker.speak_up Utils.arguments_dump(binding) if Env.debug?
     destination += "#{File.basename(original).gsub('.' + FileUtils.get_extension(original), '')}" if FileTest.directory?(destination)
     media_info = FileInfo.new(original)
@@ -572,6 +579,9 @@ class Library
       destination += ".#{metadata['extension'].downcase}"
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
       raise "Error moving file" if destination.to_s == ''
+      if set_original_audio_default.to_i > 0
+        VideoUtils.set_default_original_audio!(path: destination, target_lang: metadata['language'])
+      end
     else
       app.speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''
