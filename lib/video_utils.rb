@@ -46,7 +46,6 @@ class VideoUtils
       commentary = audio[:commentary].to_s.downcase
       !%w[yes true 1].include?(commentary)
     end
-    MediaLibrarian.app.speaker.speak_up("Default audio language target: #{target_lang}", 0) if Env.debug?
 
     selected_track_index = nil
     track_map.each do |audio|
