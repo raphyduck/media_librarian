@@ -37,6 +37,14 @@ class VideoUtils
       track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
       MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
     end
+    default_tracks = track_map.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+    default_track = default_tracks.size == 1 ? default_tracks.first : nil
+    default_lang = default_track ? Languages.get_code(default_track[:lang].to_s.split('-').first) : nil
+    return true if default_track && default_lang == target_lang
+    if default_tracks.empty?
+      first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
+      return true if first_lang == target_lang
+    end
     valid_audio = lambda do |audio|
       return false unless audio
       lang = audio[:lang].to_s.strip.downcase
@@ -89,15 +97,15 @@ class VideoUtils
       return false
     end
     FileUtils.rm_f(bak_path)
-    default_tracks = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
-    if default_tracks.size != 1
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{default_tracks.size} for #{path}.")
+    post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+    if post_defaults.size != 1
+      MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
       return false
     end
 
-    default_lang = Languages.get_code(default_tracks.first[:lang].to_s.split('-').first)
-    if default_lang != target_lang
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{default_lang} does not match target #{target_lang} for #{path}.")
+    post_lang = Languages.get_code(post_defaults.first[:lang].to_s.split('-').first)
+    if post_lang != target_lang
+      MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
       return false
     end
     MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{stdout}")
