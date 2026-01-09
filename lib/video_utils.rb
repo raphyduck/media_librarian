@@ -40,7 +40,10 @@ class VideoUtils
     default_tracks = track_map.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
     default_track = default_tracks.size == 1 ? default_tracks.first : nil
     default_lang = default_track ? Languages.get_code(default_track[:lang].to_s.split('-').first) : nil
-    return true if default_track && default_lang == target_lang
+    if default_track && default_lang == target_lang
+      MediaLibrarian.app.speaker.speak_up("Default audio track #{default_track[:id]} already set to #{target_lang} for #{path}.")
+      return true
+    end
     if default_tracks.empty?
       first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
       return true if first_lang == target_lang
