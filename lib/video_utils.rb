@@ -72,7 +72,7 @@ class VideoUtils
 
     stdout, stderr, status = Open3.capture3(*args)
     stderr_text = stderr.to_s
-    if stderr_text.match?(/Tracks/i) && stderr_text.match?(/failed|échoué/i) && stderr_text.match?(/unknown error/i)
+    if stderr_text.match?(/Tracks/i) && stderr_text.match?(/failed|échoué/i) && stderr_text.match?(/unknown error|erreur inconnue/i)
       dir = File.dirname(path)
       tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
       remux_out, remux_err, remux_status = Open3.capture3('mkvmerge', '-o', tmp_path, path)
