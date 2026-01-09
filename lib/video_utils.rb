@@ -69,7 +69,7 @@ class VideoUtils
       args += ['--edit', "track:a#{track[:audio_index]}", '--set', "flag-default=#{flag}"]
     end
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
-
+    MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvpropedit. Running command: #{args.join(' ')}") if Env.debug?
     stdout, stderr, status = Open3.capture3(*args)
     combined_text = "#{stderr} #{stdout}".to_s
     post_tracks = nil
@@ -124,7 +124,7 @@ class VideoUtils
       MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{default_lang} does not match target #{target_lang} for #{path}.")
       return false
     end
-
+    MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{stdout}")
     true
   end
 
