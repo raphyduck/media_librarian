@@ -35,12 +35,20 @@ class Movie
   end
 
   def assign_attributes(opts)
+    opts = normalize_opts(opts)
     SHOW_MAPPING.each do |source, destination|
-      value = opts[source.to_s] || opts[source.to_sym] || extract_value(source.to_s, opts)
+      value = opts[source.to_s] || extract_value(source.to_s, opts)
       send("#{destination}=", value)
     end
   end
+  def normalize_opts(opts)
+    return {} unless opts
+    return opts unless opts.is_a?(Hash)
 
+    opts.each_with_object({}) do |(key, value), result|
+      result[key.to_s] = value.is_a?(Hash) ? normalize_opts(value) : value
+    end
+  end
   def extract_value(key, opts)
     result = nil
     case key

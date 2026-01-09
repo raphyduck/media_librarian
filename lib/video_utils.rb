@@ -46,7 +46,6 @@ class VideoUtils
       commentary = audio[:commentary].to_s.downcase
       !%w[yes true 1].include?(commentary)
     end
-
     selected_track_index = nil
     track_map.each do |audio|
       next unless valid_audio.call(audio)
