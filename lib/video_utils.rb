@@ -71,8 +71,26 @@ class VideoUtils
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
 
     stdout, stderr, status = Open3.capture3(*args)
-    unless status.success?
-      message = "mkvpropedit failed: #{stderr.to_s.strip}"
+    stderr_text = stderr.to_s
+    if stderr_text.match?(/Tracks/i) && stderr_text.match?(/failed|échoué/i) && stderr_text.match?(/unknown error/i)
+      dir = File.dirname(path)
+      tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
+      remux_out, remux_err, remux_status = Open3.capture3('mkvmerge', '-o', tmp_path, path)
+      unless remux_status.success?
+        MediaLibrarian.app.speaker.speak_up("mkvmerge remux failed: #{remux_err.to_s.strip} stdout: #{remux_out.to_s.strip}")
+        return false
+      end
+      tmp_args = args.dup
+      tmp_args[1] = tmp_path
+      tmp_out, tmp_err, tmp_status = Open3.capture3(*tmp_args)
+      unless tmp_status.success?
+        MediaLibrarian.app.speaker.speak_up("mkvpropedit failed on remuxed file: #{tmp_err.to_s.strip} stdout: #{tmp_out.to_s.strip}")
+        return false
+      end
+      FileUtils.mv(path, "#{path}.bak")
+      FileUtils.mv(tmp_path, path)
+    elsif !status.success?
+      message = "mkvpropedit failed: #{stderr_text.strip}"
       stdout_line = stdout.to_s.strip
       message += " stdout: #{stdout_line}" unless stdout_line.empty?
       MediaLibrarian.app.speaker.speak_up("#{message}. Run: #{args.join(' ')}")
