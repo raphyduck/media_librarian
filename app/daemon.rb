@@ -505,7 +505,7 @@ class Daemon
       Utils.lock_time_merge(thread, parent)
       return if parent[:email_msg].nil?
 
-      app.speaker.speak_up(thread[:log_msg].to_s, -1, parent) if thread[:log_msg]
+      app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1) if thread[:log_msg]
       parent[:email_msg] << thread[:email_msg].to_s
       parent[:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
     end
