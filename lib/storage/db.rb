@@ -15,7 +15,10 @@ module Storage
       @db_path = db_path
       @readonly = readonly.to_i.positive?
       @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
-      configure_sqlite if @database.database_type == :sqlite
+      if @database.database_type == :sqlite
+        configure_sqlite
+        verify_sqlite
+      end
       run_migrations(migrations_path) unless @readonly
     rescue SQLite3::CorruptException => e
       log_corruption(e, 'connect')
@@ -306,6 +309,18 @@ module Storage
     def configure_sqlite
       database.run('PRAGMA journal_mode = WAL')
       database.run('PRAGMA synchronous = NORMAL')
+      database.run('PRAGMA foreign_keys = ON')
+      database.run('PRAGMA busy_timeout = 5000')
+      database.run('PRAGMA wal_autocheckpoint = 1000')
+    end
+
+    def verify_sqlite
+      result = database.get(Sequel.lit('PRAGMA quick_check'))
+      return if result.to_s == 'ok'
+
+      message = "SQLite quick_check failed for #{@db_path}: #{result}"
+      speaker&.speak_up(message)
+      raise message
     end
 
     def normalize_key(key)
