@@ -3589,18 +3589,8 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
 }
 
 function filterTemplateCommands(commands = []) {
-  const commandArgs = (command) => {
-    const templateArgs = command?.template_args || command?.templateArgs;
-    if (Array.isArray(templateArgs)) {
-      return templateArgs;
-    }
-    if (Array.isArray(command?.args)) {
-      return command.args.map((arg) => arg?.name).filter(Boolean);
-    }
-    return [];
-  };
   return Array.isArray(commands)
-    ? commands.filter((command) => commandArgs(command).includes('command'))
+    ? commands.filter((command) => Array.isArray(command?.command) ? command.command.length : Boolean(command?.command))
     : [];
 }
 
