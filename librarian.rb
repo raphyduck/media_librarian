@@ -204,6 +204,7 @@ class Librarian
         return if args.nil? || args.empty?
 
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting for acknowledgement')
+        ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] = '1'
         response = Client.new.enqueue(
           args,
           wait: true,
