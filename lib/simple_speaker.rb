@@ -35,13 +35,12 @@ module SimpleSpeaker
 
     def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr)
       line = str.to_s
-      target_thread = thread || Thread.current
-      if target_thread[:current_daemon]
-        target_thread[:current_daemon].send_data "#{line}\n"
+      if Thread.current[:current_daemon]
+        Thread.current[:current_daemon].send_data "#{line}\n"
       else
         (stdout || $stdout).puts(line)
       end
-      buffer = target_thread[:captured_output]
+      buffer = thread[:captured_output]
       buffer&.<<(line.end_with?("\n") ? line : "#{line}\n")
     end
 
