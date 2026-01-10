@@ -86,6 +86,8 @@ class Librarian
 
     Process.kill(0, pid)
     :running
+  rescue Errno::ENOENT
+    :exited
   rescue Errno::ESRCH
     :dead
   rescue Errno::EPERM
