@@ -1423,10 +1423,17 @@ class Daemon
 
     def template_file_commands(path, directory)
       template = YAML.safe_load(File.read(path), aliases: true)
-      return [] unless template.is_a?(Hash)
+      return [] unless template.is_a?(Hash) || template.is_a?(Array)
 
       base_name = File.basename(path, '.yml')
-      template_command_nodes(template, base_name).filter_map do |entry|
+      nodes = if template.is_a?(Array)
+                template.flat_map do |item|
+                  item.is_a?(Hash) ? template_command_nodes(item, base_name) : []
+                end
+              else
+                template_command_nodes(template, base_name)
+              end
+      nodes.filter_map do |entry|
         build_template_command_entry(entry[:name], entry[:data], directory)
       end
     rescue Psych::SyntaxError => e
