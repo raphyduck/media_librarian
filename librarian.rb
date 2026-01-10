@@ -206,11 +206,11 @@ class Librarian
         app.speaker.speak_up('A daemon is already running, sending execution there and waiting for acknowledgement')
         response = Client.new.enqueue(
           args,
-          wait: false,
+          wait: true,
           queue: queue,
           task: task,
           internal: proxy_internal,
-          capture_output: false
+          capture_output: true
         )
         status_code = response['status_code'].to_i
         body = response['body']
@@ -226,6 +226,11 @@ class Librarian
           app.speaker.speak_up("Daemon rejected the job: #{message}")
         elsif body && body['job']
           job = body['job']
+          output = job['output'].to_s
+          unless output.empty?
+            output.each_line { |line| app.speaker.daemon_send(line, stdout: $stdout, stderr: $stderr) }
+            return
+          end
           status = job['status'].to_s
           status = 'queued' if status.empty?
           app.speaker.speak_up("Job #{job['id']} acknowledged (status: #{status})")
