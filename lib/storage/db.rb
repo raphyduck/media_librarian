@@ -152,6 +152,10 @@ module Storage
       database.table_exists?(table.to_sym)
     end
 
+    def readonly?
+      readonly
+    end
+
     private
 
     attr_reader :readonly

@@ -86,6 +86,8 @@ class Librarian
 
     Process.kill(0, pid)
     :running
+  rescue Errno::ENOENT
+    :exited
   rescue Errno::ESRCH
     :dead
   rescue Errno::EPERM
@@ -184,6 +186,7 @@ class Librarian
           if %w[status stop].any? { |cmd| subcommand.casecmp(cmd).zero? }
             proxy_internal = 1
             direct_flag = 1
+            ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] ||= '1'
           end
         end
       end
