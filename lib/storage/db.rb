@@ -15,7 +15,8 @@ module Storage
 
     def initialize(db_path, readonly = 0, migrations_path: default_migrations_path)
       @db_path = db_path
-      @readonly = readonly.to_i.positive?
+      @forward_only = ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
+      @readonly = readonly.to_i.positive? || @forward_only
       acquire_db_lock
       @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
       if @database.database_type == :sqlite
@@ -195,7 +196,7 @@ module Storage
     end
 
     def acquire_db_lock
-      return if ENV['ALLOW_DB_SHARED'] == '1'
+      return if @forward_only || ENV['ALLOW_DB_SHARED'] == '1'
 
       lock_path = "#{@db_path}.lock"
       @lock_file = File.open(lock_path, 'w')
