@@ -504,7 +504,6 @@ class Daemon
 
     def merge_notifications(thread, parent = Thread.current)
       Utils.lock_time_merge(thread, parent)
-      return if parent[:email_msg].nil?
 
       if thread[:log_msg]
         parent_daemon = thread[:parent_daemon]
@@ -516,6 +515,8 @@ class Daemon
           app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1)
         end
       end
+      return unless parent[:email_msg]
+
       parent[:email_msg] << thread[:email_msg].to_s
       parent[:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
     end
