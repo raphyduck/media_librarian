@@ -323,6 +323,26 @@ class DaemonIntegrationTest < Minitest::Test
     assert_equal 'torrenting', beta['queue']
   end
 
+  def test_template_commands_endpoint_supports_array_root_templates
+    boot_daemon_environment do
+      create_yaml_file(
+        @environment.application.template_dir,
+        'array_root.yml',
+        [
+          { 'command' => 'torrent.search' }
+        ]
+      )
+    end
+
+    response = control_get('/template_commands')
+    assert_equal 200, response[:status_code]
+
+    commands = response.fetch(:body).fetch('commands')
+    entry = commands.find { |item| item['name'] == 'array_root' }
+    refute_nil entry
+    assert_equal %w[torrent search], entry.fetch('command')
+  end
+
   def test_tracker_endpoint_updates_registry_after_save
     boot_daemon_environment do
       create_yaml_file(@environment.application.tracker_dir,
