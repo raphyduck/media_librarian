@@ -3588,21 +3588,15 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
   renderCommandList(container, available, 'Aucune commande CLI disponible.');
 }
 
-function filterTemplateCommands(commands = []) {
-  return Array.isArray(commands) ? commands.filter((command) => command != null) : [];
-}
-
 function renderTemplateCommands(commands = [], { message } = {}) {
   const container = document.getElementById('template-command-list');
   if (!container) {
     return;
   }
 
-  const filtered = filterTemplateCommands(commands);
-
   renderCommandList(
     container,
-    filtered,
+    commands,
     message || 'Aucun template de commande disponible.',
     { titleFormat: 'commandWithTemplate' }
   );
@@ -3674,8 +3668,7 @@ async function loadSchedulerTasks() {
   try {
     const templateData = await fetchJson('/template_commands');
     const templates = normalizeCommandEntries(templateData?.commands);
-    const filteredTemplates = filterTemplateCommands(templates);
-    renderTemplateCommands(filteredTemplates);
+    renderTemplateCommands(templates);
   } catch (error) {
     renderTemplateCommands([], { message: error.message });
     if (state.authenticated) {
