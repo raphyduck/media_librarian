@@ -344,7 +344,7 @@ module Storage
     end
 
     def verify_sqlite
-      result = database.get(Sequel.lit('PRAGMA quick_check'))
+      result = database.fetch('PRAGMA quick_check').single_value
       return if result.to_s == 'ok'
 
       message = "SQLite quick_check failed for #{@db_path}: #{result}"
