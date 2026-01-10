@@ -33,10 +33,11 @@ module SimpleSpeaker
       ask_if_needed.nil? ? default : ask_if_needed
     end
 
-    def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr)
+    def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr, daemon: nil)
       line = str.to_s
-      if Thread.current[:current_daemon]
-        Thread.current[:current_daemon].send_data "#{line}\n"
+      target = daemon || Thread.current[:current_daemon]
+      if target
+        target.send_data "#{line}\n"
       else
         (stdout || $stdout).puts(line)
       end

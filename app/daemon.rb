@@ -41,6 +41,7 @@ class Daemon
     :client,
     :env_flags,
     :parent_thread,
+    :parent_daemon,
     :parent_job_id,
     :child,
     :created_at,
@@ -505,7 +506,16 @@ class Daemon
       Utils.lock_time_merge(thread, parent)
       return if parent[:email_msg].nil?
 
-      app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1) if thread[:log_msg]
+      if thread[:log_msg]
+        parent_daemon = thread[:parent_daemon]
+        if parent_daemon
+          thread[:log_msg].to_s.each_line do |line|
+            app.speaker.daemon_send(line, thread: parent, daemon: parent_daemon)
+          end
+        else
+          app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1)
+        end
+      end
       parent[:email_msg] << thread[:email_msg].to_s
       parent[:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
     end
@@ -571,6 +581,7 @@ class Daemon
         client: client,
         env_flags: env_flags || dump_env_flags(child.to_i.positive? ? 0 : 43_200),
         parent_thread: parent_thread,
+        parent_daemon: parent_thread&.[](:current_daemon),
         child: child,
         created_at: Time.now,
         status: :queued,
@@ -937,6 +948,7 @@ class Daemon
       ThreadState.around(thread) do |snapshot|
         thread[:current_daemon] = job.client || snapshot[:current_daemon]
         thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
+        thread[:parent_daemon] = job.parent_daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
         thread[:log_msg] = String.new if job.child.to_i.positive?
