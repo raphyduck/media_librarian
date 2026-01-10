@@ -56,7 +56,7 @@ module SimpleSpeaker
     end
 
     def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0)
-      thread[:log_msg] << str.to_s + @new_line if thread[:log_msg]
+      thread[:log_msg] << str.to_s + @new_line if thread[:log_msg] && immediate.to_i <= 0
       if immediate.to_i > 0 || thread[:log_msg].nil?
         str.to_s.each_line do |l|
           daemon_send(l)
