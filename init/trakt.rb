@@ -38,7 +38,7 @@ if trakt_config.is_a?(Hash)
     begin
       app.trakt.account.access_token
       token = app.trakt.token
-      app.db.insert_row('trakt_auth', token.merge({ account: app.trakt_account }), 1) if token
+      app.db.insert_row('trakt_auth', token.merge({ account: app.trakt_account }), 1) if token && !app.db.readonly?
     rescue StandardError => e
       app.speaker.tell_error(e, 'Trakt token initialization')
     end
