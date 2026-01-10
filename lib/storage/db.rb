@@ -54,7 +54,11 @@ module Storage
       log_sql(raw_sql)
       return if skip_write?(raw_sql)
 
-      database.run(raw_sql)
+      if write_sql?(raw_sql)
+        run_write(:execute, raw_sql) { database.run(raw_sql) }
+      else
+        database.run(raw_sql)
+      end
     rescue SQLite3::CorruptException => e
       handle_corruption(e, raw_sql)
     rescue StandardError => e
@@ -357,7 +361,7 @@ module Storage
       return speaker&.speak_up("Would #{sql}") if Env.pretend?
       raise 'ReadOnly Db' if readonly
 
-      Utils.lock_block('db_write') { yield }
+      Utils.lock_block('db_write') { database.transaction { yield } }
     end
 
     def skip_write?(sql)
@@ -370,6 +374,10 @@ module Storage
     def log_sql(sql, write: false)
       return if sql.to_s.empty?
       speaker&.speak_up("Executing SQL query: '#{sql}'", 0) if Env.debug?
+    end
+
+    def write_sql?(sql)
+      sql.to_s.match?(/\A\s*(?:with\b.*?\b)?(insert|update|delete|replace|create|alter|drop|truncate|vacuum|pragma)\b/im)
     end
 
     def handle_corruption(error, sql)
