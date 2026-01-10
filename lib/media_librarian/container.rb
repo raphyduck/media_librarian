@@ -47,7 +47,7 @@ module MediaLibrarian
     end
 
     def db
-      services.fetch(:db)
+      services[:db] ||= Storage::Db.new(File.join(application.config_dir, 'librarian.db'))
     end
 
     def db=(value)
@@ -136,8 +136,6 @@ module MediaLibrarian
       log_path, error_log_path = Logger.log_paths(log_dir)
       store(:speaker, SimpleSpeaker::Speaker.new(log_path, error_log_path), freeze: false)
       store(:args_dispatch, SimpleArgsDispatch::Agent.new(speaker, application.env_flags), freeze: false)
-
-      store(:db, Storage::Db.new(File.join(application.config_dir, 'librarian.db')), freeze: false)
 
       store(:trackers, build_trackers)
 
