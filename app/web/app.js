@@ -3589,9 +3589,7 @@ function renderAvailableCommands(commands = [], scheduledKeys = new Set()) {
 }
 
 function filterTemplateCommands(commands = []) {
-  return Array.isArray(commands)
-    ? commands.filter((command) => Array.isArray(command?.command) ? command.command.length : Boolean(command?.command))
-    : [];
+  return Array.isArray(commands) ? commands.filter((command) => command != null) : [];
 }
 
 function renderTemplateCommands(commands = [], { message } = {}) {
