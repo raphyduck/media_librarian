@@ -33,14 +33,15 @@ module SimpleSpeaker
       ask_if_needed.nil? ? default : ask_if_needed
     end
 
-    def daemon_send(str, stdout: $stdout, stderr: $stderr)
+    def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr)
       line = str.to_s
-      if Thread.current[:current_daemon]
-        Thread.current[:current_daemon].send_data "#{line}\n"
+      target_thread = thread || Thread.current
+      if target_thread[:current_daemon]
+        target_thread[:current_daemon].send_data "#{line}\n"
       else
         (stdout || $stdout).puts(line)
       end
-      buffer = Thread.current[:captured_output]
+      buffer = target_thread[:captured_output]
       buffer&.<<(line.end_with?("\n") ? line : "#{line}\n")
     end
 
@@ -59,7 +60,7 @@ module SimpleSpeaker
       thread[:log_msg] << str.to_s + @new_line if thread[:log_msg] && immediate.to_i <= 0
       if immediate.to_i > 0 || thread[:log_msg].nil?
         str.to_s.each_line do |l|
-          daemon_send(l)
+          daemon_send(l, thread: thread)
           log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}")
         end
       end

@@ -261,7 +261,7 @@ class DaemonJobControlTest < Minitest::Test
     @environment.application.speaker = SimpleSpeaker::Speaker.new
     speaker = @environment.application.speaker
     captured_output = []
-    speaker.define_singleton_method(:daemon_send) do |str|
+    speaker.define_singleton_method(:daemon_send) do |str, **_kwargs|
       captured_output << str.to_s
     end
 
