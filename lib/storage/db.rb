@@ -2,6 +2,7 @@
 
 require 'json'
 require 'sequel'
+require 'sqlite3'
 require 'time'
 require 'date'
 require 'socket'
