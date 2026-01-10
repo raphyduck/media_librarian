@@ -3421,7 +3421,7 @@ function baseCommandKey(command = []) {
     .join(' ');
 }
 
-function normalizeCommandEntries(entries) {
+function normalizeCommandEntries(entries, { allowEmptyCommand = false } = {}) {
   const list = Array.isArray(entries)
     ? entries
     : Array.isArray(entries?.commands)
@@ -3446,7 +3446,22 @@ function normalizeCommandEntries(entries) {
       if (!normalized.name) {
         normalized.name = normalized.command.join(' ');
       }
-      return normalized.command.length ? normalized : null;
+      if (!normalized.command.length && !allowEmptyCommand) {
+        return null;
+      }
+      if (allowEmptyCommand) {
+        const args = normalized.args || normalized.template_args;
+        if (
+          !normalized.name
+          && !normalized.command.length
+          && !(Array.isArray(args) && args.length)
+          && !normalized.arg_values
+          && !normalized.argValues
+        ) {
+          return null;
+        }
+      }
+      return normalized;
     })
     .filter(Boolean);
 }
@@ -3474,7 +3489,9 @@ function renderCommandList(container, commands = [], emptyMessage, options = {})
     const commandTitle = (command.command || []).join(' ');
     let titleText = titleSource === 'command' ? commandTitle : (command.name || commandTitle);
     if (titleFormat === 'commandWithTemplate') {
-      titleText = command.name ? `${commandTitle} - ${command.name}` : commandTitle;
+      titleText = commandTitle
+        ? (command.name ? `${commandTitle} - ${command.name}` : commandTitle)
+        : (command.name || '');
     }
     title.textContent = titleText;
     body.appendChild(title);
@@ -3667,7 +3684,7 @@ async function loadSchedulerTasks() {
 
   try {
     const templateData = await fetchJson('/template_commands');
-    const templates = normalizeCommandEntries(templateData?.commands);
+    const templates = normalizeCommandEntries(templateData?.commands, { allowEmptyCommand: true });
     renderTemplateCommands(templates);
   } catch (error) {
     renderTemplateCommands([], { message: error.message });
