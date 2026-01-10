@@ -199,7 +199,7 @@ module Storage
       return if @forward_only || ENV['ALLOW_DB_SHARED'] == '1'
 
       lock_path = "#{@db_path}.lock"
-      @lock_file = File.open(lock_path, 'w')
+      @lock_file = File.open(lock_path, 'a+')
       locked = @lock_file.flock(File::LOCK_EX | File::LOCK_NB)
       return write_lock_info if locked
 
