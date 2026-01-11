@@ -7,10 +7,12 @@ require 'httparty'
 class Client
   include MediaLibrarian::AppContainerSupport
 
-  def initialize(control_token: nil)
+  def initialize(control_token: nil, stdout: $stdout)
     options = app.api_option || {}
     @api_options = options
     @control_token = resolve_control_token(control_token, options)
+    @stdout = stdout || $stdout
+    @output_buffer = String.new
   end
 
   def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
@@ -45,6 +47,16 @@ class Client
     perform(:post, '/stop')
   end
 
+  def send_data(payload)
+    receive_data(payload)
+  end
+
+  def receive_data(payload)
+    text = payload.to_s
+    @output_buffer << text
+    @stdout.print(text)
+  end
+
   private
 
   def perform(method, path, options = {})
@@ -60,6 +72,8 @@ class Client
   end
 
   attr_reader :control_token
+
+  attr_reader :output_buffer
 
   def resolve_control_token(explicit_token, options)
     select_token(
