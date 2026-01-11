@@ -275,26 +275,28 @@ module FuzzyStringMatch
   end
 end
 
-module Cache
-  class << self
-    def queue_state_add_or_update(*)
-      # no-op in tests
-    end
+unless defined?(Cache)
+  class Cache
+    class << self
+      def queue_state_add_or_update(*)
+        # no-op in tests
+      end
 
-    def queue_state_remove(*)
-      # no-op in tests
-    end
+      def queue_state_remove(*)
+        # no-op in tests
+      end
 
-    def queue_state_get(*)
-      []
-    end
+      def queue_state_get(*)
+        []
+      end
 
-    def object_pack(value, *_args)
-      value
-    end
+      def object_pack(value, *_args)
+        value
+      end
 
-    def object_unpack(value, *_args)
-      value
+      def object_unpack(value, *_args)
+        value
+      end
     end
   end
 end
