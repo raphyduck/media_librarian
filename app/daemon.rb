@@ -958,7 +958,9 @@ class Daemon
         thread[:parent_daemon] = job.parent_daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
-        thread[:log_msg] = String.new if job.child.to_i.positive? && !inline_child
+        if job.child.to_i.positive?
+          thread[:log_msg] = inline_child ? nil : String.new
+        end
         thread[:child_job] = job.child.to_i.positive? ? 1 : 0
         thread[:child_job_override] = thread[:child_job]
 
