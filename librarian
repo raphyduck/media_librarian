@@ -1,11 +1,13 @@
 #!/bin/bash
 
-cd `dirname $0`
-if [[ `pwd` == *media_librarian ]]
-then
-    cd_path=`pwd`
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/librarian.rb" ]; then
+  cd "$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/media_librarian/librarian.rb" ]; then
+  cd "$SCRIPT_DIR/media_librarian"
 else
-    cd_path=`pwd`/media_librarian
+  echo "librarian.rb not found." >&2
+  exit 1
 fi
-cd $cd_path
-ruby `pwd`/librarian.rb "$@"
+
+ruby "$PWD/librarian.rb" "$@"
