@@ -546,6 +546,16 @@ class Library
     {}
   end
 
+  def self.test_children(nb: 3)
+    nb.to_i.times do |i|
+      Librarian.route_cmd(['Library', 'child_speak', i + 1], 1, Thread.current[:object], 6)
+    end
+  end
+
+  def self.child_speak(index)
+    app.speaker.speak_up("Je suis l'enfant #{index}")
+  end
+
   def self.existing_media_from_db(category, folder = nil)
     LocalMediaRepository.new(app: app).library_index(type: category, folder: folder) || {}
   end

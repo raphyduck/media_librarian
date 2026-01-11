@@ -56,6 +56,29 @@ class LibraryTest < Minitest::Test
     MediaLibrarian.application = old_application
   end
 
+  def test_children_speaks_from_children
+    speaker = TestSupport::Fakes::Speaker.new
+    env = build_stubbed_environment(speaker: speaker)
+    old_application = MediaLibrarian.application
+    MediaLibrarian.application = env.application
+    Librarian.configure(app: env.application)
+    Library.configure(app: env.application)
+
+    calls = []
+    Librarian.stub(:route_cmd, lambda { |args, *_|
+      calls << args
+      Library.child_speak(args[2])
+    }) do
+      Library.test_children(nb: 2)
+    end
+
+    assert_equal 2, calls.length
+    assert_equal ["Je suis l'enfant 1", "Je suis l'enfant 2"], speaker.messages
+  ensure
+    env&.cleanup
+    MediaLibrarian.application = old_application
+  end
+
   private
 
   def with_const(name, value)
