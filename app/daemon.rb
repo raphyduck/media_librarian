@@ -950,6 +950,7 @@ class Daemon
       thread = Thread.current
       job.worker_thread = thread
       captured_output = nil
+      inline_child = job.child.to_i.positive? && job.parent_thread.equal?(thread)
 
       ThreadState.around(thread) do |snapshot|
         thread[:current_daemon] = job.client || snapshot[:current_daemon]
@@ -957,12 +958,18 @@ class Daemon
         thread[:parent_daemon] = job.parent_daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
-        thread[:log_msg] = String.new if job.child.to_i.positive?
+        if job.child.to_i.positive?
+          thread[:log_msg] = inline_child ? nil : String.new
+        end
         thread[:child_job] = job.child.to_i.positive? ? 1 : 0
         thread[:child_job_override] = thread[:child_job]
 
         captured_output = job.capture_output ? String.new : nil
-        thread[:captured_output] = captured_output if captured_output
+        if captured_output
+          thread[:captured_output] = captured_output
+        elsif inline_child && snapshot[:captured_output]
+          thread[:captured_output] = snapshot[:captured_output]
+        end
 
         LibraryBus.initialize_queue(thread)
         app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
