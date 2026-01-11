@@ -974,7 +974,9 @@ class Daemon
           Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
         ensure
           job.output = captured_output.dup if captured_output
-          merge_notifications(thread, thread[:parent]) if job.child.to_i.positive? && thread[:parent]
+          if job.child.to_i.positive? && thread[:parent] && !thread.equal?(thread[:parent])
+            merge_notifications(thread, thread[:parent])
+          end
         end
       end
     ensure
