@@ -950,14 +950,15 @@ class Daemon
       thread = Thread.current
       job.worker_thread = thread
       captured_output = nil
+      inline_child = job.child.to_i.positive? && job.parent_thread.equal?(thread)
 
       ThreadState.around(thread) do |snapshot|
         thread[:current_daemon] = job.client || snapshot[:current_daemon]
-        thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
+        thread[:parent] = job.parent_thread if job.parent_thread
         thread[:parent_daemon] = job.parent_daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
-        thread[:log_msg] = String.new if job.child.to_i.positive?
+        thread[:log_msg] = String.new if job.child.to_i.positive? && !inline_child
         thread[:child_job] = job.child.to_i.positive? ? 1 : 0
         thread[:child_job_override] = thread[:child_job]
 
