@@ -315,6 +315,7 @@ class DaemonJobControlTest < Minitest::Test
     assert_nil parent_log_states[:after_child], 'expected inline child to preserve nil parent log buffer'
     assert_nil parent_log_states[:after_log], 'expected parent log buffer to remain nil after logging'
     assert_includes captured_output, 'parent message', 'expected parent log message to flush immediately'
+    assert_includes captured_output, 'child message', 'expected child log message to flush immediately'
   end
 
   def test_consolidate_children_runs_child_inline_with_single_worker
