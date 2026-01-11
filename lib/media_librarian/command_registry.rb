@@ -52,7 +52,7 @@ module MediaLibrarian
         monitor_torrent_client: ['TorrentClient', 'monitor_torrent_client', 1, 'torrenting'],
         cache_reset: ['Cache', 'cache_reset'],
         send_email: ['Report', 'push_email'],
-        test_childs: ['Librarian', 'test_childs', 1, 'test_childs', 1]
+        test_childs: ['Librarian', 'test_childs']
       }
     end
   end
