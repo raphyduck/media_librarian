@@ -973,7 +973,20 @@ class Daemon
           Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
         ensure
           job.output = captured_output.dup if captured_output
-          merge_notifications(thread, thread[:parent]) if job.child.to_i.positive? && thread[:parent]
+          if job.child.to_i.positive?
+            if thread[:parent]
+              merge_notifications(thread, thread[:parent])
+            elsif thread[:log_msg]
+              parent_daemon = thread[:parent_daemon]
+              if parent_daemon
+                thread[:log_msg].to_s.each_line do |line|
+                  app.speaker.daemon_send(line, thread: thread, daemon: parent_daemon)
+                end
+              else
+                app.speaker.speak_up(thread[:log_msg].to_s, -1, thread, 1)
+              end
+            end
+          end
         end
       end
     ensure
