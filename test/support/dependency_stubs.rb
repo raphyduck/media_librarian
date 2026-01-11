@@ -276,7 +276,7 @@ module FuzzyStringMatch
 end
 
 unless defined?(Cache)
-  module Cache
+  class Cache
     class << self
       def queue_state_add_or_update(*)
         # no-op in tests
