@@ -11,7 +11,9 @@ class LibraryBus
   end
 
   def self.bus_id(thread = Thread.current)
-    bus_get(thread)[:jid].to_s == '' ? 'nodaemon' : bus_get(thread)[:jid]
+    bus_thread = bus_get(thread)
+    jid = bus_thread[:bus_parent_jid] || bus_thread[:jid]
+    jid.to_s == '' ? 'nodaemon' : jid
   end
 
   def self.bus_variable_get(vname, thread = Thread.current)

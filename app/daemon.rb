@@ -956,6 +956,10 @@ class Daemon
         thread[:current_daemon] = job.client || snapshot[:current_daemon]
         thread[:parent] = job.parent_thread unless job.parent_thread.equal?(thread)
         thread[:parent_daemon] = job.parent_daemon
+        if inline_child
+          parent_jid = thread[:jid]
+          thread[:bus_parent_jid] = parent_jid if parent_jid
+        end
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
         if job.child.to_i.positive?
