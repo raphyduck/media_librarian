@@ -502,7 +502,8 @@ class Library
   end
 
   def self.process_folder(type:, folder:, item_name: '', remove_duplicates: 0, rename: {}, filter_criteria: {}, no_prompt: 0, folder_hierarchy: {}, cache_expiration: CACHING_TTL, set_original_audio_default: 0, max_results: nil, force_refresh: 0)
-    app.speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ')' if Env.debug?}", 0)
+    app.speaker.speak_up("Processing folder #{folder}...#{' for ' + item_name.to_s if item_name.to_s != ''}#{'(type: ' + type.to_s + ', folder: ' + folder.to_s + ', item_name: ' + item_name.to_s + ', remove_duplicates: ' + remove_duplicates.to_s + ', rename: ' + rename.to_s + ', filter_criteria: ' + filter_criteria.to_s + ', no_prompt: ' + no_prompt.to_s + ', folder_hierarchy: ' + folder_hierarchy.to_s + ', cache_expiration: ' + cache_expiration.to_s + ', set_original_audio_default: ' + set_original_audio_default.to_s + ', max_results: ' + max_results.to_s + ', force_refresh: ' + force_refresh.to_s + ')' if Env.debug?}", 0)
+
     files, raw_filtered, cache_name, media_list = nil, [], "#{folder}#{type}#{max_results ? "|max_results=#{max_results}" : ''}", {}
     file_criteria = { 'regex' => '.*' + item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*' }
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
@@ -544,12 +545,6 @@ class Library
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     media_list.delete(cache_name)
     {}
-  end
-
-  def self.test_children(nb: 3)
-    nb.to_i.times do |i|
-      Librarian.route_cmd(['Library', 'child_speak', i + 1], 1, Thread.current[:object], 6)
-    end
   end
 
   def self.child_speak(index)
