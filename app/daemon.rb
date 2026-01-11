@@ -515,6 +515,11 @@ class Daemon
           app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1)
         end
       end
+
+      if parent[:captured_output]
+        captured = thread[:log_msg] || thread[:captured_output]
+        parent[:captured_output] << captured.to_s if captured
+      end
       return unless parent[:email_msg]
 
       parent[:email_msg] << thread[:email_msg].to_s
