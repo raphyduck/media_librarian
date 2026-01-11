@@ -16,7 +16,7 @@ module SimpleSpeaker
       ask_if_needed = default
       if no_prompt.to_i == 0
         speak_up(question, 0, thread, 1)
-        if Daemon.is_daemon?
+        if defined?(Daemon) && Daemon.is_daemon?
           wtime = 0
           while @user_input.nil?
             sleep 1

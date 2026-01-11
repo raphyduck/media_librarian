@@ -9,6 +9,10 @@ FileUtils.mkdir_p(app.email_templates) unless File.exist?(app.email_templates)
 app.email = app.config['email']
 
 if app.email
+  host = app.email['host'].to_s.strip
+  app.email = nil if host.empty? || host == 'host'
+  return unless app.email
+
   module Mail
     class SMTP
       module VerifyCallback
