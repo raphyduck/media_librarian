@@ -55,24 +55,35 @@ class DaemonChildNotificationsTest < Minitest::Test
   end
 
   def test_merge_notifications_promotes_child_log_and_email
+    children_count = Integer(ENV.fetch('CHILDREN', '2'))
     parent = Thread.new {}
-    child = Thread.new {}
+    children = Array.new(children_count) { Thread.new {} }
 
     Librarian.reset_notifications(parent)
     parent[:log_msg] = nil
-    child[:log_msg] = String.new
-    child[:parent] = parent
-    child[:email_msg] = String.new
+    parent[:captured_output] = String.new
+    children.each do |child|
+      child[:log_msg] = String.new
+      child[:parent] = parent
+      child[:email_msg] = String.new
+    end
 
-    @speaker.speak_up('child line', 0, child)
+    children.each_with_index do |child, index|
+      message = "Je suis l'enfant #{index + 1}"
+      @speaker.speak_up(message, 0, child)
+      Daemon.merge_notifications(child, parent)
+    end
 
-    Daemon.merge_notifications(child, parent)
+    puts parent[:captured_output]
 
-    assert @speaker.daemon_lines.any? { |entry| entry[:thread] == parent && entry[:line].include?('child line') },
-           'expected child log line to be sent to parent'
-    assert_includes parent[:email_msg], 'child line'
+    children.each_with_index do |child, index|
+      message = "Je suis l'enfant #{index + 1}"
+      assert @speaker.daemon_lines.any? { |entry| entry[:thread] == parent && entry[:line].include?(message) },
+             'expected child log line to be sent to parent'
+      assert_includes parent[:email_msg], message
+    end
   ensure
     parent.join
-    child.join
+    children.each(&:join)
   end
 end
