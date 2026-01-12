@@ -9,7 +9,6 @@ require_relative '../simple_speaker'
 require_relative '../simple_args_dispatch' unless defined?(SimpleArgsDispatch)
 require_relative '../logger'
 
-require_relative '../storage/db' unless defined?(Storage::Db)
 require_relative '../torznab_tracker' unless defined?(TorznabTracker)
 require_relative '../utils' unless defined?(Utils)
 
@@ -47,6 +46,10 @@ module MediaLibrarian
     end
 
     def db
+      if ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
+        raise 'Database access is disabled in client mode. Run the command through the daemon.'
+      end
+
       services[:db] ||= Storage::Db.new(File.join(application.config_dir, 'librarian.db'))
     end
 
