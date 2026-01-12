@@ -98,6 +98,7 @@ class Daemon
       daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
       return app.speaker.speak_up('Daemon already started') if running?
 
+      acquire_daemon_lock
       @restart_command ||= [$PROGRAM_NAME.to_s, *ARGV.map(&:to_s)]
       restart_flag = restart_requested_flag
       manage_pid = daemonize
@@ -182,6 +183,19 @@ class Daemon
         app.speaker.speak_up(message)
         false
       end
+    end
+
+    def acquire_daemon_lock
+      lock_path = '/home/raph/.medialibrarian/librarian.flock'
+      FileUtils.mkdir_p(File.dirname(lock_path))
+      @daemon_lock = File.open(lock_path, 'a')
+      locked = @daemon_lock.flock(File::LOCK_EX | File::LOCK_NB)
+      return if locked
+
+      message = "Daemon already running (lock held at #{lock_path})"
+      app.speaker&.speak_up(message)
+      warn(message)
+      exit(1)
     end
 
     def restart
