@@ -5,11 +5,18 @@ require 'sequel'
 require 'sqlite3'
 require 'time'
 require 'date'
+require 'monitor'
 
 Sequel.extension :migration
 
 module Storage
   class Db
+    @write_lock = Monitor.new
+
+    class << self
+      attr_reader :write_lock
+    end
+
     attr_reader :database
 
     def initialize(db_path, readonly = 0, migrations_path: default_migrations_path)
@@ -315,15 +322,17 @@ module Storage
       return if ENV['SKIP_DB_MIGRATIONS'] == '1'
       return unless path && Dir.exist?(path)
 
-      Sequel::Migrator.run(database, path)
+      with_write_lock { Sequel::Migrator.run(database, path) }
     end
 
     def configure_sqlite
-      database.run('PRAGMA journal_mode = WAL')
-      database.run('PRAGMA synchronous = NORMAL')
-      database.run('PRAGMA foreign_keys = ON')
-      database.run('PRAGMA busy_timeout = 5000')
-      database.run('PRAGMA wal_autocheckpoint = 1000')
+      with_write_lock do
+        database.run('PRAGMA journal_mode = WAL')
+        database.run('PRAGMA synchronous = NORMAL')
+        database.run('PRAGMA foreign_keys = ON')
+        database.run('PRAGMA busy_timeout = 5000')
+        database.run('PRAGMA wal_autocheckpoint = 1000')
+      end
     end
 
     def verify_sqlite
@@ -344,7 +353,13 @@ module Storage
       return speaker&.speak_up("Would #{sql}") if Env.pretend?
       raise 'ReadOnly Db' if readonly
 
-      Utils.lock_block('db_write') { database.transaction { yield } }
+      with_write_lock do
+        Utils.lock_block('db_write') { database.transaction { yield } }
+      end
+    end
+
+    def with_write_lock(&block)
+      self.class.write_lock.synchronize(&block)
     end
 
     def skip_write?(sql)
