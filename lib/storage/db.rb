@@ -5,7 +5,6 @@ require 'sequel'
 require 'sqlite3'
 require 'time'
 require 'date'
-require 'socket'
 
 Sequel.extension :migration
 
@@ -17,7 +16,6 @@ module Storage
       @db_path = db_path
       @forward_only = ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
       @readonly = readonly.to_i.positive? || @forward_only
-      acquire_db_lock
       @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
       if @database.database_type == :sqlite
         configure_sqlite
@@ -197,29 +195,6 @@ module Storage
 
     def default_migrations_path
       File.expand_path('../db/migrations', __dir__)
-    end
-
-    def acquire_db_lock
-      return if @forward_only || ENV['ALLOW_DB_SHARED'] == '1'
-
-      lock_path = "#{@db_path}.lock"
-      @lock_file = File.open(lock_path, 'a+')
-      locked = @lock_file.flock(File::LOCK_EX | File::LOCK_NB)
-      return write_lock_info if locked
-
-      holder = File.read(lock_path).strip
-      holder = 'unknown' if holder.empty?
-      message = "Database lock already held by #{holder} for #{@db_path}"
-      speaker&.speak_up(message)
-      warn(message)
-      exit(1)
-    end
-
-    def write_lock_info
-      @lock_file.rewind
-      @lock_file.truncate(0)
-      @lock_file.write("#{Process.pid}@#{Socket.gethostname}")
-      @lock_file.flush
     end
 
     def deserialize_row(row)
