@@ -3307,7 +3307,7 @@ class Daemon
         app.speaker.tell_error(e, Utils.arguments_dump(binding))
       ensure
         close_db
-        close_daemon_lock
+        close_daemon_lock unless restart_requested_flag.true?
         @stop_event&.set
       end
     end
