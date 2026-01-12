@@ -186,7 +186,7 @@ class Daemon
     end
 
     def acquire_daemon_lock
-      lock_path = '/home/raph/.medialibrarian/librarian.flock'
+      lock_path = File.join(app.config_dir, 'librarian.flock')
       FileUtils.mkdir_p(File.dirname(lock_path))
       @daemon_lock = File.open(lock_path, 'a')
       locked = @daemon_lock.flock(File::LOCK_EX | File::LOCK_NB)
