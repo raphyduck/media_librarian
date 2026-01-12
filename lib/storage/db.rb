@@ -16,7 +16,9 @@ module Storage
       @db_path = db_path
       @forward_only = ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
       @readonly = readonly.to_i.positive? || @forward_only
-      @database = Sequel.connect(adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000)
+      options = { adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000 }
+      options[:max_connections] = 1 unless @forward_only
+      @database = Sequel.connect(options)
       if @database.database_type == :sqlite
         configure_sqlite
         verify_sqlite
