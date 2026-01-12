@@ -2,10 +2,13 @@
 
 require 'json'
 require 'openssl'
+require 'socket'
 require 'httparty'
 
 class Client
   include MediaLibrarian::AppContainerSupport
+
+  SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
 
   def initialize(control_token: nil)
     options = app.api_option || {}
@@ -48,15 +51,18 @@ class Client
   private
 
   def perform(method, path, options = {})
-    response = HTTParty.send(method, path, httparty_options(options))
-    parse_response(response)
-  rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
-    { 'status_code' => 503, 'error' => connection_error_message(e) }
-  end
+    socket_error = nil
 
-  def parse_response(response)
-    body = response.body.to_s.empty? ? nil : JSON.parse(response.body)
-    { 'status_code' => response.code.to_i, 'body' => body }
+    if use_socket?
+      response_line = socket_request(method, path, options)
+      return parse_socket_response(response_line) if response_line
+
+      socket_error = @last_socket_error
+    end
+
+    return perform_http(method, path, options) if http_configured?
+
+    { 'status_code' => 503, 'error' => connection_error_message(socket_error) }
   end
 
   attr_reader :control_token
@@ -93,6 +99,48 @@ class Client
     end
   end
 
+  attr_reader :api_options
+
+  def socket_path
+    api_options['socket_path'] || SOCKET_PATH
+  end
+
+  def use_socket?
+    path = socket_path
+    return false if path.to_s.empty?
+
+    File.socket?(path)
+  rescue Errno::ENOENT, Errno::EACCES
+    false
+  end
+
+  def socket_request(method, path, options)
+    payload = {
+      'method' => method.to_s.upcase,
+      'path' => path,
+      'headers' => default_headers.merge(options.fetch(:headers, {})),
+      'body' => options[:body]
+    }
+    response_line = nil
+
+    UNIXSocket.open(socket_path) do |socket|
+      socket.write(JSON.dump(payload) + "\n")
+      response_line = socket.gets
+    end
+
+    response_line
+  rescue Errno::ENOENT, Errno::ECONNREFUSED, Errno::ECONNRESET, IOError => e
+    @last_socket_error = e
+    nil
+  end
+
+  def perform_http(method, path, options)
+    response = HTTParty.send(method, path, httparty_options(options))
+    parse_http_response(response)
+  rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
+    { 'status_code' => 503, 'error' => connection_error_message(e) }
+  end
+
   def ssl_enabled?
     truthy?(api_options['ssl_enabled'])
   end
@@ -123,7 +171,9 @@ class Client
     end
   end
 
-  attr_reader :api_options
+  def http_configured?
+    !api_options['bind_address'].to_s.empty? && !api_options['listen_port'].to_s.empty?
+  end
 
   def base_uri
     "#{ssl_enabled? ? 'https' : 'http'}://#{api_options['bind_address']}:#{api_options['listen_port']}"
@@ -164,12 +214,30 @@ class Client
     options
   end
 
+  def parse_http_response(response)
+    body = response.body.to_s.empty? ? nil : JSON.parse(response.body)
+    { 'status_code' => response.code.to_i, 'body' => body }
+  end
+
+  def parse_socket_response(response_line)
+    raise JSON::ParserError if response_line.to_s.strip.empty?
+
+    parsed = JSON.parse(response_line)
+    return parsed if parsed.is_a?(Hash)
+
+    { 'status_code' => 502, 'error' => 'Invalid daemon response' }
+  rescue JSON::ParserError
+    { 'status_code' => 502, 'error' => 'Invalid daemon response' }
+  end
+
   def connection_error_message(error)
     case error
     when Errno::ECONNREFUSED
       'Failed to connect to daemon'
     when Net::OpenTimeout, Net::ReadTimeout
       'Timed out waiting for daemon response'
+    when Errno::ENOENT
+      'Daemon socket missing'
     else
       error.message
     end
