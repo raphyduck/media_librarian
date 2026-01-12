@@ -119,6 +119,7 @@ class Daemon
 
           begin
             boot_framework_state
+            install_signal_traps
             @is_daemon = true
             @scheduler_name = scheduler
 
@@ -3305,6 +3306,8 @@ class Daemon
       rescue StandardError => e
         app.speaker.tell_error(e, Utils.arguments_dump(binding))
       ensure
+        close_db
+        close_daemon_lock unless restart_requested_flag.true?
         @stop_event&.set
       end
     end
@@ -3349,6 +3352,42 @@ class Daemon
       @is_daemon = false
       @scheduler_name = nil
       @session_cookie_secure = nil
+    end
+
+    def install_signal_traps
+      return if @signal_traps_installed
+
+      %w[INT TERM].each do |signal|
+        Signal.trap(signal) { handle_signal(signal) }
+      end
+      @signal_traps_installed = true
+    end
+
+    def handle_signal(signal)
+      return unless running?
+
+      app.speaker.speak_up("Received #{signal}, shutting down...")
+      app.librarian.quit = true if app.respond_to?(:librarian) && app.librarian
+      shutdown
+    end
+
+    def close_db
+      db = app.respond_to?(:db) ? app.db : nil
+      database = db&.respond_to?(:database) ? db.database : nil
+      return unless database
+
+      if database.respond_to?(:disconnect)
+        database.disconnect
+      elsif database.respond_to?(:close)
+        database.close
+      end
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    end
+
+    def close_daemon_lock
+      @daemon_lock&.close
+      @daemon_lock = nil
     end
 
     def job_registry
