@@ -14,6 +14,7 @@ require 'yaml'
 require 'fileutils'
 require 'base64'
 require 'get_process_mem'
+require 'socket'
 
 require_relative '../lib/cache'
 require_relative '../lib/logger'
@@ -92,6 +93,7 @@ class Daemon
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
   INLINE_EXECUTED = Object.new
+  SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -1172,32 +1174,13 @@ class Daemon
       @control_server.mount_proc('/status') do |req, res|
         next unless require_authorization(req, res)
 
-        snapshot = status_snapshot
-        jobs = snapshot[:jobs].map { |job| serialize_job(job) }
-        started_at = snapshot[:started_at]
-        resources = snapshot[:resources]
-
-        json_response(
-          res,
-          body: {
-            'jobs' => jobs,
-            'running' => snapshot[:running].map { |job| serialize_job(job) },
-            'queued' => snapshot[:queued].map { |job| serialize_job(job) },
-            'finished' => snapshot[:finished].map { |job| serialize_job(job) },
-            'queues' => snapshot[:queues],
-            'lock_time' => Utils.lock_time_get,
-            'started_at' => started_at&.iso8601,
-            'uptime_seconds' => snapshot[:uptime_seconds],
-            'resources' => resources.is_a?(Hash) ? resources : {}
-          }
-        )
+        handle_status_request(res)
       end
 
       @control_server.mount_proc('/stop') do |req, res|
         next unless require_authorization(req, res)
 
-        json_response(res, body: { 'status' => 'stopping' })
-        Thread.new { stop }
+        handle_stop_request(res)
       end
 
       @control_server.mount_proc('/restart') do |req, res|
@@ -1333,7 +1316,69 @@ class Daemon
         handle_watchlist_request(req, res)
       end
 
+      start_socket_server
       @control_thread = Thread.new { @control_server.start }
+    end
+
+    def start_socket_server
+      FileUtils.mkdir_p(File.dirname(SOCKET_PATH))
+      FileUtils.rm_f(SOCKET_PATH)
+      @socket_server = UNIXServer.new(SOCKET_PATH)
+      @socket_thread = Thread.new do
+        loop do
+          client = @socket_server.accept
+          Thread.new(client) { |conn| handle_socket_connection(conn) }
+        rescue IOError, Errno::EBADF
+          break
+        end
+      end
+    end
+
+    def handle_socket_connection(conn)
+      line = conn.gets
+      return if line.nil?
+
+      payload = JSON.parse(line)
+      response = dispatch_socket_payload(payload)
+      conn.write(JSON.dump(response) + "\n")
+    rescue JSON::ParserError
+      conn.write(JSON.dump('status_code' => 400, 'body' => { 'error' => 'invalid_json' }) + "\n")
+    ensure
+      conn.close unless conn.closed?
+    end
+
+    def dispatch_socket_payload(payload)
+      req = SocketRequest.new(
+        method: payload['method'],
+        path: payload['path'],
+        headers: payload['headers'],
+        body: payload['body']
+      )
+      res = SocketResponse.new
+      handle_socket_request(req, res)
+      body = res.body.to_s.empty? ? nil : JSON.parse(res.body)
+      { 'status_code' => res.status, 'body' => body }
+    rescue JSON::ParserError
+      { 'status_code' => 500, 'body' => { 'error' => 'invalid_response' } }
+    end
+
+    def handle_socket_request(req, res)
+      case req.path
+      when '/jobs', %r{\A/jobs/}
+        return unless require_authorization(req, res)
+
+        handle_jobs_request(req, res)
+      when '/status'
+        return unless require_authorization(req, res)
+
+        handle_status_request(res)
+      when '/stop'
+        return unless require_authorization(req, res)
+
+        handle_stop_request(res)
+      else
+        error_response(res, status: 404, message: 'not_found')
+      end
     end
 
     def handle_jobs_request(req, res)
@@ -1424,6 +1469,33 @@ class Daemon
       return {} if req.body.nil? || req.body.empty?
 
       JSON.parse(req.body)
+    end
+
+    def handle_status_request(res)
+      snapshot = status_snapshot
+      jobs = snapshot[:jobs].map { |job| serialize_job(job) }
+      started_at = snapshot[:started_at]
+      resources = snapshot[:resources]
+
+      json_response(
+        res,
+        body: {
+          'jobs' => jobs,
+          'running' => snapshot[:running].map { |job| serialize_job(job) },
+          'queued' => snapshot[:queued].map { |job| serialize_job(job) },
+          'finished' => snapshot[:finished].map { |job| serialize_job(job) },
+          'queues' => snapshot[:queues],
+          'lock_time' => Utils.lock_time_get,
+          'started_at' => started_at&.iso8601,
+          'uptime_seconds' => snapshot[:uptime_seconds],
+          'resources' => resources.is_a?(Hash) ? resources : {}
+        }
+      )
+    end
+
+    def handle_stop_request(res)
+      json_response(res, body: { 'status' => 'stopping' })
+      Thread.new { stop }
     end
 
     def serialize_commands(actions, prefix = [])
@@ -3224,6 +3296,7 @@ class Daemon
         if @control_thread && @control_thread.alive? && @control_thread != Thread.current
           @control_thread.join
         end
+        close_socket_server
 
         if @executor
           @executor.shutdown
@@ -3266,6 +3339,8 @@ class Daemon
       @trakt_timer = nil
       @control_thread = nil
       @control_server = nil
+      @socket_thread = nil
+      @socket_server = nil
       @executor = nil
       @template_cache = nil
       @queue_limits = nil
@@ -3287,6 +3362,44 @@ class Daemon
     def job_for_thread(thread)
       jid = thread && thread[:jid]
       jid && job_registry[jid]
+    end
+
+    def close_socket_server
+      @socket_server&.close
+      if @socket_thread && @socket_thread.alive? && @socket_thread != Thread.current
+        @socket_thread.join
+      end
+      FileUtils.rm_f(SOCKET_PATH)
+    end
+  end
+
+  class SocketRequest
+    attr_reader :request_method, :path, :body, :headers, :query
+
+    def initialize(method:, path:, headers:, body:)
+      @request_method = method.to_s.upcase
+      @path = path.to_s
+      @headers = headers || {}
+      @body = body
+      @query = {}
+    end
+
+    def [](key)
+      headers[key]
+    end
+  end
+
+  class SocketResponse
+    attr_accessor :status, :body
+
+    def initialize
+      @status = 200
+      @headers = {}
+      @body = ''
+    end
+
+    def []=(key, value)
+      @headers[key] = value
     end
   end
 end

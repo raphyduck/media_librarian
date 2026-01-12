@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'openssl'
-require 'httparty'
+require 'socket'
 
 class Client
   include MediaLibrarian::AppContainerSupport
+
+  SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
 
   def initialize(control_token: nil)
     options = app.api_option || {}
@@ -48,15 +49,22 @@ class Client
   private
 
   def perform(method, path, options = {})
-    response = HTTParty.send(method, path, httparty_options(options))
-    parse_response(response)
-  rescue Errno::ECONNREFUSED, Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
-    { 'status_code' => 503, 'error' => connection_error_message(e) }
-  end
+    payload = {
+      'method' => method.to_s.upcase,
+      'path' => path,
+      'headers' => default_headers.merge(options.fetch(:headers, {})),
+      'body' => options[:body]
+    }
+    response_line = nil
 
-  def parse_response(response)
-    body = response.body.to_s.empty? ? nil : JSON.parse(response.body)
-    { 'status_code' => response.code.to_i, 'body' => body }
+    UNIXSocket.open(socket_path) do |socket|
+      socket.write(JSON.dump(payload) + "\n")
+      response_line = socket.gets
+    end
+
+    parse_response(response_line)
+  rescue Errno::ENOENT, Errno::ECONNREFUSED, Errno::ECONNRESET, IOError => e
+    { 'status_code' => 503, 'error' => connection_error_message(e) }
   end
 
   attr_reader :control_token
@@ -93,49 +101,10 @@ class Client
     end
   end
 
-  def ssl_enabled?
-    truthy?(api_options['ssl_enabled'])
-  end
-
-  def resolve_ssl_verify_mode(mode)
-    return mode if mode.is_a?(Integer)
-
-    case mode.to_s.downcase
-    when '', 'none', 'off', 'false'
-      OpenSSL::SSL::VERIFY_NONE
-    when 'peer'
-      OpenSSL::SSL::VERIFY_PEER
-    when 'fail_if_no_peer_cert', 'force_peer', 'require'
-      OpenSSL::SSL::VERIFY_PEER | OpenSSL::SSL::VERIFY_FAIL_IF_NO_PEER_CERT
-    else
-      OpenSSL::SSL::VERIFY_NONE
-    end
-  end
-
-  def truthy?(value)
-    case value
-    when true then true
-    when false, nil then false
-    when String then value.match?(/\A(true|1|yes|on)\z/i)
-    when Numeric then !value.zero?
-    else
-      !!value
-    end
-  end
-
   attr_reader :api_options
 
-  def base_uri
-    "#{ssl_enabled? ? 'https' : 'http'}://#{api_options['bind_address']}:#{api_options['listen_port']}"
-  end
-
-  def httparty_options(extra = {})
-    headers = default_headers.merge(extra.fetch(:headers, {}))
-    ssl_options = httparty_ssl_options
-
-    { base_uri: base_uri, headers: headers, timeout: 120 }
-      .merge(ssl_options)
-      .merge(extra.reject { |key, _| key == :headers })
+  def socket_path
+    api_options['socket_path'] || SOCKET_PATH
   end
 
   def default_headers
@@ -147,29 +116,23 @@ class Client
     default_headers.merge('Content-Type' => 'application/json')
   end
 
-  def httparty_ssl_options
-    return {} unless ssl_enabled?
+  def parse_response(response_line)
+    raise JSON::ParserError if response_line.to_s.strip.empty?
 
-    options = {}
-    verify_mode = resolve_ssl_verify_mode(api_options['ssl_verify_mode'])
-    options[:verify] = verify_mode != OpenSSL::SSL::VERIFY_NONE unless verify_mode.nil?
-    options[:ssl_verify_mode] = verify_mode unless verify_mode.nil?
+    parsed = JSON.parse(response_line)
+    return parsed if parsed.is_a?(Hash)
 
-    ca_path = api_options['ssl_ca_path']
-    if ca_path && !ca_path.to_s.empty?
-      options[:ssl_ca_path] = ca_path if File.directory?(ca_path)
-      options[:ssl_ca_file] = ca_path if File.file?(ca_path)
-    end
-
-    options
+    { 'status_code' => 502, 'error' => 'Invalid daemon response' }
+  rescue JSON::ParserError
+    { 'status_code' => 502, 'error' => 'Invalid daemon response' }
   end
 
   def connection_error_message(error)
     case error
     when Errno::ECONNREFUSED
       'Failed to connect to daemon'
-    when Net::OpenTimeout, Net::ReadTimeout
-      'Timed out waiting for daemon response'
+    when Errno::ENOENT
+      'Daemon socket missing'
     else
       error.message
     end
