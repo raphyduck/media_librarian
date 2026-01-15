@@ -537,10 +537,6 @@ class Daemon
         captured = thread[:log_msg] || thread[:captured_output]
         parent[:captured_output] << captured.to_s if captured
       end
-      return unless parent[:email_msg]
-
-      parent[:email_msg] << thread[:email_msg].to_s
-      parent[:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
     end
 
     def clear_waiting_worker(worker_thread, thread_value = nil, object = nil, _clear_current = 0)
@@ -1004,6 +1000,10 @@ class Daemon
           if job.child.to_i.positive?
             if thread[:parent]
               merge_notifications(thread, thread[:parent])
+              if thread[:parent][:email_msg]
+                thread[:parent][:email_msg] << thread[:email_msg].to_s
+                thread[:parent][:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
+              end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]
               if parent_daemon
