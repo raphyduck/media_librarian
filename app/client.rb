@@ -9,6 +9,7 @@ class Client
   include MediaLibrarian::AppContainerSupport
 
   SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
+  FINISHED_STATUSES = %w[finished failed cancelled].freeze
 
   def initialize(control_token: nil)
     options = app.api_option || {}
@@ -16,13 +17,13 @@ class Client
     @control_token = resolve_control_token(control_token, options)
   end
 
-  def enqueue(command, wait: true, queue: nil, task: nil, internal: 0, capture_output: wait)
-    perform(
+  def enqueue(command, wait: false, queue: nil, task: nil, internal: 0, capture_output: wait)
+    response = perform(
       :post,
       '/jobs',
       body: JSON.dump(
         'command' => command,
-        'wait' => wait,
+        'wait' => false,
         'queue' => queue,
         'task' => task,
         'internal' => internal,
@@ -30,6 +31,12 @@ class Client
       ),
       headers: json_headers
     )
+    return response unless wait
+
+    job_id = response.dig('body', 'job', 'id')
+    return response unless job_id
+
+    wait_for_job_completion(job_id)
   end
 
   def status
@@ -217,6 +224,18 @@ class Client
   def parse_http_response(response)
     body = response.body.to_s.empty? ? nil : JSON.parse(response.body)
     { 'status_code' => response.code.to_i, 'body' => body }
+  end
+
+  def wait_for_job_completion(job_id)
+    loop do
+      response = job_status(job_id)
+      return response unless response['status_code'] == 200
+
+      status = response.dig('body', 'status')
+      return { 'status_code' => 200, 'body' => { 'job' => response['body'] } } if FINISHED_STATUSES.include?(status)
+
+      sleep 0.05
+    end
   end
 
   def parse_socket_response(response_line)
