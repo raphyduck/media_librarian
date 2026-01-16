@@ -1389,7 +1389,6 @@ class Daemon
 
         payload = parse_payload(req)
         args = Array(payload['command'])
-        wait = payload.fetch('wait', true)
         internal = payload['internal'] || 0
         queue = payload['queue']
         task = payload['task']
@@ -1407,12 +1406,7 @@ class Daemon
           wait_for_capacity: wait_for_capacity
         )
 
-        if wait && job&.future
-          job.future.wait
-          job.future.value!
-        end
-
-        json_response(res, body: { 'job' => job&.to_h })
+        json_response(res, body: { 'job' => job&.to_h, 'accepted' => !job.nil? })
       when 'GET'
         return handle_job_not_found(res) unless req.path.start_with?('/jobs/')
 
