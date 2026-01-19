@@ -232,7 +232,13 @@ class Client
       return response unless response['status_code'] == 200
 
       status = response.dig('body', 'status')
-      return { 'status_code' => 200, 'body' => { 'job' => response['body'] } } if FINISHED_STATUSES.include?(status)
+      if FINISHED_STATUSES.include?(status)
+        job = response['body']
+        return { 'status_code' => 200, 'body' => { 'job' => job } } if status == 'finished'
+
+        error = job.is_a?(Hash) ? job['error'] : nil
+        return { 'status_code' => 422, 'body' => { 'error' => error || 'job_failed', 'job' => job } }
+      end
 
       sleep 0.05
     end
