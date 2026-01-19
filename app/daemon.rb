@@ -2503,6 +2503,8 @@ class Daemon
 
       message = err.to_s.lines.first.to_s.strip
       [false, message.empty? ? 'git_command_failed' : message]
+    rescue Errno::ENOENT
+      [false, 'git_command_failed']
     end
 
     def restart_from_disk
