@@ -234,7 +234,7 @@ class Client
       status = response.dig('body', 'status')
       if FINISHED_STATUSES.include?(status)
         job = response['body']
-        return { 'status_code' => 200, 'body' => { 'job' => job } } if status == 'finished'
+        return { 'status_code' => 200, 'body' => { 'job' => job } } if FINISHED_STATUSES.include?(status)
 
         error = job.is_a?(Hash) ? job['error'] : nil
         return { 'status_code' => 422, 'body' => { 'error' => error || 'job_failed', 'job' => job } }
