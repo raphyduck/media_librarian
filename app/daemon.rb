@@ -2494,7 +2494,9 @@ class Daemon
     def update_code(root)
       success, error = run_git_command(root, ['git', 'fetch', '--all'])
       return [false, error] unless success
-      run_git_command(root, ['git', 'pull', '--ff-only'])
+      success, error = run_git_command(root, ['git', 'pull', '--ff-only'])
+      return [false, error] unless success
+      true
     end
 
     def run_git_command(root, command)
