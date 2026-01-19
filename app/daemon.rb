@@ -15,6 +15,7 @@ require 'fileutils'
 require 'base64'
 require 'get_process_mem'
 require 'socket'
+require 'open3'
 
 require_relative '../lib/cache'
 require_relative '../lib/logger'
@@ -2455,8 +2456,9 @@ class Daemon
         return error_response(res, status: 404, message: 'update_root_missing')
       end
 
-      unless update_code(root)
-        return error_response(res, status: 500, message: 'update_failed')
+      updated, error = update_code(root)
+      unless updated
+        return error_response(res, status: 500, message: error || 'update_failed')
       end
 
       json_response(res, status: 202, body: { 'status' => 'update_stopping' })
@@ -2490,12 +2492,19 @@ class Daemon
     end
 
     def update_code(root)
-      return false unless run_git_command(root, ['git', 'fetch', '--all'])
-      return false unless run_git_command(root, ['git', 'pull', '--ff-only'])
+      success, error = run_git_command(root, ['git', 'fetch', '--all'])
+      return [false, error] unless success
+      run_git_command(root, ['git', 'pull', '--ff-only'])
     end
 
     def run_git_command(root, command)
-      system(*command, chdir: root)
+      _out, err, status = Open3.capture3(*command, chdir: root)
+      return [true, nil] if status.success?
+
+      message = err.to_s.lines.first.to_s.strip
+      [false, message.empty? ? 'git_command_failed' : message]
+    rescue Errno::ENOENT
+      [false, 'git_command_failed']
     end
 
     def restart_from_disk
