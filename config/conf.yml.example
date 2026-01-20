@@ -33,6 +33,8 @@ calendar:
   window_future_days: 365
   refresh_limit: 200
   providers: imdb|trakt|tmdb
+# sqlite:
+#   auto_repair_on_corruption: true
 # imdb:
 #   enabled: false # Optional toggle; remove or set to false to disable the IMDb feed
 kodi:
