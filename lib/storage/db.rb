@@ -23,17 +23,18 @@ module Storage
       @db_path = db_path
       @forward_only = ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
       @readonly = readonly.to_i.positive? || @forward_only
-      options = { adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000 }
-      options[:max_connections] = 1 unless @forward_only
-      @database = Sequel.connect(options)
-      if @database.database_type == :sqlite
-        configure_sqlite
-        verify_sqlite
-      end
-      run_migrations(migrations_path) unless @readonly
+      @migrations_path = migrations_path
+      @repair_attempted = false
+      @db_options = { adapter: 'sqlite', database: db_path, readonly: @readonly, timeout: 5000 }
+      @db_options[:max_connections] = 1 unless @forward_only
+      connect_db
     rescue SQLite3::CorruptException => e
-      log_corruption(e, 'connect')
-      raise
+      if attempt_repair
+        connect_db
+      else
+        log_corruption(e, 'connect')
+        raise
+      end
     rescue StandardError => e
       log_error(e)
       raise
@@ -341,7 +342,41 @@ module Storage
 
       message = "SQLite quick_check failed for #{@db_path}: #{result}"
       speaker&.speak_up(message)
-      raise message
+      raise SQLite3::CorruptException, message
+    end
+
+    def connect_db
+      @database = Sequel.connect(@db_options)
+      if @database.database_type == :sqlite
+        configure_sqlite
+        verify_sqlite
+      end
+      run_migrations(@migrations_path) unless @readonly
+    end
+
+    def attempt_repair
+      return false if @repair_attempted || readonly
+      return false unless speaker
+      app = MediaLibrarian.respond_to?(:app) ? MediaLibrarian.app : nil
+      config = app&.respond_to?(:config) ? app.config : nil
+      return false unless config.is_a?(Hash) && config.dig('sqlite', 'auto_repair_on_corruption')
+
+      question = "SQLite corruption detected for #{@db_path}. Run repair script now? (y/n)"
+      return false unless speaker.ask_if_needed(question, 0, 'n').to_s == 'y'
+
+      script = repair_script_path
+      unless File.exist?(script)
+        speaker.speak_up("Repair script not found: #{script}")
+        return false
+      end
+
+      @repair_attempted = true
+      speaker.speak_up("Running repair script for #{@db_path}...")
+      system(script, @db_path.to_s)
+    end
+
+    def repair_script_path
+      File.expand_path('../../scripts/repair_db.sh', __dir__)
     end
 
     def normalize_key(key)

@@ -70,6 +70,24 @@ The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued acc
 Finished job history is capped per queue (defaults to `finished_jobs_per_queue: 100` in `~/.medialibrarian/conf.yml`) to keep the
 in-memory registry bounded; raise or lower the limit to tune how many completed entries remain visible via `/status`.
 
+### Réparer une base SQLite corrompue
+
+Le script `scripts/repair_db.sh` tente une récupération via `.recover` et vérifie ensuite l'intégrité de la base récupérée.
+
+```bash
+./scripts/repair_db.sh ~/.medialibrarian/librarian.db
+```
+
+Pour proposer automatiquement la réparation au démarrage (si la corruption est détectée), ajoutez la clé suivante dans
+`~/.medialibrarian/conf.yml` :
+
+```yaml
+sqlite:
+  auto_repair_on_corruption: true
+```
+
+Un prompt interactif demandera si vous souhaitez lancer la réparation avant de relancer l'application.
+
 ### Trakt integration
 
 `TraktAgent` is now a thin shim that forwards dynamic API calls via `method_missing`. Legacy helpers for list management and automated watchlist/collection curation have been retired. Features such as the calendar rely on locally persisted watchlist entries instead of pulling Trakt lists directly.
