@@ -1,5 +1,7 @@
 require 'json'
 require 'open3'
+require 'tmpdir'
+require 'timeout'
 
 class VideoUtils
   def self.convert_videos(path, dest_file, input_format, output_format)
@@ -72,9 +74,7 @@ class VideoUtils
 
     return false unless selected_track_index
 
-    dir = File.dirname(path)
-    tmp_path = File.join(dir, ".#{File.basename(path, '.*')}.remux#{File.extname(path)}")
-    args = ['mkvmerge', '-o', tmp_path]
+    args = []
     track_map.each do |track|
       flag = (track[:audio_index] == selected_track_index) ? 'yes' : 'no'
       args += ['--default-track', "#{track[:id]}:#{flag}"]
@@ -82,24 +82,20 @@ class VideoUtils
     args << path
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
     MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvmerge. Running command: #{args.join(' ')}") if Env.debug?
-    stdout, stderr, status = Open3.capture3(*args)
-    unless status.success?
-      message = "mkvmerge remux failed: #{stderr.to_s.strip}"
-      stdout_line = stdout.to_s.strip
+    result = process_mkv(path, tool: 'mkvmerge', args: args)
+    unless result[:success]
+      message = "mkvmerge remux failed: #{result[:stderr].to_s.strip}"
+      stdout_line = result[:stdout].to_s.strip
       message += " stdout: #{stdout_line}" unless stdout_line.empty?
-      MediaLibrarian.app.speaker.speak_up("#{message}. Run: #{args.join(' ')}")
+      message += " #{result[:message]}" if result[:message]
+      MediaLibrarian.app.speaker.speak_up("#{message}. Run: mkvmerge #{args.join(' ')}")
       return false
     end
-
-    bak_path = "#{path}.bak"
-    FileUtils.mv(path, bak_path)
-    FileUtils.mv(tmp_path, path)
     post_tracks = mkv_audio_track_map(path)
     if post_tracks.empty?
-      MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept at #{bak_path} for manual recovery.")
+      MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept for manual recovery.")
       return false
     end
-    FileUtils.rm_f(bak_path)
     post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
     if post_defaults.size != 1
       MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
@@ -111,7 +107,7 @@ class VideoUtils
       MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
       return false
     end
-    MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{stdout}")
+    MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{result[:stdout]}")
     true
   end
 
@@ -147,5 +143,70 @@ class VideoUtils
     end
   rescue JSON::ParserError
     []
+  end
+
+  def self.process_mkv(path_source, tool:, args:, temp_dir: '/tmp', backup: true, timeout_s: nil)
+    work_dir = Dir.mktmpdir('mkv_process_', temp_dir)
+    ext = File.extname(path_source)
+    input_local = File.join(work_dir, "input#{ext}")
+    FileUtils.cp(path_source, input_local)
+    args_local = args.map { |arg| arg == path_source ? input_local : arg }
+    tmp_out = input_local
+    if tool.to_s == 'mkvmerge'
+      tmp_out = File.join(work_dir, "output#{ext}")
+      args_local = replace_mkvmerge_output(args_local, tmp_out)
+    end
+
+    stdout, stderr, status = run_command(tool, args_local, timeout_s)
+    return { success: false, stdout: stdout, stderr: stderr, message: 'command failed' } unless status&.success?
+    return { success: false, stdout: stdout, stderr: stderr, message: 'validation failed' } unless mkv_validate_local(tmp_out)
+
+    dir = File.dirname(path_source)
+    dest_tmp = File.join(dir, ".#{File.basename(path_source)}.processing")
+    FileUtils.cp(tmp_out, dest_tmp)
+    bak_path = "#{path_source}.bak"
+    FileUtils.mv(path_source, bak_path) if backup
+    FileUtils.mv(dest_tmp, path_source)
+    FileUtils.rm_f(bak_path) if backup
+    { success: true, stdout: stdout, stderr: stderr }
+  ensure
+    FileUtils.rm_rf(work_dir) if work_dir && Dir.exist?(work_dir)
+  end
+
+  def self.replace_mkvmerge_output(args, tmp_out)
+    replaced = false
+    output_args = []
+    args.each_with_index do |arg, idx|
+      if %w[-o --output].include?(arg) && args[idx + 1]
+        output_args << arg << tmp_out
+        replaced = true
+      elsif idx.positive? && %w[-o --output].include?(args[idx - 1])
+        next
+      else
+        output_args << arg
+      end
+    end
+    replaced ? output_args : ['-o', tmp_out] + args
+  end
+
+  def self.run_command(tool, args, timeout_s)
+    if timeout_s
+      Timeout.timeout(timeout_s) { Open3.capture3(tool, *args) }
+    else
+      Open3.capture3(tool, *args)
+    end
+  rescue Timeout::Error
+    [''.dup, "timeout after #{timeout_s}s", nil]
+  end
+
+  def self.mkv_validate_local(path)
+    if system('command -v mkvmerge >/dev/null 2>&1')
+      _stdout, status = Open3.capture2('mkvmerge', '-J', path)
+      return status.success?
+    end
+    return false unless system('command -v mkvinfo >/dev/null 2>&1')
+
+    _stdout, _stderr, status = Open3.capture3('mkvinfo', path)
+    status.success?
   end
 end
