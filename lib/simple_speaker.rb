@@ -53,7 +53,7 @@ module SimpleSpeaker
       buffer = buffer.dup if buffer.frozen?
       thread[:email_msg] = buffer
       buffer << str.to_s.force_encoding('UTF-8') + @new_line
-      thread[:send_email] = in_mail.to_i if in_mail.to_i > 0 && thread[:send_email]
+      thread[:send_email] = in_mail.to_i if in_mail.to_i > 0
     end
 
     def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0)
