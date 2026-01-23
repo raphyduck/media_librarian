@@ -599,7 +599,6 @@ class Library
       csv_rows = csv_rows.to_a unless csv_rows.is_a?(Array)
       total = csv_rows.size
       speaker = app.respond_to?(:speaker) ? app.speaker : nil
-      verbose = detailed || (defined?(Env) && Env.debug?)
       speaker&.speak_up("import_list_csv: starting (total #{total})", 0)
       rows = []
       added_titles = []
@@ -635,7 +634,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << 'skip=empty_title'
-          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
         end
@@ -662,7 +661,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << "skip=#{entry.nil? ? 'no_result' : 'persist_failed'}"
-          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
         end
@@ -677,7 +676,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << 'skip=invalid_imdb_id'
-          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
         end
@@ -693,7 +692,7 @@ class Library
         added_titles << entry_title
         progress['added'] += 1
         row_notes << 'watchlist=queued'
-        speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
+        speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
         update_progress.call
       end
       if rows.empty?
