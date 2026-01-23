@@ -1148,11 +1148,27 @@ class Daemon
       end
 
       @control_server = WEBrick::HTTPServer.new(server_options)
+      @web_asset_version = Time.now.utc.strftime('%Y%m%d%H%M')
 
       web_root = File.expand_path('web', __dir__)
       if Dir.exist?(web_root)
-        @control_server.mount('/', WEBrick::HTTPServlet::FileHandler, web_root,
-                               FancyIndexing: false, DirectoryIndex: ['index.html'])
+        file_handler = WEBrick::HTTPServlet::FileHandler.new(@control_server, web_root,
+                                                             FancyIndexing: false,
+                                                             DirectoryIndex: ['index.html'])
+        index_path = File.join(web_root, 'index.html')
+        @control_server.mount_proc('/') do |req, res|
+          if req.path == '/' || req.path == '/index.html'
+            if File.exist?(index_path)
+              res['Content-Type'] = 'text/html; charset=utf-8'
+              res.body = File.read(index_path)
+                             .gsub('app.js?v=__APP_VERSION__', "app.js?v=#{@web_asset_version}")
+            else
+              res.status = 404
+            end
+          else
+            file_handler.do_GET(req, res)
+          end
+        end
       end
 
       @control_server.mount_proc('/session') do |req, res|
