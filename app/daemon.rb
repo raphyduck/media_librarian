@@ -17,7 +17,7 @@ require 'get_process_mem'
 require 'socket'
 require 'open3'
 require 'csv'
-require 'tempfile'
+require 'tmpdir'
 
 require_relative '../lib/cache'
 require_relative '../lib/logger'
@@ -2409,10 +2409,9 @@ class Daemon
       content = csv_content.to_s
       raise ArgumentError, 'empty_csv' if content.strip.empty?
 
-      file = Tempfile.new(['watchlist-import', '.csv'])
-      file.write(content)
-      file.close
-      file.path
+      path = File.join(Dir.tmpdir, "watchlist-import-#{SecureRandom.hex(8)}.csv")
+      File.write(path, content)
+      path
     end
 
     def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
