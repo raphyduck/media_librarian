@@ -600,17 +600,34 @@ class Library
       rows = []
       added_titles = []
       skipped = 0
+      repository = CalendarEntriesRepository.new(app: app)
+      calendar_service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
       csv_rows.each do |row|
         title = row['title']&.to_s&.strip
-        imdb_id = (row['imdb_id'] || row['imdb'] || row['external_id'])&.to_s&.strip
-        if title.nil? || title.empty? || imdb_id.nil? || imdb_id.empty?
+        if title.nil? || title.empty?
           skipped += 1
           next
         end
 
-        type = Utils.regularise_media_type((row['type'] || 'movies').to_s)
+        type = row['type'].to_s.strip
+        type = type.empty? ? nil : Utils.regularise_media_type(type)
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
+        imdb_id = (row['imdb_id'] || row['imdb'] || row['external_id']).to_s.strip
+        entry = repository.search(title: title, year: year_i, type: type).first
+        if entry.nil?
+          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false).first
+          entry = calendar_service.persist_entry(entry) || entry if entry
+        end
+        if entry.nil? && imdb_id.empty?
+          skipped += 1
+          next
+        end
+
+        entry_title = entry ? entry[:title].to_s.strip : title
+        entry_title = title if entry_title.empty?
+        entry_type = Utils.regularise_media_type((entry&.dig(:type) || entry&.dig(:media_type) || type || 'movies').to_s)
+        imdb_id = entry[:imdb_id] if entry
         alts = row['alt_titles']&.to_s&.strip
         url = row['url']&.to_s&.strip
         tmdb = (row['tmdb_id'] || row['tmdb'])&.to_s&.strip
@@ -620,8 +637,8 @@ class Library
         metadata[:alt_titles] = alts if alts && !alts.empty?
         metadata[:url] = url if url && !url.empty?
         metadata[:tmdb] = tmdb if tmdb && !tmdb.empty?
-        rows << { imdb_id: imdb_id, title: title, type: type, metadata: metadata.empty? ? nil : metadata }
-        added_titles << title
+        rows << { imdb_id: imdb_id, title: entry_title, type: entry_type, metadata: metadata.empty? ? nil : metadata }
+        added_titles << entry_title
       end
       if rows.empty?
         return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
