@@ -28,6 +28,15 @@ class CalendarEntriesRepository
     end.uniq { |entry| entry[:imdb_id] }
   end
 
+  def find_by_imdb_id(imdb_id)
+    needle = normalize_imdb(imdb_id)
+    return if needle.empty?
+
+    load_entries.find do |entry|
+      normalize_imdb(entry[:imdb_id]) == needle || normalize_imdb(entry[:external_id]) == needle
+    end
+  end
+
   def load_entries
     rows = app.respond_to?(:db) ? Array(app.db&.get_rows(:calendar_entries)) : []
     downloaded_index = build_downloaded_index

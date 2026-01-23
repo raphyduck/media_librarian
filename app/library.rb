@@ -583,10 +583,9 @@ class Library
 
   # Import a CSV into the watchlist
   # Usage:
-  #   Library.import_list_csv(list_name: 'to_download', csv_path: '/path/to/list.csv', replace: '1') # replace rows
-  def self.import_list_csv(list_name: nil, csv_path: nil, csv_content: nil, csv_rows: nil, replace: '1', detailed: false)
+  #   Library.import_list_csv(csv_path: '/path/to/list.csv', replace: '1') # replace rows
+  def self.import_list_csv(csv_path: nil, csv_content: nil, csv_rows: nil, replace: '1', detailed: false)
     begin
-      list_name = list_name.to_s.strip
       csv_rows ||= begin
         if csv_content
           CSV.parse(csv_content.to_s, headers: true)
@@ -597,15 +596,8 @@ class Library
           CSV.foreach(csv_path, headers: true)
         end
       end
-      total = csv_rows.respond_to?(:size) ? csv_rows.size : nil
-      if total.nil?
-        total = if csv_path.to_s.strip != ''
-                  CSV.foreach(csv_path, headers: true).count
-                else
-                  csv_rows = csv_rows.to_a
-                  csv_rows.size
-                end
-      end
+      csv_rows = csv_rows.to_a unless csv_rows.is_a?(Array)
+      total = csv_rows.size
       rows = []
       added_titles = []
       title_limit = 50
@@ -628,6 +620,9 @@ class Library
       update_progress.call(true)
       repository = CalendarEntriesRepository.new(app: app)
       calendar_service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
+      imdb_from_row = lambda do |row|
+        (row['IMDB_id'] || row['imdb_id'] || row['imdb']).to_s.strip
+      end
       csv_rows.each do |row|
         progress['processed'] += 1
         title = row['title']&.to_s&.strip
@@ -643,28 +638,38 @@ class Library
         type = type.empty? ? nil : Utils.regularise_media_type(type)
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
-        imdb_id = (row['imdb_id'] || row['imdb'] || row['external_id']).to_s.strip
-        entry = repository.search(title: title, year: year_i, type: type).first
+        imdb_id = imdb_from_row.call(row)
+        entry = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
+        persisted = entry
         if entry.nil?
           entry = calendar_service.search(title: title, year: year_i, type: type, persist: false).first
           entry = calendar_service.persist_entry(entry) || entry if entry
+          imdb_id = entry[:imdb_id].to_s.strip if entry
+          persisted = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
         end
-        if entry.nil? && imdb_id.empty?
+        if entry.nil? || persisted.nil?
           skipped += 1
           progress['skipped'] += 1
           update_progress.call
           next
         end
 
-        entry_title = entry ? entry[:title].to_s.strip : title
+        entry = persisted
+        entry_title = entry[:title].to_s.strip
         entry_title = title if entry_title.empty?
-        entry_type = Utils.regularise_media_type((entry&.dig(:type) || entry&.dig(:media_type) || type || 'movies').to_s)
-        imdb_id = entry[:imdb_id] if entry
+        entry_type = Utils.regularise_media_type((entry[:media_type] || entry[:type] || type || 'movies').to_s)
+        imdb_id = entry[:imdb_id].to_s.strip
+        imdb_id = imdb_from_row.call(row) if imdb_id.empty?
+        if imdb_id.empty?
+          skipped += 1
+          progress['skipped'] += 1
+          update_progress.call
+          next
+        end
         alts = row['alt_titles']&.to_s&.strip
         url = row['url']&.to_s&.strip
         tmdb = (row['tmdb_id'] || row['tmdb'])&.to_s&.strip
         metadata = {}
-        metadata[:list_name] = list_name unless list_name.empty?
         metadata[:year] = year_i if year_i
         metadata[:alt_titles] = alts if alts && !alts.empty?
         metadata[:url] = url if url && !url.empty?
