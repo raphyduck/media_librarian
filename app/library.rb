@@ -609,7 +609,7 @@ class Library
           next
         end
 
-        type = row['type']&.to_s&.strip
+        type = row['type'].to_s.strip
         type = type.empty? ? nil : Utils.regularise_media_type(type)
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
