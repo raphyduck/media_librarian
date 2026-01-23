@@ -146,31 +146,75 @@ class VideoUtils
     []
   end
 
-  def self.process_mkv(path_source, tool:, args:, temp_dir: '/tmp', backup: true, timeout_s: nil)
-    work_dir = Dir.mktmpdir('mkv_process_', temp_dir)
-    ext = File.extname(path_source)
-    input_local = File.join(work_dir, "input#{ext}")
-    FileUtils.cp(path_source, input_local)
-    args_local = args.map { |arg| arg == path_source ? input_local : arg }
-    tmp_out = input_local
-    if tool.to_s == 'mkvmerge'
-      tmp_out = File.join(work_dir, "output#{ext}")
-      args_local = replace_mkvmerge_output(args_local, tmp_out)
-    end
-
-    stdout, stderr, status = run_command(tool, args_local, timeout_s)
-    return { success: false, stdout: stdout, stderr: stderr, message: 'command failed' } unless status&.success?
-    return { success: false, stdout: stdout, stderr: stderr, message: 'validation failed' } unless mkv_validate_local(tmp_out)
+  def self.process_mkv(path_source, tool:, args:, temp_dir: '/tmp', backup: true, timeout_s: nil, dry_run: false)
+    log = lambda { |msg| MediaLibrarian.app.speaker.speak_up(msg) }
+    return { success: false, message: "source file not found: #{path_source}" } unless File.file?(path_source)
 
     dir = File.dirname(path_source)
-    dest_tmp = File.join(dir, ".#{File.basename(path_source)}.processing")
-    FileUtils.cp(tmp_out, dest_tmp)
-    bak_path = "#{path_source}.bak"
-    FileUtils.mv(path_source, bak_path) if backup
-    FileUtils.mv(dest_tmp, path_source)
-    { success: true, stdout: stdout, stderr: stderr, backup_path: backup ? bak_path : nil }
-  ensure
-    FileUtils.rm_rf(work_dir) if work_dir && Dir.exist?(work_dir)
+    base = File.basename(path_source)
+    lock_path = File.join(dir, ".#{base}.lock")
+    dest_tmp = File.join(dir, ".#{base}.processing")
+    work_dir = nil
+    lock = nil
+    lock_created = false
+    source_size = File.size(path_source)
+    tmp_root = choose_temp_root(path_source, temp_dir)
+    work_dir = File.join(tmp_root, "mkvfix-#{Process.pid}-#{Time.now.to_i}")
+    log.call("mkv temp dir: #{work_dir}")
+    log.call("run #{tool} argv: #{([tool] + args).join(' ')}")
+    if dry_run
+      log.call("dry_run: would lock #{lock_path}, copy to #{work_dir}, write #{dest_tmp}, and update #{path_source}")
+      return { success: true, dry_run: true }
+    end
+    begin
+      lock = File.open(lock_path, File::WRONLY | File::CREAT | File::EXCL)
+      lock_created = true
+      lock.write("#{Process.pid}\n")
+      lock.flush
+
+      FileUtils.mkdir_p(work_dir, mode: 0o700)
+
+      ext = File.extname(path_source)
+      input_local = File.join(work_dir, "input#{ext}")
+      log.call("copy source -> tmp: #{path_source} -> #{input_local}")
+      copied = copy_file_buffered(path_source, input_local)
+      return { success: false, message: "copy failed: expected #{source_size} bytes, got #{copied}" } if copied < source_size
+
+      args_local = args.map { |arg| arg == path_source ? input_local : arg }
+      tmp_out = input_local
+      if tool.to_s == 'mkvmerge'
+        tmp_out = File.join(work_dir, "output#{ext}")
+        args_local = replace_mkvmerge_output(args_local, tmp_out)
+      end
+      log.call("run #{tool} argv: #{([tool] + args_local).join(' ')}")
+      stdout, stderr, status = run_command(tool, args_local, timeout_s)
+      log.call("stdout: #{stdout.to_s.lines.first(10).join.strip}")
+      log.call("stderr: #{stderr.to_s.lines.first(10).join.strip}")
+      return { success: false, stdout: stdout, stderr: stderr, message: 'command failed' } unless status&.success?
+      return { success: false, stdout: stdout, stderr: stderr, message: 'validation failed' } unless mkv_validate_local(tmp_out)
+      return { success: false, stdout: stdout, stderr: stderr, message: 'empty output' } unless File.size?(tmp_out)
+
+      log.call("copy tmp -> dest_tmp: #{tmp_out} -> #{dest_tmp}")
+      copied_out = copy_file_buffered(tmp_out, dest_tmp)
+      return { success: false, stdout: stdout, stderr: stderr, message: "dest copy failed: #{copied_out} bytes" } if copied_out < File.size(tmp_out)
+      bak_path = "#{path_source}.bak"
+      FileUtils.mv(path_source, bak_path) if backup
+      begin
+        File.rename(dest_tmp, path_source)
+      rescue StandardError => e
+        log.call("rename failed: #{e.message}, fallback to copy")
+        copy_file_buffered(dest_tmp, path_source)
+        FileUtils.rm_f(dest_tmp)
+      end
+      { success: true, stdout: stdout, stderr: stderr, backup_path: backup ? bak_path : nil }
+    rescue Errno::EEXIST
+      return { success: false, message: "lock exists: #{lock_path}" }
+    ensure
+      FileUtils.rm_f(dest_tmp)
+      FileUtils.rm_rf(work_dir) if work_dir && Dir.exist?(work_dir)
+      lock.close if lock
+      FileUtils.rm_f(lock_path) if lock_created
+    end
   end
 
   def self.replace_mkvmerge_output(args, tmp_out)
@@ -190,13 +234,61 @@ class VideoUtils
   end
 
   def self.run_command(tool, args, timeout_s)
-    if timeout_s
-      Timeout.timeout(timeout_s) { Open3.capture3(tool, *args) }
-    else
-      Open3.capture3(tool, *args)
+    return Open3.capture3(tool, *args) unless timeout_s
+
+    stdout = ''.dup
+    stderr = ''.dup
+    status = nil
+    Open3.popen3(tool, *args) do |stdin, out, err, wait|
+      stdin.close
+      begin
+        Timeout.timeout(timeout_s) do
+          stdout = out.read
+          stderr = err.read
+          status = wait.value
+        end
+      rescue Timeout::Error
+        pid = wait.pid
+        Process.kill('TERM', pid) rescue nil
+        Process.kill('KILL', pid) rescue nil
+        stdout << out.read.to_s
+        stderr << err.read.to_s
+        return [stdout, "timeout after #{timeout_s}s", nil]
+      end
     end
-  rescue Timeout::Error
-    [''.dup, "timeout after #{timeout_s}s", nil]
+    [stdout, stderr, status]
+  end
+
+  def self.choose_temp_root(path_source, temp_dir)
+    size = (File.size(path_source) * 1.2).ceil
+    [temp_dir, '/tmp'].uniq.each do |dir|
+      next unless dir && Dir.exist?(dir)
+      avail = available_bytes(dir)
+      return dir if avail && avail >= size
+    end
+    '/var/tmp'
+  end
+
+  def self.available_bytes(dir)
+    stdout, status = Open3.capture2('df', '-Pk', dir)
+    return nil unless status.success?
+    parts = stdout.lines.last.to_s.split
+    parts[3].to_i * 1024
+  rescue StandardError
+    nil
+  end
+
+  def self.copy_file_buffered(src, dest, buf_size: 1024 * 1024)
+    total = 0
+    File.open(src, 'rb') do |input|
+      File.open(dest, 'wb') do |output|
+        while (chunk = input.read(buf_size))
+          output.write(chunk)
+          total += chunk.bytesize
+        end
+      end
+    end
+    total
   end
 
   def self.mkv_validate_local(path)
