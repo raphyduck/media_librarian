@@ -597,15 +597,43 @@ class Library
           CSV.foreach(csv_path, headers: true)
         end
       end
+      total = if csv_rows.respond_to?(:size)
+                csv_rows.size
+              elsif csv_path.to_s.strip != ''
+                CSV.foreach(csv_path, headers: true).count
+              else
+                csv_rows = csv_rows.to_a
+                csv_rows.size
+              end
       rows = []
       added_titles = []
       skipped = 0
+      progress = {
+        'processed' => 0,
+        'added' => 0,
+        'skipped' => 0,
+        'total' => total,
+        'current_title' => nil
+      }
+      progress_step = 25
+      jid = Thread.current[:jid]
+      update_progress = lambda do |force = false|
+        return unless jid && defined?(Daemon) && Daemon.respond_to?(:update_job_progress)
+        return unless force || (progress['processed'].positive? && (progress['processed'] % progress_step).zero?)
+
+        Daemon.update_job_progress(jid, progress.dup)
+      end
+      update_progress.call(true)
       repository = CalendarEntriesRepository.new(app: app)
       calendar_service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
       csv_rows.each do |row|
+        progress['processed'] += 1
         title = row['title']&.to_s&.strip
+        progress['current_title'] = title
         if title.nil? || title.empty?
           skipped += 1
+          progress['skipped'] += 1
+          update_progress.call
           next
         end
 
@@ -621,6 +649,8 @@ class Library
         end
         if entry.nil? && imdb_id.empty?
           skipped += 1
+          progress['skipped'] += 1
+          update_progress.call
           next
         end
 
@@ -639,14 +669,19 @@ class Library
         metadata[:tmdb] = tmdb if tmdb && !tmdb.empty?
         rows << { imdb_id: imdb_id, title: entry_title, type: entry_type, metadata: metadata.empty? ? nil : metadata }
         added_titles << entry_title
+        progress['added'] += 1
+        update_progress.call
       end
       if rows.empty?
+        update_progress.call(true)
         return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
       end
 
       count = WatchlistStore.upsert(rows)
       app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
       added_titles = [] if detailed && count.to_i.zero?
+      progress['added'] = count
+      update_progress.call(true)
       detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil

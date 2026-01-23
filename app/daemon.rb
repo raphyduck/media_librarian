@@ -59,6 +59,7 @@ class Daemon
     :block,
     :capture_output,
     :output,
+    :progress,
     keyword_init: true
   ) do
     def running?
@@ -85,7 +86,8 @@ class Daemon
         'finished_at' => finished_at&.iso8601,
         'result' => result,
         'error' => error && error.to_s,
-        'output' => output
+        'output' => output,
+        'progress' => progress
       }
     end
   end
@@ -3508,6 +3510,16 @@ class Daemon
 
     def job_registry
       @jobs || {}
+    end
+
+    def update_job_progress(jid, progress)
+      return unless jid
+
+      job = job_registry[jid]
+      return unless job
+
+      job.progress = progress
+      @jobs[jid] = job
     end
 
     def job_children
