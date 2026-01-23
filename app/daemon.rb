@@ -2316,6 +2316,7 @@ class Daemon
 
       payload = parse_payload(req)
       if truthy?(payload['async'])
+        validate_watchlist_csv_payload!(payload)
         args = build_watchlist_import_csv_args(payload)
         job = enqueue(args: args, parent_thread: nil, task: 'watchlist_import_csv')
         return json_response(res, body: { 'job_id' => job&.id, 'job' => job&.to_h })
@@ -2365,6 +2366,35 @@ class Daemon
       args << "--replace=#{replace}" unless replace.nil?
       args << "--csv_path=#{resolve_watchlist_csv_path(csv_content, csv_path)}"
       args
+    end
+
+    def validate_watchlist_csv_payload!(payload)
+      csv_content = payload['csv_content']
+      csv_path = payload['csv_path']
+
+      if csv_content.nil?
+        csv_path = csv_path.to_s.strip
+        raise ArgumentError, 'missing_csv' if csv_path.empty?
+        raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
+
+        begin
+          csv_rows = CSV.foreach(csv_path, headers: true)
+          return unless csv_rows.none?
+        rescue CSV::MalformedCSVError
+          raise ArgumentError, 'invalid_csv'
+        end
+        raise ArgumentError, 'empty_csv'
+      end
+
+      content = csv_content.to_s
+      raise ArgumentError, 'empty_csv' if content.strip.empty?
+
+      begin
+        csv_rows = CSV.parse(content, headers: true)
+      rescue CSV::MalformedCSVError
+        raise ArgumentError, 'invalid_csv'
+      end
+      raise ArgumentError, 'empty_csv' if csv_rows.empty?
     end
 
     def resolve_watchlist_csv_path(csv_content, csv_path)
