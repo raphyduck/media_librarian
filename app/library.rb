@@ -621,7 +621,7 @@ class Library
       repository = CalendarEntriesRepository.new(app: app)
       calendar_service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
       imdb_from_row = lambda do |row|
-        (row['IMDB_id'] || row['imdb_id'] || row['imdb']).to_s.strip
+        (row['IMDB_id'] || row['imdb_id'] || row['imdb'] || row['external_id']).to_s.strip
       end
       csv_rows.each do |row|
         progress['processed'] += 1
