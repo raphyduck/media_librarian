@@ -3,6 +3,10 @@ const state = {
   username: '',
   autoRefresh: null,
   activeTab: 'jobs',
+  watchlistImport: {
+    jobId: null,
+    timer: null,
+  },
   dirty: {
     config: false,
     apiConfig: false,
@@ -3315,6 +3319,145 @@ function renderWatchlistImportResult(result = {}) {
   container.classList.toggle('hidden', !totalAdded && !titles.length && !skipped);
 }
 
+function setWatchlistImportView(active) {
+  const panel = document.getElementById('watchlist-import-panel');
+  const watchlistPanel = document.getElementById('watchlist-panel');
+  if (!panel || !watchlistPanel) {
+    return;
+  }
+  panel.hidden = !active;
+  watchlistPanel.hidden = active;
+}
+
+function updateWatchlistImportPanel({
+  statusLabel,
+  added,
+  total,
+  currentTitle,
+  summary,
+  error,
+  showBack,
+} = {}) {
+  const status = document.getElementById('watchlist-import-status');
+  const count = document.getElementById('watchlist-import-count');
+  const title = document.getElementById('watchlist-import-title');
+  const errorEl = document.getElementById('watchlist-import-error');
+  const finalEl = document.getElementById('watchlist-import-final');
+  const backButton = document.getElementById('watchlist-import-back');
+  if (status && statusLabel) {
+    status.textContent = statusLabel;
+  }
+  if (count && typeof added !== 'undefined' && typeof total !== 'undefined') {
+    count.textContent = `${added} / ${total}`;
+  }
+  if (title) {
+    title.textContent = currentTitle || '—';
+  }
+  if (errorEl) {
+    errorEl.textContent = error || '';
+    errorEl.classList.toggle('hidden', !error);
+  }
+  if (finalEl) {
+    finalEl.textContent = summary || '';
+    finalEl.classList.toggle('hidden', !summary);
+  }
+  if (backButton) {
+    backButton.classList.toggle('hidden', !showBack);
+  }
+}
+
+function stopWatchlistImportPolling() {
+  if (state.watchlistImport.timer) {
+    clearInterval(state.watchlistImport.timer);
+  }
+  state.watchlistImport.timer = null;
+}
+
+function closeWatchlistImportView() {
+  stopWatchlistImportPolling();
+  state.watchlistImport.jobId = null;
+  updateWatchlistImportPanel({
+    statusLabel: 'En cours',
+    added: 0,
+    total: 0,
+    currentTitle: '—',
+    summary: '',
+    error: '',
+    showBack: false,
+  });
+  setWatchlistImportView(false);
+}
+
+function startWatchlistImportPolling(jobId) {
+  if (!jobId) {
+    return;
+  }
+  stopWatchlistImportPolling();
+  state.watchlistImport.jobId = jobId;
+  setWatchlistImportView(true);
+  updateWatchlistImportPanel({
+    statusLabel: 'En cours',
+    added: 0,
+    total: 0,
+    currentTitle: '—',
+    summary: '',
+    error: '',
+    showBack: false,
+  });
+  const poll = () => pollWatchlistImport(jobId);
+  poll();
+  state.watchlistImport.timer = setInterval(poll, 2000);
+}
+
+async function pollWatchlistImport(jobId) {
+  if (!jobId || jobId !== state.watchlistImport.jobId) {
+    return;
+  }
+  try {
+    const job = await fetchJson(`/jobs/${encodeURIComponent(jobId)}`);
+    const progress = job?.progress || {};
+    const added = Number.isFinite(Number(progress.added)) ? Number(progress.added) : 0;
+    const total = Number.isFinite(Number(progress.total)) ? Number(progress.total) : 0;
+    const skipped = Number.isFinite(Number(progress.skipped)) ? Number(progress.skipped) : 0;
+    const currentTitle = progress.current_title || '';
+    const status = String(job?.status || '');
+    const statusLabel = status === 'finished'
+      ? 'Terminé'
+      : status === 'failed' || status === 'cancelled'
+      ? 'Erreur'
+      : 'En cours';
+    const done = status === 'finished' || status === 'failed' || status === 'cancelled';
+    const summary = done
+      ? `${added} ajouté(s) sur ${total}. ${skipped} ignoré(s).`
+      : '';
+    updateWatchlistImportPanel({
+      statusLabel,
+      added,
+      total,
+      currentTitle,
+      summary,
+      error: done && statusLabel === 'Erreur' ? job?.error || 'Import échoué.' : '',
+      showBack: done,
+    });
+    if (done) {
+      stopWatchlistImportPolling();
+      renderWatchlistImportResult({ total_added: added, skipped });
+      await loadWatchlist();
+    }
+  } catch (error) {
+    stopWatchlistImportPolling();
+    updateWatchlistImportPanel({
+      statusLabel: 'Erreur',
+      added: 0,
+      total: 0,
+      currentTitle: '',
+      summary: '',
+      error: error.message || 'Impossible de suivre le job.',
+      showBack: true,
+    });
+  }
+}
+
 async function loadWatchlist() {
   try {
     const data = await fetchJson('/watchlist');
@@ -3347,13 +3490,17 @@ async function importWatchlistCsv() {
     const data = await fetchJson('/watchlist/import-csv', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ csv_content: csvContent }),
+      body: JSON.stringify({ csv_content: csvContent, async: true }),
     });
-    renderWatchlistImportResult(data || {});
-    showNotification('Import terminé.');
-    await loadWatchlist();
+    const jobId = data?.job_id || data?.job?.id;
+    if (!jobId) {
+      throw new Error("Job d'import introuvable.");
+    }
+    showNotification('Import démarré.');
+    startWatchlistImportPolling(jobId);
   } catch (error) {
     showNotification(error.message || 'Import impossible.', 'error');
+    closeWatchlistImportView();
   } finally {
     if (button) {
       button.disabled = false;
@@ -4154,6 +4301,10 @@ function setupEventListeners() {
   const watchlistImportButton = document.getElementById('watchlist-import-button');
   if (watchlistImportButton) {
     watchlistImportButton.addEventListener('click', importWatchlistCsv);
+  }
+  const watchlistImportBack = document.getElementById('watchlist-import-back');
+  if (watchlistImportBack) {
+    watchlistImportBack.addEventListener('click', closeWatchlistImportView);
   }
   ['refresh-watchlist', 'refresh-pending-torrents']
     .map((id) => document.getElementById(id))
