@@ -107,6 +107,7 @@ class VideoUtils
       MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
       return false
     end
+    FileUtils.rm_f(result[:backup_path]) if result[:backup_path]
     MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{result[:stdout]}")
     true
   end
@@ -167,8 +168,7 @@ class VideoUtils
     bak_path = "#{path_source}.bak"
     FileUtils.mv(path_source, bak_path) if backup
     FileUtils.mv(dest_tmp, path_source)
-    FileUtils.rm_f(bak_path) if backup
-    { success: true, stdout: stdout, stderr: stderr }
+    { success: true, stdout: stdout, stderr: stderr, backup_path: backup ? bak_path : nil }
   ensure
     FileUtils.rm_rf(work_dir) if work_dir && Dir.exist?(work_dir)
   end
