@@ -4290,11 +4290,16 @@ function setupEventListeners() {
       });
     });
   }
-  document.getElementById('refresh-status').addEventListener('click', loadStatus);
-  document.getElementById('stop-daemon').addEventListener('click', stopDaemon);
-  document.getElementById('restart-daemon').addEventListener('click', restartDaemon);
-  document.getElementById('update-stop-daemon').addEventListener('click', updateCodeAndStop);
-  document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+  const refreshStatus = document.getElementById('refresh-status');
+  if (refreshStatus) refreshStatus.addEventListener('click', loadStatus);
+  const stopDaemonButton = document.getElementById('stop-daemon');
+  if (stopDaemonButton) stopDaemonButton.addEventListener('click', stopDaemon);
+  const restartDaemonButton = document.getElementById('restart-daemon');
+  if (restartDaemonButton) restartDaemonButton.addEventListener('click', restartDaemon);
+  const updateStopDaemonButton = document.getElementById('update-stop-daemon');
+  if (updateStopDaemonButton) updateStopDaemonButton.addEventListener('click', updateCodeAndStop);
+  const refreshLogsButton = document.getElementById('refresh-logs');
+  if (refreshLogsButton) refreshLogsButton.addEventListener('click', loadLogs);
   const refreshSchedulerTasks = document.getElementById('refresh-scheduler-tasks');
   if (refreshSchedulerTasks) {
     refreshSchedulerTasks.addEventListener('click', loadSchedulerTasks);
@@ -4321,8 +4326,10 @@ function setupEventListeners() {
     .map((id) => document.getElementById(id))
     .filter(Boolean)
     .forEach((button) => button.addEventListener('click', loadDownloadsTab));
-  document.getElementById('login-form').addEventListener('submit', handleLogin);
-  document.getElementById('logout-button').addEventListener('click', logout);
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) loginForm.addEventListener('submit', handleLogin);
+  const logoutButton = document.getElementById('logout-button');
+  if (logoutButton) logoutButton.addEventListener('click', logout);
   setupCalendarEvents();
   setupCalendarSearchEvents();
   setupCollectionEvents();
