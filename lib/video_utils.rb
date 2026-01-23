@@ -281,6 +281,7 @@ class VideoUtils
 
   def self.copy_file_buffered(src, dest, buf_size: 1024 * 1024)
     total = 0
+    mode = File.stat(src).mode & 0o777
     File.open(src, 'rb') do |input|
       File.open(dest, 'wb') do |output|
         while (chunk = input.read(buf_size))
@@ -289,6 +290,7 @@ class VideoUtils
         end
       end
     end
+    File.chmod(mode, dest)
     total
   end
 
