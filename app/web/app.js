@@ -3326,7 +3326,9 @@ function setWatchlistImportView(active) {
     return;
   }
   panel.hidden = !active;
+  panel.classList.toggle('hidden', !active);
   watchlistPanel.hidden = active;
+  watchlistPanel.classList.toggle('hidden', active);
 }
 
 function updateWatchlistImportPanel({
