@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'csv'
 require 'securerandom'
 require 'time'
 require 'webrick'
@@ -1318,6 +1319,12 @@ class Daemon
         handle_watchlist_request(req, res)
       end
 
+      @control_server.mount_proc('/watchlist/import') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_watchlist_import_request(req, res)
+      end
+
       start_socket_server
       @control_thread = Thread.new { @control_server.start }
     end
@@ -2301,6 +2308,109 @@ class Daemon
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
       error_response(res, status: 422, message: e.message)
+    end
+
+    def handle_watchlist_import_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      csv_text, error = extract_watchlist_csv(req)
+      return error_response(res, status: 422, message: error) unless csv_text
+
+      rows, error = parse_watchlist_csv_titles(csv_text)
+      return error_response(res, status: 422, message: error) unless rows
+
+      repo = calendar_repository
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
+      existing = watchlist_index
+      added = []
+      skipped = []
+
+      rows.each do |row|
+        title = row[:title]
+        year = row[:year]
+        type = row[:type]
+        entries = repo.search(title: title, year: year, type: type)
+        entries = service.search(title: title, year: year, type: type, persist: true) if entries.empty?
+        entry = entries.first
+
+        unless entry && entry[:imdb_id]
+          skipped << { 'title' => title, 'reason' => 'not_found' }
+          next
+        end
+
+        normalized_type = Utils.regularise_media_type((type || entry[:media_type] || entry[:type] || 'movies').to_s)
+        key = "#{entry[:imdb_id]}|#{normalized_type}"
+        if existing[key]
+          skipped << { 'title' => title, 'imdb_id' => entry[:imdb_id], 'type' => normalized_type }
+          next
+        end
+
+        WatchlistStore.upsert([{
+          imdb_id: entry[:imdb_id],
+          title: entry[:title] || title,
+          type: normalized_type
+        }])
+        existing[key] = true
+        added << { 'title' => entry[:title] || title, 'imdb_id' => entry[:imdb_id], 'type' => normalized_type }
+      end
+
+      json_response(res, body: { 'added' => added, 'skipped' => skipped, 'total_added' => added.size })
+    rescue CSV::MalformedCSVError => e
+      error_response(res, status: 422, message: e.message)
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
+    end
+
+    def extract_watchlist_csv(req)
+      content_type = req['content-type'].to_s
+      data =
+        if content_type.include?('multipart/form-data')
+          file = req.query.values.find { |value| value.respond_to?(:read) }
+          return [nil, 'missing_csv_file'] unless file
+
+          file.read
+        else
+          req.body.to_s
+        end
+
+      data = data.encode('UTF-8', invalid: :replace, undef: :replace, replace: '')
+      return [nil, 'empty_csv'] if data.strip.empty?
+
+      [data, nil]
+    rescue Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError
+      [nil, 'invalid_csv_encoding']
+    end
+
+    def parse_watchlist_csv_titles(csv_text)
+      parsed = CSV.parse(csv_text, headers: true)
+      rows =
+        if parsed.headers&.any? { |header| header.to_s.match?(/title|name/i) }
+          parsed.map { |row| [row['title'] || row['name'] || row[0], row['year'], row['type']] }
+        else
+          CSV.parse(csv_text, headers: false)
+        end
+
+      entries = rows.filter_map do |row|
+        title, year, type = row
+        title = title.to_s.strip
+        next if title.empty?
+
+        year = year.to_s.strip
+        year = year.match?(/^\d{4}$/) ? year.to_i : nil
+        { title: title, year: year, type: normalize_calendar_media_type(type) }
+      end
+
+      return [nil, 'missing_titles'] if entries.empty?
+
+      [entries, nil]
+    end
+
+    def watchlist_index
+      WatchlistStore.fetch.each_with_object({}) do |row, memo|
+        imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip
+        type = (row[:type] || row['type']).to_s.strip
+        memo["#{imdb_id}|#{type}"] = true unless imdb_id.empty? || type.empty?
+      end
     end
 
     def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
