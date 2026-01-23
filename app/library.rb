@@ -584,16 +584,29 @@ class Library
   # Import a CSV into the watchlist
   # Usage:
   #   Library.import_list_csv(list_name: 'to_download', csv_path: '/path/to/list.csv', replace: '1') # replace rows
-  def self.import_list_csv(list_name: nil, csv_path: nil, replace: '1')
+  def self.import_list_csv(list_name: nil, csv_path: nil, csv_content: nil, csv_rows: nil, replace: '1', detailed: false)
     begin
-      raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
-      raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
       list_name = list_name.to_s.strip
+      csv_rows ||= begin
+        if csv_content
+          CSV.parse(csv_content.to_s, headers: true)
+        else
+          raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
+          raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
+
+          CSV.foreach(csv_path, headers: true)
+        end
+      end
       rows = []
-      CSV.foreach(csv_path, headers: true) do |row|
+      added_titles = []
+      skipped = 0
+      csv_rows.each do |row|
         title = row['title']&.to_s&.strip
         imdb_id = (row['imdb_id'] || row['imdb'] || row['external_id'])&.to_s&.strip
-        next if title.nil? || title.empty? || imdb_id.nil? || imdb_id.empty?
+        if title.nil? || title.empty? || imdb_id.nil? || imdb_id.empty?
+          skipped += 1
+          next
+        end
 
         type = Utils.regularise_media_type((row['type'] || 'movies').to_s)
         year = row['year']&.to_s&.strip
@@ -608,15 +621,19 @@ class Library
         metadata[:url] = url if url && !url.empty?
         metadata[:tmdb] = tmdb if tmdb && !tmdb.empty?
         rows << { imdb_id: imdb_id, title: title, type: type, metadata: metadata.empty? ? nil : metadata }
+        added_titles << title
       end
-      return 0 if rows.empty?
+      if rows.empty?
+        return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
+      end
 
       count = WatchlistStore.upsert(rows)
       app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
-      count
+      added_titles = [] if detailed && count.to_i.zero?
+      detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
-      0
+      detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => 0 } : 0
     end
   end
 
