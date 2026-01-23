@@ -58,13 +58,13 @@ module MediaLibrarian
         normalized
       end
 
-      def search(title:, year: nil, type: nil, persist: true)
+      def search(title:, year: nil, type: nil, persist: true, include_existing: false)
         return [] unless calendar_table_available?
         return [] if title.to_s.strip.empty?
 
         date_range = year ? Date.new(year.to_i, 1, 1)..Date.new(year.to_i, 12, 31) : nil
         normalized = normalize_entries(provider_search(title: title, year: year, type: type), date_range)
-        normalized = filter_existing_entries(normalized)
+        normalized = filter_existing_entries(normalized) unless include_existing
         persist_entries(normalized) if persist
         normalized
       end

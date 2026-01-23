@@ -666,7 +666,7 @@ class Library
         persisted = entry
         row_notes << "db=#{entry ? 'hit' : 'miss'}"
         if entry.nil?
-          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false).first
+          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false, include_existing: true).first
           row_notes << "imdb_fallback=#{entry ? 'hit' : 'miss'}"
           persisted_entry = entry ? calendar_service.persist_entry(entry) : nil
           row_notes << "persist=#{persisted_entry ? 'ok' : 'failed'}" if entry
