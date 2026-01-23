@@ -3337,12 +3337,14 @@ function updateWatchlistImportPanel({
   summary,
   error,
   showBack,
+  titles,
 } = {}) {
   const status = document.getElementById('watchlist-import-status');
   const count = document.getElementById('watchlist-import-count');
   const title = document.getElementById('watchlist-import-title');
   const errorEl = document.getElementById('watchlist-import-error');
   const finalEl = document.getElementById('watchlist-import-final');
+  const finalList = document.getElementById('watchlist-import-final-list');
   const backButton = document.getElementById('watchlist-import-back');
   if (status && statusLabel) {
     status.textContent = statusLabel;
@@ -3360,6 +3362,11 @@ function updateWatchlistImportPanel({
   if (finalEl) {
     finalEl.textContent = summary || '';
     finalEl.classList.toggle('hidden', !summary);
+  }
+  if (finalList) {
+    const list = buildFileList(titles);
+    finalList.replaceChildren(...(list ? [list] : []));
+    finalList.classList.toggle('hidden', !list);
   }
   if (backButton) {
     backButton.classList.toggle('hidden', !showBack);
@@ -3420,6 +3427,7 @@ async function pollWatchlistImport(jobId) {
     const total = Number.isFinite(Number(progress.total)) ? Number(progress.total) : 0;
     const skipped = Number.isFinite(Number(progress.skipped)) ? Number(progress.skipped) : 0;
     const currentTitle = progress.current_title || '';
+    const titles = Array.isArray(progress.added_titles) ? progress.added_titles : [];
     const status = String(job?.status || '');
     const statusLabel = status === 'finished'
       ? 'Terminé'
@@ -3436,12 +3444,13 @@ async function pollWatchlistImport(jobId) {
       total,
       currentTitle,
       summary,
+      titles: done ? titles : [],
       error: done && statusLabel === 'Erreur' ? job?.error || 'Import échoué.' : '',
       showBack: done,
     });
     if (done) {
       stopWatchlistImportPolling();
-      renderWatchlistImportResult({ total_added: added, skipped });
+      renderWatchlistImportResult({ total_added: added, skipped, added_titles: titles });
       await loadWatchlist();
     }
   } catch (error) {

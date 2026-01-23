@@ -608,6 +608,7 @@ class Library
       end
       rows = []
       added_titles = []
+      title_limit = 50
       skipped = 0
       progress = {
         'processed' => 0,
@@ -674,14 +675,17 @@ class Library
         update_progress.call
       end
       if rows.empty?
+        progress['added_titles'] = []
         update_progress.call(true)
         return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
       end
 
       count = WatchlistStore.upsert(rows)
       app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
-      added_titles = [] if detailed && count.to_i.zero?
+      added_titles = [] if count.to_i.zero?
+      added_titles = added_titles.first(title_limit)
       progress['added'] = count
+      progress['added_titles'] = added_titles
       update_progress.call(true)
       detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
     rescue => e
