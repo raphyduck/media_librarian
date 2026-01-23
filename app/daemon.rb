@@ -16,6 +16,7 @@ require 'base64'
 require 'get_process_mem'
 require 'socket'
 require 'open3'
+require 'csv'
 
 require_relative '../lib/cache'
 require_relative '../lib/logger'
@@ -1318,6 +1319,12 @@ class Daemon
         handle_watchlist_request(req, res)
       end
 
+      @control_server.mount_proc('/watchlist/import-csv') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_watchlist_import_csv_request(req, res)
+      end
+
       start_socket_server
       @control_thread = Thread.new { @control_server.start }
     end
@@ -2297,6 +2304,39 @@ class Daemon
       else
         method_not_allowed(res, 'GET, POST, DELETE')
       end
+    rescue JSON::ParserError => e
+      error_response(res, status: 422, message: e.message)
+    rescue StandardError => e
+      error_response(res, status: 422, message: e.message)
+    end
+
+    def handle_watchlist_import_csv_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      payload = parse_payload(req)
+      csv_content = payload['csv_content']
+      return error_response(res, status: 422, message: 'missing_csv') if csv_content.nil?
+
+      csv_content = csv_content.to_s
+      return error_response(res, status: 422, message: 'empty_csv') if csv_content.strip.empty?
+
+      begin
+        csv_rows = CSV.parse(csv_content, headers: true)
+      rescue CSV::MalformedCSVError
+        return error_response(res, status: 422, message: 'invalid_csv')
+      end
+
+      return error_response(res, status: 422, message: 'empty_csv') if csv_rows.empty?
+
+      result = Library.import_list_csv(
+        list_name: payload['list_name'],
+        replace: payload['replace'],
+        csv_rows: csv_rows,
+        detailed: true
+      )
+
+      result.delete('skipped') if result['skipped'].to_i.zero?
+      json_response(res, body: result)
     rescue JSON::ParserError => e
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
