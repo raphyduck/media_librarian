@@ -241,19 +241,20 @@ class VideoUtils
     status = nil
     Open3.popen3(tool, *args) do |stdin, out, err, wait|
       stdin.close
+      out_thread = Thread.new { stdout << out.read.to_s }
+      err_thread = Thread.new { stderr << err.read.to_s }
       begin
-        Timeout.timeout(timeout_s) do
-          stdout = out.read
-          stderr = err.read
-          status = wait.value
-        end
+        Timeout.timeout(timeout_s) { status = wait.value }
       rescue Timeout::Error
         pid = wait.pid
         Process.kill('TERM', pid) rescue nil
         Process.kill('KILL', pid) rescue nil
-        stdout << out.read.to_s
-        stderr << err.read.to_s
+        out_thread.join
+        err_thread.join
         return [stdout, "timeout after #{timeout_s}s", nil]
+      ensure
+        out_thread.join
+        err_thread.join
       end
     end
     [stdout, stderr, status]
