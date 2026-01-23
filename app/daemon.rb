@@ -17,6 +17,7 @@ require 'get_process_mem'
 require 'socket'
 require 'open3'
 require 'csv'
+require 'tmpdir'
 
 require_relative '../lib/cache'
 require_relative '../lib/logger'
@@ -2314,6 +2315,13 @@ class Daemon
       return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
 
       payload = parse_payload(req)
+      if truthy?(payload['async'])
+        validate_watchlist_csv_payload!(payload)
+        args = build_watchlist_import_csv_args(payload)
+        job = enqueue(args: args, parent_thread: nil, task: 'watchlist_import_csv')
+        return json_response(res, body: { 'job_id' => job&.id, 'job' => job&.to_h })
+      end
+
       csv_content = payload['csv_content']
       return error_response(res, status: 422, message: 'missing_csv') if csv_content.nil?
 
@@ -2341,6 +2349,69 @@ class Daemon
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
       error_response(res, status: 422, message: e.message)
+    end
+
+    def build_watchlist_import_csv_args(payload)
+      list_name = payload['list_name'].to_s.strip
+      replace = payload['replace']
+      csv_content = payload['csv_content']
+      csv_path = payload['csv_path']
+
+      if csv_content.nil? && csv_path.nil?
+        raise ArgumentError, 'missing_csv'
+      end
+
+      args = ['library', 'import_csv']
+      args << "--list_name=#{list_name}" unless list_name.empty?
+      args << "--replace=#{replace}" unless replace.nil?
+      args << "--csv_path=#{resolve_watchlist_csv_path(csv_content, csv_path)}"
+      args
+    end
+
+    def validate_watchlist_csv_payload!(payload)
+      csv_content = payload['csv_content']
+      csv_path = payload['csv_path']
+
+      if csv_content.nil?
+        csv_path = csv_path.to_s.strip
+        raise ArgumentError, 'missing_csv' if csv_path.empty?
+        raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
+
+        begin
+          csv_rows = CSV.foreach(csv_path, headers: true)
+          return unless csv_rows.none?
+        rescue CSV::MalformedCSVError
+          raise ArgumentError, 'invalid_csv'
+        end
+        raise ArgumentError, 'empty_csv'
+      end
+
+      content = csv_content.to_s
+      raise ArgumentError, 'empty_csv' if content.strip.empty?
+
+      begin
+        csv_rows = CSV.parse(content, headers: true)
+      rescue CSV::MalformedCSVError
+        raise ArgumentError, 'invalid_csv'
+      end
+      raise ArgumentError, 'empty_csv' if csv_rows.empty?
+    end
+
+    def resolve_watchlist_csv_path(csv_content, csv_path)
+      if csv_content.nil?
+        csv_path = csv_path.to_s.strip
+        raise ArgumentError, 'missing_csv' if csv_path.empty?
+        raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
+
+        return csv_path
+      end
+
+      content = csv_content.to_s
+      raise ArgumentError, 'empty_csv' if content.strip.empty?
+
+      path = File.join(Dir.tmpdir, "watchlist-import-#{SecureRandom.hex(8)}.csv")
+      File.write(path, content)
+      path
     end
 
     def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
