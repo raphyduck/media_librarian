@@ -587,16 +587,33 @@ class Library
   def self.import_list_csv(csv_path: nil, csv_content: nil, csv_rows: nil, replace: '1', detailed: false)
     begin
       csv_rows ||= begin
-        if csv_content
-          CSV.parse(csv_content.to_s, headers: true)
+        detect_col_sep = lambda do |line|
+          line = line.to_s
+          commas = line.count(',')
+          semis = line.count(';')
+          semis > commas ? ';' : ','
+        end
+        col_sep = if csv_content
+          detect_col_sep.call(csv_content.to_s.lines.first)
         else
           raise ArgumentError, 'csv_path must be provided' if csv_path.to_s.strip.empty?
           raise ArgumentError, "CSV file not found: #{csv_path}" unless File.file?(csv_path)
 
-          CSV.foreach(csv_path, headers: true)
+          detect_col_sep.call(File.open(csv_path, &:gets))
+        end
+        csv_opts = { headers: true }
+        csv_opts[:col_sep] = col_sep if col_sep == ';'
+        if csv_content
+          CSV.parse(csv_content.to_s, **csv_opts)
+        else
+          CSV.foreach(csv_path, **csv_opts)
         end
       end
       csv_rows = csv_rows.to_a unless csv_rows.is_a?(Array)
+      headers = csv_rows.first&.headers
+      if headers && (!headers.include?('title') || !headers.include?('type'))
+        raise ArgumentError, "CSV headers must include 'title' and 'type' (got: #{headers.join(', ')})"
+      end
       total = csv_rows.size
       speaker = app.respond_to?(:speaker) ? app.speaker : nil
       speaker&.speak_up("import_list_csv: starting (total #{total})", 0)
