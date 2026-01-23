@@ -541,9 +541,16 @@
               <h2>Liste d'intérêt</h2>
               <div class="panel-tools">
                 <div class="actions">
+                  <input id="watchlist-import-file" type="file" accept=".csv,text/csv" />
+                  <button id="watchlist-import-button" type="button">Importer CSV</button>
                   <button id="refresh-watchlist" type="button">Rafraîchir</button>
                 </div>
               </div>
+            </div>
+
+            <div id="watchlist-import-result" class="hidden">
+              <p class="hint" id="watchlist-import-summary"></p>
+              <div id="watchlist-import-list"></div>
             </div>
 
             <div class="download-list-table">

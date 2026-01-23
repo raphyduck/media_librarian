@@ -3296,6 +3296,25 @@ function renderWatchlist(entries = [], { message } = {}) {
   });
 }
 
+function renderWatchlistImportResult(result = {}) {
+  const container = document.getElementById('watchlist-import-result');
+  const summary = document.getElementById('watchlist-import-summary');
+  const listContainer = document.getElementById('watchlist-import-list');
+  if (!container || !summary || !listContainer) {
+    return;
+  }
+  const titles = Array.isArray(result.added_titles) ? result.added_titles : [];
+  const totalAdded = Number.isFinite(Number(result.total_added))
+    ? Number(result.total_added)
+    : titles.length;
+  const skipped = Number.isFinite(Number(result.skipped)) ? Number(result.skipped) : 0;
+  const base = totalAdded ? `${totalAdded} titre(s) ajouté(s).` : 'Aucun titre ajouté.';
+  summary.textContent = skipped ? `${base} ${skipped} ignoré(s).` : base;
+  const list = buildFileList(titles);
+  listContainer.replaceChildren(...(list ? [list] : []));
+  container.classList.toggle('hidden', !totalAdded && !titles.length && !skipped);
+}
+
 async function loadWatchlist() {
   try {
     const data = await fetchJson('/watchlist');
@@ -3304,6 +3323,44 @@ async function loadWatchlist() {
     const message = error?.message || 'Impossible de charger la liste.';
     renderWatchlist([], { message });
     showNotification(message, 'error');
+  }
+}
+
+async function importWatchlistCsv() {
+  const input = document.getElementById('watchlist-import-file');
+  const button = document.getElementById('watchlist-import-button');
+  const file = input?.files?.[0];
+  if (!file) {
+    showNotification('Sélectionnez un fichier CSV.', 'error');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const csvContent = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Lecture du fichier impossible.'));
+      reader.readAsText(file);
+    });
+    const data = await fetchJson('/watchlist/import-csv', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ csv_content: csvContent }),
+    });
+    renderWatchlistImportResult(data || {});
+    showNotification('Import terminé.');
+    await loadWatchlist();
+  } catch (error) {
+    showNotification(error.message || 'Import impossible.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+    if (input) {
+      input.value = '';
+    }
   }
 }
 
@@ -4094,6 +4151,10 @@ function setupEventListeners() {
   bindEditorAction('reload-templates', 'templates', 'reload');
   bindEditorAction('save-trackers', 'trackers', 'save');
   bindEditorAction('reload-trackers', 'trackers', 'reload');
+  const watchlistImportButton = document.getElementById('watchlist-import-button');
+  if (watchlistImportButton) {
+    watchlistImportButton.addEventListener('click', importWatchlistCsv);
+  }
   ['refresh-watchlist', 'refresh-pending-torrents']
     .map((id) => document.getElementById(id))
     .filter(Boolean)
