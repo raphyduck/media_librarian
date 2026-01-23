@@ -599,7 +599,7 @@ class Library
       csv_rows = csv_rows.to_a unless csv_rows.is_a?(Array)
       total = csv_rows.size
       speaker = app.respond_to?(:speaker) ? app.speaker : nil
-      verbose = detailed || (defined?(Env) && Env.debug?)
+      verbose = true
       speaker&.speak_up("import_list_csv: starting (total #{total})", 0)
       rows = []
       added_titles = []
