@@ -2347,7 +2347,7 @@ class Daemon
       return error_response(res, status: 422, message: 'empty_csv') if csv_content.strip.empty?
 
       begin
-        csv_rows = CSV.parse(csv_content, headers: true)
+        csv_rows = CSV.parse(csv_content, headers: true, col_sep: detect_csv_col_sep(csv_content))
       rescue CSV::MalformedCSVError
         return error_response(res, status: 422, message: 'invalid_csv')
       end
@@ -2405,7 +2405,7 @@ class Daemon
       raise ArgumentError, 'empty_csv' if content.strip.empty?
 
       begin
-        csv_rows = CSV.parse(content, headers: true)
+        csv_rows = CSV.parse(content, headers: true, col_sep: detect_csv_col_sep(content))
       rescue CSV::MalformedCSVError
         raise ArgumentError, 'invalid_csv'
       end
@@ -2427,6 +2427,11 @@ class Daemon
       path = File.join(Dir.tmpdir, "watchlist-import-#{SecureRandom.hex(8)}.csv")
       File.write(path, content)
       path
+    end
+
+    def detect_csv_col_sep(content)
+      line = content.to_s.lines.first.to_s
+      line.count(';') > line.count(',') ? ';' : ','
     end
 
     def handle_directory_request(req, res, base_path, directory, mutex, after_save: nil)
