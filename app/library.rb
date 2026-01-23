@@ -597,14 +597,15 @@ class Library
           CSV.foreach(csv_path, headers: true)
         end
       end
-      total = if csv_rows.respond_to?(:size)
-                csv_rows.size
-              elsif csv_path.to_s.strip != ''
-                CSV.foreach(csv_path, headers: true).count
-              else
-                csv_rows = csv_rows.to_a
-                csv_rows.size
-              end
+      total = csv_rows.respond_to?(:size) ? csv_rows.size : nil
+      if total.nil?
+        total = if csv_path.to_s.strip != ''
+                  CSV.foreach(csv_path, headers: true).count
+                else
+                  csv_rows = csv_rows.to_a
+                  csv_rows.size
+                end
+      end
       rows = []
       added_titles = []
       skipped = 0
