@@ -629,6 +629,7 @@ class Library
 
       count = WatchlistStore.upsert(rows)
       app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
+      added_titles = [] if detailed && count.to_i.zero?
       detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
