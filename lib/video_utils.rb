@@ -149,6 +149,10 @@ class VideoUtils
   def self.process_mkv(path_source, tool:, args:, temp_dir: '/tmp', backup: true, timeout_s: nil, dry_run: false)
     log = lambda { |msg| MediaLibrarian.app.speaker.speak_up(msg) }
     return { success: false, message: "source file not found: #{path_source}" } unless File.file?(path_source)
+    if tool.to_s == 'mkvmerge' && !dry_run && !system('command -v mkvmerge >/dev/null 2>&1')
+      log.call('mkvmerge not available in PATH')
+      return { success: false, message: 'mkvmerge not available in PATH' }
+    end
 
     dir = File.dirname(path_source)
     base = File.basename(path_source)
