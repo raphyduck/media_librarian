@@ -2355,7 +2355,6 @@ class Daemon
       return error_response(res, status: 422, message: 'empty_csv') if csv_rows.empty?
 
       result = Library.import_list_csv(
-        list_name: payload['list_name'],
         replace: payload['replace'],
         csv_rows: csv_rows,
         detailed: true
@@ -2370,7 +2369,6 @@ class Daemon
     end
 
     def build_watchlist_import_csv_args(payload)
-      list_name = payload['list_name'].to_s.strip
       replace = payload['replace']
       csv_content = payload['csv_content']
       csv_path = payload['csv_path']
@@ -2380,7 +2378,6 @@ class Daemon
       end
 
       args = ['library', 'import_csv']
-      args << "--list_name=#{list_name}" unless list_name.empty?
       args << "--replace=#{replace}" unless replace.nil?
       args << "--csv_path=#{resolve_watchlist_csv_path(csv_content, csv_path)}"
       args
