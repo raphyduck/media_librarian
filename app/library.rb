@@ -598,6 +598,9 @@ class Library
       end
       csv_rows = csv_rows.to_a unless csv_rows.is_a?(Array)
       total = csv_rows.size
+      speaker = app.respond_to?(:speaker) ? app.speaker : nil
+      verbose = detailed || (defined?(Env) && Env.debug?)
+      speaker&.speak_up("import_list_csv: starting (total #{total})", 0)
       rows = []
       added_titles = []
       title_limit = 50
@@ -627,9 +630,12 @@ class Library
         progress['processed'] += 1
         title = row['title']&.to_s&.strip
         progress['current_title'] = title
+        row_notes = ["title=#{title.to_s.empty? ? '(empty)' : title}"]
         if title.nil? || title.empty?
           skipped += 1
           progress['skipped'] += 1
+          row_notes << 'skip=empty_title'
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
           update_progress.call
           next
         end
@@ -639,17 +645,24 @@ class Library
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
         imdb_id = imdb_from_row.call(row)
+        row_notes << "imdb_id=#{imdb_id.empty? ? '(empty)' : imdb_id}"
         entry = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
         persisted = entry
+        row_notes << "db=#{entry ? 'hit' : 'miss'}"
         if entry.nil?
           entry = calendar_service.search(title: title, year: year_i, type: type, persist: false).first
-          entry = calendar_service.persist_entry(entry) || entry if entry
+          row_notes << "imdb_fallback=#{entry ? 'hit' : 'miss'}"
+          persisted_entry = entry ? calendar_service.persist_entry(entry) : nil
+          row_notes << "persist=#{persisted_entry ? 'ok' : 'failed'}" if entry
+          entry = persisted_entry || entry if entry
           imdb_id = entry[:imdb_id].to_s.strip if entry
           persisted = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
         end
         if entry.nil? || persisted.nil?
           skipped += 1
           progress['skipped'] += 1
+          row_notes << "skip=#{entry.nil? ? 'no_result' : 'persist_failed'}"
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
           update_progress.call
           next
         end
@@ -663,6 +676,8 @@ class Library
         if imdb_id.empty?
           skipped += 1
           progress['skipped'] += 1
+          row_notes << 'skip=invalid_imdb_id'
+          speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
           update_progress.call
           next
         end
@@ -677,24 +692,29 @@ class Library
         rows << { imdb_id: imdb_id, title: entry_title, type: entry_type, metadata: metadata.empty? ? nil : metadata }
         added_titles << entry_title
         progress['added'] += 1
+        row_notes << 'watchlist=queued'
+        speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0) if verbose
         update_progress.call
       end
       if rows.empty?
         progress['added_titles'] = []
         update_progress.call(true)
+        speaker&.speak_up("import_list_csv: done (added 0, skipped #{skipped}, errors 0)", 0)
         return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
       end
 
       count = WatchlistStore.upsert(rows)
-      app.speaker.speak_up("import_list_csv: imported #{count} rows into watchlist", 0) if defined?(app.speaker)
+      speaker&.speak_up("import_list_csv: imported #{count} rows into watchlist", 0)
       added_titles = [] if count.to_i.zero?
       added_titles = added_titles.first(title_limit)
       progress['added'] = count
       progress['added_titles'] = added_titles
       update_progress.call(true)
+      speaker&.speak_up("import_list_csv: done (added #{count}, skipped #{skipped}, errors 0)", 0)
       detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
+      speaker&.speak_up("import_list_csv: done (added 0, skipped 0, errors 1)", 0) rescue nil
       detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => 0 } : 0
     end
   end
