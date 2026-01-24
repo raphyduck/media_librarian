@@ -633,7 +633,7 @@ class Library
       progress_step = 25
       jid = Thread.current[:jid]
       update_progress = lambda do |force = false|
-        return unless jid && defined?(Daemon) && Daemon.respond_to?(:update_job_progress)
+        return unless jid && defined?(Daemon) && Daemon.respond_to?(:update_job_progress, true)
         return unless force || (progress['processed'].positive? && (progress['processed'] % progress_step).zero?)
 
         Daemon.update_job_progress(jid, progress.dup)
