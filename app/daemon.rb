@@ -627,12 +627,7 @@ class Daemon
         @template_cache[type].each do |task, params|
           limit = determine_queue_limit(params)
           queue_limits[task] = limit
-          args = params['command'].split('.')
-          if params['args'].is_a?(Hash)
-            args += params['args'].map { |a, v| "--#{a}=#{v}" }
-          elsif params['args'].is_a?(Array)
-            args += params['args']
-          end
+          args = build_task_args(params)
 
           case type
           when 'periodic'
@@ -1100,9 +1095,32 @@ class Daemon
         @scheduler.wait_for_termination
       end
 
-      @template_cache = nil
-      @queue_limits = Concurrent::Hash.new
-      @last_execution = {}
+      new_template = app.args_dispatch.load_template(scheduler_name, app.template_dir)
+      old_signatures = scheduler_signature_map(@template_cache)
+      new_signatures = scheduler_signature_map(new_template)
+      new_last_execution = {}
+      new_queue_limits = Concurrent::Hash.new
+
+      new_signatures.each do |signature, entry|
+        previous = old_signatures[signature]
+        next unless previous
+
+        old_task = previous[:task]
+        new_task = entry[:task]
+        new_last_execution[new_task] = @last_execution[old_task] if @last_execution&.key?(old_task)
+        next unless @queue_limits
+
+        new_queue_limits[new_task] = @queue_limits[old_task] if @queue_limits.key?(old_task)
+        old_queue = previous[:queue]
+        new_queue = entry[:queue]
+        if old_queue && new_queue && @queue_limits.key?(old_queue)
+          new_queue_limits[new_queue] = @queue_limits[old_queue]
+        end
+      end
+
+      @template_cache = new_template
+      @queue_limits = new_queue_limits
+      @last_execution = new_last_execution
       @scheduler = nil
       start_scheduler(scheduler_name)
       true
@@ -3326,6 +3344,52 @@ class Daemon
 
     def queue_limits
       @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def build_task_args(params)
+      args = params['command'].to_s.split('.')
+      if params['args'].is_a?(Hash)
+        args += params['args'].map { |a, v| "--#{a}=#{v}" }
+      elsif params['args'].is_a?(Array)
+        args += params['args']
+      end
+      args
+    end
+
+    def scheduler_task_signature(task, params, type)
+      return unless params.is_a?(Hash)
+
+      args = params['args']
+      normalized_args = args.is_a?(Hash) ? args.sort.to_h : args
+      frequency = type == 'periodic' ? task_frequency(task, params).to_i : nil
+      JSON.generate([type, task.to_s, params['command'].to_s, normalized_args, frequency])
+    end
+
+    def scheduler_task_queue(task, params, type)
+      return task unless type == 'periodic'
+
+      args = build_task_args(params)
+      fetch_function_config(args)[1] || task
+    end
+
+    def scheduler_signature_map(template)
+      signatures = {}
+      return signatures unless template
+
+      %w[periodic continuous].each do |type|
+        next unless template[type]
+
+        template[type].each do |task, params|
+          signature = scheduler_task_signature(task, params, type)
+          next unless signature
+
+          signatures[signature] = {
+            task: task,
+            queue: scheduler_task_queue(task, params, type)
+          }
+        end
+      end
+      signatures
     end
 
     def task_frequency(task, params)
