@@ -636,7 +636,7 @@ class Library
         return unless jid && defined?(Daemon) && Daemon.respond_to?(:update_job_progress, true)
         return unless force || (progress['processed'].positive? && (progress['processed'] % progress_step).zero?)
 
-        Daemon.update_job_progress(jid, progress.dup)
+        Daemon.send(:update_job_progress, jid, progress.dup)
       end
       update_progress.call(true)
       repository = CalendarEntriesRepository.new(app: app)
