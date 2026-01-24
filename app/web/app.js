@@ -3492,16 +3492,21 @@ async function importWatchlistCsv() {
     button.disabled = true;
   }
   try {
+    const debug = document.getElementById('watchlist-import-debug')?.checked;
     const csvContent = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => reject(reader.error || new Error('Lecture du fichier impossible.'));
       reader.readAsText(file);
     });
+    const payload = { csv_content: csvContent, async: true };
+    if (debug) {
+      payload.debug = 1;
+    }
     const data = await fetchJson('/watchlist/import-csv', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ csv_content: csvContent, async: true, debug: 1 }),
+      body: JSON.stringify(payload),
     });
     const jobId = data?.job_id || data?.job?.id;
     if (!jobId) {
