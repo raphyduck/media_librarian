@@ -67,7 +67,7 @@ module WatchlistStore
 
       title = (entry[:title] || entry['title']).to_s.strip
       type = normalize_type(entry[:type] || entry['type'] || 'movies')
-      next if imdb_id.empty? || title.empty? || type.empty?
+      next if imdb_id.empty? || type.empty? || !valid_title?(title, imdb_id)
 
       {
         imdb_id: imdb_id,
@@ -75,6 +75,16 @@ module WatchlistStore
         updated_at: Time.now.utc
       }
     end
+  end
+
+  def valid_title?(title, identifier = nil)
+    normalized_title = title.to_s.strip
+    return false if normalized_title.empty?
+
+    normalized_id = identifier.to_s.strip
+    return false if !normalized_id.empty? && normalized_title == normalized_id
+
+    true
   end
 
   def normalize_metadata(metadata)
