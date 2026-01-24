@@ -86,7 +86,10 @@ def delete_dependents(db, row, dry_run, verbose)
   deps.each do |table, cols|
     next unless db.table_exists?(table)
 
+    columns = db.database.schema(table).map(&:first)
     cols.each do |col|
+      next unless columns.include?(col)
+
       value = col == :external_id ? external_id : row[col]
       next if value.to_s.strip.empty?
 
