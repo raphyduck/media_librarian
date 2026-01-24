@@ -3501,7 +3501,7 @@ async function importWatchlistCsv() {
     const data = await fetchJson('/watchlist/import-csv', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ csv_content: csvContent, async: true }),
+      body: JSON.stringify({ csv_content: csvContent, async: true, debug: 1 }),
     });
     const jobId = data?.job_id || data?.job?.id;
     if (!jobId) {
