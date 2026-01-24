@@ -10,7 +10,7 @@
 #   - OMDB_API_KEY (env var), or
 #   - ~/.medialibrarian/conf.yml with omdb.api_key
 #
-# If enrichment fails, the script deletes the calendar entry (and watchlist
+# If enrichment fails, the script deletes the calendar entry (and dependent
 # rows referencing the same ids) and logs the row for manual review.
 
 require 'bundler/setup'
@@ -66,6 +66,21 @@ def enrich_title(row, api, app, db)
   title.to_s.strip.empty? ? nil : title
 end
 
+def delete_dependents(db, row, dry_run, verbose)
+  deps = { watchlist: %i[imdb_id external_id], local_media: %i[imdb_id] }
+  deps.each do |table, cols|
+    next unless db.table_exists?(table)
+
+    cols.each do |col|
+      value = row[col]
+      next if value.to_s.strip.empty?
+
+      puts "  deleting #{table} where #{col}=#{value.inspect}" if verbose
+      db.delete_rows(table, { col => value }) unless dry_run
+    end
+  end
+end
+
 candidates = rows.select do |row|
   id_title_match?(row[:title], row[:external_id]) || id_title_match?(row[:title], row[:imdb_id])
 end
@@ -87,11 +102,8 @@ candidates.each do |row|
     flagged += 1
     unless options[:dry_run]
       db.delete_rows(:calendar_entries, { id: row[:id] })
-      if db.table_exists?(:watchlist)
-        db.delete_rows(:watchlist, { imdb_id: row[:imdb_id] }) unless row[:imdb_id].to_s.strip.empty?
-        db.delete_rows(:watchlist, { external_id: row[:external_id] }) unless row[:external_id].to_s.strip.empty?
-      end
     end
+    delete_dependents(db, row, options[:dry_run], options[:verbose])
     deleted += 1
     next
   end
