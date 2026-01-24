@@ -17,7 +17,7 @@ module MediaLibrarian
 
         folder_type = request.type.empty? ? 'movies' : request.type
         library = Library.process_folder(type: folder_type, folder: root, no_prompt: 1, cache_expiration: 1)
-        persist_media_entries(library, folder_type)
+        persist_media_entries(library, folder_type, root)
       rescue StandardError => e
         speaker.tell_error(e, Utils.arguments_dump(binding))
         []
@@ -25,7 +25,7 @@ module MediaLibrarian
 
       private
 
-      def persist_media_entries(library, type)
+      def persist_media_entries(library, type, root = nil)
         return [] unless library.is_a?(Hash)
 
         normalized_type = Utils.canonical_media_type(type)
@@ -33,8 +33,9 @@ module MediaLibrarian
         existing_calendar_ids = calendar_imdb_ids
         cached_calendar = {}
         cleaned_watchlist = Set.new
+        found_paths = Set.new
 
-        library.each_with_object([]) do |(id, entry), memo|
+        results = library.each_with_object([]) do |(id, entry), memo|
           next if id.is_a?(Symbol)
           next unless entry.is_a?(Hash)
 
@@ -53,6 +54,7 @@ module MediaLibrarian
             next unless local_path && File.file?(local_path)
 
             files_found = true
+            found_paths << local_path
             metadata = {
               media_type: normalized_type,
               imdb_id: imdb_id,
@@ -65,6 +67,9 @@ module MediaLibrarian
 
           remove_from_watchlist(watchlist_id, normalized_type, cleaned_watchlist) if files_found
         end
+
+        cleanup_missing_local_media(normalized_type, root, found_paths)
+        results
       end
 
       def extract_imdb_id(subject)
@@ -232,6 +237,21 @@ module MediaLibrarian
 
       def watchlist_table?
         app&.db&.respond_to?(:table_exists?) && app.db.table_exists?(:watchlist)
+      end
+
+      def cleanup_missing_local_media(media_type, root, found_paths)
+        return unless app&.db
+
+        root = root.to_s
+        rows = app.db.get_rows(:local_media, { media_type: media_type })
+        rows.each do |row|
+          local_path = row[:local_path] || row['local_path']
+          next if local_path.to_s.empty?
+          next if !root.empty? && !local_path.start_with?(root)
+          next if found_paths.include?(local_path)
+
+          app.db.delete_rows(:local_media, { media_type: media_type, local_path: local_path })
+        end
       end
     end
   end
