@@ -3425,11 +3425,22 @@ async function pollWatchlistImport(jobId) {
   try {
     const job = await fetchJson(`/jobs/${encodeURIComponent(jobId)}`);
     const progress = job?.progress || {};
-    const added = Number.isFinite(Number(progress.added)) ? Number(progress.added) : 0;
-    const total = Number.isFinite(Number(progress.total)) ? Number(progress.total) : 0;
-    const skipped = Number.isFinite(Number(progress.skipped)) ? Number(progress.skipped) : 0;
+    const result = job?.result && typeof job.result === 'object' ? job.result : {};
+    const added = Number.isFinite(Number(progress.added))
+      ? Number(progress.added)
+      : Number(result.total_added) || 0;
+    const skipped = Number.isFinite(Number(progress.skipped))
+      ? Number(progress.skipped)
+      : Number(result.skipped) || 0;
+    const total = Number.isFinite(Number(progress.total))
+      ? Number(progress.total)
+      : added + skipped;
     const currentTitle = progress.current_title || '';
-    const titles = Array.isArray(progress.added_titles) ? progress.added_titles : [];
+    const titles = Array.isArray(progress.added_titles)
+      ? progress.added_titles
+      : Array.isArray(result.added_titles)
+      ? result.added_titles
+      : [];
     const status = String(job?.status || '');
     const statusLabel = status === 'finished'
       ? 'Terminé'
