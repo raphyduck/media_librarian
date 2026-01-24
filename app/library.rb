@@ -646,11 +646,13 @@ class Library
         progress['processed'] += 1
         title = row['title']&.to_s&.strip
         progress['current_title'] = title
+        imdb_id = imdb_from_row.call(row)
         row_notes = ["title=#{title.to_s.empty? ? '(empty)' : title}"]
-        if title.nil? || title.empty?
+        row_notes << "imdb_id=#{imdb_id.empty? ? '(empty)' : imdb_id}"
+        unless WatchlistStore.valid_title?(title, imdb_id)
           skipped += 1
           progress['skipped'] += 1
-          row_notes << 'skip=empty_title'
+          row_notes << 'skip=invalid_title'
           speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
@@ -665,8 +667,6 @@ class Library
           year_i ||= match[1].to_i
           search_title = title.sub(/\s*\(\d{4}\)\s*\z/, '').strip
         end
-        imdb_id = imdb_from_row.call(row)
-        row_notes << "imdb_id=#{imdb_id.empty? ? '(empty)' : imdb_id}"
         entry = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
         persisted = entry
         row_notes << "db=#{entry ? 'hit' : 'miss'}"
