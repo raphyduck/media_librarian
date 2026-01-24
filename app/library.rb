@@ -621,12 +621,14 @@ class Library
       added_titles = []
       title_limit = 50
       skipped = 0
+      skipped_entries = []
       progress = {
         'processed' => 0,
         'added' => 0,
         'skipped' => 0,
         'total' => total,
-        'current_title' => nil
+        'current_title' => nil,
+        'skipped_entries' => []
       }
       progress_step = 25
       jid = Thread.current[:jid]
@@ -642,6 +644,15 @@ class Library
       imdb_from_row = lambda do |row|
         (row['IMDB_id'] || row['imdb_id'] || row['imdb'] || row['external_id']).to_s.strip
       end
+      register_skip = lambda do |title, imdb_id, reason|
+        label = title.to_s.strip
+        label = imdb_id.to_s.strip if label.empty?
+        label = '(sans titre)' if label.empty?
+        meta = imdb_id.to_s.strip
+        meta = '' if meta.empty? || meta == label
+        skipped_entries << "#{meta.empty? ? label : "#{label} (#{meta})"} — #{reason}"
+        progress['skipped_entries'] = skipped_entries.dup
+      end
       csv_rows.each do |row|
         progress['processed'] += 1
         title = row['title']&.to_s&.strip
@@ -653,6 +664,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << 'skip=invalid_title'
+          register_skip.call(title, imdb_id, 'invalid_title')
           speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
@@ -684,6 +696,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << "skip=#{entry.nil? ? 'no_result' : 'persist_failed'}"
+          register_skip.call(title, imdb_id, entry.nil? ? 'no_result' : 'persist_failed')
           speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
@@ -699,6 +712,7 @@ class Library
           skipped += 1
           progress['skipped'] += 1
           row_notes << 'skip=invalid_imdb_id'
+          register_skip.call(entry_title, imdb_id, 'invalid_imdb_id')
           speaker&.speak_up("import_list_csv: row #{progress['processed']}/#{total} #{row_notes.join(' | ')}", 0)
           update_progress.call
           next
@@ -720,9 +734,10 @@ class Library
       end
       if rows.empty?
         progress['added_titles'] = []
+        progress['skipped_entries'] = skipped_entries.dup
         update_progress.call(true)
         speaker&.speak_up("import_list_csv: done (added 0, skipped #{skipped}, errors 0)", 0)
-        return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped } : 0
+        return detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => skipped, 'skipped_entries' => skipped_entries } : 0
       end
 
       count = WatchlistStore.upsert(rows)
@@ -731,13 +746,14 @@ class Library
       added_titles = added_titles.first(title_limit)
       progress['added'] = count
       progress['added_titles'] = added_titles
+      progress['skipped_entries'] = skipped_entries.dup
       update_progress.call(true)
       speaker&.speak_up("import_list_csv: done (added #{count}, skipped #{skipped}, errors 0)", 0)
-      detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped } : count
+      detailed ? { 'added_titles' => added_titles, 'total_added' => count, 'skipped' => skipped, 'skipped_entries' => skipped_entries } : count
     rescue => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
       speaker&.speak_up("import_list_csv: done (added 0, skipped 0, errors 1)", 0) rescue nil
-      detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => 0 } : 0
+      detailed ? { 'added_titles' => [], 'total_added' => 0, 'skipped' => 0, 'skipped_entries' => [] } : 0
     end
   end
 
