@@ -2380,6 +2380,7 @@ class Daemon
       args = ['library', 'import_csv']
       args << "--replace=#{replace}" unless replace.nil?
       args << "--csv_path=#{resolve_watchlist_csv_path(csv_content, csv_path)}"
+      args << '--debug=1' if truthy?(payload['debug']) || payload['debug'] == 1
       args
     end
 
