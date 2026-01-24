@@ -106,22 +106,31 @@ tmdb_provider = build_tmdb_provider(app)
 
 dependents = dependent_tables(db)
 
-incorrect = rows.filter_map do |row|
+total = rows.size
+puts "Scanning #{total} calendar entr#{total == 1 ? 'y' : 'ies'}..."
+incorrect = []
+rows.each_with_index do |row, index|
+  if (index % 50).zero? || index + 1 == total
+    puts "Checked #{index + 1}/#{total} entries..."
+  end
+
   expected = actual_type_for(row, service, omdb_api, tmdb_provider)
   next unless expected
 
   current = entry_media_type(row).to_s
   next if Utils.regularise_media_type(expected.to_s) == Utils.regularise_media_type(current)
 
-  { row: row, expected: expected, current: current }
+  incorrect << { row: row, expected: expected, current: current }
 end
+
+puts "Incorrect entries found: #{incorrect.size}."
 
 if incorrect.empty?
   puts 'No incorrect calendar entries found.'
   exit(0)
 end
 
-incorrect.each do |item|
+incorrect.each_with_index do |item, index|
   row = item[:row]
   id = row[:id]
   imdb_id = row[:imdb_id] || row['imdb_id']
@@ -129,6 +138,7 @@ incorrect.each do |item|
   title = row[:title] || row['title']
   touched = dependents.keys + [:calendar_entries]
 
+  puts "Purging #{index + 1}/#{incorrect.size}..." unless options[:dry_run]
   puts [
     "id=#{id}",
     "imdb_id=#{imdb_id}",
