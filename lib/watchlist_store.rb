@@ -6,7 +6,7 @@ module WatchlistStore
   module_function
 
   def upsert(entries)
-    rows = normalize_entries(entries)
+    rows = filter_rows_with_calendar_entries(normalize_entries(entries))
     rows.each { |row| MediaLibrarian.app.db.insert_row('watchlist', row, 1) }
     rows.length
   rescue StandardError => e
@@ -33,9 +33,12 @@ module WatchlistStore
     calendar_rows = MediaLibrarian.app.db.get_rows('calendar_entries', imdb_id: imdb_ids)
     calendar_index = build_calendar_index(calendar_rows)
 
-    rows.map do |row|
+    rows.filter_map do |row|
       imdb_id = normalize_imdb(row[:imdb_id] || row['imdb_id'])
-      merge_calendar_data(row, calendar_index[imdb_id])
+      calendar_row = calendar_index[imdb_id]
+      next unless calendar_row
+
+      merge_calendar_data(row, calendar_row)
     end
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, 'WatchlistStore.fetch_with_details') rescue nil
@@ -105,6 +108,23 @@ module WatchlistStore
     end
   end
 
+  def filter_rows_with_calendar_entries(rows)
+    return rows unless calendar_table?
+    return [] if rows.empty?
+
+    imdb_ids = rows.filter_map { |row| normalize_imdb(row[:imdb_id]) }.uniq
+    return [] if imdb_ids.empty?
+
+    calendar_rows = MediaLibrarian.app.db.get_rows('calendar_entries', imdb_id: imdb_ids)
+    calendar_index = build_calendar_index(calendar_rows)
+    rows.select { |row| calendar_index.key?(normalize_imdb(row[:imdb_id])) }
+  end
+
+  def calendar_table?
+    MediaLibrarian.app&.db&.respond_to?(:table_exists?) &&
+      MediaLibrarian.app.db.table_exists?(:calendar_entries)
+  end
+
   def merge_calendar_data(row, calendar_row)
     base = {
       imdb_id: normalize_imdb(row[:imdb_id] || row['imdb_id']),
@@ -150,5 +170,6 @@ module WatchlistStore
 
   private_class_method :normalize_entries, :normalize_metadata, :imdb_id_for,
                        :normalize_type, :normalize_imdb, :build_calendar_index,
-                       :merge_calendar_data, :normalize_ids, :extract_year
+                       :merge_calendar_data, :normalize_ids, :extract_year,
+                       :filter_rows_with_calendar_entries, :calendar_table?
 end
