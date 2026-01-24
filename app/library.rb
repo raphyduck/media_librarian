@@ -660,13 +660,18 @@ class Library
         type = type.empty? ? nil : Utils.regularise_media_type(type)
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
+        search_title = title
+        if year_i.nil? && (match = title.match(/\s*\((\d{4})\)\s*\z/))
+          year_i = match[1].to_i
+          search_title = title.sub(/\s*\(\d{4}\)\s*\z/, '').strip
+        end
         imdb_id = imdb_from_row.call(row)
         row_notes << "imdb_id=#{imdb_id.empty? ? '(empty)' : imdb_id}"
         entry = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
         persisted = entry
         row_notes << "db=#{entry ? 'hit' : 'miss'}"
         if entry.nil?
-          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false, include_existing: true).first
+          entry = calendar_service.search(title: search_title, year: year_i, type: type, persist: false, include_existing: true).first
           row_notes << "imdb_fallback=#{entry ? 'hit' : 'miss'}"
           imdb_id = entry[:imdb_id].to_s.strip if entry
           persisted = imdb_id.to_s.empty? ? nil : repository.find_by_imdb_id(imdb_id)
