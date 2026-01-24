@@ -666,13 +666,14 @@ class Library
         persisted = entry
         row_notes << "db=#{entry ? 'hit' : 'miss'}"
         if entry.nil?
-          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false).first
+          entry = calendar_service.search(title: title, year: year_i, type: type, persist: false, include_existing: true).first
           row_notes << "imdb_fallback=#{entry ? 'hit' : 'miss'}"
-          persisted_entry = entry ? calendar_service.persist_entry(entry) : nil
-          row_notes << "persist=#{persisted_entry ? 'ok' : 'failed'}" if entry
-          entry = persisted_entry || entry if entry
           imdb_id = entry[:imdb_id].to_s.strip if entry
-          persisted = imdb_id.empty? ? nil : repository.find_by_imdb_id(imdb_id)
+          persisted = imdb_id.to_s.empty? ? nil : repository.find_by_imdb_id(imdb_id)
+          if entry && persisted.nil?
+            persisted = calendar_service.persist_entry(entry)
+            row_notes << "persist=#{persisted ? 'ok' : 'failed'}"
+          end
         end
         if entry.nil? || persisted.nil?
           skipped += 1
