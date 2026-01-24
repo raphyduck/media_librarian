@@ -2737,6 +2737,19 @@ function buildFileList(files) {
   return list;
 }
 
+function buildLabeledFileList(files, label) {
+  const list = buildFileList(files);
+  if (!list) {
+    return null;
+  }
+  const wrapper = document.createElement('div');
+  const heading = document.createElement('p');
+  heading.className = 'hint';
+  heading.textContent = label;
+  wrapper.append(heading, list);
+  return wrapper;
+}
+
 function buildFileAccordion(files, label = 'Fichiers') {
   const list = buildFileList(files);
   if (!list) {
@@ -3305,19 +3318,28 @@ function renderWatchlistImportResult(result = {}) {
   const container = document.getElementById('watchlist-import-result');
   const summary = document.getElementById('watchlist-import-summary');
   const listContainer = document.getElementById('watchlist-import-list');
+  const skippedContainer = document.getElementById('watchlist-import-skipped');
   if (!container || !summary || !listContainer) {
     return;
   }
   const titles = Array.isArray(result.added_titles) ? result.added_titles : [];
+  const skippedEntries = Array.isArray(result.skipped_entries) ? result.skipped_entries : [];
   const totalAdded = Number.isFinite(Number(result.total_added))
     ? Number(result.total_added)
     : titles.length;
   const skipped = Number.isFinite(Number(result.skipped)) ? Number(result.skipped) : 0;
   const base = totalAdded ? `${totalAdded} titre(s) ajouté(s).` : 'Aucun titre ajouté.';
-  summary.textContent = skipped ? `${base} ${skipped} ignoré(s).` : base;
-  const list = buildFileList(titles);
+  summary.textContent = skipped ? `${base} ${skipped} non identifié(s).` : base;
+  const list = buildLabeledFileList(titles, 'Titres ajoutés');
+  const skippedList = buildLabeledFileList(skippedEntries, 'Titres non identifiés');
   listContainer.replaceChildren(...(list ? [list] : []));
-  container.classList.toggle('hidden', !totalAdded && !titles.length && !skipped);
+  if (skippedContainer) {
+    skippedContainer.replaceChildren(...(skippedList ? [skippedList] : []));
+  }
+  container.classList.toggle(
+    'hidden',
+    !totalAdded && !titles.length && !skipped && !skippedEntries.length
+  );
 }
 
 function setWatchlistImportView(active) {
@@ -3341,6 +3363,7 @@ function updateWatchlistImportPanel({
   error,
   showBack,
   titles,
+  skippedEntries,
 } = {}) {
   const status = document.getElementById('watchlist-import-status');
   const count = document.getElementById('watchlist-import-count');
@@ -3348,6 +3371,7 @@ function updateWatchlistImportPanel({
   const errorEl = document.getElementById('watchlist-import-error');
   const finalEl = document.getElementById('watchlist-import-final');
   const finalList = document.getElementById('watchlist-import-final-list');
+  const finalSkipped = document.getElementById('watchlist-import-final-skipped');
   const backButton = document.getElementById('watchlist-import-back');
   if (status && statusLabel) {
     status.textContent = statusLabel;
@@ -3367,9 +3391,14 @@ function updateWatchlistImportPanel({
     finalEl.classList.toggle('hidden', !summary);
   }
   if (finalList) {
-    const list = buildFileList(titles);
+    const list = buildLabeledFileList(titles, 'Titres ajoutés');
     finalList.replaceChildren(...(list ? [list] : []));
     finalList.classList.toggle('hidden', !list);
+  }
+  if (finalSkipped) {
+    const skippedList = buildLabeledFileList(skippedEntries, 'Titres non identifiés');
+    finalSkipped.replaceChildren(...(skippedList ? [skippedList] : []));
+    finalSkipped.classList.toggle('hidden', !skippedList);
   }
   if (backButton) {
     backButton.classList.toggle('hidden', !showBack);
@@ -3442,6 +3471,11 @@ async function pollWatchlistImport(jobId) {
       : Array.isArray(result.added_titles)
       ? result.added_titles
       : [];
+    const skippedEntries = Array.isArray(progress.skipped_entries)
+      ? progress.skipped_entries
+      : Array.isArray(result.skipped_entries)
+      ? result.skipped_entries
+      : [];
     const status = String(job?.status || '');
     const statusLabel = status === 'finished'
       ? 'Terminé'
@@ -3450,7 +3484,7 @@ async function pollWatchlistImport(jobId) {
       : 'En cours';
     const done = status === 'finished' || status === 'failed' || status === 'cancelled';
     const summary = done
-      ? `${added} ajouté(s) sur ${total}. ${skipped} ignoré(s).`
+      ? `${added} ajouté(s) sur ${total}.${skipped ? ` ${skipped} non identifié(s).` : ''}`
       : '';
     updateWatchlistImportPanel({
       statusLabel,
@@ -3459,12 +3493,18 @@ async function pollWatchlistImport(jobId) {
       currentTitle,
       summary,
       titles: done ? titles : [],
+      skippedEntries: done ? skippedEntries : [],
       error: done && statusLabel === 'Erreur' ? job?.error || 'Import échoué.' : '',
       showBack: done,
     });
     if (done) {
       stopWatchlistImportPolling();
-      renderWatchlistImportResult({ total_added: added, skipped, added_titles: titles });
+      renderWatchlistImportResult({
+        total_added: added,
+        skipped,
+        added_titles: titles,
+        skipped_entries: skippedEntries,
+      });
       await loadWatchlist();
     }
   } catch (error) {
