@@ -1096,6 +1096,7 @@ class Daemon
       end
 
       new_template = app.args_dispatch.load_template(scheduler_name, app.template_dir)
+      cancel_scheduler_jobs(obsolete_scheduler_entries(@template_cache, new_template))
       old_signatures = scheduler_signature_map(@template_cache)
       new_signatures = scheduler_signature_map(new_template)
       new_last_execution = {}
@@ -3370,6 +3371,61 @@ class Daemon
 
       args = build_task_args(params)
       fetch_function_config(args)[1] || task
+    end
+
+    def scheduler_entries_by_task(template)
+      entries = {}
+      return entries unless template
+
+      %w[periodic continuous].each do |type|
+        next unless template[type]
+
+        template[type].each do |task, params|
+          entries[[type, task]] = params if params.is_a?(Hash)
+        end
+      end
+      entries
+    end
+
+    def normalize_scheduler_args(args)
+      args.is_a?(Hash) ? args.sort.to_h : args
+    end
+
+    def scheduler_command_args_changed?(old_params, new_params)
+      return true unless new_params
+
+      old_params['command'].to_s != new_params['command'].to_s ||
+        normalize_scheduler_args(old_params['args']) != normalize_scheduler_args(new_params['args'])
+    end
+
+    def obsolete_scheduler_entries(old_template, new_template)
+      old_entries = scheduler_entries_by_task(old_template)
+      new_entries = scheduler_entries_by_task(new_template)
+
+      old_entries.each_with_object([]) do |((type, task), params), memo|
+        new_params = new_entries[[type, task]]
+        next unless new_params.nil? || scheduler_command_args_changed?(params, new_params)
+
+        memo << { type: type, task: task, params: params }
+      end
+    end
+
+    def cancel_scheduler_jobs(entries)
+      return if entries.empty?
+
+      entries.each do |entry|
+        task = entry[:task]
+        type = entry[:type]
+        queue = scheduler_task_queue(task, entry[:params], type)
+
+        job_registry.values.each do |job|
+          next if job.finished?
+          next unless job.task == task && job.queue == queue
+          next if type == 'periodic' && job.running?
+
+          cancel_job(job)
+        end
+      end
     end
 
     def scheduler_signature_map(template)
