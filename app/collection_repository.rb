@@ -71,7 +71,7 @@ class CollectionRepository
       Sequel.ilike(Sequel[:local_media][:local_path], pattern),
       Sequel.ilike(Sequel[:local_media][:imdb_id], pattern)
     ]
-    conditions << Sequel.ilike(Sequel[:calendar_entries][:title], pattern) if calendar_table?
+    conditions << Sequel.ilike(Sequel[:calendar_entries][:title], pattern) if calendar_column?(:title)
 
     dataset.where(Sequel.|(*conditions))
   end
@@ -91,7 +91,7 @@ class CollectionRepository
     elsif type == 'unmatched'
       imdb_id = Sequel[:local_media][:imdb_id]
       conditions = [imdb_id => nil, imdb_id => '']
-      if dataset.columns.include?(:matched)
+      if local_media_column?(:matched)
         conditions << { Sequel[:local_media][:matched] => false }
       end
       dataset.where(Sequel.|(*conditions))
@@ -107,18 +107,17 @@ class CollectionRepository
     dataset = app.db.database[:local_media].select_all(:local_media)
     return dataset unless calendar_table?
 
-    dataset
-      .left_join(:calendar_entries, Sequel[:calendar_entries][:imdb_id] => Sequel[:local_media][:imdb_id])
-      .select_append(
-        Sequel[:calendar_entries][:title].as(:calendar_title),
-        Sequel[:calendar_entries][:release_date],
-        Sequel[:calendar_entries][:poster_url],
-        Sequel[:calendar_entries][:backdrop_url],
-        Sequel[:calendar_entries][:synopsis],
-        Sequel[:calendar_entries][:ids],
-        Sequel[:calendar_entries][:source],
-        Sequel[:calendar_entries][:external_id]
-      )
+    dataset = dataset.left_join(:calendar_entries, Sequel[:calendar_entries][:imdb_id] => Sequel[:local_media][:imdb_id])
+    selections = []
+    selections << Sequel[:calendar_entries][:title].as(:calendar_title) if calendar_column?(:title)
+    selections << Sequel[:calendar_entries][:release_date] if calendar_column?(:release_date)
+    selections << Sequel[:calendar_entries][:poster_url] if calendar_column?(:poster_url)
+    selections << Sequel[:calendar_entries][:backdrop_url] if calendar_column?(:backdrop_url)
+    selections << Sequel[:calendar_entries][:synopsis] if calendar_column?(:synopsis)
+    selections << Sequel[:calendar_entries][:ids] if calendar_column?(:ids)
+    selections << Sequel[:calendar_entries][:source] if calendar_column?(:source)
+    selections << Sequel[:calendar_entries][:external_id] if calendar_column?(:external_id)
+    selections.any? ? dataset.select_append(*selections) : dataset
   end
 
   def empty_response(page, per_page)
@@ -143,7 +142,7 @@ class CollectionRepository
       media_type: fetch(primary, :media_type),
       imdb_id: fetch(primary, :imdb_id),
       title: series_title || derived_title(primary),
-      name: series_title || fetch(primary, :title) || derived_title(primary),
+      name: series_title || derived_title(primary),
       released_at: build_released_at(fetch(primary, :release_date) || fetch(primary, :created_at)),
       year: extract_year(fetch(primary, :release_date)),
       poster_url: fetch(primary, :poster_url),
@@ -171,7 +170,7 @@ class CollectionRepository
     return {} if app.db.respond_to?(:table_exists?) && !app.db.table_exists?(:local_media)
 
     grouped = Hash.new { |h, k| h[k] = [] }
-    dataset.where(media_type: 'show').select(:local_path, :title).all.each do |row|
+    dataset.where(media_type: 'show').select(:local_path).all.each do |row|
       key = series_key(row)
       next if key.empty?
 
@@ -201,7 +200,7 @@ class CollectionRepository
   end
 
   def derived_title(row)
-    fetch(row, :calendar_title) || fetch(row, :title) || File.basename(fetch(row, :local_path).to_s)
+    fetch(row, :calendar_title) || File.basename(fetch(row, :local_path).to_s)
   end
 
   def series_title(rows, group_key)
@@ -215,7 +214,7 @@ class CollectionRepository
   end
 
   def series_name_from(row)
-    source = fetch(row, :title).to_s
+    source = fetch(row, :calendar_title).to_s
     source = File.basename(fetch(row, :local_path).to_s) if source.empty?
     return '' if source.empty?
 
@@ -297,5 +296,28 @@ class CollectionRepository
 
   def calendar_table?
     app.respond_to?(:db) && app.db.respond_to?(:table_exists?) && app.db.table_exists?(:calendar_entries)
+  end
+
+  def local_media_column?(name)
+    local_media_columns.include?(name)
+  end
+
+  def calendar_column?(name)
+    calendar_columns.include?(name)
+  end
+
+  def local_media_columns
+    return @local_media_columns if defined?(@local_media_columns)
+    return @local_media_columns = [] unless app.respond_to?(:db) && app.db.respond_to?(:database)
+    return @local_media_columns = [] if app.db.respond_to?(:table_exists?) && !app.db.table_exists?(:local_media)
+
+    @local_media_columns = app.db.database[:local_media].columns
+  end
+
+  def calendar_columns
+    return @calendar_columns if defined?(@calendar_columns)
+    return @calendar_columns = [] unless calendar_table?
+
+    @calendar_columns = app.db.database[:calendar_entries].columns
   end
 end
