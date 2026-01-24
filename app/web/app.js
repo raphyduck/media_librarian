@@ -3206,13 +3206,14 @@ function renderWatchlist(entries = [], { message } = {}) {
     const imdb = entry.imdb_id || ids.imdb || '';
     const externalId = imdb || entry.id || ids.slug || '';
     const url = entry.url || '';
+    const imdbUrl = imdb ? `https://www.imdb.com/title/${imdb}` : '';
     const metadata = { ids, title, type, year, release_date: entry.release_date, imdb, url };
 
     const cells = [
       { text: title || '—' },
       { text: type || '—' },
       { text: year || '—' },
-      { text: imdb || externalId || '—' },
+      imdbUrl ? { link: imdbUrl, linkText: imdb, text: imdb } : { text: imdb || externalId || '—' },
       url ? { link: url } : { text: '—' },
     ];
 
@@ -3224,7 +3225,7 @@ function renderWatchlist(entries = [], { message } = {}) {
         link.href = value.link;
         link.target = '_blank';
         link.rel = 'noreferrer noopener';
-        link.textContent = 'Lien';
+        link.textContent = value.linkText || 'Lien';
         cell.appendChild(link);
       } else {
         cell.textContent = value.text || '—';
