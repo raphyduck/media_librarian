@@ -661,8 +661,8 @@ class Library
         year = row['year']&.to_s&.strip
         year_i = (year && year =~ /^\d{4}$/) ? year.to_i : nil
         search_title = title
-        if year_i.nil? && (match = title.match(/\s*\((\d{4})\)\s*\z/))
-          year_i = match[1].to_i
+        if (match = title.match(/\s*\((\d{4})\)\s*\z/))
+          year_i ||= match[1].to_i
           search_title = title.sub(/\s*\(\d{4}\)\s*\z/, '').strip
         end
         imdb_id = imdb_from_row.call(row)
