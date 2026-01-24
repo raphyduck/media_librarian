@@ -66,13 +66,28 @@ def enrich_title(row, api, app, db)
   title.to_s.strip.empty? ? nil : title
 end
 
+def dependent_external_id(row)
+  title = row[:title].to_s.strip
+  external_id = row[:external_id].to_s.strip
+  external_id = '' if !external_id.empty? && !title.empty? && external_id.casecmp?(title)
+  return external_id unless external_id.empty?
+
+  ids = row[:ids].is_a?(Hash) ? row[:ids] : {}
+  %i[imdb slug tmdb tvdb trakt].each do |key|
+    value = ids[key] || ids[key.to_s]
+    return value.to_s.strip unless value.to_s.strip.empty?
+  end
+  nil
+end
+
 def delete_dependents(db, row, dry_run, verbose)
   deps = { watchlist: %i[imdb_id external_id], local_media: %i[imdb_id] }
+  external_id = dependent_external_id(row)
   deps.each do |table, cols|
     next unless db.table_exists?(table)
 
     cols.each do |col|
-      value = row[col]
+      value = col == :external_id ? external_id : row[col]
       next if value.to_s.strip.empty?
 
       puts "  deleting #{table} where #{col}=#{value.inspect}" if verbose
