@@ -1425,10 +1425,11 @@ module MediaLibrarian
         end
 
         def omdb_type(value)
-          type = value.to_s.downcase
-          return 'series' if type.include?('show') || type == 'series'
+          type = Utils.canonical_media_type(value)
+          return 'movie' if type.to_s.strip.empty?
+          return 'series' if type == 'show'
 
-          type.empty? ? 'movie' : type
+          type
         end
 
         def api_last_request_path(fetcher)
