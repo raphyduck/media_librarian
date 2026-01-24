@@ -279,7 +279,11 @@ class OmdbApi
 
   def tighten_json(body)
     closing = body.rindex(/[}\]]/)
-    closing ? body[0..closing].gsub(/([\]\}"0-9])\s*"(?=[A-Za-z0-9_]+":)/, '\\1,"') : nil
+    return nil unless closing
+
+    body[0..closing]
+      .gsub(/([\]\}"0-9])\s*"(?=[A-Za-z0-9_]+":)/, '\\1,"')
+      .gsub(/([\]\}"0-9])\s*([A-Za-z0-9_]+":)/, '\\1,"\\2')
   end
 
   def report_error(error, message)
