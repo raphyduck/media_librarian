@@ -676,6 +676,17 @@ function formatDateTime(value) {
   return date.toLocaleString();
 }
 
+function formatAvailability(value) {
+  if (!value) {
+    return 'Maintenant';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date > new Date() ? date.toLocaleString() : 'Maintenant';
+}
+
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
   container.textContent = message;
@@ -3118,7 +3129,7 @@ function renderPendingTorrentList(rowsId, emptyId, entries = []) {
       entry?.tracker || '—',
       entry?.category || '—',
       formatDateTime(entry?.created_at),
-      formatDateTime(entry?.waiting_until),
+      formatAvailability(entry?.waiting_until),
       entry?.identifier || '—',
     ];
 
