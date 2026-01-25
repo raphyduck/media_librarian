@@ -38,6 +38,7 @@ module FileUtils
       when 'cbr', 'rar'
         begin
           require 'unrar'
+          File.singleton_class.alias_method(:exists?, :exist?) unless File.respond_to?(:exists?)
         rescue LoadError => e
           MediaLibrarian.app.speaker.speak_up("Missing 'unrar' gem for #{type} extraction: #{e.message}")
           return
