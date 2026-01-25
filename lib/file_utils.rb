@@ -36,6 +36,12 @@ module FileUtils
       return MediaLibrarian.app.speaker.speak_up "Would extract archive #{type} '#{archive}' to '#{destination}'" if Env.pretend?
       case type
       when 'cbr', 'rar'
+        begin
+          require 'unrar'
+        rescue LoadError => e
+          MediaLibrarian.app.speaker.speak_up("Missing 'unrar' gem for #{type} extraction: #{e.message}")
+          return
+        end
         unrar = Unrar::Archive.new(archive, destination)
         extracted = unrar.extract
         MediaLibrarian.app.speaker.speak_up("Extracted #{archive} to #{destination}") if extracted
