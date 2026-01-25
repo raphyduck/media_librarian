@@ -596,6 +596,9 @@ class Daemon
       return unless running?
 
       queue_name = queue || task || args[0..1].join(' ')
+      config = fetch_function_config(args)
+      queue_name ||= config[1]
+      store_queue_limit(queue_name, config[0])
       job = Job.new(
         id: job_id,
         queue: queue_name || 'default',
@@ -613,7 +616,8 @@ class Daemon
         capture_output: capture_output
       )
       register_job(job)
-      start_job(job, wait_for_capacity: wait_for_capacity)
+      return unless start_job(job, wait_for_capacity: wait_for_capacity)
+
       job
     end
 
@@ -848,6 +852,12 @@ class Daemon
     end
 
     def start_job(job, wait_for_capacity:)
+      unless wait_for_queue_capacity(job.queue, wait_for_capacity: wait_for_capacity, exclude_id: job.id)
+        unregister_child(job)
+        @jobs.delete(job.id)
+        return nil
+      end
+
       future = obtain_future(job, wait_for_capacity: wait_for_capacity)
       case future
       when INLINE_EXECUTED
@@ -3315,7 +3325,7 @@ class Daemon
     def active_jobs_for_queue(queue)
       return [] if queue.to_s.empty?
 
-      job_registry.values.select { |job| job.queue == queue && job.running? }
+      job_registry.values.select { |job| job.queue == queue && !job.finished? }
     end
 
     def queue_limit(queue)
@@ -3345,6 +3355,40 @@ class Daemon
 
     def queue_limits
       @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def store_queue_limit(queue, limit)
+      return if queue.to_s.empty?
+      return if limit.nil? || queue_limits.key?(queue)
+
+      limit = limit.to_i
+      limit = 1 if limit <= 0
+      queue_limits[queue] = limit
+    end
+
+    def queue_job_count(queue, exclude_id: nil)
+      return 0 if queue.to_s.empty?
+
+      job_registry.values.count do |job|
+        next false unless job.queue == queue
+        next false if exclude_id && job.id == exclude_id
+
+        !job.finished?
+      end
+    end
+
+    def queue_capacity_available?(queue, exclude_id: nil)
+      queue_job_count(queue, exclude_id: exclude_id) < queue_limit(queue)
+    end
+
+    def wait_for_queue_capacity(queue, wait_for_capacity:, exclude_id: nil)
+      return true if queue_capacity_available?(queue, exclude_id: exclude_id)
+      return false unless wait_for_capacity
+
+      while running? && !queue_capacity_available?(queue, exclude_id: exclude_id)
+        sleep(0.05)
+      end
+      true
     end
 
     def build_task_args(params)
