@@ -29,7 +29,7 @@ module MediaLibrarian
           compare_remote_files: ['Library', 'compare_remote_files'],
           create_custom_list: ['Library', 'create_custom_list'],
           fetch_media_box: ['Library', 'fetch_media_box'],
-          handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download', 1],
+          handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download'],
           scan_file_system: ['FileSystemScan', 'scan'],
           import_csv: ['Library', 'import_list_csv'],
           process_folder: ['Library', 'process_folder']
