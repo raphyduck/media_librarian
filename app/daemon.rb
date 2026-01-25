@@ -596,6 +596,7 @@ class Daemon
       return unless running?
 
       queue_name = queue || task || args[0..1].join(' ')
+      apply_queue_limit(queue_name, args)
       job = Job.new(
         id: job_id,
         queue: queue_name || 'default',
@@ -879,6 +880,9 @@ class Daemon
       end
 
       loop do
+        unless wait_for_queue_capacity(job.queue, wait_for_capacity: wait_for_capacity)
+          raise Concurrent::RejectedExecutionError
+        end
         return Concurrent::Promises.future_on(@executor) { execute_job(job) }
       rescue Concurrent::RejectedExecutionError
         raise unless wait_for_capacity && running?
@@ -940,6 +944,16 @@ class Daemon
         end
         sleep(0.05)
       end
+    end
+
+    def wait_for_queue_capacity(queue, wait_for_capacity:)
+      return true if queue.to_s.empty? || !queue_busy?(queue)
+      return false unless wait_for_capacity && running?
+
+      while running? && queue_busy?(queue)
+        sleep(0.05)
+      end
+      true
     end
 
     def executor_saturated?(executor)
@@ -3345,6 +3359,14 @@ class Daemon
 
     def queue_limits
       @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def apply_queue_limit(queue_name, args)
+      return if queue_name.to_s.empty? || queue_limits.key?(queue_name)
+
+      limit = fetch_function_config(args)[0]
+      limit = limit.to_i if limit
+      queue_limits[queue_name] = limit if limit && limit.positive?
     end
 
     def build_task_args(params)
