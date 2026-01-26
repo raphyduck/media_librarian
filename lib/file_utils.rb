@@ -25,6 +25,7 @@ module FileUtils
     def cp(source, target)
       return MediaLibrarian.app.speaker.speak_up("Would cp #{source} to #{target}") if Env.pretend?
       MediaLibrarian.app.speaker.speak_up("cp #{source} #{target}") if Env.debug?
+      return cp_orig(source, target) if source.is_a?(Array)
       rm(target) if File.exist?(target)
       mkdir_p(File.dirname(target)) unless File.exist?(File.dirname(target))
       MediaLibrarian.app.speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
@@ -221,6 +222,11 @@ module FileUtils
     def mv(original, destination)
       return MediaLibrarian.app.speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
       MediaLibrarian.app.speaker.speak_up("mv #{original} #{destination}") if Env.debug?
+      if original.is_a?(Array)
+        mv_orig(original, destination)
+        file_remove_parents(original)
+        return
+      end
       transfer_with_fallback(original, destination) do |resolved, same_fs|
         if same_fs
           File.rename(resolved, destination)
