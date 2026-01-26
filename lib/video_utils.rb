@@ -82,7 +82,7 @@ class VideoUtils
     args << path
     return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
     MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvmerge. Running command: #{args.join(' ')}") if Env.debug?
-    result = process_mkv(path, tool: 'mkvmerge', args: args)
+    result = process_mkv(path, tool: 'mkvmerge', args: args, temp_dir: MediaLibrarian.app.temp_dir)
     unless result[:success]
       message = "mkvmerge remux failed: #{result[:stderr].to_s.strip}"
       stdout_line = result[:stdout].to_s.strip
@@ -162,8 +162,7 @@ class VideoUtils
     lock = nil
     lock_created = false
     source_size = File.size(path_source)
-    tmp_root = choose_temp_root(path_source, temp_dir)
-    work_dir = File.join(tmp_root, "mkvfix-#{Process.pid}-#{Time.now.to_i}")
+    work_dir = File.join(temp_dir, "mkvfix-#{Process.pid}-#{Time.now.to_i}")
     log.call("mkv temp dir: #{work_dir}")
     log.call("run #{tool} argv: #{([tool] + args).join(' ')}")
     if dry_run
@@ -262,25 +261,6 @@ class VideoUtils
       end
     end
     [stdout, stderr, status]
-  end
-
-  def self.choose_temp_root(path_source, temp_dir)
-    size = (File.size(path_source) * 1.2).ceil
-    [temp_dir, '/tmp'].uniq.each do |dir|
-      next unless dir && Dir.exist?(dir)
-      avail = available_bytes(dir)
-      return dir if avail && avail >= size
-    end
-    '/var/tmp'
-  end
-
-  def self.available_bytes(dir)
-    stdout, status = Open3.capture2('df', '-Pk', dir)
-    return nil unless status.success?
-    parts = stdout.lines.last.to_s.split
-    parts[3].to_i * 1024
-  rescue StandardError
-    nil
   end
 
   def self.copy_file_buffered(src, dest, buf_size: 1024 * 1024)

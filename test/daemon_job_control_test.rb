@@ -465,4 +465,51 @@ class DaemonJobControlTest < Minitest::Test
     environment&.cleanup
     MediaLibrarian.application = nil
   end
+
+  def test_child_job_email_excludes_running_command_banner
+    email_records = []
+    parent_defined = Object.const_defined?(:ParentEmailJob)
+    child_defined = Object.const_defined?(:ChildEmailJob)
+
+    Object.const_set(:ChildEmailJob, Class.new do
+      def self.perform(*)
+        thread = Thread.current
+        thread[:email_msg] << 'Child job finished'
+        thread[:send_email] = 1
+      end
+    end) unless child_defined
+
+    Object.const_set(:ParentEmailJob, Class.new do
+      def self.perform(*)
+        job = Daemon.enqueue(args: ['ChildEmailJob', 'perform'], internal: 1, child: 1, parent_thread: Thread.current)
+        job.future&.value!
+      end
+    end) unless parent_defined
+
+    Env.stub(:email_notif?, ->(*) { true }) do
+      Report.stub(:sent_out, ->(_subject, thread, *rest) {
+        email_records << thread[:email_msg].dup
+      }) do
+        job = Daemon.enqueue(args: ['ParentEmailJob', 'perform'], internal: 1, parent_thread: nil)
+        job.future.value!
+      end
+    end
+
+    refute_empty email_records, 'expected parent job to send email'
+    email_body = email_records.first
+    assert_includes email_body, 'Running command:'
+    assert_includes email_body, 'ParentEmailJob perform'
+    assert_includes email_body, 'Child job finished'
+    assert_equal 1, email_body.scan('Running command:').length, 'expected child job to skip running banner'
+    refute_includes email_body, 'ChildEmailJob perform'
+  ensure
+    Object.send(:remove_const, :ParentEmailJob) unless parent_defined
+    Object.send(:remove_const, :ChildEmailJob) unless child_defined
+    executor = Daemon.send(:instance_variable_get, :@executor)
+    executor&.kill
+    executor&.wait_for_termination
+    Daemon.send(:cleanup)
+    @environment&.cleanup
+    MediaLibrarian.application = nil
+  end
 end
