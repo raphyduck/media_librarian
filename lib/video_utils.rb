@@ -91,23 +91,27 @@ class VideoUtils
       MediaLibrarian.app.speaker.speak_up("#{message}. Run: mkvmerge #{args.join(' ')}")
       return false
     end
-    post_tracks = mkv_audio_track_map(path)
-    if post_tracks.empty?
-      MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept for manual recovery.")
-      return false
-    end
-    post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
-    if post_defaults.size != 1
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
-      return false
-    end
+    backup_path = result[:backup_path]
+    begin
+      post_tracks = mkv_audio_track_map(path)
+      if post_tracks.empty?
+        MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}.")
+        return false
+      end
+      post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+      if post_defaults.size != 1
+        MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
+        return false
+      end
 
-    post_lang = Languages.get_code(post_defaults.first[:lang].to_s.split('-').first)
-    if post_lang != target_lang
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
-      return false
+      post_lang = Languages.get_code(post_defaults.first[:lang].to_s.split('-').first)
+      if post_lang != target_lang
+        MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
+        return false
+      end
+    ensure
+      FileUtils.rm_f(backup_path) if backup_path
     end
-    FileUtils.rm_f(result[:backup_path]) if result[:backup_path]
     MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{result[:stdout]}")
     true
   end
