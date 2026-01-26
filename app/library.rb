@@ -113,10 +113,6 @@ class Library
       if move_completed_torrent['torrent_completed_path'].to_s != '' && torrent_id.to_s != ''
         t = app.db.get_rows('torrents', { :torrent_id => torrent_id }).first
         if t.nil? || t[:status].to_i < 5
-          if move_completed_torrent['completed_torrent_local_cache'].to_s != '' && File.exist?(torrent_path + '/' + torrent_name) && !torrent_path.include?(move_completed_torrent['torrent_completed_path'].to_s)
-            FileUtils.mkdir_p(torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
-            FileUtils.mv(torrent_path + '/' + torrent_name, torrent_path.gsub(completed_folder, move_completed_torrent['completed_torrent_local_cache'].to_s + '/').to_s)
-          end
           opath = torrent_path.gsub!(completed_folder, move_completed_torrent['torrent_completed_path'].to_s + '/').to_s
           app.t_client.move_storage([torrent_id], opath) rescue nil
           app.speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
