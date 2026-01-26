@@ -48,7 +48,10 @@ module SimpleSpeaker
     def email_msg_add(str, in_mail, thread)
       str = "[*] #{str}" if in_mail.to_i > 0
       buffer = thread[:email_msg]
-      return unless buffer
+      if buffer.nil?
+        buffer = String.new
+        thread[:email_msg] = buffer
+      end
 
       buffer = buffer.dup if buffer.frozen?
       thread[:email_msg] = buffer
@@ -64,7 +67,7 @@ module SimpleSpeaker
           log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}")
         end
       end
-      email_msg_add(str, in_mail, thread) if in_mail.to_i >= 0
+      email_msg_add(str, in_mail, thread)
       str
     end
 

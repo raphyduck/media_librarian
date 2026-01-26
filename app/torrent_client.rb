@@ -114,8 +114,8 @@ class TorrentClient
     { 'file_priorities' => priorities }
   end
 
-  def parse_torrents_to_download
-    queue_service.parse_pending_downloads
+  def parse_torrents_to_download(limit = 20)
+    queue_service.parse_pending_downloads(limit: limit)
   end
 
   def process_added_torrents
@@ -169,7 +169,7 @@ class TorrentClient
 
   def self.flush_queues
     if app.t_client
-      app.t_client.parse_torrents_to_download
+      app.t_client.parse_torrents_to_download(20)
       sleep 15
       app.t_client.process_added_torrents
       app.t_client.process_completed_torrents

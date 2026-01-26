@@ -28,9 +28,9 @@ module MediaLibrarian
         @client = client
       end
 
-      def parse_pending_downloads
+      def parse_pending_downloads(limit: 20)
         speaker.speak_up('Downloading torrent(s) added during the session (if any)', 0)
-        app.db.get_rows('torrents', { status: 2 }).each do |torrent_row|
+        (app.db.get_rows('torrents', { status: 2 }) || []).first(limit).each do |torrent_row|
           torrent = Cache.object_unpack(torrent_row[:tattributes])
           log_torrent_details(torrent, torrent_row) if Env.debug?
           tdid = (Time.now.to_f * 1000).to_i.to_s

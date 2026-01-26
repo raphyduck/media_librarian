@@ -596,6 +596,7 @@ class Daemon
       return unless running?
 
       queue_name = queue || task || args[0..1].join(' ')
+      apply_queue_limit(queue_name, args)
       job = Job.new(
         id: job_id,
         queue: queue_name || 'default',
@@ -879,6 +880,9 @@ class Daemon
       end
 
       loop do
+        unless wait_for_queue_capacity(job.queue, wait_for_capacity: wait_for_capacity)
+          raise Concurrent::RejectedExecutionError
+        end
         return Concurrent::Promises.future_on(@executor) { execute_job(job) }
       rescue Concurrent::RejectedExecutionError
         raise unless wait_for_capacity && running?
@@ -942,6 +946,16 @@ class Daemon
       end
     end
 
+    def wait_for_queue_capacity(queue, wait_for_capacity:)
+      return true if queue.to_s.empty? || !queue_busy?(queue)
+      return false unless wait_for_capacity && running?
+
+      while running? && queue_busy?(queue)
+        sleep(0.05)
+      end
+      true
+    end
+
     def executor_saturated?(executor)
       max_queue = executor.respond_to?(:max_queue) ? executor.max_queue : nil
       bounded_queue = !max_queue.nil? && max_queue >= 0
@@ -1000,9 +1014,25 @@ class Daemon
           if job.child.to_i.positive?
             if thread[:parent]
               merge_notifications(thread, thread[:parent])
-              if thread[:parent][:email_msg]
+              if thread[:email_msg]
+                thread[:parent][:email_msg] ||= String.new
                 thread[:parent][:email_msg] << thread[:email_msg].to_s
-                thread[:parent][:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
+              end
+              if thread[:send_email].to_i.positive?
+                thread[:parent][:send_email] = thread[:send_email].to_i
+              end
+            elsif inline_child
+              if thread[:email_msg]
+                parent_email = snapshot[:email_msg]
+                if parent_email
+                  parent_email << thread[:email_msg].to_s
+                else
+                  fallback_buffer = snapshot[:captured_output] || snapshot[:log_msg]
+                  fallback_buffer&.<< thread[:email_msg].to_s
+                end
+              end
+              if thread[:send_email].to_i.positive?
+                snapshot[:send_email] = thread[:send_email].to_i
               end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]
@@ -3345,6 +3375,14 @@ class Daemon
 
     def queue_limits
       @queue_limits ||= Concurrent::Hash.new
+    end
+
+    def apply_queue_limit(queue_name, args)
+      return if queue_name.to_s.empty? || queue_limits.key?(queue_name)
+
+      limit = fetch_function_config(args)[0]
+      limit = limit.to_i if limit
+      queue_limits[queue_name] = limit if limit && limit.positive?
     end
 
     def build_task_args(params)

@@ -145,4 +145,55 @@ class TorrentQueueServiceTest < Minitest::Test
       assert_equal ['downloaded.torrent'], processed_paths
     end
   end
+
+  def test_parse_pending_downloads_limits_items
+    torrent_attributes = {
+      link: '',
+      tracker: 'tracker',
+      magnet_link: '',
+      files: [],
+      move_completed: '',
+      rename_main: '',
+      queue: '',
+      assume_quality: nil,
+      category: nil
+    }
+    torrent_rows = Array.new(25) do |i|
+      {
+        name: "Test Torrent #{i}",
+        status: 2,
+        tattributes: 'packed',
+        identifiers: ['id'],
+        identifier: "legacy-id-#{i}"
+      }
+    end
+
+    db = FakeDB.new
+    def db.get_rows(table, conditions = nil)
+      return @rows if table == 'torrents' && conditions == { status: 2 }
+
+      []
+    end
+    db.instance_variable_set(:@rows, torrent_rows)
+
+    app = FakeApp.new(db: db)
+    service = MediaLibrarian::Services::TorrentQueueService.new(
+      app: app,
+      speaker: @speaker,
+      client: FakeClient.new
+    )
+
+    processed = []
+    Cache.stub(:object_unpack, ->(_value) { torrent_attributes }) do
+      Cache.stub(:queue_state_add_or_update, nil) do
+        TorrentSearch.stub(:get_tracker_config, ->(*_) { { 'no_download' => '1' } }) do
+          service.stub(:process_download_request, ->(request) { processed << request.torrent_name; true }) do
+            service.parse_pending_downloads(limit: 20)
+          end
+        end
+      end
+    end
+
+    assert_equal 20, processed.length
+  end
 end
