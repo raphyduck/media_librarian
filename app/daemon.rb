@@ -1023,13 +1023,8 @@ class Daemon
               end
             elsif inline_child
               if thread[:email_msg]
-                parent_email = snapshot[:email_msg]
-                if parent_email
-                  parent_email << thread[:email_msg].to_s
-                else
-                  fallback_buffer = snapshot[:captured_output] || snapshot[:log_msg]
-                  fallback_buffer&.<< thread[:email_msg].to_s
-                end
+                fallback_buffer = snapshot[:captured_output] || snapshot[:log_msg]
+                fallback_buffer&.<< thread[:email_msg].to_s
               end
               if thread[:send_email].to_i.positive?
                 snapshot[:send_email] = thread[:send_email].to_i
