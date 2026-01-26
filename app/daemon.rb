@@ -1024,11 +1024,9 @@ class Daemon
             elsif inline_child
               preserved_email = false
               if thread[:email_msg]
-                fallback_buffer = snapshot[:captured_output] || snapshot[:log_msg]
-                if fallback_buffer
-                  fallback_buffer << thread[:email_msg].to_s
-                  preserved_email = true
-                end
+                snapshot[:email_msg] ||= String.new
+                snapshot[:email_msg] << thread[:email_msg].to_s
+                preserved_email = true
               end
               if preserved_email && thread[:send_email].to_i.positive?
                 snapshot[:send_email] = thread[:send_email].to_i
