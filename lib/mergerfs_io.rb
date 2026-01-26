@@ -1,4 +1,4 @@
-module MergerfsIO
+module MergerfsIo
   module_function
 
   def same_filesystem?(src, dst)
@@ -74,3 +74,5 @@ module MergerfsIO
     nil
   end
 end
+
+MergerfsIO = MergerfsIo
