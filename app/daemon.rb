@@ -1021,6 +1021,16 @@ class Daemon
               if thread[:send_email].to_i.positive?
                 thread[:parent][:send_email] = thread[:send_email].to_i
               end
+            elsif inline_child
+              if thread[:email_msg]
+                parent_email = snapshot[:email_msg]
+                if parent_email
+                  parent_email << thread[:email_msg].to_s
+                else
+                  fallback_buffer = snapshot[:captured_output] || snapshot[:log_msg]
+                  fallback_buffer&.<< thread[:email_msg].to_s
+                end
+              end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]
               if parent_daemon
