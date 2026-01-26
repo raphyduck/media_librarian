@@ -30,7 +30,7 @@ class VideoUtils
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
     return false unless File.extname(path).downcase == '.mkv'
-    return false unless system('command -v mkvmerge >/dev/null 2>&1')
+    return false unless command_available?('mkvmerge')
     track_map = mkv_audio_track_map(path)
     return false if track_map.empty?
     target_lang = Languages.get_code(target_lang.to_s.split('-').first)
@@ -113,7 +113,7 @@ class VideoUtils
   end
 
   def self.mkv_audio_track_map(path)
-    return [] unless system('command -v mkvmerge >/dev/null 2>&1')
+    return [] unless command_available?('mkvmerge')
     stdout, status = Open3.capture2('mkvmerge', '-J', path)
     return [] unless status.success?
 
@@ -149,7 +149,7 @@ class VideoUtils
   def self.process_mkv(path_source, tool:, args:, temp_dir: '/tmp', backup: true, timeout_s: nil, dry_run: false)
     log = lambda { |msg| MediaLibrarian.app.speaker.speak_up(msg) }
     return { success: false, message: "source file not found: #{path_source}" } unless File.file?(path_source)
-    if tool.to_s == 'mkvmerge' && !dry_run && !system('command -v mkvmerge >/dev/null 2>&1')
+    if tool.to_s == 'mkvmerge' && !dry_run && !command_available?('mkvmerge')
       log.call('mkvmerge not available in PATH')
       return { success: false, message: 'mkvmerge not available in PATH' }
     end
@@ -279,13 +279,22 @@ class VideoUtils
   end
 
   def self.mkv_validate_local(path)
-    if system('command -v mkvmerge >/dev/null 2>&1')
+    if command_available?('mkvmerge')
       _stdout, status = Open3.capture2('mkvmerge', '-J', path)
       return status.success?
     end
-    return false unless system('command -v mkvinfo >/dev/null 2>&1')
+    return false unless command_available?('mkvinfo')
 
     _stdout, _stderr, status = Open3.capture3('mkvinfo', path)
     status.success?
+  end
+
+  def self.command_available?(cmd)
+    return false if cmd.to_s.strip.empty?
+    ENV.fetch('PATH', '').split(File::PATH_SEPARATOR).any? do |dir|
+      next false if dir.empty?
+      path = File.join(dir, cmd)
+      File.file?(path) && File.executable?(path)
+    end
   end
 end
