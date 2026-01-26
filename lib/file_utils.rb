@@ -167,10 +167,10 @@ module FileUtils
       mkdir_orig(dirs)
     end
 
-    def mkdir_p(dirs)
+    def mkdir_p(dirs, *args, **kwargs)
       return MediaLibrarian.app.speaker.speak_up("Would mkdir_p #{dirs}") if Env.pretend?
       MediaLibrarian.app.speaker.speak_up("mkdir_p #{dirs}") if Env.debug?
-      mkdir_p_orig(dirs)
+      mkdir_p_orig(dirs, *args, **kwargs)
     end
 
     def move_file(original, destination, hard_link = 0, remove_outdated = 0, no_prompt = 1)
