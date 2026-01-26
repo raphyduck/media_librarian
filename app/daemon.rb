@@ -1031,6 +1031,9 @@ class Daemon
                   fallback_buffer&.<< thread[:email_msg].to_s
                 end
               end
+              if thread[:send_email].to_i.positive?
+                snapshot[:send_email] = thread[:send_email].to_i
+              end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]
               if parent_daemon
