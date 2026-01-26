@@ -28,7 +28,19 @@ module FileUtils
       rm(target) if File.exist?(target)
       mkdir_p(File.dirname(target)) unless File.exist?(File.dirname(target))
       MediaLibrarian.app.speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
-      cp_orig(source, target)
+      transfer_with_fallback(source, target) do |resolved, same_fs|
+        if same_fs
+          tmp_target = "#{target}.tmp-#{Process.pid}-#{Thread.current.object_id}"
+          begin
+            cp_orig(resolved, tmp_target)
+            File.rename(tmp_target, target)
+          ensure
+            rm_orig(tmp_target) if tmp_target && File.exist?(tmp_target)
+          end
+        else
+          cp_orig(resolved, target)
+        end
+      end
     end
 
     def extract_archive(type, archive, destination)
@@ -209,8 +221,51 @@ module FileUtils
     def mv(original, destination)
       return MediaLibrarian.app.speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
       MediaLibrarian.app.speaker.speak_up("mv #{original} #{destination}") if Env.debug?
-      mv_orig(original, destination)
+      transfer_with_fallback(original, destination) do |resolved, same_fs|
+        if same_fs
+          File.rename(resolved, destination)
+        else
+          mv_orig(resolved, destination)
+        end
+      end
       file_remove_parents(original)
+    end
+
+    def transfer_with_fallback(source, destination)
+      cross_fs = !MergerfsIO.same_filesystem?(source, destination)
+      mergerfs_source = MergerfsIO.source_is_mergerfs?(source)
+      begin
+        unless cross_fs
+          return with_mergerfs_retry(source, destination, cross_fs, mergerfs_source) do |resolved|
+            yield resolved, true
+          end
+        end
+      rescue Errno::EXDEV
+        cross_fs = true
+      end
+      with_mergerfs_retry(source, destination, cross_fs, mergerfs_source) do |resolved|
+        yield resolved, false
+      end
+    end
+
+    def with_mergerfs_retry(source, destination, cross_fs, mergerfs_source)
+      attempts = []
+      resolver = lambda do
+        return source unless cross_fs && mergerfs_source
+        MergerfsIO.accelerated_source_path(source, destination)
+      end
+      resolved = resolver.call
+      attempts << resolved
+      yield resolved
+    rescue Errno::ENOENT
+      raise unless mergerfs_source
+      resolved = resolver.call
+      attempts << resolved
+      begin
+        yield resolved
+      rescue Errno::ENOENT
+        raise Errno::ENOENT, "Source not found. Attempted paths: #{attempts.uniq.join(', ')}"
+      end
     end
 
     def rm(files, force: nil, noop: nil, verbose: nil)
