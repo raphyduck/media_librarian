@@ -1014,9 +1014,12 @@ class Daemon
           if job.child.to_i.positive?
             if thread[:parent]
               merge_notifications(thread, thread[:parent])
-              if thread[:parent][:email_msg]
+              if thread[:email_msg]
+                thread[:parent][:email_msg] ||= String.new
                 thread[:parent][:email_msg] << thread[:email_msg].to_s
-                thread[:parent][:send_email] = thread[:send_email].to_i if thread[:send_email].to_i.positive?
+              end
+              if thread[:send_email].to_i.positive?
+                thread[:parent][:send_email] = thread[:send_email].to_i
               end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]
