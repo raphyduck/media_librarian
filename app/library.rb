@@ -567,13 +567,11 @@ class Library
       return ''
     end
     if !metadata.empty? && metadata['is_found']
+      VideoUtils.set_default_original_audio!(path: destination, target_lang: metadata['language']) if set_original_audio_default.to_i > 0
       destination += ".#{metadata['part']}" if metadata['part'].to_s != ''
       destination += ".#{metadata['extension'].downcase}"
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
       raise "Error moving file" if destination.to_s == ''
-      if set_original_audio_default.to_i > 0
-        VideoUtils.set_default_original_audio!(path: destination, target_lang: metadata['language'])
-      end
     else
       app.speaker.speak_up "File '#{original}' not identified, skipping..."
       destination = ''
