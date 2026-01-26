@@ -276,7 +276,7 @@ class Librarian
         .map { |a| a.is_a?(String) ? a.gsub(/--?([^=\s]+)(?:=(.+))?/, '--\1=\'\2\'') : a.inspect }
         .join(' ')
 
-      child_job = Thread.current[:child_job].to_i.positive? || Thread.current[:parent]
+      child_job = Thread.current[:child_job].to_i.positive? || Thread.current[:child_job_override].to_i.positive?
       object = cmd[0..1].join(' ') if object.to_s.empty? || object == 'rcv'
       init_thread(Thread.current, object, direct, &block)
 
