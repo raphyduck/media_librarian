@@ -64,7 +64,7 @@ module SimpleSpeaker
           log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}")
         end
       end
-      email_msg_add(str, in_mail, thread) if in_mail.to_i >= 0
+      email_msg_add(str, in_mail, thread)
       str
     end
 
