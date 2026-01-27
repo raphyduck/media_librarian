@@ -116,9 +116,15 @@ class Library
           opath = torrent_path.gsub!(completed_folder, move_completed_torrent['torrent_completed_path'].to_s + '/').to_s
           app.t_client.move_storage([torrent_id], opath) rescue nil
           app.speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
+          move_wait_start = Time.now
           while FileUtils.is_in_path([app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s], StringUtils.accents_clear(opath)).nil?
             break if Time.now - completion_time > 3600
             sleep 60
+          end
+          if Env.debug?
+            elapsed = Time.now - move_wait_start
+            save_path = app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s
+            app.speaker.speak_up "Storage wait #{elapsed.round(2)}s, save_path=#{save_path}"
           end
           app.speaker.speak_up "Torrent storage moved to #{move_completed_torrent['torrent_completed_path']}" if Env.debug?
           completed_folder = move_completed_torrent['torrent_completed_path'].to_s
@@ -140,7 +146,9 @@ class Library
       end).flatten
     if FileTest.directory?(full_p)
       ensure_qualities = Quality.qualities_merge(ensure_qualities, full_p)
-      FileUtils.search_folder(full_p, { 'exclude' => '.tmp.', 'exclude_path' => exclude_path, 'includedir' => 1, 'maxdepth' => 1 }).each do |f|
+      entries_start = Time.now
+      entries = FileUtils.search_folder(full_p, { 'exclude' => '.tmp.', 'exclude_path' => exclude_path, 'includedir' => 1, 'maxdepth' => 1 })
+      entries.each do |f|
         hcd = handle_completed_download(
           torrent_path: File.dirname(f[0]),
           torrent_name: File.basename(f[0]),
@@ -159,6 +167,7 @@ class Library
         error += hcd[2]
         process_folder_list += hcd[1]
       end
+      app.speaker.speak_up "Traversed #{entries.length} entries in #{(Time.now - entries_start).round(2)}s" if Env.debug?
     elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
       app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
@@ -168,7 +177,9 @@ class Library
       extension = FileUtils.get_extension(torrent_name)
       if ['rar', 'zip'].include?(extension)
         FileUtils.rm_r(torrent_path + '/extfls') if File.exist?(torrent_path + '/extfls')
+        extract_start = Time.now
         FileUtils.extract_archive(extension, full_p, torrent_path + '/extfls')
+        app.speaker.speak_up "Extracted #{extension} #{full_p} in #{(Time.now - extract_start).round(2)}s" if Env.debug?
         ensure_qualities = Quality.parse_qualities(torrent_name, VALID_QUALITIES, '', ttype).join('.') if ensure_qualities.to_s == ''
         hcd = handle_completed_download(
           torrent_path: torrent_path,
@@ -203,6 +214,7 @@ class Library
           return handled, process_folder_list, error
         end
         if args && args[extension] && args[extension]['convert_to'].to_s != ''
+          convert_start = Time.now
           convert_media(
             path: full_p,
             input_format: extension,
@@ -229,6 +241,7 @@ class Library
             error += hcd[2]
             process_folder_list += hcd[1]
           end
+          app.speaker.speak_up "Converted #{extension} #{full_p} in #{(Time.now - convert_start).round(2)}s" if Env.debug?
         elsif handling[type] && handling[type]['move_to']
           if completed_folder == move_completed_torrent['torrent_completed_path'].to_s && move_completed_torrent['replace_destination_folder'].to_s != ''
             handling[type]['move_to'].gsub!(destination_folder, move_completed_torrent['replace_destination_folder'].to_s)
@@ -263,9 +276,12 @@ class Library
       FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
       raise 'Could not find any file to handle!' if handled == 0
       raise "An error occured" if error.to_i > 0
-      process_folder_list.uniq.each do |p|
+      post_process_start = Time.now
+      folders = process_folder_list.uniq
+      folders.each do |p|
         process_folder(type: p[0], folder: p[1], remove_duplicates: 1, no_prompt: 1, cache_expiration: 1)
       end
+      app.speaker.speak_up "Post-processing #{folders.length} folders in #{(Time.now - post_process_start).round(2)}s" if Env.debug?
       if torrent_id.to_s != ""
         active_time = (app.t_client.get_torrent_status(torrent_id, ['name', 'active_time']) rescue {})['active_time'].to_i
         Cache.queue_state_add_or_update('deluge_torrents_completed', { torrent_id => { :path => opath, :active_time => active_time } })
