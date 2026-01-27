@@ -33,7 +33,7 @@ module FileUtils
       rm(dst_effective) if File.exist?(dst_effective)
       mkdir_p(File.dirname(dst_effective)) unless File.exist?(File.dirname(dst_effective))
       MediaLibrarian.app.speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
-      transfer_with_fallback(source, target) do |src_effective, resolved_dst, same_fs|
+      transfer_with_fallback(source, target, op: 'cp') do |src_effective, resolved_dst, same_fs|
         if same_fs
           tmp_target = "#{resolved_dst}.tmp-#{Process.pid}-#{Thread.current.object_id}"
           begin
@@ -230,7 +230,7 @@ module FileUtils
         original.each { |item| mv(item, File.join(destination, File.basename(item))) }
         return
       end
-      transfer_with_fallback(original, destination) do |src_effective, resolved_dst, same_fs|
+      transfer_with_fallback(original, destination, op: 'mv') do |src_effective, resolved_dst, same_fs|
         if same_fs
           File.rename(src_effective, resolved_dst)
         else
@@ -255,17 +255,29 @@ module FileUtils
       file_remove_parents(original)
     end
 
-    def transfer_with_fallback(source, destination)
+    def transfer_with_fallback(source, destination, op: 'cp')
+      mergerfs_source = MergerfsIO.source_is_mergerfs?(source)
+      mergerfs_destination = MergerfsIO.destination_is_mergerfs?(destination)
       with_mergerfs_retry(source, destination) do |src_effective, dst_effective|
         same_fs = MergerfsIO.same_filesystem?(src_effective, dst_effective)
+        log_transfer = lambda do |is_same_fs|
+          return unless Env.debug?
+          MediaLibrarian.app.speaker.speak_up(
+            "transfer op=#{op} src=#{source} dst=#{destination} " \
+            "src_effective=#{src_effective} dst_effective=#{dst_effective} " \
+            "mergerfs_src=#{mergerfs_source} mergerfs_dst=#{mergerfs_destination} same_fs=#{is_same_fs}"
+          )
+        end
         if same_fs
           begin
+            log_transfer.call(true)
             yield src_effective, dst_effective, true
             return
           rescue Errno::EXDEV
             same_fs = false
           end
         end
+        log_transfer.call(same_fs)
         yield src_effective, dst_effective, same_fs
       end
     end
