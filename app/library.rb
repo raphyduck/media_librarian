@@ -117,8 +117,15 @@ class Library
           app.t_client.move_storage([torrent_id], opath) rescue nil
           app.speaker.speak_up "Waiting for storage file to be moved" if Env.debug?
           move_wait_start = Time.now
+          last_log = Time.now
           while FileUtils.is_in_path([app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s], StringUtils.accents_clear(opath)).nil?
             break if Time.now - completion_time > 3600
+            if Env.debug? && Time.now - last_log >= 300
+              elapsed = Time.now - move_wait_start
+              save_path = app.t_client.get_torrent_status(torrent_id, ['save_path'])['save_path'].to_s
+              app.speaker.speak_up "Storage wait #{elapsed.round(2)}s, save_path=#{save_path}"
+              last_log = Time.now
+            end
             sleep 60
           end
           if Env.debug?
