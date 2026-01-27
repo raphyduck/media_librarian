@@ -97,6 +97,7 @@ class Daemon
   SESSION_COOKIE_NAME = 'ml_session'
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
+  UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
   INLINE_EXECUTED = Object.new
   SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
 
@@ -764,7 +765,14 @@ class Daemon
         end
       end
 
-      metrics.values.sort_by { |entry| entry['queue'] }
+      metrics.values
+             .select do |entry|
+               queue = entry['queue'].to_s
+               next true unless queue.match?(UUID_REGEX)
+
+               (entry['running'] + entry['queued']).positive?
+             end
+             .sort_by { |entry| entry['queue'] }
     end
 
     def job_attribute(job, name)
