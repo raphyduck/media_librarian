@@ -1,3 +1,5 @@
+require 'fileutils'
+
 module MergerfsIo
   module_function
 
@@ -30,6 +32,32 @@ module MergerfsIo
   def source_is_mergerfs?(src)
     fstype = filesystem_type_for(src)
     fstype == 'fuse.mergerfs' || fstype == 'mergerfs'
+  end
+
+  def destination_is_mergerfs?(dst)
+    target = File.exist?(dst) ? dst : File.dirname(dst)
+    fstype = filesystem_type_for(target)
+    fstype == 'fuse.mergerfs' || fstype == 'mergerfs'
+  end
+
+  def resolve_destination_local(dst_mergerfs_path)
+    merge_mnt = ENV['MERGE_MNT']
+    local_branch = ENV['LOCAL_BRANCH']
+    return dst_mergerfs_path if merge_mnt.to_s.empty? || local_branch.to_s.empty?
+
+    rel = dst_mergerfs_path.sub(merge_mnt, '').delete_prefix('/')
+    File.join(local_branch, rel)
+  end
+
+  def effective_destination_for_write(dst)
+    merge_mnt = ENV['MERGE_MNT']
+    return dst if merge_mnt.to_s.empty?
+    return dst unless dst.start_with?(merge_mnt + '/')
+    return dst unless destination_is_mergerfs?(dst)
+
+    local_dst = resolve_destination_local(dst)
+    FileUtils.mkdir_p(File.dirname(local_dst))
+    local_dst
   end
 
   def accelerated_source_path(src, dst, local_branch: ENV['LOCAL_BRANCH'])
