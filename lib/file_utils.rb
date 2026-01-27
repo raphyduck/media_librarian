@@ -29,20 +29,21 @@ module FileUtils
         source.each { |item| cp(item, File.join(target, File.basename(item))) }
         return
       end
-      rm(target) if File.exist?(target)
-      mkdir_p(File.dirname(target)) unless File.exist?(File.dirname(target))
+      dst_effective = MergerfsIO.effective_destination_for_write(target)
+      rm(dst_effective) if File.exist?(dst_effective)
+      mkdir_p(File.dirname(dst_effective)) unless File.exist?(File.dirname(dst_effective))
       MediaLibrarian.app.speaker.speak_up("File '#{source}' doesn't exist!") unless File.exist?(source)
-      transfer_with_fallback(source, target) do |resolved, same_fs|
+      transfer_with_fallback(source, target) do |src_effective, resolved_dst, same_fs|
         if same_fs
-          tmp_target = "#{target}.tmp-#{Process.pid}-#{Thread.current.object_id}"
+          tmp_target = "#{resolved_dst}.tmp-#{Process.pid}-#{Thread.current.object_id}"
           begin
-            cp_orig(resolved, tmp_target)
-            File.rename(tmp_target, target)
+            cp_orig(src_effective, tmp_target)
+            File.rename(tmp_target, resolved_dst)
           ensure
             rm_orig(tmp_target) if tmp_target && File.exist?(tmp_target)
           end
         else
-          cp_orig(resolved, target)
+          cp_orig(src_effective, resolved_dst)
         end
       end
     end
@@ -229,48 +230,83 @@ module FileUtils
         original.each { |item| mv(item, File.join(destination, File.basename(item))) }
         return
       end
-      transfer_with_fallback(original, destination) do |resolved, same_fs|
+      transfer_with_fallback(original, destination) do |src_effective, resolved_dst, same_fs|
         if same_fs
-          File.rename(resolved, destination)
+          File.rename(src_effective, resolved_dst)
         else
-          mv_orig(resolved, destination)
+          tmp_target = "#{resolved_dst}.tmp-#{Process.pid}-#{Thread.current.object_id}"
+          begin
+            cp_orig(src_effective, tmp_target)
+            File.rename(tmp_target, resolved_dst)
+          ensure
+            rm_orig(tmp_target) if tmp_target && File.exist?(tmp_target)
+          end
+          if File.exist?(original)
+            rm_orig(original)
+          else
+            rm_orig(src_effective) if File.exist?(src_effective)
+          end
         end
       end
       file_remove_parents(original)
     end
 
     def transfer_with_fallback(source, destination)
-      cross_fs = !MergerfsIO.same_filesystem?(source, destination)
-      mergerfs_source = MergerfsIO.source_is_mergerfs?(source)
-      begin
-        unless cross_fs
-          return with_mergerfs_retry(source, destination, cross_fs, mergerfs_source) do |resolved|
-            yield resolved, true
+      with_mergerfs_retry(source, destination) do |src_effective, dst_effective|
+        same_fs = MergerfsIO.same_filesystem?(src_effective, dst_effective)
+        if same_fs
+          begin
+            yield src_effective, dst_effective, true
+            return
+          rescue Errno::EXDEV
+            same_fs = false
           end
         end
-      rescue Errno::EXDEV
-        cross_fs = true
-      end
-      with_mergerfs_retry(source, destination, cross_fs, mergerfs_source) do |resolved|
-        yield resolved, false
+        yield src_effective, dst_effective, same_fs
       end
     end
 
-    def with_mergerfs_retry(source, destination, cross_fs, mergerfs_source)
+    def with_mergerfs_retry(source, destination)
       attempts = []
+      mkdir_attempted = false
+      mergerfs_source = MergerfsIO.source_is_mergerfs?(source)
       resolver = lambda do
-        return source unless cross_fs && mergerfs_source
-        MergerfsIO.accelerated_source_path(source, destination)
+        dst_effective = MergerfsIO.effective_destination_for_write(destination)
+        resolved = source
+        if mergerfs_source && !MergerfsIO.same_filesystem?(source, dst_effective)
+          resolved = MergerfsIO.accelerated_source_path(source, dst_effective)
+        end
+        if MergerfsIO.destination_is_mergerfs?(destination)
+          local_branch = ENV['LOCAL_BRANCH'].to_s
+          if !local_branch.empty? && resolved.start_with?(local_branch)
+            dst_effective = MergerfsIO.resolve_destination_local(destination)
+            FileUtils.mkdir_p(File.dirname(dst_effective)) unless File.exist?(File.dirname(dst_effective))
+          end
+        end
+        [resolved, dst_effective]
       end
-      resolved = resolver.call
+      resolved, dst_effective = resolver.call
       attempts << resolved
-      yield resolved
+      MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
+      yield resolved, dst_effective
     rescue Errno::ENOENT
+      if !mkdir_attempted
+        mkdir_attempted = true
+        FileUtils.mkdir_p(File.dirname(dst_effective)) unless File.exist?(File.dirname(dst_effective))
+        begin
+          resolved, dst_effective = resolver.call
+          attempts << resolved
+          MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
+          return yield resolved, dst_effective
+        rescue Errno::ENOENT
+        end
+      end
       raise unless mergerfs_source
-      resolved = resolver.call
+      resolved, dst_effective = resolver.call
       attempts << resolved
+      MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
       begin
-        yield resolved
+        yield resolved, dst_effective
       rescue Errno::ENOENT
         raise Errno::ENOENT, "Source not found. Attempted paths: #{attempts.uniq.join(', ')}"
       end
