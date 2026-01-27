@@ -1474,6 +1474,7 @@ async function killJob(jobId) {
 
 function renderJobs(data = {}) {
   const finishedStatuses = new Set(['finished', 'failed', 'cancelled']);
+  const uuidRegex = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
   const asArray = (value) => (Array.isArray(value) ? value : []);
   const sourceJobs = Array.isArray(data) ? data : asArray(data.jobs);
   const statusFor = (job) => String(job?.status || '');
@@ -1507,9 +1508,19 @@ function renderJobs(data = {}) {
     return Array.from(metrics.values()).sort((a, b) => a.queue.localeCompare(b.queue));
   };
 
-  const queueSummary = Array.isArray(data.queues)
-    ? data.queues
-    : computeQueueSummary(running, queued, finished);
+  const filterQueueSummary = (summary) =>
+    summary.filter((entry) => {
+      const queueName = String(entry.queue || '');
+      if (!uuidRegex.test(queueName)) {
+        return true;
+      }
+      const runningCount = entry.running ?? 0;
+      const queuedCount = entry.queued ?? 0;
+      return runningCount + queuedCount > 0;
+    });
+  const queueSummary = filterQueueSummary(
+    Array.isArray(data.queues) ? data.queues : computeQueueSummary(running, queued, finished)
+  );
 
   const runningList = document.getElementById('jobs-running');
   const queuedList = document.getElementById('jobs-queued');
