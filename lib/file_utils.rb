@@ -234,12 +234,16 @@ module FileUtils
         if same_fs
           File.rename(src_effective, resolved_dst)
         else
-          tmp_target = "#{resolved_dst}.tmp-#{Process.pid}-#{Thread.current.object_id}"
-          begin
-            cp_orig(src_effective, tmp_target)
-            File.rename(tmp_target, resolved_dst)
-          ensure
-            rm_orig(tmp_target) if tmp_target && File.exist?(tmp_target)
+          if File.symlink?(src_effective) || File.directory?(src_effective)
+            mv_orig(src_effective, resolved_dst)
+          else
+            tmp_target = "#{resolved_dst}.tmp-#{Process.pid}-#{Thread.current.object_id}"
+            begin
+              cp_orig(src_effective, tmp_target)
+              File.rename(tmp_target, resolved_dst)
+            ensure
+              rm_orig(tmp_target) if tmp_target && File.exist?(tmp_target)
+            end
           end
           if File.exist?(original)
             rm_orig(original)
