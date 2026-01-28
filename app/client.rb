@@ -227,17 +227,22 @@ class Client
   end
 
   def wait_for_job_completion(job_id)
+    output_cursor = 0
     loop do
       response = job_status(job_id)
       return response unless response['status_code'] == 200
 
-      status = response.dig('body', 'status')
-      if FINISHED_STATUSES.include?(status)
-        job = response['body']
-        return { 'status_code' => 200, 'body' => { 'job' => job } } if FINISHED_STATUSES.include?(status)
+      job = response['body']
+      output = job.is_a?(Hash) ? job['output'].to_s : ''
+      if output.length > output_cursor
+        $stdout.write(output[output_cursor..])
+        $stdout.flush
+        output_cursor = output.length
+      end
 
-        error = job.is_a?(Hash) ? job['error'] : nil
-        return { 'status_code' => 422, 'body' => { 'error' => error || 'job_failed', 'job' => job } }
+      status = job.is_a?(Hash) ? job['status'] : nil
+      if FINISHED_STATUSES.include?(status)
+        return { 'status_code' => 200, 'body' => { 'job' => job } }
       end
 
       sleep 0.05

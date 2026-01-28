@@ -598,6 +598,7 @@ class Daemon
 
       queue_name = queue || task || args[0..1].join(' ')
       apply_queue_limit(queue_name, args)
+      output = capture_output ? String.new : nil
       job = Job.new(
         id: job_id,
         queue: queue_name || 'default',
@@ -612,7 +613,8 @@ class Daemon
         created_at: Time.now,
         status: :queued,
         block: block,
-        capture_output: capture_output
+        capture_output: capture_output,
+        output: output
       )
       register_job(job)
       start_job(job, wait_for_capacity: wait_for_capacity)
@@ -1003,8 +1005,9 @@ class Daemon
         thread[:child_job] = job.child.to_i.positive? ? 1 : 0
         thread[:child_job_override] = thread[:child_job]
 
-        captured_output = job.capture_output ? String.new : nil
+        captured_output = job.capture_output ? (job.output || String.new) : nil
         if captured_output
+          job.output = captured_output
           thread[:captured_output] = captured_output
         elsif inline_child && snapshot[:captured_output]
           thread[:captured_output] = snapshot[:captured_output]
@@ -3703,6 +3706,17 @@ class Daemon
 
       job.progress = progress
       @jobs[jid] = job
+    end
+
+    def append_job_output(jid, line, thread: Thread.current)
+      job = jid ? job_registry[jid] : job_for_thread(thread)
+      return unless job&.capture_output
+
+      output = job.output || String.new
+      output = output.dup if output.frozen?
+      output << line.to_s
+      job.output = output
+      output
     end
 
     def job_children

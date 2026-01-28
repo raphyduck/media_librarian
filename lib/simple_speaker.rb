@@ -35,14 +35,18 @@ module SimpleSpeaker
 
     def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr, daemon: nil)
       line = str.to_s
+      payload = line.end_with?("\n") ? line : "#{line}\n"
       target = daemon || Thread.current[:current_daemon]
       if target
         target.send_data "#{line}\n"
       else
         (stdout || $stdout).puts(line)
       end
+      output = if defined?(Daemon) && Daemon.respond_to?(:append_job_output)
+                 Daemon.append_job_output(thread[:jid], payload, thread: thread)
+               end
       buffer = thread[:captured_output]
-      buffer&.<<(line.end_with?("\n") ? line : "#{line}\n")
+      buffer&.<<(payload) if buffer && !buffer.equal?(output)
     end
 
     def email_msg_add(str, in_mail, thread)
