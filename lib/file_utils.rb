@@ -247,7 +247,7 @@ module FileUtils
         MediaLibrarian.app.speaker.speak_up(
           "transfer op=#{op} src=#{source} dst=#{destination} " \
             "src_effective=#{src_effective} dst_effective=#{dst_effective} " \
-            "mergerfs_src=#{mergerfs_source} mergerfs_dst=#{mergerfs_destination} same_fs=#{is_same_fs}"
+            "mergerfs_src=#{mergerfs_source} mergerfs_dst=#{mergerfs_destination} same_fs=#{same_fs}"
         ) if Env.debug?
         yield src_effective, dst_effective, same_fs
       end
