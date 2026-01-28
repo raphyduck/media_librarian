@@ -180,7 +180,8 @@ class VideoUtils
       ext = File.extname(path_source)
       input_local = File.join(work_dir, "input#{ext}")
       log.call("copy source -> tmp: #{path_source} -> #{input_local}")
-      copied = copy_file_buffered(path_source, input_local)
+      FileUtils.cp(path_source, input_local)
+      copied = File.size?(input_local).to_i
       return { success: false, message: "copy failed: expected #{source_size} bytes, got #{copied}" } if copied < source_size
 
       args_local = args.map { |arg| arg == path_source ? input_local : arg }
@@ -198,7 +199,8 @@ class VideoUtils
       return { success: false, stdout: stdout, stderr: stderr, message: 'empty output' } unless File.size?(tmp_out)
 
       log.call("copy tmp -> dest_tmp: #{tmp_out} -> #{dest_tmp}")
-      copied_out = copy_file_buffered(tmp_out, dest_tmp)
+      FileUtils.cp(tmp_out, dest_tmp)
+      copied_out = File.size?(dest_tmp).to_i
       return { success: false, stdout: stdout, stderr: stderr, message: "dest copy failed: #{copied_out} bytes" } if copied_out < File.size(tmp_out)
       bak_path = "#{path_source}.bak"
       FileUtils.mv(path_source, bak_path) if backup
@@ -206,7 +208,7 @@ class VideoUtils
         File.rename(dest_tmp, path_source)
       rescue StandardError => e
         log.call("rename failed: #{e.message}, fallback to copy")
-        copy_file_buffered(dest_tmp, path_source)
+        FileUtils.cp(dest_tmp, path_source)
         FileUtils.rm_f(dest_tmp)
       end
       { success: true, stdout: stdout, stderr: stderr, backup_path: backup ? bak_path : nil }
@@ -261,21 +263,6 @@ class VideoUtils
       end
     end
     [stdout, stderr, status]
-  end
-
-  def self.copy_file_buffered(src, dest, buf_size: 1024 * 1024)
-    total = 0
-    mode = File.stat(src).mode & 0o777
-    File.open(src, 'rb') do |input|
-      File.open(dest, 'wb') do |output|
-        while (chunk = input.read(buf_size))
-          output.write(chunk)
-          total += chunk.bytesize
-        end
-      end
-    end
-    File.chmod(mode, dest)
-    total
   end
 
   def self.mkv_validate_local(path)
