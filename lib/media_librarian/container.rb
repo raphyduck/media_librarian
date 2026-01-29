@@ -266,7 +266,8 @@ module MediaLibrarian
     def normalized_finished_jobs_limit(daemon_config)
       limit = daemon_config['finished_jobs_per_queue']
       limit = limit.to_i if limit
-      limit = DEFAULT_FINISHED_JOBS_PER_QUEUE if limit.nil? || limit <= 0
+      return DEFAULT_FINISHED_JOBS_PER_QUEUE if limit.nil? || limit < 0
+
       limit
     end
 

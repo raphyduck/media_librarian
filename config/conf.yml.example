@@ -3,7 +3,7 @@ preferred_languages: fr en
 daemon:
   workers_pool_size: 4
   queue_slots: 4 # Deprecated; the worker queue is unbounded.
-  finished_jobs_per_queue: 100 # Keep the last 100 finished/failed/cancelled jobs per queue in memory.
+  finished_jobs_per_queue: 100 # Keep the last 100 finished/failed/cancelled jobs per queue in memory (0 disables history).
 deluge:
   host: host
   username: username

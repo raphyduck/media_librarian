@@ -274,6 +274,7 @@ class Daemon
 
     def status_snapshot
       finished_limit = finished_jobs_limit_per_queue
+      retain_finished = finished_limit.positive?
       jobs = trim_finished_jobs(sort_jobs_by_queue(job_registry.values.map(&:dup)), finished_limit)
       running = []
       finished = []
@@ -296,7 +297,7 @@ class Daemon
         running: running,
         queued: queued,
         finished: finished,
-        queues: queue_metrics_for(running: running, queued: queued, finished: finished)
+        queues: queue_metrics_for(running: running, queued: queued, finished: finished, include_finished: retain_finished)
       }
       snapshot.merge!(status_metadata)
       snapshot
@@ -304,6 +305,7 @@ class Daemon
 
     def build_snapshot_from_hashes(payload)
       finished_limit = finished_jobs_limit_per_queue
+      retain_finished = finished_limit.positive?
       jobs = trim_finished_jobs(sort_jobs_by_queue(extract_jobs_from(payload)), finished_limit)
       running = jobs.select { |job| job[:status].to_s == 'running' }
       finished = jobs.select { |job| FINISHED_STATUSES.include?(job[:status].to_s) }
@@ -313,7 +315,7 @@ class Daemon
         running: running,
         queued: queued,
         finished: finished,
-        queues: queue_metrics_for(running: running, queued: queued, finished: finished)
+        queues: queue_metrics_for(running: running, queued: queued, finished: finished, include_finished: retain_finished)
       }
       snapshot.merge!(status_metadata_from_payload(payload))
       snapshot
@@ -753,12 +755,16 @@ class Daemon
       end
     end
 
-    def queue_metrics_for(running:, queued:, finished:)
+    def queue_metrics_for(running:, queued:, finished:, include_finished: true)
       metrics = Hash.new do |hash, key|
-        hash[key] = { 'queue' => key, 'running' => 0, 'queued' => 0, 'finished' => 0, 'total' => 0 }
+        entry = { 'queue' => key, 'running' => 0, 'queued' => 0, 'total' => 0 }
+        entry['finished'] = 0 if include_finished
+        hash[key] = entry
       end
 
       { 'running' => running, 'queued' => queued, 'finished' => finished }.each do |key, jobs|
+        next if key == 'finished' && !include_finished
+
         jobs.each do |job|
           queue = job_attribute(job, :queue).to_s
           entry = metrics[queue]
@@ -811,7 +817,7 @@ class Daemon
 
     def trim_finished_jobs(jobs, limit)
       limit = limit.to_i
-      return jobs if limit <= 0
+      return jobs.reject { |job| finished_job?(job) } if limit <= 0
 
       keep_ids = {}
       finished_jobs_by_queue(jobs).each_value do |entries|
@@ -1083,7 +1089,14 @@ class Daemon
 
     def prune_finished_jobs(limit_per_queue:)
       limit = limit_per_queue.to_i
-      return if limit <= 0
+      if limit <= 0
+        finished_jobs_by_queue(job_registry.values).each_value do |entries|
+          entries.each do |job|
+            @jobs.delete(job_attribute(job, :id))
+          end
+        end
+        return
+      end
 
       finished_jobs_by_queue(job_registry.values).each_value do |entries|
         excess = entries.size - limit
@@ -1552,24 +1565,25 @@ class Daemon
 
     def handle_status_request(res)
       snapshot = status_snapshot
-      jobs = snapshot[:jobs].map { |job| serialize_job(job) }
+      retain_finished = finished_jobs_limit_per_queue.positive?
+      jobs_source = snapshot[:jobs]
+      jobs_source = jobs_source.reject { |job| finished_job?(job) } unless retain_finished
+      jobs = jobs_source.map { |job| serialize_job(job) }
       started_at = snapshot[:started_at]
       resources = snapshot[:resources]
 
-      json_response(
-        res,
-        body: {
-          'jobs' => jobs,
-          'running' => snapshot[:running].map { |job| serialize_job(job) },
-          'queued' => snapshot[:queued].map { |job| serialize_job(job) },
-          'finished' => snapshot[:finished].map { |job| serialize_job(job) },
-          'queues' => snapshot[:queues],
-          'lock_time' => Utils.lock_time_get,
-          'started_at' => started_at&.iso8601,
-          'uptime_seconds' => snapshot[:uptime_seconds],
-          'resources' => resources.is_a?(Hash) ? resources : {}
-        }
-      )
+      body = {
+        'jobs' => jobs,
+        'running' => snapshot[:running].map { |job| serialize_job(job) },
+        'queued' => snapshot[:queued].map { |job| serialize_job(job) },
+        'queues' => snapshot[:queues],
+        'lock_time' => Utils.lock_time_get,
+        'started_at' => started_at&.iso8601,
+        'uptime_seconds' => snapshot[:uptime_seconds],
+        'resources' => resources.is_a?(Hash) ? resources : {}
+      }
+      body['finished'] = snapshot[:finished].map { |job| serialize_job(job) } if retain_finished
+      json_response(res, body: body)
     end
 
     def handle_stop_request(res)
