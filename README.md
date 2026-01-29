@@ -68,7 +68,8 @@ This program is made to answer my various needs for automation in the management
 
 The daemon logs to `~/.medialibrarian/logs/` by default, and jobs are queued according to the values configured in `conf.yml`.
 Finished job history is capped per queue (defaults to `finished_jobs_per_queue: 100` in `~/.medialibrarian/conf.yml`) to keep the
-in-memory registry bounded; raise or lower the limit to tune how many completed entries remain visible via `/status`.
+in-memory registry bounded; set `finished_jobs_per_queue: 0` to disable finished job history entirely or tune the limit to
+control how many completed entries remain visible via `/status`.
 
 ### Réparer une base SQLite corrompue
 
