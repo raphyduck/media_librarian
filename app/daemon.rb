@@ -2666,6 +2666,7 @@ class Daemon
       end
 
       json_response(res, status: 202, body: { 'status' => 'update_stopping' })
+      force_shutdown_flag.make_true
       Thread.new { stop }
     end
 
@@ -2686,6 +2687,10 @@ class Daemon
 
     def restart_requested_flag
       @restart_requested_flag ||= Concurrent::AtomicBoolean.new(false)
+    end
+
+    def force_shutdown_flag
+      @force_shutdown_flag ||= Concurrent::AtomicBoolean.new(false)
     end
 
     def update_root
@@ -3631,13 +3636,13 @@ class Daemon
     end
 
     def wait_for_executor_shutdown
-      return @executor.wait_for_termination unless restart_shutdown?
+      return @executor.wait_for_termination unless restart_shutdown? || force_shutdown_flag.true?
 
       timeout = restart_shutdown_timeout
       return @executor.wait_for_termination if timeout.nil?
       return if @executor.wait_for_termination(timeout)
 
-      app.speaker.speak_up("Restart shutdown timed out after #{timeout}s; forcing executor shutdown")
+      app.speaker.speak_up("Shutdown timed out after #{timeout}s; forcing executor shutdown")
       @executor.kill if @executor.respond_to?(:kill)
     end
 
@@ -3655,6 +3660,8 @@ class Daemon
     end
 
     def cleanup
+      @force_shutdown_flag&.make_false
+      @force_shutdown_flag = nil
       @scheduler = nil
       @quit_timer = nil
       @trakt_timer = nil
