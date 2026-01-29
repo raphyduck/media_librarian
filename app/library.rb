@@ -281,8 +281,8 @@ class Library
     end
     if root_process.to_i > 0
       FileUtils.rm_r(full_p) if completed_folder != move_completed_torrent['torrent_completed_path'].to_s
-      raise 'Could not find any file to handle!' if handled == 0
       raise "An error occured" if error.to_i > 0
+      raise 'Could not find any file to handle!' if handled == 0
       post_process_start = Time.now
       folders = process_folder_list.uniq
       folders.each do |p|
