@@ -63,12 +63,12 @@ module SimpleSpeaker
       thread[:send_email] = in_mail.to_i if in_mail.to_i > 0
     end
 
-    def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0)
+    def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0, error = 0)
       thread[:log_msg] << str.to_s + @new_line if thread[:log_msg] && immediate.to_i <= 0
       if immediate.to_i > 0 || thread[:log_msg].nil?
         str.to_s.each_line do |l|
           daemon_send(l, thread: thread)
-          log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}")
+          log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}", error)
         end
       end
       email_msg_add(str, in_mail, thread)
@@ -82,14 +82,13 @@ module SimpleSpeaker
 
     def tell_error(e, src, in_mail = 1, thread = Thread.current)
       err = e.is_a?(Exception) ? e : StandardError.new(e.to_s)
-      @logger_error.error(err) if @logger_error
       parts = []
       parts << "jid=#{thread[:jid]}" if thread[:jid].to_s != ''
       parts << "obj=#{thread[:object]}" if thread[:object].to_s != ''
       prefix = parts.empty? ? '' : "[#{parts.join(' ')}] "
-      speak_up("#{prefix}ERROR in '#{src}'" + @new_line, in_mail, thread)
-      speak_up(prefix + err.to_s + @new_line, in_mail, thread)
-      speak_up(prefix + Array(err.backtrace)[0..2].join(@new_line) + @new_line, in_mail, thread)
+      speak_up("#{prefix}ERROR in '#{src}'" + @new_line, in_mail, thread, 0, 1)
+      speak_up(prefix + err.to_s + @new_line, in_mail, thread, 0, 1)
+      speak_up(prefix + Array(err.backtrace)[0..5].join(@new_line) + @new_line, in_mail, thread, 0, 1)
     end
 
     def user_input(input)
