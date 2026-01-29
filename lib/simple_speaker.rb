@@ -86,9 +86,9 @@ module SimpleSpeaker
       parts << "jid=#{thread[:jid]}" if thread[:jid].to_s != ''
       parts << "obj=#{thread[:object]}" if thread[:object].to_s != ''
       prefix = parts.empty? ? '' : "[#{parts.join(' ')}] "
-      speak_up("#{prefix}ERROR in '#{src}'" + @new_line, in_mail, thread, 0, 1)
-      speak_up(prefix + err.to_s + @new_line, in_mail, thread, 0, 1)
-      speak_up(prefix + Array(err.backtrace)[0..5].join(@new_line) + @new_line, in_mail, thread, 0, 1)
+      speak_up("#{prefix}ERROR in '#{src}'", in_mail, thread, 0, 1)
+      speak_up(prefix + err.to_s, in_mail, thread, 0, 1)
+      speak_up(prefix + Array(err.backtrace)[0..5].join(@new_line), in_mail, thread, 0, 1)
     end
 
     def user_input(input)
