@@ -1487,16 +1487,13 @@ function renderJobs(data = {}) {
         const status = statusFor(job);
         return status !== 'running' && !finishedStatuses.has(status);
       });
-  const finished = Array.isArray(data.finished)
-    ? data.finished
-    : sourceJobs.filter((job) => finishedStatuses.has(statusFor(job)));
 
-  const computeQueueSummary = (runningJobs, queuedJobs, finishedJobs) => {
+  const computeQueueSummary = (runningJobs, queuedJobs) => {
     const metrics = new Map();
     const bump = (job, key) => {
       const queueName = String(job?.queue || '');
       if (!metrics.has(queueName)) {
-        metrics.set(queueName, { queue: queueName, running: 0, queued: 0, finished: 0, total: 0 });
+        metrics.set(queueName, { queue: queueName, running: 0, queued: 0, total: 0 });
       }
       const entry = metrics.get(queueName);
       entry[key] += 1;
@@ -1504,7 +1501,6 @@ function renderJobs(data = {}) {
     };
     runningJobs.forEach((job) => bump(job, 'running'));
     queuedJobs.forEach((job) => bump(job, 'queued'));
-    finishedJobs.forEach((job) => bump(job, 'finished'));
     return Array.from(metrics.values()).sort((a, b) => a.queue.localeCompare(b.queue));
   };
 
@@ -1519,12 +1515,11 @@ function renderJobs(data = {}) {
       return runningCount + queuedCount > 0;
     });
   const queueSummary = filterQueueSummary(
-    Array.isArray(data.queues) ? data.queues : computeQueueSummary(running, queued, finished)
+    Array.isArray(data.queues) ? data.queues : computeQueueSummary(running, queued)
   );
 
   const runningList = document.getElementById('jobs-running');
   const queuedList = document.getElementById('jobs-queued');
-  const finishedList = document.getElementById('jobs-finished');
   const queueContainer = document.getElementById('jobs-queues');
 
   const buildItem = (job, { childCount = 0, parentId = null, childIds = [] } = {}) => {
@@ -1634,18 +1629,6 @@ function renderJobs(data = {}) {
   if (queuedList) {
     queuedList.replaceChildren(...buildForest(queued));
   }
-  if (finishedList) {
-    const sortedFinished = [...finished].sort(compareJobs);
-    finishedList.replaceChildren(
-      ...sortedFinished.map((job) =>
-        buildItem(job, {
-          childCount: Array.isArray(job.children_ids) ? job.children_ids.length : job.children || 0,
-          parentId: job.parent_id || null,
-          childIds: Array.isArray(job.children_ids) ? job.children_ids : [],
-        })
-      )
-    );
-  }
 
   if (queueContainer) {
     if (!queueSummary.length) {
@@ -1658,8 +1641,7 @@ function renderJobs(data = {}) {
         const label = queueName.trim() ? queueName : 'default';
         const runningCount = entry.running ?? 0;
         const queuedCount = entry.queued ?? 0;
-        const finishedCount = entry.finished ?? 0;
-        const description = `${label}: ${runningCount} en cours · ${queuedCount} en attente · ${finishedCount} terminés`;
+        const description = `${label}: ${runningCount} en cours · ${queuedCount} en attente`;
         span.textContent = description;
         span.title = description;
         return span;
