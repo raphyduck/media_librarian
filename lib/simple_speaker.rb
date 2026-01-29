@@ -82,15 +82,7 @@ module SimpleSpeaker
 
     def tell_error(e, src, in_mail = 1, thread = Thread.current)
       err = e.is_a?(Exception) ? e : StandardError.new(e.to_s)
-      if @logger_error
-        @logger_error.error(err)
-        detail = if err.respond_to?(:full_message)
-                   err.full_message
-                 else
-                   "#{err.class}: #{err.message}\n#{Array(err.backtrace).join("\n")}"
-                 end
-        detail.to_s.each_line { |line| @logger_error.error(line.chomp) }
-      end
+      @logger_error.error(err) if @logger_error
       parts = []
       parts << "jid=#{thread[:jid]}" if thread[:jid].to_s != ''
       parts << "obj=#{thread[:object]}" if thread[:object].to_s != ''
