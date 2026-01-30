@@ -93,7 +93,7 @@ class Daemon
   end
 
   CONTROL_CONTENT_TYPE = 'application/json'
-  LOG_TAIL_LINES = 10_000
+  LOG_TAIL_LINES = 2_000
   SESSION_COOKIE_NAME = 'ml_session'
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
@@ -2276,12 +2276,16 @@ class Daemon
     def handle_logs_request(req, res)
       return method_not_allowed(res, 'GET') unless req.request_method == 'GET'
 
-      logs = {}
-      log_paths.each do |name, path|
-        logs[name] = tail_file(path)
-      rescue StandardError => e
-        logs[name] = "Error reading log: #{e.message}"
+      paths = log_paths
+      threads = paths.map do |name, path|
+        Thread.new do
+          content = tail_file(path)
+          [name, content]
+        rescue StandardError => e
+          [name, "Error reading log: #{e.message}"]
+        end
       end
+      logs = threads.map(&:value).to_h
 
       json_response(res, body: { 'logs' => logs })
     end
@@ -3360,31 +3364,31 @@ class Daemon
     def tail_file(path, max_lines: LOG_TAIL_LINES)
       return nil unless File.exist?(path)
 
-      max_bytes = 4 * 1024 * 1024
-      chunk_size = 4096
-      buffer = +''
+      max_bytes = 2 * 1024 * 1024
+      chunk_size = 16_384
+      chunks = []
       bytes_read = 0
+      line_count = 0
 
       File.open(path, 'rb') do |file|
         size = file.size
         return '' if size.zero?
 
         offset = size
-        while offset.positive? && bytes_read < max_bytes
+        while offset.positive? && bytes_read < max_bytes && line_count < max_lines
           read_size = [chunk_size, offset].min
           offset -= read_size
           file.seek(offset, IO::SEEK_SET)
-          buffer = file.read(read_size) + buffer
+          chunk = file.read(read_size)
+          chunks.unshift(chunk)
           bytes_read += read_size
-
-          line_count = buffer.count("\n")
-          line_count += 1 unless buffer.empty? || buffer.end_with?("\n")
-          break if line_count >= max_lines
+          line_count += chunk.count("\n")
         end
       end
 
-      return '' if buffer.empty?
+      return '' if chunks.empty?
 
+      buffer = chunks.join
       trailing_newline = buffer.end_with?("\n")
       lines = buffer.split("\n")
       result = lines.last(max_lines).join("\n")
