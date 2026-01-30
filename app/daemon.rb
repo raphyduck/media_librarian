@@ -165,6 +165,7 @@ class Daemon
     def stop
       if running?
         app.speaker.speak_up('Will shutdown after pending operations')
+        force_shutdown_flag.make_true
         app.librarian.quit = true
         if Thread.current[:jid]
           Thread.new { shutdown }
