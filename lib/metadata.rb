@@ -364,7 +364,7 @@ class Metadata
             ids_info = ids_part.to_s == '' ? ids : ids_part
             msg = "Provider #{provider_call} returned no results title=#{title.inspect} normalized=#{title_norm.inspect} ids=#{ids_info} raw=#{raw_info}"
             msg << " file=#{original_filename}" if original_filename.to_s != ''
-            MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), "#{title_norm}")
+            debug_logs << msg
           end
           exact_title, item = media_chose(title, items, keys, type, no_prompt.to_i)
           exact_title, item = item_fetch_method.call(item['ids'].merge({ 'force_title' => exact_title })) unless item.nil?
