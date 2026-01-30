@@ -3550,26 +3550,8 @@ class Daemon
       signatures
     end
 
-    def task_frequency(task, params)
-      return calendar_refresh_frequency(params) if calendar_refresh_task?(params)
-
+    def task_frequency(_task, params)
       Utils.timeperiod_to_sec(params['every']).to_i
-    end
-
-    def calendar_refresh_frequency(params)
-      fallback = Utils.timeperiod_to_sec(params['every']).to_i
-      config = calendar_config
-      return fallback unless config
-
-      override = config['refresh_every']
-      return fallback if override.to_s.strip.empty?
-
-      seconds = Utils.timeperiod_to_sec(override.to_s).to_i
-      seconds.positive? ? seconds : fallback
-    end
-
-    def calendar_refresh_task?(params)
-      params.is_a?(Hash) && params['command'].to_s == 'calendar.refresh_feed'
     end
 
     def bootstrap_calendar_feed_if_needed
