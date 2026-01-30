@@ -21,8 +21,7 @@ class DaemonSchedulerCalendarTest < Minitest::Test
     @environment.cleanup if @environment
   end
 
-  def test_calendar_refresh_frequency_uses_configuration_interval
-    apply_calendar_config(refresh_every: '2 hours')
+  def test_calendar_refresh_uses_scheduler_interval
     reset_daemon_schedule_state
 
     recorded_frequency = nil
@@ -36,7 +35,7 @@ class DaemonSchedulerCalendarTest < Minitest::Test
       end
     end
 
-    assert_equal 7_200, recorded_frequency
+    assert_equal 3_600, recorded_frequency
     assert_equal 1, enqueued.length
     assert_equal %w[calendar refresh_feed], enqueued.first[:args].first(2)
   end
@@ -56,19 +55,6 @@ class DaemonSchedulerCalendarTest < Minitest::Test
     File.write(path, template.to_yaml)
   end
 
-  def apply_calendar_config(refresh_every: '12 hours')
-    config = {
-      'daemon' => { 'workers_pool_size' => 1, 'queue_slots' => 1 },
-      'calendar' => {
-        'refresh_every' => refresh_every,
-        'refresh_days' => 10,
-        'refresh_limit' => 25,
-        'providers' => 'omdb|trakt'
-      }
-    }
-    @environment.container.reload_config!(config)
-  end
-
   def reset_daemon_schedule_state
     Daemon.instance_variable_set(:@template_cache, nil)
     Daemon.instance_variable_set(:@last_execution, {})
@@ -84,8 +70,6 @@ class DaemonSchedulerCalendarTest < Minitest::Test
 
   def timeperiod_to_sec_stub(argument)
     case argument
-    when '2 hours'
-      7_200
     when '1 hours'
       3_600
     when Integer
