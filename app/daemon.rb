@@ -3340,23 +3340,36 @@ class Daemon
     def tail_file(path, max_lines: LOG_TAIL_LINES)
       return nil unless File.exist?(path)
 
-      buffer = Array.new(max_lines)
-      line_count = 0
+      max_bytes = 4 * 1024 * 1024
+      chunk_size = 4096
+      buffer = +''
+      bytes_read = 0
 
-      File.foreach(path) do |line|
-        buffer[line_count % max_lines] = line
-        line_count += 1
+      File.open(path, 'rb') do |file|
+        size = file.size
+        return '' if size.zero?
+
+        offset = size
+        while offset.positive? && bytes_read < max_bytes
+          read_size = [chunk_size, offset].min
+          offset -= read_size
+          file.seek(offset, IO::SEEK_SET)
+          buffer = file.read(read_size) + buffer
+          bytes_read += read_size
+
+          line_count = buffer.count("\n")
+          line_count += 1 unless buffer.empty? || buffer.end_with?("\n")
+          break if line_count >= max_lines
+        end
       end
 
-      return '' if line_count.zero?
+      return '' if buffer.empty?
 
-      if line_count < max_lines
-        buffer.first(line_count).join
-      else
-        start = line_count % max_lines
-        tail = (buffer[start, max_lines - start] || []) + buffer[0, start]
-        tail.join
-      end
+      trailing_newline = buffer.end_with?("\n")
+      lines = buffer.split("\n")
+      result = lines.last(max_lines).join("\n")
+      result += "\n" if trailing_newline
+      result
     end
 
     def validate_yaml(content)
