@@ -26,90 +26,233 @@ class VideoUtils
     skipping
   end
 
-  def self.set_default_original_audio!(path:, target_lang: nil)
+  # Sets the default audio track for an MKV file based on the target language.
+  # @param path [String] Path to the MKV file
+  # @param target_lang [String, nil] Target language code for the default audio track
+  # @param wait_for_space [Boolean] If true, wait for disk space to become available; if false, return error immediately
+  # @return [Boolean] true if successful, false otherwise
+  def self.set_default_original_audio!(path:, target_lang: nil, wait_for_space: false)
     return MediaLibrarian.app.speaker.speak_up("Would set default original audio for #{path}") if Env.pretend?
 
-    return false unless File.extname(path).downcase == '.mkv'
-    return false unless command_available?('mkvmerge')
-    track_map = mkv_audio_track_map(path)
-    return false if track_map.empty?
-    target_lang = Languages.get_code(target_lang.to_s.split('-').first)
-    return false if target_lang.to_s == ''
-    if Env.debug?
-      track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
-      MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
-    end
-    default_tracks = track_map.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
-    default_track = default_tracks.size == 1 ? default_tracks.first : nil
-    default_lang = default_track ? Languages.get_code(default_track[:lang].to_s.split('-').first) : nil
-    if default_track && default_lang == target_lang
-      MediaLibrarian.app.speaker.speak_up("Default audio track #{default_track[:id]} already set to #{target_lang} for #{path}.")
-      return true
-    end
-    if default_tracks.empty?
-      first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
-      return true if first_lang == target_lang
-    end
-    valid_audio = lambda do |audio|
-      return false unless audio
-      lang = audio[:lang].to_s.strip.downcase
-      return false if lang == '' || %w[und undefined].include?(lang)
-      title = audio[:name].to_s
-      return false if title.downcase.include?('commentary')
-      commentary = audio[:commentary].to_s.downcase
-      !%w[yes true 1].include?(commentary)
-    end
-    selected_track_index = nil
-    track_map.each do |audio|
-      next unless valid_audio.call(audio)
-      lang = audio[:lang].to_s.strip.downcase
+    Utils.lock_block("set_default_original_audio_#{path}") do
+      return false unless File.extname(path).downcase == '.mkv'
+      return false unless command_available?('mkvmerge')
+      return false unless File.exist?(path)
 
-      track_lang = Languages.get_code(lang.split('-').first)
-      next if track_lang.to_s == ''
-      if track_lang == target_lang
-        selected_track_index = audio[:audio_index]
-        break
+      file_size = File.size(path)
+      temp_dir = MediaLibrarian.app.temp_dir
+      source_dir = File.dirname(path)
+
+      # Check available disk space before proceeding
+      # process_mkv creates: 2 copies in temp_dir (input + output), 1 copy in source_dir (processing file)
+      # Adding 20% safety margin
+      space_check_result = check_space_for_operation(
+        file_size: file_size,
+        temp_dir: temp_dir,
+        source_dir: source_dir,
+        wait_for_space: wait_for_space
+      )
+      unless space_check_result[:success]
+        MediaLibrarian.app.speaker.speak_up(space_check_result[:message])
+        return false
+      end
+
+      track_map = mkv_audio_track_map(path)
+      return false if track_map.empty?
+      target_lang = Languages.get_code(target_lang.to_s.split('-').first)
+      return false if target_lang.to_s == ''
+      if Env.debug?
+        track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
+        MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
+      end
+      default_tracks = track_map.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+      default_track = default_tracks.size == 1 ? default_tracks.first : nil
+      default_lang = default_track ? Languages.get_code(default_track[:lang].to_s.split('-').first) : nil
+      if default_track && default_lang == target_lang
+        MediaLibrarian.app.speaker.speak_up("Default audio track #{default_track[:id]} already set to #{target_lang} for #{path}.")
+        return true
+      end
+      if default_tracks.empty?
+        first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
+        return true if first_lang == target_lang
+      end
+      valid_audio = lambda do |audio|
+        return false unless audio
+        lang = audio[:lang].to_s.strip.downcase
+        return false if lang == '' || %w[und undefined].include?(lang)
+        title = audio[:name].to_s
+        return false if title.downcase.include?('commentary')
+        commentary = audio[:commentary].to_s.downcase
+        !%w[yes true 1].include?(commentary)
+      end
+      selected_track_index = nil
+      track_map.each do |audio|
+        next unless valid_audio.call(audio)
+        lang = audio[:lang].to_s.strip.downcase
+
+        track_lang = Languages.get_code(lang.split('-').first)
+        next if track_lang.to_s == ''
+        if track_lang == target_lang
+          selected_track_index = audio[:audio_index]
+          break
+        end
+      end
+
+      return false unless selected_track_index
+
+      args = []
+      track_map.each do |track|
+        flag = (track[:audio_index] == selected_track_index) ? 'yes' : 'no'
+        args += ['--default-track', "#{track[:id]}:#{flag}"]
+      end
+      args << path
+      return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
+      MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvmerge. Running command: #{args.join(' ')}") if Env.debug?
+      result = process_mkv(path, tool: 'mkvmerge', args: args, temp_dir: temp_dir)
+      unless result[:success]
+        message = "mkvmerge remux failed: #{result[:stderr].to_s.strip}"
+        stdout_line = result[:stdout].to_s.strip
+        message += " stdout: #{stdout_line}" unless stdout_line.empty?
+        message += " #{result[:message]}" if result[:message]
+        MediaLibrarian.app.speaker.speak_up("#{message}. Run: mkvmerge #{args.join(' ')}")
+        return false
+      end
+      post_tracks = mkv_audio_track_map(path)
+      if post_tracks.empty?
+        MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept for manual recovery.")
+        return false
+      end
+      post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
+      if post_defaults.size != 1
+        MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
+        return false
+      end
+
+      post_lang = Languages.get_code(post_defaults.first[:lang].to_s.split('-').first)
+      if post_lang != target_lang
+        MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
+        return false
+      end
+      FileUtils.rm_f(result[:backup_path]) if result[:backup_path]
+      MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{result[:stdout]}")
+      true
+    end
+  end
+
+  # Check if there's enough disk space for the MKV processing operation
+  # @param file_size [Integer] Size of the source file in bytes
+  # @param temp_dir [String] Path to the temporary directory
+  # @param source_dir [String] Path to the source file directory
+  # @param wait_for_space [Boolean] If true, wait for space; if false, return error immediately
+  # @return [Hash] { success: Boolean, message: String }
+  def self.check_space_for_operation(file_size:, temp_dir:, source_dir:, wait_for_space: false)
+    safety_margin = 1.2 # 20% safety margin
+    temp_copies = 2 # input + output in temp_dir
+    source_copies = 1 # processing file in source_dir
+
+    check_interval = 30 # seconds between space checks when waiting
+    max_wait_time = 3600 # maximum wait time in seconds (1 hour)
+
+    # Check if temp_dir and source_dir are on the same filesystem
+    same_filesystem = same_filesystem?(temp_dir, source_dir)
+
+    loop do
+      if same_filesystem
+        # Same filesystem: combine space requirements
+        total_copies = temp_copies + source_copies
+        required_space = (file_size * total_copies * safety_margin).to_i
+        available, = FileUtils.get_disk_space(source_dir)
+
+        if available >= required_space
+          return { success: true, message: 'Sufficient disk space available' }
+        end
+
+        error_message = "Insufficient disk space: need #{format_bytes(required_space)}, have #{format_bytes(available)} (temp_dir and source_dir on same filesystem)"
+      else
+        # Different filesystems: check each separately
+        required_temp_space = (file_size * temp_copies * safety_margin).to_i
+        required_source_space = (file_size * source_copies * safety_margin).to_i
+
+        temp_available, = FileUtils.get_disk_space(temp_dir)
+        source_available, = FileUtils.get_disk_space(source_dir)
+
+        temp_ok = temp_available >= required_temp_space
+        source_ok = source_available >= required_source_space
+
+        if temp_ok && source_ok
+          return { success: true, message: 'Sufficient disk space available' }
+        end
+
+        error_parts = []
+        error_parts << "temp_dir (#{temp_dir}): need #{format_bytes(required_temp_space)}, have #{format_bytes(temp_available)}" unless temp_ok
+        error_parts << "source_dir (#{source_dir}): need #{format_bytes(required_source_space)}, have #{format_bytes(source_available)}" unless source_ok
+        error_message = "Insufficient disk space for operation: #{error_parts.join('; ')}"
+      end
+
+      unless wait_for_space
+        return { success: false, message: error_message }
+      end
+
+      MediaLibrarian.app.speaker.speak_up("#{error_message}. Waiting for space to become available...")
+      sleep(check_interval)
+      max_wait_time -= check_interval
+
+      if max_wait_time <= 0
+        return { success: false, message: "Timed out waiting for disk space: #{error_message}" }
+      end
+    end
+  end
+
+  # Check if two paths are on the same filesystem (or should be treated as such)
+  # @param path1 [String] First path
+  # @param path2 [String] Second path
+  # @return [Boolean] true if both paths are on the same filesystem or if either is on mergerfs
+  def self.same_filesystem?(path1, path2)
+    # If either path is on mergerfs, treat as same filesystem since mergerfs
+    # writes to the underlying local filesystem first
+    return true if mergerfs_path?(path1) || mergerfs_path?(path2)
+
+    File.stat(path1).dev == File.stat(path2).dev
+  rescue SystemCallError
+    false
+  end
+
+  # Check if a path is mounted on a mergerfs filesystem
+  # @param path [String] Path to check
+  # @return [Boolean] true if the path is on a mergerfs mount
+  def self.mergerfs_path?(path)
+    return false unless File.exist?('/proc/mounts')
+
+    real_path = File.realpath(path) rescue path
+    mounts = File.read('/proc/mounts').lines.map do |line|
+      parts = line.split
+      { mount_point: parts[1], fs_type: parts[2] }
+    end
+
+    # Sort by mount point length descending to find the most specific mount
+    mounts.sort_by { |m| -m[:mount_point].length }.each do |mount|
+      if real_path.start_with?(mount[:mount_point] + '/') || real_path == mount[:mount_point]
+        return mount[:fs_type] == 'fuse.mergerfs'
       end
     end
 
-    return false unless selected_track_index
+    false
+  rescue SystemCallError, IOError
+    false
+  end
 
-    args = []
-    track_map.each do |track|
-      flag = (track[:audio_index] == selected_track_index) ? 'yes' : 'no'
-      args += ['--default-track', "#{track[:id]}:#{flag}"]
+  # Format bytes to human-readable string
+  # @param bytes [Integer] Size in bytes
+  # @return [String] Human-readable size string
+  def self.format_bytes(bytes)
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    unit_index = 0
+    size = bytes.to_f
+    while size >= 1024 && unit_index < units.length - 1
+      size /= 1024
+      unit_index += 1
     end
-    args << path
-    return MediaLibrarian.app.speaker.speak_up("Would run the following command: '#{args.join(' ')}'") if Env.pretend?
-    MediaLibrarian.app.speaker.speak_up("Setting default audio track to #{selected_track_index} for #{path} with target language #{target_lang} using mkvmerge. Running command: #{args.join(' ')}") if Env.debug?
-    result = process_mkv(path, tool: 'mkvmerge', args: args, temp_dir: MediaLibrarian.app.temp_dir)
-    unless result[:success]
-      message = "mkvmerge remux failed: #{result[:stderr].to_s.strip}"
-      stdout_line = result[:stdout].to_s.strip
-      message += " stdout: #{stdout_line}" unless stdout_line.empty?
-      message += " #{result[:message]}" if result[:message]
-      MediaLibrarian.app.speaker.speak_up("#{message}. Run: mkvmerge #{args.join(' ')}")
-      return false
-    end
-    post_tracks = mkv_audio_track_map(path)
-    if post_tracks.empty?
-      MediaLibrarian.app.speaker.speak_up("Remux integrity check failed: no audio tracks found for #{path}. Backup kept for manual recovery.")
-      return false
-    end
-    post_defaults = post_tracks.select { |track| %w[yes true 1].include?(track[:default].to_s.downcase) }
-    if post_defaults.size != 1
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: expected 1 default audio track, found #{post_defaults.size} for #{path}.")
-      return false
-    end
-
-    post_lang = Languages.get_code(post_defaults.first[:lang].to_s.split('-').first)
-    if post_lang != target_lang
-      MediaLibrarian.app.speaker.speak_up("Post-check failed: default audio language #{post_lang} does not match target #{target_lang} for #{path}.")
-      return false
-    end
-    FileUtils.rm_f(result[:backup_path]) if result[:backup_path]
-    MediaLibrarian.app.speaker.speak_up("Default audio track set to #{selected_track_index} for #{path} with target language #{target_lang}. Command returned #{result[:stdout]}")
-    true
+    "%.2f %s" % [size, units[unit_index]]
   end
 
   def self.mkv_audio_track_map(path)
