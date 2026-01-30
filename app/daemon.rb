@@ -97,6 +97,7 @@ class Daemon
   SESSION_COOKIE_NAME = 'ml_session'
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
+  CAPTURE_OUTPUT_RETENTION_SECONDS = 5
   UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
   INLINE_EXECUTED = Object.new
   SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
@@ -1093,6 +1094,8 @@ class Daemon
       if limit <= 0
         finished_jobs_by_queue(job_registry.values).each_value do |entries|
           entries.each do |job|
+            next if job_within_retention_period?(job)
+
             @jobs.delete(job_attribute(job, :id))
           end
         end
@@ -1106,9 +1109,23 @@ class Daemon
         entries.sort_by { |job| finished_at_time(job) }
                .first(excess)
                .each do |job|
+          next if job_within_retention_period?(job)
+
           @jobs.delete(job_attribute(job, :id))
         end
       end
+    end
+
+    def job_within_retention_period?(job)
+      return false unless job_attribute(job, :capture_output)
+
+      raw_finished_at = job_attribute(job, :finished_at)
+      return false unless raw_finished_at
+
+      finished_at = coerce_time(raw_finished_at)
+      return false unless finished_at
+
+      Time.now - finished_at < CAPTURE_OUTPUT_RETENTION_SECONDS
     end
 
     def unregister_child(job)
