@@ -144,6 +144,6 @@ class FileSystemScanServiceTest < Minitest::Test
     end
 
     deletion = @db.deleted_rows.find { |row| row[:table] == :watchlist }
-    assert_equal({ table: :watchlist, imdb_id: 'tt7654321', type: 'show' }, deletion)
+    assert_equal({ table: :watchlist, imdb_id: 'tt7654321', type: 'shows' }, deletion)
   end
 end
