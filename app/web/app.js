@@ -1714,18 +1714,16 @@ function renderErrorBlocks(logEntry, text) {
     }
     return { prefix: match[1], message: match[2] || '' };
   };
-  let previousPrefix = null;
   lines.forEach((line) => {
     const parsed = extractErrorPrefix(line);
     if (parsed) {
       const normalizedMessage = parsed.message.startsWith(' ')
         ? parsed.message.slice(1)
         : parsed.message;
-      const isContinuation = Boolean(current)
-        && (parsed.prefix === previousPrefix
-          || /^\s/.test(normalizedMessage)
-          || /^from\b/.test(normalizedMessage));
-      if (!current || !isContinuation) {
+      // A new error block starts with "ERROR in '" pattern (from tell_error)
+      // All other lines are continuations of the current block
+      const isNewErrorStart = /ERROR in '/.test(normalizedMessage);
+      if (!current || isNewErrorStart) {
         if (current) {
           blocks.push(current);
         }
@@ -1733,13 +1731,11 @@ function renderErrorBlocks(logEntry, text) {
       } else {
         current.push(line);
       }
-      previousPrefix = parsed.prefix;
       return;
     }
     if (current) {
       current.push(line);
     }
-    previousPrefix = null;
   });
   if (current) {
     blocks.push(current);
