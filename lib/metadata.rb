@@ -291,6 +291,7 @@ class Metadata
     exact_title, item = title, nil
     cached = Cache.cache_get(cache_category, cache_name, 120, force_refresh)
     return cached if cached && cached[1] && force_refresh.to_i == 0
+    debug_logs = []
     Utils.lock_block("#{__method__}_#{type}_#{title}#{ids}") do
       exact_title, item = item_fetch_method.call(ids) unless ids.empty?
       search_providers.each do |o, m|
@@ -300,25 +301,25 @@ class Metadata
           title_norm = detect_real_title(title, type, 0, 0)
           provider_name = o.respond_to?(:name) ? o.name : o.class.name
           provider_call = "#{provider_name}##{m}"
-          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] -> '#{title_norm}'", 0) if Env.debug?
+          debug_logs << "[#{provider_call}] -> '#{title_norm}'" if Env.debug?
           items = nil
           Timeout.timeout(15) do
             meth = m.to_s.gsub(/_{2,}/, '_') # "search__movies" -> "search_movies"
             begin
               items = o.public_send(meth, title_norm)
             rescue NameError, NoMethodError
-              # dernier recours: déléguer à method_missing si le provider l’implémente
+              # dernier recours: déléguer à method_missing si le provider l'implémente
               items = o.send(:method_missing, m, title_norm)
             end
           end
           raw_items = items
           raw_info = raw_items.nil? ? 'nil' : "#{raw_items.class}[#{raw_items.respond_to?(:size) ? raw_items.size : '?'}]"
-          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] <= raw #{raw_info}", 0) if Env.debug?
+          debug_logs << "[#{provider_call}] <= raw #{raw_info}" if Env.debug?
           if Env.debug? && raw_items
             Array(raw_items).each_with_index do |raw, idx|
               summary = raw.is_a?(Hash) ? (raw.dig('movie', 'title') || raw['title'] || raw['name']) : raw
               ids = raw.is_a?(Hash) ? (raw.dig('movie', 'ids') || raw['ids']) : nil
-              MediaLibrarian.app.speaker.speak_up("[#{provider_call}] raw[#{idx}] #{summary.inspect} ids=#{ids.inspect}", 0)
+              debug_logs << "[#{provider_call}] raw[#{idx}] #{summary.inspect} ids=#{ids.inspect}"
             end
           end
           items = Array(items).compact
@@ -336,12 +337,12 @@ class Metadata
                     MediaLibrarian.app.speaker.tell_error(StandardError.new("[#{provider_call}] unexpected payload #{v.inspect}"), title_norm)
                     next nil
                   end
-                  MediaLibrarian.app.speaker.speak_up("[#{provider_call}] detail fetch #{detail_ids}", 0) if Env.debug?
+                  debug_logs << "[#{provider_call}] detail fetch #{detail_ids}" if Env.debug?
                   detail_item = item_fetch_method.call(detail_ids)
                   detail_item = detail_item && detail_item[1]
                   if detail_item.nil?
                     msg = "[#{provider_call}] detail lookup returned nil for ids #{detail_ids}"
-                    Env.debug? ? MediaLibrarian.app.speaker.speak_up(msg, 0) : MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), title_norm)
+                    Env.debug? ? debug_logs << msg : MediaLibrarian.app.speaker.tell_error(StandardError.new(msg), title_norm)
                     v['ids'] = detail_ids
                     v['name'] ||= v['title']
                     v['year'] ||= v['release_date'].to_s[0,4]
@@ -358,7 +359,7 @@ class Metadata
           result_count = items.size
           summary = items.first
           summary = summary['title'] || summary['name'] if summary.respond_to?(:[])
-          MediaLibrarian.app.speaker.speak_up("[#{provider_call}] => #{result_count} #{summary}", 0) if Env.debug?
+          debug_logs << "[#{provider_call}] => #{result_count} #{summary}" if Env.debug?
           if result_count.zero?
             ids_info = ids_part.to_s == '' ? ids : ids_part
             msg = "Provider #{provider_call} returned no results title=#{title.inspect} normalized=#{title_norm.inspect} ids=#{ids_info} raw=#{raw_info}"
@@ -374,7 +375,10 @@ class Metadata
       exact_title, item = Kodi.kodi_lookup(type, original_filename, exact_title) if item.nil? && original_filename.to_s != ''
       Cache.cache_add(cache_category, cache_name, [exact_title, item], item) if item
     end
-    MediaLibrarian.app.speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0) if item.nil?
+    if item.nil?
+      debug_logs.each { |msg| MediaLibrarian.app.speaker.speak_up(msg, 0) }
+      MediaLibrarian.app.speaker.speak_up("#{Utils.arguments_dump(binding)}= '#{exact_title}', nil", 0)
+    end
     return exact_title, item
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
