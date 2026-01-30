@@ -391,7 +391,7 @@ class Library
     return files if identifiers.empty? || full_name == ''
     return files if file[:type].to_s == 'file' && !File.exist?(file[:name])
     if set_original_audio_default.to_i > 0 && file[:type].to_s == 'file' && !renamed
-      VideoUtils.set_default_original_audio!(path: file[:name], target_lang: info[:language])
+      VideoUtils.set_default_original_audio!(path: file[:name], target_lang: info[:language], wait_for_space: set_original_audio_default.to_i > 1)
     end
     app.speaker.speak_up("Adding #{file[:type]} '#{full_name}' (filename '#{File.basename(file[:name])}', ids '#{identifiers}') to list", 0) if Env.debug?
     if file[:type].to_s == 'file'
@@ -586,7 +586,7 @@ class Library
       return ''
     end
     if !metadata.empty? && metadata['is_found']
-      VideoUtils.set_default_original_audio!(path: original, target_lang: metadata['language']) if set_original_audio_default.to_i > 0
+      VideoUtils.set_default_original_audio!(path: original, target_lang: metadata['language'], wait_for_space: set_original_audio_default.to_i > 1) if set_original_audio_default.to_i > 0
       destination += ".#{metadata['part']}" if metadata['part'].to_s != ''
       destination += ".#{metadata['extension'].downcase}"
       _, destination = FileUtils.move_file(original, destination, hard_link, replaced_outdated, no_prompt)
