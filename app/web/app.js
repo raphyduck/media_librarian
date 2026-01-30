@@ -1807,6 +1807,9 @@ function renderErrorBlocks(logEntry, text) {
 function renderLogs(logs = {}) {
   const container = document.getElementById('logs-container');
   const template = document.getElementById('log-entry-template');
+  if (!container || !template) {
+    return;
+  }
   const existing = new Map(
     Array.from(container.children).map((entry) => [entry.dataset.logName, entry]),
   );
@@ -1816,12 +1819,18 @@ function renderLogs(logs = {}) {
     if (!logEntry) {
       const fragment = template.content.cloneNode(true);
       logEntry = fragment.querySelector('.log-entry');
+      if (!logEntry) {
+        return;
+      }
       logEntry.dataset.logName = name;
-      fragment.querySelector('.log-name').textContent = name;
+      const logName = fragment.querySelector('.log-name');
+      if (logName) {
+        logName.textContent = name;
+      }
       fragment.querySelector('.log-filter')?.addEventListener('input', () => {
         updateLogFilter(logEntry);
       });
-      fragment.querySelector('.copy-log').addEventListener('click', async () => {
+      fragment.querySelector('.copy-log')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(logEntry.dataset.fullLogText || logEntry.dataset.logText || '');
           showNotification(`Log « ${name} » copié dans le presse-papiers.`);
@@ -3052,11 +3061,9 @@ async function loadLogs({ force = false } = {}) {
   }
   try {
     const data = await fetchJson('/logs');
-    renderLogs(data.logs || {});
+    renderLogs(data?.logs || {});
   } catch (error) {
-    if (state.authenticated) {
-      showNotification(error.message, 'error');
-    }
+    showNotification(error.message || 'Impossible de charger les logs', 'error');
   }
 }
 
