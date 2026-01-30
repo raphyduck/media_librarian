@@ -2279,6 +2279,8 @@ class Daemon
       logs = {}
       log_paths.each do |name, path|
         logs[name] = tail_file(path)
+      rescue StandardError => e
+        logs[name] = "Error reading log: #{e.message}"
       end
 
       json_response(res, body: { 'logs' => logs })
