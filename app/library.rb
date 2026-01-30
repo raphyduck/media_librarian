@@ -105,7 +105,7 @@ class Library
     )
   end
 
-  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {}, exclude_path: ['extfls'])
+  def self.handle_completed_download(torrent_path:, torrent_name:, completed_folder:, destination_folder:, torrent_id: "", handling: {}, remove_duplicates: 0, folder_hierarchy: FOLDER_HIERARCHY, force_process: 0, root_process: 1, ensure_qualities: '', move_completed_torrent: {}, exclude_path: ['extfls'], set_original_audio_default: 1)
     return app.speaker.speak_up "Torrent files not in completed folder, nothing to do!" if !torrent_path.include?(completed_folder) || completed_folder.to_s == ''
     completion_time = Time.now
     if root_process.to_i > 0
@@ -258,14 +258,14 @@ class Library
             if media_info.isHDR?
               media_info.hdr_to_sdr("#{full_p}.tmp.#{extension}")
               if handling[type]['no_hdr'].to_i > 1
-                rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities + '.hdr.nodup.', completed_folder + '/' + otype, 1)
+                rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities + '.hdr.nodup.', completed_folder + '/' + otype, set_original_audio_default)
               else
                 FileUtils.rm(full_p)
               end
               FileUtils.mv("#{full_p}.tmp.#{extension}", full_p.gsub!(".#{extension}", ".converted.#{extension}"))
             end
           end
-          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities, completed_folder + '/' + otype, 1)
+          destination = rename_media_file(full_p, handling[type]['move_to'], ttype, '', nil, 1, 1, 1, folder_hierarchy, ensure_qualities, completed_folder + '/' + otype, set_original_audio_default)
         else
           destination = full_p.gsub(completed_folder, destination_folder)
           _, moved = FileUtils.move_file(full_p, destination, 1)
