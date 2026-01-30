@@ -2,6 +2,7 @@ require 'json'
 require 'open3'
 require 'tmpdir'
 require 'timeout'
+require 'shellwords'
 
 class VideoUtils
   def self.convert_videos(path, dest_file, input_format, output_format)
@@ -157,6 +158,8 @@ class VideoUtils
     temp_check_path = existing_path_for_space_check(temp_dir)
     source_check_path = existing_path_for_space_check(source_dir)
 
+    MediaLibrarian.app.speaker.speak_up("Disk space check: temp_dir=#{temp_dir} -> #{temp_check_path}, source_dir=#{source_dir} -> #{source_check_path}", 0) if Env.debug?
+
     # Check if temp_dir and source_dir are on the same filesystem
     same_filesystem = same_filesystem?(temp_check_path, source_check_path)
 
@@ -165,7 +168,7 @@ class VideoUtils
         # Same filesystem: combine space requirements
         total_copies = temp_copies + source_copies
         required_space = (file_size * total_copies * safety_margin).to_i
-        available, = FileUtils.get_disk_space(source_check_path)
+        available = get_available_space(source_check_path)
 
         if available >= required_space
           return { success: true, message: 'Sufficient disk space available' }
@@ -177,8 +180,8 @@ class VideoUtils
         required_temp_space = (file_size * temp_copies * safety_margin).to_i
         required_source_space = (file_size * source_copies * safety_margin).to_i
 
-        temp_available, = FileUtils.get_disk_space(temp_check_path)
-        source_available, = FileUtils.get_disk_space(source_check_path)
+        temp_available = get_available_space(temp_check_path)
+        source_available = get_available_space(source_check_path)
 
         temp_ok = temp_available >= required_temp_space
         source_ok = source_available >= required_source_space
@@ -269,6 +272,26 @@ class VideoUtils
       unit_index += 1
     end
     "%.2f %s" % [size, units[unit_index]]
+  end
+
+  # Get available disk space for a path using df command with proper escaping
+  # @param path [String] Path to check
+  # @return [Integer] Available space in bytes, or 0 if check fails
+  def self.get_available_space(path)
+    escaped_path = Shellwords.escape(path)
+    result = `df -k #{escaped_path} 2>/dev/null | tail -1`.strip
+    return 0 if result.empty?
+
+    # df -k output: Filesystem 1K-blocks Used Available Use% Mounted
+    # We want the 4th column (Available)
+    parts = result.split(/\s+/)
+    return 0 if parts.length < 4
+
+    available_kb = parts[3].to_i
+    available_kb * 1024
+  rescue StandardError => e
+    MediaLibrarian.app.speaker.speak_up("Error getting disk space for #{path}: #{e.message}", 0) if Env.debug?
+    0
   end
 
   def self.mkv_audio_track_map(path)
