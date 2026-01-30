@@ -512,4 +512,35 @@ class DaemonJobControlTest < Minitest::Test
     @environment&.cleanup
     MediaLibrarian.application = nil
   end
+
+  def test_capture_output_jobs_retained_during_grace_period
+    job = Daemon.enqueue(args: ['Library', 'block'], capture_output: true)
+    @started_queue.pop
+    @release_queue << nil
+
+    job.future.value!
+    assert_equal :finished, job.status
+    assert job.finished_at
+
+    registry = Daemon.send(:job_registry)
+    assert registry[job.id], 'expected capture_output job to remain in registry during grace period'
+
+    # Job should still be findable since it's within the retention period
+    found_job = registry[job.id]
+    assert found_job, 'job should not be pruned within retention period'
+    assert found_job.capture_output
+  end
+
+  def test_non_capture_output_jobs_pruned_immediately
+    job = Daemon.enqueue(args: ['Library', 'block'], capture_output: false)
+    @started_queue.pop
+    @release_queue << nil
+
+    job.future.value!
+    assert_equal :finished, job.status
+
+    # Non-capture_output jobs should be pruned when limit is 0
+    registry = Daemon.send(:job_registry)
+    refute registry[job.id], 'expected non-capture_output job to be pruned immediately'
+  end
 end
