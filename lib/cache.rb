@@ -108,20 +108,9 @@ class Cache
   end
 
   def self.safe_duplicate(obj)
-    method = if obj.respond_to?(:dup)
-               :dup
-             elsif obj.respond_to?(:clone, true)
-               :clone
-             end
-    return obj unless method
-    obj.__send__(method)
+    obj.dup
   rescue TypeError, NoMethodError
-    return obj if method == :clone || !obj.respond_to?(:clone, true)
-    begin
-      obj.__send__(:clone)
-    rescue TypeError, NoMethodError
-      obj
-    end
+    obj.clone rescue obj
   end
   private_class_method :safe_duplicate
 

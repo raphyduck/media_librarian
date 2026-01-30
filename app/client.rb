@@ -8,9 +8,6 @@ require 'httparty'
 class Client
   include MediaLibrarian::AppContainerSupport
 
-  SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
-  FINISHED_STATUSES = %w[finished failed cancelled].freeze
-
   def initialize(control_token: nil)
     options = app.api_option || {}
     @api_options = options
@@ -72,44 +69,20 @@ class Client
     { 'status_code' => 503, 'error' => connection_error_message(socket_error) }
   end
 
-  attr_reader :control_token
+  attr_reader :control_token, :api_options
 
   def resolve_control_token(explicit_token, options)
-    select_token(
+    candidates = [
       explicit_token,
-      options['api_token'],
-      options[:api_token],
-      options['control_token'],
-      options[:control_token],
-      ENV['MEDIA_LIBRARIAN_API_TOKEN'],
-      ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
-    )
+      options['api_token'], options[:api_token],
+      options['control_token'], options[:control_token],
+      ENV['MEDIA_LIBRARIAN_API_TOKEN'], ENV['MEDIA_LIBRARIAN_CONTROL_TOKEN']
+    ]
+    candidates.find { |c| c.is_a?(String) ? !c.strip.empty? : c }&.then { |v| v.is_a?(String) ? v.strip : v }
   end
-
-  def select_token(*candidates)
-    candidates.each do |candidate|
-      value = normalize_token(candidate)
-      return value if value
-    end
-    nil
-  end
-
-  def normalize_token(candidate)
-    case candidate
-    when nil
-      nil
-    when String
-      token = candidate.strip
-      token.empty? ? nil : token
-    else
-      candidate
-    end
-  end
-
-  attr_reader :api_options
 
   def socket_path
-    api_options['socket_path'] || SOCKET_PATH
+    api_options['socket_path'] || Daemon::SOCKET_PATH
   end
 
   def use_socket?
@@ -241,7 +214,7 @@ class Client
       end
 
       status = job.is_a?(Hash) ? job['status'] : nil
-      if FINISHED_STATUSES.include?(status)
+      if Daemon::FINISHED_STATUSES.include?(status)
         return { 'status_code' => 200, 'body' => { 'job' => job } }
       end
 

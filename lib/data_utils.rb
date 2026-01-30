@@ -25,17 +25,13 @@ class DataUtils
     dump
   end
 
-  def self.format_string(str)
-    if str.nil?
-      "nil"
-    elsif str.is_a?(Array)
-      str.map { |x| format_string(x) }
-    elsif str.is_a?(Hash)
-      str.keys.each { |k| str[k] = format_string(str[k]) }
-    elsif str.is_a?(String)
-      "\'#{str}\'"
-    else
-      str.to_s
+  def self.format_string(obj)
+    case obj
+    when nil then 'nil'
+    when String then "'#{obj}'"
+    when Array then obj.map { |x| format_string(x) }
+    when Hash then obj.transform_values { |v| format_string(v) }
+    else obj.to_s
     end
   end
 end
