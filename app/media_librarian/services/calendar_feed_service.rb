@@ -768,6 +768,11 @@ module MediaLibrarian
             args.each { |arg| output.call(arg) }
           end
         end
+        # Add IO methods required by Open3/spawn in Ruby 3.2+
+        proxy.define_singleton_method(:flush) { }
+        proxy.define_singleton_method(:sync) { true }
+        proxy.define_singleton_method(:sync=) { |_| }
+        proxy.define_singleton_method(:tty?) { false }
         proxy
       end
 
