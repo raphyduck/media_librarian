@@ -153,15 +153,19 @@ class VideoUtils
     check_interval = 30 # seconds between space checks when waiting
     max_wait_time = 3600 # maximum wait time in seconds (1 hour)
 
+    # Find existing paths for disk space check (directories may not exist yet)
+    temp_check_path = existing_path_for_space_check(temp_dir)
+    source_check_path = existing_path_for_space_check(source_dir)
+
     # Check if temp_dir and source_dir are on the same filesystem
-    same_filesystem = same_filesystem?(temp_dir, source_dir)
+    same_filesystem = same_filesystem?(temp_check_path, source_check_path)
 
     loop do
       if same_filesystem
         # Same filesystem: combine space requirements
         total_copies = temp_copies + source_copies
         required_space = (file_size * total_copies * safety_margin).to_i
-        available, = FileUtils.get_disk_space(source_dir)
+        available, = FileUtils.get_disk_space(source_check_path)
 
         if available >= required_space
           return { success: true, message: 'Sufficient disk space available' }
@@ -173,8 +177,8 @@ class VideoUtils
         required_temp_space = (file_size * temp_copies * safety_margin).to_i
         required_source_space = (file_size * source_copies * safety_margin).to_i
 
-        temp_available, = FileUtils.get_disk_space(temp_dir)
-        source_available, = FileUtils.get_disk_space(source_dir)
+        temp_available, = FileUtils.get_disk_space(temp_check_path)
+        source_available, = FileUtils.get_disk_space(source_check_path)
 
         temp_ok = temp_available >= required_temp_space
         source_ok = source_available >= required_source_space
@@ -201,6 +205,18 @@ class VideoUtils
         return { success: false, message: "Timed out waiting for disk space: #{error_message}" }
       end
     end
+  end
+
+  # Find an existing path for disk space check by walking up parent directories
+  # @param path [String] Path that may or may not exist
+  # @return [String] The path itself if it exists, or the nearest existing parent directory
+  def self.existing_path_for_space_check(path)
+    current = path
+    while current && current != '/' && current != '.'
+      return current if File.exist?(current)
+      current = File.dirname(current)
+    end
+    File.exist?(current) ? current : '/'
   end
 
   # Check if two paths are on the same filesystem (or should be treated as such)
