@@ -150,31 +150,44 @@ class VideoUtils
     temp_copies = 2 # input + output in temp_dir
     source_copies = 1 # processing file in source_dir
 
-    required_temp_space = (file_size * temp_copies * safety_margin).to_i
-    required_source_space = (file_size * source_copies * safety_margin).to_i
-
     check_interval = 30 # seconds between space checks when waiting
     max_wait_time = 3600 # maximum wait time in seconds (1 hour)
 
+    # Check if temp_dir and source_dir are on the same filesystem
+    same_filesystem = same_filesystem?(temp_dir, source_dir)
+
     loop do
-      temp_available, = FileUtils.get_disk_space(temp_dir)
-      source_available, = FileUtils.get_disk_space(source_dir)
+      if same_filesystem
+        # Same filesystem: combine space requirements
+        total_copies = temp_copies + source_copies
+        required_space = (file_size * total_copies * safety_margin).to_i
+        available, = FileUtils.get_disk_space(source_dir)
 
-      temp_ok = temp_available >= required_temp_space
-      source_ok = source_available >= required_source_space
+        if available >= required_space
+          return { success: true, message: 'Sufficient disk space available' }
+        end
 
-      if temp_ok && source_ok
-        return { success: true, message: 'Sufficient disk space available' }
-      end
+        error_message = "Insufficient disk space: need #{format_bytes(required_space)}, have #{format_bytes(available)} (temp_dir and source_dir on same filesystem)"
+      else
+        # Different filesystems: check each separately
+        required_temp_space = (file_size * temp_copies * safety_margin).to_i
+        required_source_space = (file_size * source_copies * safety_margin).to_i
 
-      error_parts = []
-      if !temp_ok
-        error_parts << "temp_dir (#{temp_dir}): need #{format_bytes(required_temp_space)}, have #{format_bytes(temp_available)}"
+        temp_available, = FileUtils.get_disk_space(temp_dir)
+        source_available, = FileUtils.get_disk_space(source_dir)
+
+        temp_ok = temp_available >= required_temp_space
+        source_ok = source_available >= required_source_space
+
+        if temp_ok && source_ok
+          return { success: true, message: 'Sufficient disk space available' }
+        end
+
+        error_parts = []
+        error_parts << "temp_dir (#{temp_dir}): need #{format_bytes(required_temp_space)}, have #{format_bytes(temp_available)}" unless temp_ok
+        error_parts << "source_dir (#{source_dir}): need #{format_bytes(required_source_space)}, have #{format_bytes(source_available)}" unless source_ok
+        error_message = "Insufficient disk space for operation: #{error_parts.join('; ')}"
       end
-      if !source_ok
-        error_parts << "source_dir (#{source_dir}): need #{format_bytes(required_source_space)}, have #{format_bytes(source_available)}"
-      end
-      error_message = "Insufficient disk space for operation: #{error_parts.join('; ')}"
 
       unless wait_for_space
         return { success: false, message: error_message }
@@ -185,9 +198,19 @@ class VideoUtils
       max_wait_time -= check_interval
 
       if max_wait_time <= 0
-        return { success: false, message: "Timed out waiting for disk space: #{error_parts.join('; ')}" }
+        return { success: false, message: "Timed out waiting for disk space: #{error_message}" }
       end
     end
+  end
+
+  # Check if two paths are on the same filesystem
+  # @param path1 [String] First path
+  # @param path2 [String] Second path
+  # @return [Boolean] true if both paths are on the same filesystem
+  def self.same_filesystem?(path1, path2)
+    File.stat(path1).dev == File.stat(path2).dev
+  rescue SystemCallError
+    false
   end
 
   # Format bytes to human-readable string
