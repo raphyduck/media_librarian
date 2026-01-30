@@ -1,4 +1,6 @@
+require 'open3'
 require File.dirname(__FILE__) + '/string_utils'
+
 class Utils
 
   @mutex = {}
@@ -9,12 +11,22 @@ class Utils
   end
 
   def self.check_if_active(active_hours = {})
-    !active_hours.is_a?(Hash) ||
-        ((active_hours['start'].nil? || active_hours['start'].to_i <= Time.now.hour) &&
-            (active_hours['end'].nil? || active_hours['end'].to_i >= Time.now.hour) &&
-            (active_hours['start'].nil? || active_hours['end'].nil? || active_hours['start'].to_i <= active_hours['end'])) ||
-        (active_hours['start'].to_i > active_hours['end'].to_i && (active_hours['start'].to_i <= Time.now.hour ||
-            active_hours['end'].to_i >= Time.now.hour))
+    return true unless active_hours.is_a?(Hash)
+
+    start_hour = active_hours['start']
+    end_hour = active_hours['end']
+    current = Time.now.hour
+
+    return true if start_hour.nil? && end_hour.nil?
+    return current >= start_hour.to_i if end_hour.nil?
+    return current <= end_hour.to_i if start_hour.nil?
+
+    start_h, end_h = start_hour.to_i, end_hour.to_i
+    if start_h <= end_h
+      current >= start_h && current <= end_h
+    else
+      current >= start_h || current <= end_h
+    end
   end
 
   def self.arguments_dump(binding, max_depth = 2, class_name = '', calling_name = '')
@@ -93,27 +105,51 @@ class Utils
   end
 
   def self.get_pid(process)
-    `ps ax | grep #{process} | grep -v grep | cut -f1 -d' '`.gsub(/\n/, '')
+    return '' if process.to_s.empty?
+
+    output, = Open3.capture2('ps', 'ax')
+    output.each_line do |line|
+      next if line.include?('grep')
+      return line.strip.split.first if line.include?(process.to_s)
+    end
+    ''
+  rescue StandardError
+    ''
   end
 
   def self.get_traffic(network_card)
+    return nil, nil if network_card.to_s.empty?
+
     in_t, out_t, in_s, out_s = nil, nil, 0, 0
-    (1..2).each do |i|
-      _in_t, _out_t = in_t, out_t
-      in_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $1}'`.gsub(/\n/, '').to_i
-      out_t = `cat /proc/net/dev | grep #{network_card} | cut -f2 -d':' | tail -n'+1' | awk '{print $9}'`.gsub(/\n/, '').to_i
-      if i == 2
-        in_s = (in_t - _in_t)
-        out_s = (out_t - _out_t)
+    2.times do |i|
+      prev_in, prev_out = in_t, out_t
+      in_t, out_t = parse_net_dev(network_card)
+      if i == 1
+        in_s = in_t - prev_in if in_t && prev_in
+        out_s = out_t - prev_out if out_t && prev_out
       else
         sleep 1
       end
     end
-    return in_s / 1024, out_s / 1024
+    return (in_s / 1024 if in_s), (out_s / 1024 if out_s)
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     return nil, nil
   end
+
+  def self.parse_net_dev(network_card)
+    return nil, nil unless File.exist?('/proc/net/dev')
+
+    File.readlines('/proc/net/dev').each do |line|
+      next unless line.include?(network_card.to_s)
+      parts = line.split(':')
+      next unless parts.length >= 2
+      stats = parts[1].strip.split
+      return stats[0].to_i, stats[8].to_i if stats.length >= 9
+    end
+    [nil, nil]
+  end
+  private_class_method :parse_net_dev
 
   def self.list_db(table:, entry: '')
     return [] unless MediaLibrarian.app.db.table_exists?(table)
@@ -199,15 +235,11 @@ class Utils
   end
 
   def self.recursive_typify_keys(h, symbolize = 1)
-    typify = symbolize.to_i > 0 ? 'to_sym' : 'to_s'
     case h
     when Hash
-      Hash[
-          h.map do |k, v|
-            [k.respond_to?(typify) ? k.public_send(typify) : k, recursive_typify_keys(v, symbolize)]
-          end
-      ]
-    when Enumerable
+      h.transform_keys { |k| symbolize.to_i > 0 ? k.to_sym : k.to_s rescue k }
+        .transform_values { |v| recursive_typify_keys(v, symbolize) }
+    when Array
       h.map { |v| recursive_typify_keys(v, symbolize) }
     else
       h
