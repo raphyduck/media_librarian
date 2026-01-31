@@ -240,6 +240,13 @@ class VideoUtils
 
     # If on mergerfs, resolve to local path for accurate space check
     if MergerfsIo.source_is_mergerfs?(existing)
+      # First try using mergerfs xattr to get the actual underlying path (most reliable for existing files)
+      fullpath = MergerfsIo.xattr_value(existing, 'user.mergerfs.fullpath')
+      if fullpath && !fullpath.empty? && File.exist?(fullpath)
+        return fullpath
+      end
+
+      # Fall back to env-var based resolution (useful for paths that don't exist yet)
       local_path = MergerfsIo.resolve_destination_local(existing)
       if local_path && !local_path.empty? && local_path != existing
         # Walk up to find existing local path
