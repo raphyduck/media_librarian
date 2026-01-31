@@ -24,7 +24,6 @@ module FileUtils
 
     def cp(source, target)
       return MediaLibrarian.app.speaker.speak_up("Would cp #{source} to #{target}") if Env.pretend?
-      MediaLibrarian.app.speaker.speak_up("cp #{source} #{target}") if Env.debug?
       if source.is_a?(Array)
         source.each { |item| cp(item, File.join(target, File.basename(item))) }
         return
@@ -215,7 +214,6 @@ module FileUtils
 
     def mv(original, destination)
       return MediaLibrarian.app.speaker.speak_up("Would mv #{original} #{destination}") if Env.pretend?
-      MediaLibrarian.app.speaker.speak_up("mv #{original} #{destination}") if Env.debug?
       if original.is_a?(Array)
         original.each { |item| mv(item, File.join(destination, File.basename(item))) }
         return
@@ -274,7 +272,6 @@ module FileUtils
       end
       resolved, dst_effective = resolver.call
       attempts << resolved
-      MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
       yield resolved, dst_effective
     rescue Errno::ENOENT
       if !mkdir_attempted
@@ -283,7 +280,6 @@ module FileUtils
         begin
           resolved, dst_effective = resolver.call
           attempts << resolved
-          MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
           return yield resolved, dst_effective
         rescue Errno::ENOENT
         end
@@ -291,7 +287,6 @@ module FileUtils
       raise unless mergerfs_source
       resolved, dst_effective = resolver.call
       attempts << resolved
-      MediaLibrarian.app.speaker.speak_up("Resolved transfer src_effective=#{resolved} dst_effective=#{dst_effective}") if Env.debug?
       begin
         yield resolved, dst_effective
       rescue Errno::ENOENT
