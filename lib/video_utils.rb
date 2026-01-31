@@ -158,15 +158,23 @@ class VideoUtils
     temp_check_path = existing_path_for_space_check(temp_dir)
     source_check_path = existing_path_for_space_check(source_dir)
 
-    # Debug: show paths and detected space
+    # Check if temp_dir and source_dir are on the same filesystem
+    same_filesystem = same_filesystem?(temp_check_path, source_check_path)
+
+    # Debug: show paths, detected space, and required space
     if Env.debug?
       temp_space = get_available_space(temp_check_path)
       source_space = get_available_space(source_check_path)
-      MediaLibrarian.app.speaker.speak_up("Disk space check: temp_dir=#{temp_dir} -> #{temp_check_path} (#{format_bytes(temp_space)} available), source_dir=#{source_dir} -> #{source_check_path} (#{format_bytes(source_space)} available)", 0)
+      if same_filesystem
+        total_copies = temp_copies + source_copies
+        required = (file_size * total_copies * safety_margin).to_i
+        MediaLibrarian.app.speaker.speak_up("Disk space check (same FS): file_size=#{format_bytes(file_size)}, required=#{format_bytes(required)} (#{total_copies} copies + 20%), temp_dir=#{temp_check_path} (#{format_bytes(temp_space)}), source_dir=#{source_check_path} (#{format_bytes(source_space)})", 0)
+      else
+        required_temp = (file_size * temp_copies * safety_margin).to_i
+        required_source = (file_size * source_copies * safety_margin).to_i
+        MediaLibrarian.app.speaker.speak_up("Disk space check (different FS): file_size=#{format_bytes(file_size)}, temp_dir=#{temp_check_path} needs #{format_bytes(required_temp)}, has #{format_bytes(temp_space)}; source_dir=#{source_check_path} needs #{format_bytes(required_source)}, has #{format_bytes(source_space)}", 0)
+      end
     end
-
-    # Check if temp_dir and source_dir are on the same filesystem
-    same_filesystem = same_filesystem?(temp_check_path, source_check_path)
 
     loop do
       if same_filesystem
