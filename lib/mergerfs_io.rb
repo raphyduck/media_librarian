@@ -40,13 +40,29 @@ module MergerfsIo
     fstype == 'fuse.mergerfs' || fstype == 'mergerfs'
   end
 
-  def resolve_destination_local(dst_mergerfs_path)
+  # Resolve a mergerfs path to its underlying local filesystem path.
+  # For existing paths, uses xattr (most reliable). Falls back to env-var approach.
+  # @param mergerfs_path [String] Path on mergerfs mount
+  # @return [String] Local filesystem path, or original path if resolution fails
+  def resolve_to_local(mergerfs_path)
+    # For existing paths, prefer xattr (most reliable)
+    if File.exist?(mergerfs_path)
+      fullpath = xattr_value(mergerfs_path, 'user.mergerfs.fullpath')
+      return fullpath if fullpath && !fullpath.empty? && File.exist?(fullpath)
+    end
+
+    # Fall back to env-var based resolution (for new paths or if xattr fails)
     merge_mnt = ENV['MERGE_MNT']
     local_branch = ENV['LOCAL_BRANCH']
-    return dst_mergerfs_path if merge_mnt.to_s.empty? || local_branch.to_s.empty?
+    return mergerfs_path if merge_mnt.to_s.empty? || local_branch.to_s.empty?
 
-    rel = dst_mergerfs_path.sub(merge_mnt, '').delete_prefix('/')
+    rel = mergerfs_path.sub(merge_mnt, '').delete_prefix('/')
     File.join(local_branch, rel)
+  end
+
+  # @deprecated Use resolve_to_local instead
+  def resolve_destination_local(dst_mergerfs_path)
+    resolve_to_local(dst_mergerfs_path)
   end
 
   def effective_destination_for_write(dst)
@@ -55,7 +71,7 @@ module MergerfsIo
     return dst unless dst.start_with?(merge_mnt + '/')
     return dst unless destination_is_mergerfs?(dst)
 
-    local_dst = resolve_destination_local(dst)
+    local_dst = resolve_to_local(dst)
     FileUtils.mkdir_p(File.dirname(local_dst))
     local_dst
   end
