@@ -406,7 +406,7 @@ module Storage
 
     def log_sql(sql, write: false)
       return if sql.to_s.empty?
-      speaker&.speak_up("Executing SQL query: '#{sql}'", 0) if Env.debug?
+      speaker&.speak_up("Executing SQL query: '#{sql[0..200]}'", 0) if Env.debug?
     end
 
     def write_sql?(sql)
