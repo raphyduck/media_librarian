@@ -288,10 +288,6 @@ class VideoUtils
     cmd = "df -k #{escaped_path} 2>&1"
     result = `#{cmd}`.strip
 
-    if Env.debug?
-      MediaLibrarian.app.speaker.speak_up("get_available_space: path=#{path}, escaped=#{escaped_path}, df output: #{result.inspect}", 0)
-    end
-
     return 0 if result.empty? || result.include?('No such file')
 
     # Get the last line (skip header)
