@@ -239,20 +239,19 @@ class VideoUtils
     existing = File.exist?(current) ? current : '/'
 
     # If on mergerfs, resolve to local path for accurate space check
-    if MergerfsIo.source_is_mergerfs?(existing)
-      local_path = MergerfsIo.resolve_destination_local(existing)
-      if local_path && !local_path.empty? && local_path != existing
-        # Walk up to find existing local path
-        local_current = local_path
-        while local_current && local_current != '/' && local_current != '.'
-          return local_current if File.exist?(local_current)
-          local_current = File.dirname(local_current)
-        end
-        return File.exist?(local_current) ? local_current : existing
-      end
-    end
+    return existing unless MergerfsIo.source_is_mergerfs?(existing)
 
-    existing
+    # resolve_to_local uses xattr first (reliable for existing paths), then env-var fallback
+    local_path = MergerfsIo.resolve_to_local(existing)
+    return local_path if local_path && File.exist?(local_path)
+
+    # If local path doesn't exist, walk up to find an existing parent
+    local_current = local_path
+    while local_current && local_current != '/' && local_current != '.'
+      return local_current if File.exist?(local_current)
+      local_current = File.dirname(local_current)
+    end
+    File.exist?(local_current) ? local_current : existing
   end
 
   # Check if two paths are on the same filesystem

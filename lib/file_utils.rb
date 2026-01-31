@@ -266,7 +266,7 @@ module FileUtils
         if MergerfsIO.destination_is_mergerfs?(destination)
           local_branch = ENV['LOCAL_BRANCH'].to_s
           if !local_branch.empty? && resolved.start_with?(local_branch)
-            dst_effective = MergerfsIO.resolve_destination_local(destination)
+            dst_effective = MergerfsIO.resolve_to_local(destination)
             FileUtils.mkdir_p(File.dirname(dst_effective)) unless File.exist?(File.dirname(dst_effective))
           end
         end
