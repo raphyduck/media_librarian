@@ -299,10 +299,6 @@ class VideoUtils
     # We want the 4th column (Available)
     parts = data_line.split(/\s+/)
 
-    if Env.debug?
-      MediaLibrarian.app.speaker.speak_up("get_available_space: parts=#{parts.inspect}", 0)
-    end
-
     return 0 if parts.length < 4
 
     available_kb = parts[3].to_i
