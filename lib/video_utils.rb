@@ -3,6 +3,7 @@ require 'open3'
 require 'tmpdir'
 require 'timeout'
 require 'shellwords'
+require_relative 'mergerfs_io'
 
 class VideoUtils
   def self.convert_videos(path, dest_file, input_format, output_format)
@@ -224,52 +225,42 @@ class VideoUtils
   end
 
   # Find an existing path for disk space check by walking up parent directories
+  # If the path is on mergerfs, resolve to the local filesystem path
   # @param path [String] Path that may or may not exist
-  # @return [String] The path itself if it exists, or the nearest existing parent directory
+  # @return [String] The path itself if it exists, or the nearest existing parent directory (resolved to local if mergerfs)
   def self.existing_path_for_space_check(path)
+    # First, find an existing path by walking up
     current = path
     while current && current != '/' && current != '.'
-      return current if File.exist?(current)
+      break if File.exist?(current)
       current = File.dirname(current)
     end
-    File.exist?(current) ? current : '/'
-  end
+    existing = File.exist?(current) ? current : '/'
 
-  # Check if two paths are on the same filesystem (or should be treated as such)
-  # @param path1 [String] First path
-  # @param path2 [String] Second path
-  # @return [Boolean] true if both paths are on the same filesystem or if either is on mergerfs
-  def self.same_filesystem?(path1, path2)
-    # If either path is on mergerfs, treat as same filesystem since mergerfs
-    # writes to the underlying local filesystem first
-    return true if mergerfs_path?(path1) || mergerfs_path?(path2)
-
-    File.stat(path1).dev == File.stat(path2).dev
-  rescue SystemCallError
-    false
-  end
-
-  # Check if a path is mounted on a mergerfs filesystem
-  # @param path [String] Path to check
-  # @return [Boolean] true if the path is on a mergerfs mount
-  def self.mergerfs_path?(path)
-    return false unless File.exist?('/proc/mounts')
-
-    real_path = File.realpath(path) rescue path
-    mounts = File.read('/proc/mounts').lines.map do |line|
-      parts = line.split
-      { mount_point: parts[1], fs_type: parts[2] }
-    end
-
-    # Sort by mount point length descending to find the most specific mount
-    mounts.sort_by { |m| -m[:mount_point].length }.each do |mount|
-      if real_path.start_with?(mount[:mount_point] + '/') || real_path == mount[:mount_point]
-        return mount[:fs_type] == 'fuse.mergerfs'
+    # If on mergerfs, resolve to local path for accurate space check
+    if MergerfsIo.source_is_mergerfs?(existing)
+      local_path = MergerfsIo.resolve_destination_local(existing)
+      if local_path && !local_path.empty? && local_path != existing
+        # Walk up to find existing local path
+        local_current = local_path
+        while local_current && local_current != '/' && local_current != '.'
+          return local_current if File.exist?(local_current)
+          local_current = File.dirname(local_current)
+        end
+        return File.exist?(local_current) ? local_current : existing
       end
     end
 
-    false
-  rescue SystemCallError, IOError
+    existing
+  end
+
+  # Check if two paths are on the same filesystem
+  # @param path1 [String] First path
+  # @param path2 [String] Second path
+  # @return [Boolean] true if both paths are on the same filesystem
+  def self.same_filesystem?(path1, path2)
+    File.stat(path1).dev == File.stat(path2).dev
+  rescue SystemCallError
     false
   end
 
