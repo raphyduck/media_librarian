@@ -158,7 +158,12 @@ class VideoUtils
     temp_check_path = existing_path_for_space_check(temp_dir)
     source_check_path = existing_path_for_space_check(source_dir)
 
-    MediaLibrarian.app.speaker.speak_up("Disk space check: temp_dir=#{temp_dir} -> #{temp_check_path}, source_dir=#{source_dir} -> #{source_check_path}", 0) if Env.debug?
+    # Debug: show paths and detected space
+    if Env.debug?
+      temp_space = get_available_space(temp_check_path)
+      source_space = get_available_space(source_check_path)
+      MediaLibrarian.app.speaker.speak_up("Disk space check: temp_dir=#{temp_dir} -> #{temp_check_path} (#{format_bytes(temp_space)} available), source_dir=#{source_dir} -> #{source_check_path} (#{format_bytes(source_space)} available)", 0)
+    end
 
     # Check if temp_dir and source_dir are on the same filesystem
     same_filesystem = same_filesystem?(temp_check_path, source_check_path)
@@ -278,13 +283,31 @@ class VideoUtils
   # @param path [String] Path to check
   # @return [Integer] Available space in bytes, or 0 if check fails
   def self.get_available_space(path)
-    escaped_path = Shellwords.escape(path)
-    result = `df -k #{escaped_path} 2>/dev/null | tail -1`.strip
-    return 0 if result.empty?
+    return 0 if path.nil? || path.empty?
 
+    escaped_path = Shellwords.escape(path)
+    cmd = "df -k #{escaped_path} 2>&1"
+    result = `#{cmd}`.strip
+
+    if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("get_available_space: path=#{path}, escaped=#{escaped_path}, df output: #{result.inspect}", 0)
+    end
+
+    return 0 if result.empty? || result.include?('No such file')
+
+    # Get the last line (skip header)
+    lines = result.lines.map(&:strip).reject(&:empty?)
+    return 0 if lines.length < 2
+
+    data_line = lines.last
     # df -k output: Filesystem 1K-blocks Used Available Use% Mounted
     # We want the 4th column (Available)
-    parts = result.split(/\s+/)
+    parts = data_line.split(/\s+/)
+
+    if Env.debug?
+      MediaLibrarian.app.speaker.speak_up("get_available_space: parts=#{parts.inspect}", 0)
+    end
+
     return 0 if parts.length < 4
 
     available_kb = parts[3].to_i
