@@ -403,7 +403,7 @@ class Librarian
       if thread[:block].is_a?(Array) && !thread[:block].empty?
         thread[:block].reverse_each { |b| b.call rescue nil }
       end
-      if thread[:parent]
+      if thread[:parent] && thread[:child_job].to_i.positive?
         Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
       elsif thread[:child_job].to_i.positive?
         # Inline child jobs share the parent's thread, so email delivery should be deferred
