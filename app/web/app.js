@@ -4039,6 +4039,9 @@ async function restartDaemon() {
 }
 
 async function stopDaemon() {
+  if (!confirm('Êtes-vous sûr de vouloir arrêter le démon ?')) {
+    return;
+  }
   await controlDaemon({
     path: '/stop',
     buttonId: 'stop-daemon',
@@ -4047,6 +4050,9 @@ async function stopDaemon() {
 }
 
 async function updateCodeAndStop() {
+  if (!confirm('Êtes-vous sûr de vouloir mettre à jour le code et arrêter le démon ?')) {
+    return;
+  }
   await controlDaemon({
     path: '/update-stop',
     buttonId: 'update-stop-daemon',
