@@ -45,20 +45,6 @@ class VideoUtils
       temp_dir = MediaLibrarian.app.temp_dir
       source_dir = File.dirname(path)
 
-      # Check available disk space before proceeding
-      # process_mkv creates: 2 copies in temp_dir (input + output), 1 copy in source_dir (processing file)
-      # Adding 20% safety margin
-      space_check_result = check_space_for_operation(
-        file_size: file_size,
-        temp_dir: temp_dir,
-        source_dir: source_dir,
-        wait_for_space: wait_for_space
-      )
-      unless space_check_result[:success]
-        MediaLibrarian.app.speaker.speak_up(space_check_result[:message])
-        return false
-      end
-
       track_map = mkv_audio_track_map(path)
       return false if track_map.empty?
       target_lang = Languages.get_code(target_lang.to_s.split('-').first)
@@ -74,6 +60,21 @@ class VideoUtils
         MediaLibrarian.app.speaker.speak_up("Default audio track #{default_track[:id]} already set to #{target_lang} for #{path}.")
         return true
       end
+
+      # Check available disk space before proceeding
+      # process_mkv creates: 2 copies in temp_dir (input + output), 1 copy in source_dir (processing file)
+      # Adding 20% safety margin
+      space_check_result = check_space_for_operation(
+        file_size: file_size,
+        temp_dir: temp_dir,
+        source_dir: source_dir,
+        wait_for_space: wait_for_space
+      )
+      unless space_check_result[:success]
+        MediaLibrarian.app.speaker.speak_up(space_check_result[:message])
+        return false
+      end
+
       if default_tracks.empty?
         first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
         return true if first_lang == target_lang
