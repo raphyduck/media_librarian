@@ -61,6 +61,17 @@ class VideoUtils
         return true
       end
 
+      # If no tracks are explicitly marked as default and the first track is already in the target language,
+      # no remux is needed - the player will use the first track as default anyway.
+      # Check this BEFORE waiting for disk space to avoid unnecessary delays.
+      if default_tracks.empty?
+        first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
+        if first_lang == target_lang
+          MediaLibrarian.app.speaker.speak_up("No default audio track set, but first track is already #{target_lang} for #{path}. No action needed.") if Env.debug?
+          return true
+        end
+      end
+
       # Check available disk space before proceeding
       # process_mkv creates: 2 copies in temp_dir (input + output), 1 copy in source_dir (processing file)
       # Adding 20% safety margin
@@ -75,10 +86,6 @@ class VideoUtils
         return false
       end
 
-      if default_tracks.empty?
-        first_lang = Languages.get_code(track_map.first[:lang].to_s.split('-').first)
-        return true if first_lang == target_lang
-      end
       valid_audio = lambda do |audio|
         return false unless audio
         lang = audio[:lang].to_s.strip.downcase
