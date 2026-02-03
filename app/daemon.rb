@@ -545,7 +545,10 @@ class Daemon
 
       if parent[:captured_output]
         captured = thread[:log_msg] || thread[:captured_output]
-        parent[:captured_output] << captured.to_s if captured
+        if captured
+          parent[:captured_output].force_encoding('UTF-8') if parent[:captured_output].encoding == Encoding::ASCII_8BIT
+          parent[:captured_output] << captured.to_s.force_encoding('UTF-8')
+        end
       end
     end
 
@@ -1043,8 +1046,9 @@ class Daemon
             elsif inline_child
               preserved_email = false
               if thread[:email_msg]
-                snapshot[:email_msg] ||= String.new
-                snapshot[:email_msg] << thread[:email_msg].to_s
+                snapshot[:email_msg] ||= String.new(encoding: 'UTF-8')
+                snapshot[:email_msg].force_encoding('UTF-8') if snapshot[:email_msg].encoding == Encoding::ASCII_8BIT
+                snapshot[:email_msg] << thread[:email_msg].to_s.force_encoding('UTF-8')
                 preserved_email = true
               end
               if preserved_email && thread[:send_email].to_i.positive?
@@ -3752,9 +3756,10 @@ class Daemon
       job = jid ? job_registry[jid] : job_for_thread(thread)
       return unless job&.capture_output
 
-      output = job.output || String.new
+      output = job.output || String.new(encoding: 'UTF-8')
       output = output.dup if output.frozen?
-      output << line.to_s
+      output.force_encoding('UTF-8') if output.encoding == Encoding::ASCII_8BIT
+      output << line.to_s.force_encoding('UTF-8')
       job.output = output
       output
     end
