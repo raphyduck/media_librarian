@@ -250,7 +250,8 @@ class Librarian
           thread[:child_job_override] = 1 if nested
           run_command(args, direct_flag)
           if nested && snapshot[:email_msg]
-            snapshot[:email_msg] << thread[:email_msg].to_s
+            snapshot[:email_msg].force_encoding('UTF-8') if snapshot[:email_msg].encoding == Encoding::ASCII_8BIT
+            snapshot[:email_msg] << thread[:email_msg].to_s.force_encoding('UTF-8')
             snapshot[:send_email] = thread[:send_email] if thread[:send_email].to_i.positive?
           end
         end

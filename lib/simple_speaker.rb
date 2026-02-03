@@ -46,7 +46,10 @@ module SimpleSpeaker
                  Daemon.append_job_output(thread[:jid], payload, thread: thread)
                end
       buffer = thread[:captured_output]
-      buffer&.<<(payload) if buffer && !buffer.equal?(output)
+      if buffer && !buffer.equal?(output)
+        buffer.force_encoding('UTF-8') if buffer.encoding == Encoding::ASCII_8BIT
+        buffer << payload.force_encoding('UTF-8')
+      end
     end
 
     def email_msg_add(str, in_mail, thread)
@@ -64,7 +67,10 @@ module SimpleSpeaker
     end
 
     def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0, error = 0)
-      thread[:log_msg] << str.to_s + @new_line if thread[:log_msg] && immediate.to_i <= 0
+      if thread[:log_msg] && immediate.to_i <= 0
+        thread[:log_msg].force_encoding('UTF-8') if thread[:log_msg].encoding == Encoding::ASCII_8BIT
+        thread[:log_msg] << str.to_s.force_encoding('UTF-8') + @new_line
+      end
       if immediate.to_i > 0 || thread[:log_msg].nil?
         str.to_s.each_line do |l|
           daemon_send(l, thread: thread)
