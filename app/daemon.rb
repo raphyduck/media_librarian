@@ -1008,12 +1008,12 @@ class Daemon
         thread[:jid] = job.id
         thread[:queue_name] = job.queue
         if job.child.to_i.positive?
-          thread[:log_msg] = inline_child ? nil : String.new
+          thread[:log_msg] = inline_child ? nil : String.new(encoding: 'UTF-8')
         end
         thread[:child_job] = job.child.to_i.positive? ? 1 : 0
         thread[:child_job_override] = thread[:child_job]
 
-        captured_output = job.capture_output ? (job.output || String.new) : nil
+        captured_output = job.capture_output ? (job.output || String.new(encoding: 'UTF-8')) : nil
         if captured_output
           job.output = captured_output
           thread[:captured_output] = captured_output
@@ -1034,7 +1034,7 @@ class Daemon
             if thread[:parent]
               merge_notifications(thread, thread[:parent])
               if thread[:email_msg]
-                thread[:parent][:email_msg] ||= String.new
+                thread[:parent][:email_msg] ||= String.new(encoding: 'UTF-8')
                 thread[:parent][:email_msg] << thread[:email_msg].to_s
               end
               if thread[:send_email].to_i.positive?
