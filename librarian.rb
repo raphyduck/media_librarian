@@ -229,15 +229,9 @@ class Librarian
           end
           app.speaker.speak_up("Daemon rejected the job: #{message}")
         elsif body && body['job']
-          job = body['job']
-          output = job['output'].to_s
-          unless output.empty?
-            output.each_line { |line| app.speaker.daemon_send(line, stdout: $stdout, stderr: $stderr) }
-            return
-          end
-          status = job['status'].to_s
-          status = 'queued' if status.empty?
-          app.speaker.speak_up("Job #{job['id']} acknowledged (status: #{status})")
+          # Note: wait_for_job_completion already wrote all output to stdout
+          # during polling, so we don't need to write it again here.
+          return
         else
           app.speaker.speak_up('Command dispatched to daemon')
         end

@@ -530,6 +530,9 @@ class Daemon
     end
 
     def merge_notifications(thread, parent = Thread.current)
+      return if thread[:notifications_merged]
+
+      thread[:notifications_merged] = true
       Utils.lock_time_merge(thread, parent)
 
       if thread[:log_msg]
@@ -543,10 +546,8 @@ class Daemon
         end
       end
 
-      if parent[:captured_output]
-        captured = thread[:log_msg] || thread[:captured_output]
-        parent[:captured_output] << captured.to_s if captured
-      end
+      # Note: daemon_send already appends to parent's captured_output via
+      # append_job_output, so no direct append is needed here.
     end
 
     def clear_waiting_worker(worker_thread, thread_value = nil, object = nil, _clear_current = 0)
