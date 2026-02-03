@@ -53,7 +53,7 @@ module SimpleSpeaker
       str = "[*] #{str}" if in_mail.to_i > 0
       buffer = thread[:email_msg]
       if buffer.nil?
-        buffer = String.new
+        buffer = String.new(encoding: 'UTF-8')
         thread[:email_msg] = buffer
       end
 
