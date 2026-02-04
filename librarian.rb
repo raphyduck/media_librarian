@@ -405,7 +405,8 @@ class Librarian
         thread[:block].reverse_each { |b| b.call rescue nil }
       end
       if thread[:parent] && thread[:child_job].to_i.positive?
-        Utils.lock_block("merge_child_thread_#{thread[:object]}") { Daemon.merge_notifications(thread, thread[:parent]) }
+        # Child jobs with a separate parent thread: notification merging is handled
+        # by Daemon.run_job ensure block to avoid duplicate merges
       elsif thread[:child_job].to_i.positive?
         # Inline child jobs share the parent's thread, so email delivery should be deferred
       elsif Env.email_notif?
