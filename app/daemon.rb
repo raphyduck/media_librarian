@@ -533,13 +533,11 @@ class Daemon
       Utils.lock_time_merge(thread, parent)
 
       if thread[:log_msg]
+        # Send log_msg to output/daemon without adding to email_msg
+        # (email_msg is merged separately to avoid duplicates)
         parent_daemon = thread[:parent_daemon]
-        if parent_daemon
-          thread[:log_msg].to_s.each_line do |line|
-            app.speaker.daemon_send(line, thread: parent, daemon: parent_daemon)
-          end
-        else
-          app.speaker.speak_up(thread[:log_msg].to_s, -1, parent, 1)
+        thread[:log_msg].to_s.each_line do |line|
+          app.speaker.daemon_send(line, thread: parent, daemon: parent_daemon)
         end
       end
 
