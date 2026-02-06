@@ -297,9 +297,4 @@ class LibrarianCliTest < Minitest::Test
     @environments << env
     env
   end
-
-  def remove_app_reference(klass)
-    singleton = klass.singleton_class
-    singleton.remove_instance_variable(:@app) if singleton.instance_variable_defined?(:@app)
-  end
 end

@@ -84,79 +84,41 @@ unless defined?(TimeUtils)
   end
 end
 
-if defined?(Utils)
-  class Utils
-    class << self
-      def lock_time_get(*)
-        ''
-      end
+class Utils
+  class << self
+    def lock_time_get(*)
+      ''
+    end
 
-      def lock_block(*)
-        yield if block_given?
-      end
+    def lock_block(*)
+      yield if block_given?
+    end
 
-      def lock_time_merge(*)
-        # no-op in tests
-      end
+    def lock_time_merge(*)
+      # no-op in tests
+    end
 
-      def arguments_dump(*)
-        'arguments'
-      end
+    def arguments_dump(*)
+      'arguments'
+    end
 
-      def recursive_typify_keys(value)
-        value
-      end
+    def recursive_typify_keys(value)
+      value
+    end
 
-      def parse_filename_template(template, _metadata)
-        template
-      end
+    def parse_filename_template(template, _metadata)
+      template
+    end
 
-      def check_if_active(*)
-        true
-      end
+    def check_if_active(*)
+      true
+    end
 
-      def timeperiod_to_sec(*)
-        0
-      end
+    def timeperiod_to_sec(*)
+      0
     end
   end
-else
-  class Utils
-    class << self
-      def lock_time_get(*)
-        ''
-      end
-
-      def lock_block(*)
-        yield if block_given?
-      end
-
-      def lock_time_merge(*)
-        # no-op in tests
-      end
-
-      def arguments_dump(*)
-        'arguments'
-      end
-
-      def recursive_typify_keys(value)
-        value
-      end
-
-      def parse_filename_template(template, _metadata)
-        template
-      end
-
-      def check_if_active(*)
-        true
-      end
-
-      def timeperiod_to_sec(*)
-        0
-      end
-    end
-  end
-end
+end unless defined?(Utils) && Utils.is_a?(Class)
 
 unless defined?(Report)
   class Report

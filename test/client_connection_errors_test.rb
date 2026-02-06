@@ -36,12 +36,4 @@ class ClientConnectionErrorsTest < Minitest::Test
     end
   end
 
-  private
-
-  def remove_app_reference(klass)
-    singleton = klass.singleton_class
-    if singleton.instance_variable_defined?(:@app)
-      singleton.remove_instance_variable(:@app)
-    end
-  end
 end

@@ -284,19 +284,7 @@ class CalendarTest < Minitest::Test
     db
   end
 
-  class FakeResponse
-    attr_accessor :status, :body
-
-    def initialize
-      @headers = {}
-      @status = nil
-      @body = nil
-    end
-
-    def []=(key, value)
-      @headers[key] = value
-    end
-  end
+  FakeResponse = TestSupport::Fakes::FakeResponse
 
   class FakeCalendar
     def initialize(app:, on_entries: nil)
@@ -310,13 +298,4 @@ class CalendarTest < Minitest::Test
     end
   end
 
-  def attach_db(db)
-    singleton = @environment.application.singleton_class
-    unless @environment.application.respond_to?(:db)
-      singleton.class_eval do
-        attr_accessor :db
-      end
-    end
-    @environment.application.db = db
-  end
 end

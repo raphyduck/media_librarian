@@ -25,4 +25,3 @@ class TimeUtilsTest < Minitest::Test
     assert_equal '', TimeUtils.seconds_in_words(0)
   end
 end
-
