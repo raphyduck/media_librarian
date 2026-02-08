@@ -165,4 +165,3 @@ class UtilsTest < Minitest::Test
     assert_equal 'My Movie - 1080p - Pilot', parsed
   end
 end
-

@@ -344,20 +344,4 @@ class TrackerQueryServiceTest < Minitest::Test
     restore_application(environment, old_application, app_defined)
   end
 
-  private
-
-  def ensure_mechanizer_accessor(app)
-    return if app.respond_to?(:mechanizer)
-
-    app.singleton_class.attr_accessor :mechanizer
-  end
-
-  def restore_application(environment, old_application, app_defined)
-    if app_defined
-      MediaLibrarian.application = old_application
-    elsif MediaLibrarian.instance_variable_defined?(:@application)
-      MediaLibrarian.remove_instance_variable(:@application)
-    end
-    environment&.cleanup
-  end
 end

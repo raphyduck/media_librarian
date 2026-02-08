@@ -13,8 +13,7 @@ require_relative '../lib/storage/db'
 class DaemonWatchlistApiTest < Minitest::Test
   def setup
     @environment = build_stubbed_environment
-    ensure_db_accessor(@environment.application)
-    @environment.application.db = Storage::Db.new(File.join(@environment.root_path, 'librarian.db'))
+    attach_db(Storage::Db.new(File.join(@environment.root_path, 'librarian.db')))
     MediaLibrarian.application = @environment.application
     Daemon.configure(app: @environment.application)
   end
@@ -72,23 +71,5 @@ class DaemonWatchlistApiTest < Minitest::Test
 
   private
 
-  def ensure_db_accessor(application)
-    return if application.respond_to?(:db)
-
-    application.singleton_class.class_eval { attr_accessor :db }
-  end
-
-  class FakeResponse
-    attr_accessor :status, :body
-
-    def initialize
-      @headers = {}
-      @status = nil
-      @body = nil
-    end
-
-    def []=(key, value)
-      @headers[key] = value
-    end
-  end
+  FakeResponse = TestSupport::Fakes::FakeResponse
 end

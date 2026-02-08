@@ -54,19 +54,5 @@ class DaemonAuthenticationRequirementsTest < Minitest::Test
 
   class FakeRequest; end
 
-  class FakeResponse
-    attr_accessor :status, :body
-
-    def initialize
-      @headers = {}
-    end
-
-    def []=(key, value)
-      @headers[key] = value
-    end
-
-    def [](key)
-      @headers[key]
-    end
-  end
+  FakeResponse = TestSupport::Fakes::FakeResponse
 end

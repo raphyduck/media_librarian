@@ -10,6 +10,34 @@ module TestSupport
       StubbedEnvironment.new(**overrides)
     end
 
+    def attach_db(db)
+      app = @environment.application
+      unless app.respond_to?(:db)
+        app.singleton_class.class_eval { attr_accessor :db }
+      end
+      app.db = db
+    end
+
+    def remove_app_reference(klass)
+      singleton = klass.singleton_class
+      singleton.remove_instance_variable(:@app) if singleton.instance_variable_defined?(:@app)
+    end
+
+    def ensure_mechanizer_accessor(app)
+      return if app.respond_to?(:mechanizer)
+
+      app.singleton_class.attr_accessor :mechanizer
+    end
+
+    def restore_application(environment, old_application, app_defined)
+      if app_defined
+        MediaLibrarian.application = old_application
+      elsif MediaLibrarian.instance_variable_defined?(:@application)
+        MediaLibrarian.remove_instance_variable(:@application)
+      end
+      environment&.cleanup
+    end
+
     class StubbedEnvironment
       attr_reader :application, :container, :root_path
 
@@ -183,6 +211,24 @@ module TestSupport
   end
 
   module Fakes
+    class FakeResponse
+      attr_accessor :status, :body
+
+      def initialize
+        @headers = {}
+        @status = nil
+        @body = nil
+      end
+
+      def []=(key, value)
+        @headers[key] = value
+      end
+
+      def [](key)
+        @headers[key]
+      end
+    end
+
     class Speaker
       attr_reader :messages
 

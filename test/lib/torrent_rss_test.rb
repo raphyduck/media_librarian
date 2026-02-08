@@ -46,7 +46,7 @@ class TorrentRssTest < Minitest::Test
     agent.verify
     assert_equal 1, results.size
   ensure
-    cleanup_application(environment, old_application, app_defined)
+    restore_application(environment, old_application, app_defined)
   end
 
   def test_links_use_global_agent_without_metadata
@@ -63,7 +63,7 @@ class TorrentRssTest < Minitest::Test
     global_agent.verify
     assert_equal 1, results.size
   ensure
-    cleanup_application(environment, old_application, app_defined)
+    restore_application(environment, old_application, app_defined)
   end
 
   private
@@ -77,12 +77,6 @@ class TorrentRssTest < Minitest::Test
     MediaLibrarian.application = app
     tracker = 'secure'
     [environment, app, tracker, old_application, app_defined]
-  end
-
-  def ensure_mechanizer_accessor(app)
-    return if app.respond_to?(:mechanizer)
-
-    app.singleton_class.attr_accessor :mechanizer
   end
 
   def verify_links(entries)
@@ -102,12 +96,4 @@ class TorrentRssTest < Minitest::Test
     )
   end
 
-  def cleanup_application(environment, old_application, app_defined)
-    if app_defined
-      MediaLibrarian.application = old_application
-    elsif MediaLibrarian.instance_variable_defined?(:@application)
-      MediaLibrarian.remove_instance_variable(:@application)
-    end
-    environment&.cleanup
-  end
 end

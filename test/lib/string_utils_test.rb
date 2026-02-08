@@ -78,4 +78,3 @@ class StringUtilsTest < Minitest::Test
     assert pattern.end_with?('.{0,7}$')
   end
 end
-
