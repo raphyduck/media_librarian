@@ -91,6 +91,44 @@ class StorageDbTest < Minitest::Test
     end
   end
 
+  def test_get_rows_with_symbol_condition_value
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      torrent_name = 'Zootopia.2.2025.MULTi.VFQ.2160p.DV.WEB-DL.DDP5.1.H265-BOUC (Zootopie 2)'
+      db.insert_row('torrents', { name: torrent_name, identifier: 'tt1234', status: 1 })
+
+      rows = db.get_rows('torrents', { name: torrent_name.to_sym })
+      refute_empty rows, 'Symbol condition values should be converted to strings'
+      assert_equal torrent_name, rows.first[:name]
+      db.database.disconnect
+    end
+  end
+
+  def test_update_rows_with_symbol_condition_value
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      torrent_name = 'Test.Torrent.Name (Special Edition)'
+      db.insert_row('torrents', { name: torrent_name, identifier: 'tt5678', status: 1 })
+
+      db.update_rows('torrents', { status: 4 }, { name: torrent_name.to_sym })
+      updated = db.get_rows('torrents', { name: torrent_name }).first
+      assert_equal 4, updated[:status]
+      db.database.disconnect
+    end
+  end
+
+  def test_delete_rows_with_symbol_condition_value
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      torrent_name = 'Release.Name.With.Dots.And (Parens)'
+      db.insert_row('torrents', { name: torrent_name, identifier: 'tt9999', status: 1 })
+
+      db.delete_rows('torrents', { name: torrent_name.to_sym })
+      assert_empty db.get_rows('torrents', { name: torrent_name })
+      db.database.disconnect
+    end
+  end
+
   def test_schema_evolution_runs_new_migrations
     migration_dir = File.join(@tmp_dir, 'migrations')
     FileUtils.mkdir_p(migration_dir)

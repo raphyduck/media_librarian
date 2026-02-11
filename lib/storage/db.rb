@@ -171,7 +171,7 @@ module Storage
     def build_dataset(table, conditions = {}, additionals = {})
       dataset = dataset_for(table)
       conditions.each do |column, value|
-        dataset = dataset.where(column.to_sym => value)
+        dataset = dataset.where(column.to_sym => sanitize_condition_value(value))
       end
       additionals.each do |key, value|
         dataset = apply_additional_filter(dataset, key, value)
@@ -180,12 +180,13 @@ module Storage
     end
 
     def apply_additional_filter(dataset, key, value)
+      sanitized = sanitize_condition_value(value)
       if key.is_a?(String)
         column, operator = parse_operator(key)
-        return dataset.where(column => value) if operator == :eq
-        return dataset.exclude(column => value) if operator == :ne
-        return dataset.where(Sequel.like(column, value)) if operator == :like
-        return dataset.where(Sequel.ilike(column, value)) if operator == :ilike
+        return dataset.where(column => sanitized) if operator == :eq
+        return dataset.exclude(column => sanitized) if operator == :ne
+        return dataset.where(Sequel.like(column, sanitized)) if operator == :like
+        return dataset.where(Sequel.ilike(column, sanitized)) if operator == :ilike
         if %i[gt gte lt lte].include?(operator)
           comparison_method = {
             gt: :>,
@@ -193,10 +194,23 @@ module Storage
             lt: :<,
             lte: :<=
           }.fetch(operator)
-          return dataset.where(Sequel.expr(column).public_send(comparison_method, value))
+          return dataset.where(Sequel.expr(column).public_send(comparison_method, sanitized))
         end
       end
-      dataset.where(normalize_key(key) => value)
+      dataset.where(normalize_key(key) => sanitized)
+    end
+
+    def sanitize_condition_value(value)
+      case value
+      when Symbol
+        value.to_s
+      when String
+        value.instance_of?(String) ? value : String.new(value)
+      when Array
+        value.map { |v| sanitize_condition_value(v) }
+      else
+        value
+      end
     end
 
     def dataset_for(table)
