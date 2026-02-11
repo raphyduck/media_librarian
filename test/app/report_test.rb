@@ -47,6 +47,34 @@ class ReportTest < Minitest::Test
     end
   end
 
+  def test_push_email_retries_with_backoff_on_failure
+    call_count = 0
+    sleep_args = []
+
+    Report.stub(:deliver, ->(**_args) { call_count += 1; raise Net::ReadTimeout if call_count < 3 }) do
+      Report.stub(:sleep, ->(n) { sleep_args << n }) do
+        Report.push_email("Test", "body")
+      end
+    end
+
+    assert_equal 3, call_count
+    assert_equal [1, 2], sleep_args
+  end
+
+  def test_push_email_stops_after_max_retries
+    call_count = 0
+    sleep_args = []
+
+    Report.stub(:deliver, ->(**_args) { call_count += 1; raise Net::ReadTimeout }) do
+      Report.stub(:sleep, ->(n) { sleep_args << n }) do
+        Report.push_email("Test", "body")
+      end
+    end
+
+    assert_equal Report::PUSH_EMAIL_MAX_RETRIES, call_count
+    assert_equal [1, 2, 4], sleep_args
+  end
+
   private
 
   def assert_sends_email(subject:, body:)
