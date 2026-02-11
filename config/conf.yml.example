@@ -19,6 +19,8 @@ email:
   username: username
   password: pwd
   auth_type: plain
+  open_timeout: 30  # SMTP connection timeout in seconds (default: 30)
+  read_timeout: 60  # SMTP read timeout in seconds (default: 60)
   notification_from: noreply@sender.com
   notification_to: noreply@recipient.com
   notification_cc: ''

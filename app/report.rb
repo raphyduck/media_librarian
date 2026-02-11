@@ -23,7 +23,9 @@ class Report
     end
   end
 
-  def self.push_email(email_subject, ebody, trials = 10)
+  PUSH_EMAIL_MAX_RETRIES = 3
+
+  def self.push_email(email_subject, ebody, trials = PUSH_EMAIL_MAX_RETRIES)
     return if trials <= 0
     deliver(
       object_s: formatted_subject(email_subject),
@@ -31,6 +33,8 @@ class Report
     )
   rescue => e
     app.speaker.tell_error(e, 'Report.push_email', 0)
+    retry_delay = 2**(PUSH_EMAIL_MAX_RETRIES - trials)
+    sleep(retry_delay)
     push_email(email_subject, ebody, trials - 1)
   end
 

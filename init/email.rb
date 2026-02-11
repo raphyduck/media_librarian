@@ -30,6 +30,9 @@ if app.email
     end
   end
 
+  smtp_open_timeout = (app.email['open_timeout'] || 30).to_i
+  smtp_read_timeout = (app.email['read_timeout'] || 60).to_i
+
   Hanami::Mailer.configure do
     root app.email_templates
     delivery_method :smtp,
@@ -40,6 +43,8 @@ if app.email
                     password:             app.email['password'],
                     authentication:       app.email['auth_type'],
                     enable_starttls_auto: true,
-                    openssl_verify_mode:  OpenSSL::SSL::VERIFY_PEER
+                    openssl_verify_mode:  OpenSSL::SSL::VERIFY_PEER,
+                    open_timeout:         smtp_open_timeout,
+                    read_timeout:         smtp_read_timeout
   end.load!
 end
