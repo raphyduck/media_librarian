@@ -140,15 +140,48 @@ class Metadata
     tt = detect_real_title(target_title.strip, category, 0, 0)
     tt = StringUtils.clean_search(tt)
     t = StringUtils.clean_search(t)
+    t = normalize_special_chars(t)
+    tt = normalize_special_chars(tt)
     regex_match = t.match(
       Regexp.new(
         "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
         Regexp::IGNORECASE)
     )
-    fallback_match = regex_match || tokens_match_with_optional_numbers?(t, tt)
+    reverse_regex_match = !regex_match && tt.match(
+      Regexp.new(
+        "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(t) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
+        Regexp::IGNORECASE)
+    )
+    containment = !regex_match && !reverse_regex_match && title_contained?(t, tt)
+    fallback_match = regex_match || reverse_regex_match || containment ||
+      tokens_match_with_optional_numbers?(t, tt) || tokens_match_with_optional_numbers?(tt, t)
     m = fallback_match && ep_match && Utils.match_release_year(target_year, year)
     MediaLibrarian.app.speaker.speak_up "#{Utils.arguments_dump(binding)} is FALSE" if !m && Env.debug?
     m
+  end
+
+  SUPERSCRIPT_MAP = {
+    "\u00B9" => '1', "\u00B2" => '2', "\u00B3" => '3',
+    "\u2070" => '0', "\u2074" => '4', "\u2075" => '5',
+    "\u2076" => '6', "\u2077" => '7', "\u2078" => '8', "\u2079" => '9'
+  }.freeze
+
+  def self.normalize_special_chars(str)
+    result = str.to_s.gsub(/[#{SUPERSCRIPT_MAP.keys.join}]/) { |ch| " #{SUPERSCRIPT_MAP[ch]} " }
+    result.gsub(/\s+/, ' ').strip
+  end
+
+  def self.title_contained?(t, tt)
+    return false if t.to_s.strip.empty? || tt.to_s.strip.empty?
+    shorter, longer = [t, tt].sort_by(&:length)
+    return false if shorter.length < 3
+    s_tokens = shorter.downcase.split(/\s+/).reject(&:empty?)
+    l_tokens = longer.downcase.split(/\s+/).reject(&:empty?)
+    return false if s_tokens.empty? || l_tokens.empty?
+    return false if s_tokens.length > l_tokens.length
+    suffix_match = s_tokens.each_with_index.all? { |tok, i| l_tokens[l_tokens.length - s_tokens.length + i].to_s == tok }
+    return true if suffix_match
+    s_tokens.each_with_index.all? { |tok, i| l_tokens[i].to_s == tok }
   end
 
   def self.tokens_match_with_optional_numbers?(title, target)
@@ -290,10 +323,16 @@ class Metadata
     cache_name = [title, ids_part, original_filename].map(&:to_s).join('|')
     exact_title, item = title, nil
     cached = Cache.cache_get(cache_category, cache_name, 120, force_refresh)
-    return cached if cached && cached[1] && force_refresh.to_i == 0
+    if cached && cached[1] && force_refresh.to_i == 0
+      cached_name = cached[1].respond_to?(:name) ? cached[1].name.to_s.strip : cached[0].to_s.strip
+      return cached unless cached_name == ''
+    end
     debug_logs = []
     Utils.lock_block("#{__method__}_#{type}_#{title}#{ids}") do
       exact_title, item = item_fetch_method.call(ids) unless ids.empty?
+      if item && item.respond_to?(:name) && item.name.to_s.strip == ''
+        item = nil
+      end
       search_providers.each do |o, m|
         break unless item.nil?
         begin
