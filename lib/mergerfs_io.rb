@@ -113,7 +113,7 @@ module MergerfsIo
     buffer = Fiddle::Pointer.malloc(size)
     read = @getxattr.call(path, name, buffer, size)
     return if read <= 0
-    buffer.to_s(read)
+    buffer.to_s(read).force_encoding(Encoding::UTF_8)
   rescue StandardError
     nil
   end
