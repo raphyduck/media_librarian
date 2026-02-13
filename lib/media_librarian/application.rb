@@ -46,6 +46,10 @@ module MediaLibrarian
       @container = Container.new(self)
     end
 
+    def inspect
+      "#<#{self.class.name} root=#{@root.inspect}>"
+    end
+
     def config
       container.config
     end
