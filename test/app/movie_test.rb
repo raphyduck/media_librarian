@@ -148,6 +148,23 @@ class MovieTest < Minitest::Test
                     'Movie.extract_value missing title, no fallback available: {"release_date"=>"2019-12-12"}'
   end
 
+  def test_movie_get_discards_empty_trakt_response
+    ensure_tmdb_stubs
+
+    # Simulate Trakt returning an object with no meaningful data
+    empty_trakt_response = { 'title' => nil, 'ids' => {} }
+
+    without_cache do
+      Tmdb::Movie.stub(:detail, ->(*) { nil }) do
+        TraktAgent.stub(:movie__summary, ->(*) { empty_trakt_response }) do
+          title, movie = Movie.movie_get({ 'imdb' => 'tt1234567' }, app: @environment.application)
+          assert_nil movie, "Expected nil movie when Trakt returns empty data"
+          assert_equal '', title
+        end
+      end
+    end
+  end
+
   private
 
   def ensure_tmdb_stubs

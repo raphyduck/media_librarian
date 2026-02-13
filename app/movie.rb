@@ -217,6 +217,10 @@ class Movie
         end
       end
       movie = Movie.new(movie.merge('data_source' => src), app: app) if movie
+      if movie && movie.name.to_s.strip == ''
+        app.speaker.speak_up("movie_get: discarding empty movie from #{src} for ids=#{ids.inspect}") if Env.debug?
+        movie = nil
+      end
       full_save = movie
       title = movie.name if movie&.name.to_s != ''
     when 'movie_set_get'
