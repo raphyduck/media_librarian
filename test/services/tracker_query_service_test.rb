@@ -273,6 +273,63 @@ class TrackerQueryServiceTest < Minitest::Test
     environment&.cleanup
   end
 
+  def test_torznab_tracker_handles_single_item_response
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '100')]
+    )
+
+    xml = <<~XML
+      <rss>
+        <channel>
+          <item>
+            <title>Daddy Nostalgie</title>
+            <size>700000000</size>
+            <link>https://tracker.example/details/1</link>
+            <guid>https://tracker.example/download/1</guid>
+            <enclosure url="https://tracker.example/enclosure/1" />
+            <attr name="seeders" value="3" />
+            <attr name="leechers" value="1" />
+          </item>
+        </channel>
+      </rss>
+    XML
+
+    fake_client = Struct.new(:caps, :xml) do
+      def get(_params)
+        xml
+      end
+    end.new(caps, xml)
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
+      results = tracker.search('movies', 'Daddy Nostalgie')
+
+      assert_equal 1, results.length
+      assert_equal 'Daddy Nostalgie', results.first[:name]
+      assert_equal 'https://tracker.example/enclosure/1', results.first[:link]
+      assert_equal 'https://tracker.example/details/1', results.first[:torrent_link]
+      assert_equal '3', results.first[:seeders]
+      assert_equal '1', results.first[:leechers]
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
+
   def test_get_results_strips_special_characters_from_keyword
     searched_keywords = []
     fake_tracker = Object.new
