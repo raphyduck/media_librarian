@@ -104,6 +104,10 @@ class Movie
     result
   end
 
+  def inspect
+    "#<Movie name=#{@name.inspect} year=#{@year} ids=#{@ids.inspect}>"
+  end
+
   def release_date
     if @release_date.to_s =~ /^\d{4}$/
       Time.new(@release_date) rescue nil

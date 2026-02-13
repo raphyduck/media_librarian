@@ -31,6 +31,10 @@ class TvSeries
     @year = year
   end
 
+  def inspect
+    "#<TvSeries name=#{@name.inspect} id=#{@id.inspect} ids=#{@ids.inspect}>"
+  end
+
   def anthology?
     @overview.downcase.include?('anthology')
   end
