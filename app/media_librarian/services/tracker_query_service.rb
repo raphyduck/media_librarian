@@ -41,7 +41,7 @@ module MediaLibrarian
         r = {}
         search_category = request.search_category.to_s == '' ? request.category : request.search_category
         keyword = request.keyword.dup
-        keyword.gsub!(/[\(\)\:]/, '')
+        keyword.gsub!(/[\(\)\:\'\"!\?\;\,]/, '')
         trackers = get_trackers(request.sources)
         timeframe_trackers = parse_tracker_timeframes(request.sources || {})
         trackers.each do |tracker|

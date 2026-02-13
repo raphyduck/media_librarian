@@ -273,6 +273,49 @@ class TrackerQueryServiceTest < Minitest::Test
     environment&.cleanup
   end
 
+  def test_get_results_strips_special_characters_from_keyword
+    searched_keywords = []
+    fake_tracker = Object.new
+    fake_tracker.define_singleton_method(:search) do |_category, keyword|
+      searched_keywords << keyword
+      []
+    end
+    @app.trackers = { 'test_tracker' => fake_tracker }
+
+    request = MediaLibrarian::Services::TrackerSearchRequest.new(
+      sources: 'test_tracker',
+      keyword: "Now You See Me: Now You Don't (2025)",
+      category: 'movies'
+    )
+    @service.get_results(request)
+
+    assert searched_keywords.any? { |kw| kw.include?("Now You See Me Now You Dont 2025") },
+           "Expected keyword without special characters, got: #{searched_keywords.inspect}"
+    searched_keywords.each do |kw|
+      refute_match(/['\(\)\:!\?;,"]/, kw, "Keyword should not contain special characters: #{kw}")
+    end
+  end
+
+  def test_get_results_strips_exclamation_and_question_marks
+    searched_keywords = []
+    fake_tracker = Object.new
+    fake_tracker.define_singleton_method(:search) do |_category, keyword|
+      searched_keywords << keyword
+      []
+    end
+    @app.trackers = { 'test_tracker' => fake_tracker }
+
+    request = MediaLibrarian::Services::TrackerSearchRequest.new(
+      sources: 'test_tracker',
+      keyword: "What?! Is This Real!",
+      category: 'movies'
+    )
+    @service.get_results(request)
+
+    assert searched_keywords.any? { |kw| kw.include?("What Is This Real") },
+           "Expected keyword without ! and ?, got: #{searched_keywords.inspect}"
+  end
+
   def test_get_torrent_file_uses_tracker_session_when_metadata_exists
     environment = build_service_environment
     app_defined = MediaLibrarian.instance_variable_defined?(:@application)
