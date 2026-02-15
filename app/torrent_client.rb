@@ -55,7 +55,7 @@ class TorrentClient
   end
 
   def download_file(download, options = {}, meta_id = '')
-    options.select! { |key, _| [:move_completed, :main_only].include?(key) }
+    options.select! { |key, _| [:move_completed].include?(key) }
     options = Utils.recursive_typify_keys(options, 0) if options.is_a?(Hash)
     if options['move_completed'].to_s != ''
       options['move_completed_path'] = options['move_completed']

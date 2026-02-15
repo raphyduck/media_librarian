@@ -102,8 +102,10 @@ class Utils
       'arguments'
     end
 
-    def recursive_typify_keys(value)
-      value
+    def recursive_typify_keys(value, symbolize = 1)
+      return value unless value.is_a?(Hash)
+
+      value.transform_keys { |k| symbolize.to_i > 0 ? k.to_sym : k.to_s rescue k }
     end
 
     def parse_filename_template(template, _metadata)
