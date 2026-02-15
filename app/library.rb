@@ -570,6 +570,11 @@ class Library
     app.speaker.speak_up("Je suis l'enfant #{index}")
   end
 
+  def self.fix_media_types(fix: 0, no_prompt: 1)
+    service = MediaLibrarian::Services::MediaTypeVerificationService.new(app: app, speaker: app.speaker)
+    service.verify(fix: fix, no_prompt: no_prompt)
+  end
+
   def self.existing_media_from_db(category, folder = nil)
     LocalMediaRepository.new(app: app).library_index(type: category, folder: folder) || {}
   end

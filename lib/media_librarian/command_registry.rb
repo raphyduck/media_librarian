@@ -32,7 +32,8 @@ module MediaLibrarian
           handle_completed_download: ['Library', 'handle_completed_download', 4, 'handle_completed_download'],
           scan_file_system: ['FileSystemScan', 'scan'],
           import_csv: ['Library', 'import_list_csv'],
-          process_folder: ['Library', 'process_folder']
+          process_folder: ['Library', 'process_folder'],
+          fix_media_types: ['Library', 'fix_media_types']
         },
         torrent: {
           check_all_download: ['TorrentSearch', 'check_all_download', 1, 'torrenting'],
