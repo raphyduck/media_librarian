@@ -32,6 +32,10 @@ class TorrentClientTest < Minitest::Test
     def queue_top(*args)
       @calls << [:queue_top, args]
     end
+
+    def rename_files(*args)
+      @calls << [:rename_files, args]
+    end
   end
 
   class FakeApp
@@ -132,5 +136,69 @@ class TorrentClientTest < Minitest::Test
     passed_options = args.last
     refute passed_options.key?(:main_only), "main_only symbol key should not be passed to Deluge"
     refute passed_options.key?('main_only'), "main_only string key should not be passed to Deluge"
+  end
+
+  def test_rename_torrent_files_with_non_ascii_directory_name
+    tid = 'abc123'
+    korean_dir = '어쩔수가없다 (2025)'
+    files = [{ 'index' => 0, 'path' => 'No.Other.Choice.2025.mkv' }]
+
+    @torrent_client.rename_torrent_files(tid, files, korean_dir)
+
+    assert_equal 1, @recording_client.calls.length
+    method_name, args = @recording_client.calls.first
+    assert_equal :rename_files, method_name
+    paths = args[1]
+    assert_equal 1, paths.length
+    new_path = paths[0][1]
+    assert new_path.valid_encoding?, "new_path must have valid encoding"
+    assert_includes new_path, 'No.Other.Choice.2025.mkv'
+  end
+
+  def test_rename_torrent_files_with_ascii_8bit_directory_name
+    tid = 'abc123'
+    korean_dir = '어쩔수가없다 (2025)'.dup.force_encoding('ASCII-8BIT')
+    files = [{ 'index' => 0, 'path' => 'No.Other.Choice.2025.mkv' }]
+
+    @torrent_client.rename_torrent_files(tid, files, korean_dir)
+
+    assert_equal 1, @recording_client.calls.length
+    _, args = @recording_client.calls.first
+    paths = args[1]
+    new_path = paths[0][1]
+    assert new_path.valid_encoding?, "new_path must have valid encoding after fix_encoding on ASCII-8BIT dir name"
+  end
+
+  def test_binarize_strings_forces_ascii_8bit_on_strings
+    result = @torrent_client.send(:binarize_strings, 'hello')
+    assert_equal Encoding::ASCII_8BIT, result.encoding
+    assert_equal 'hello', result
+  end
+
+  def test_binarize_strings_recurses_into_arrays
+    result = @torrent_client.send(:binarize_strings, ['hello', ['world']])
+    assert_equal Encoding::ASCII_8BIT, result[0].encoding
+    assert_equal Encoding::ASCII_8BIT, result[1][0].encoding
+  end
+
+  def test_binarize_strings_recurses_into_hashes
+    result = @torrent_client.send(:binarize_strings, { 'key' => 'value' })
+    assert_equal Encoding::ASCII_8BIT, result['key'].encoding
+    assert_equal Encoding::ASCII_8BIT, result['value'].encoding
+  end
+
+  def test_binarize_strings_preserves_utf8_bytes_as_binary
+    utf8_str = '어쩔수가없다'
+    result = @torrent_client.send(:binarize_strings, utf8_str)
+    assert_equal Encoding::ASCII_8BIT, result.encoding
+    assert_equal utf8_str.b, result
+  end
+
+  def test_binarize_strings_leaves_non_strings_untouched
+    result = @torrent_client.send(:binarize_strings, [0, 42, nil, true])
+    assert_equal 0, result[0]
+    assert_equal 42, result[1]
+    assert_nil result[2]
+    assert_equal true, result[3]
   end
 end

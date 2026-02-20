@@ -144,7 +144,7 @@ class TorrentClient
     paths = []
     files.each do |file|
       old_name = Quality.filename_quality_change(File.basename(file['path']), torrent_qualities, [], category)
-      new_path = "#{new_dir_name.to_s + '/' if new_dir_name.to_s != ''}#{StringUtils.fix_encoding(old_name)}"
+      new_path = "#{StringUtils.fix_encoding(new_dir_name.to_s) + '/' if new_dir_name.to_s != ''}#{StringUtils.fix_encoding(old_name)}"
       paths << [file['index'], new_path]
     end
     app.t_client.rename_files(tid, paths)
@@ -212,7 +212,7 @@ class TorrentClient
     log_operation(debug_message)
     return if skip_operation?(name)
 
-    safely_execute_deluge_operation(name, sanitized_args, debug_message, tries)
+    safely_execute_deluge_operation(name, binarize_strings(sanitized_args), debug_message, tries)
   rescue => e
     app.speaker.tell_error(e, error_context(debug_message, sanitized_args))
     raise e unless invalid_torrent_error?(e)
@@ -304,6 +304,15 @@ class TorrentClient
     Cache.queue_state_remove('deluge_torrents_added', tid)
     Cache.queue_state_remove('deluge_torrents_completed', tid)
     {}
+  end
+
+  def binarize_strings(obj)
+    case obj
+    when String then obj.b
+    when Array then obj.map { |e| binarize_strings(e) }
+    when Hash then obj.transform_values { |v| binarize_strings(v) }
+    else obj
+    end
   end
 
   def reset_connection
