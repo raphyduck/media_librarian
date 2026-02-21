@@ -468,6 +468,7 @@ module MediaLibrarian
 
           entry[:ids] ||= {}
           entry[:ids]['imdb'] = details[:ids]&.[]('imdb') if details[:ids]
+          entry[:title] = details[:title] if entry[:title].to_s.match?(/\Att\d+\z/i) && !details[:title].to_s.strip.empty?
           entry[:rating] = details[:rating] unless details[:rating].nil?
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]

@@ -107,13 +107,14 @@ module MediaLibrarian
       end
 
       def ensure_calendar_entry(imdb_id, media_type, entry, existing_ids)
-        return if existing_ids.include?(imdb_id)
+        existing_title = existing_ids[imdb_id]
+        return if existing_title && !existing_title.match?(/\Att\d+\z/i)
         return unless calendar_table?
 
         seed = calendar_seed(imdb_id, media_type, entry)
         enriched = CalendarFeedService.enrich_entries([seed], app: app, speaker: speaker, db: app&.db)&.first || seed
         upsert_calendar_entry(enriched)
-        existing_ids << imdb_id
+        existing_ids[imdb_id] = enriched[:title].to_s
         enriched
       rescue StandardError => e
         speaker.tell_error(e, 'File system scan calendar persistence failed') if speaker
@@ -147,15 +148,17 @@ module MediaLibrarian
       end
 
       def calendar_imdb_ids
-        return Set.new unless calendar_table?
+        return {} unless calendar_table?
 
         rows = app.db.get_rows(:calendar_entries)
-        rows.each_with_object(Set.new) do |row, memo|
+        rows.each_with_object({}) do |row, memo|
           imdb_id = (row[:imdb_id] || row['imdb_id']).to_s.strip.downcase
-          memo << imdb_id unless imdb_id.empty?
+          next if imdb_id.empty?
+
+          memo[imdb_id] = (row[:title] || row['title']).to_s
         end
       rescue StandardError
-        Set.new
+        {}
       end
 
       def persist(metadata)
