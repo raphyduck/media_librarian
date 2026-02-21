@@ -146,4 +146,42 @@ class FileSystemScanServiceTest < Minitest::Test
     deletion = @db.deleted_rows.find { |row| row[:table] == :watchlist }
     assert_equal({ table: :watchlist, imdb_id: 'tt7654321', type: 'shows' }, deletion)
   end
+
+  def test_re_enriches_calendar_entry_when_title_is_an_imdb_id
+    @db.insert_row(:calendar_entries, {
+      imdb_id: 'tt0453467',
+      title: 'tt0453467',
+      media_type: 'movie',
+      source: 'local',
+      external_id: 'tt0453467'
+    })
+
+    movie = Struct.new(:ids, :title).new({ 'imdb' => 'tt0453467' }, '')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movie0453467' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    enriched = [{
+      source: 'local',
+      external_id: 'tt0453467',
+      imdb_id: 'tt0453467',
+      title: 'Déjà Vu',
+      media_type: 'movie',
+      ids: { 'imdb' => 'tt0453467' }
+    }]
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(_entries, **) { enriched }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    calendar_rows = @db.rows.select { |r| r[:table] == :calendar_entries }
+    last_calendar = calendar_rows.last
+    assert_equal 'Déjà Vu', last_calendar[:title]
+  end
 end

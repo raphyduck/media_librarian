@@ -1,5 +1,5 @@
 source 'http://rubygems.org'
-ruby '3.2.3'
+ruby '>= 3.2.3'
 
 gem 'archive-zip', :git => 'https://github.com/raphyduck/archive-zip.git', :require => false
 gem 'logger', '< 1.6', :require => false

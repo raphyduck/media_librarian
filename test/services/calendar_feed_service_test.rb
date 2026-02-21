@@ -243,6 +243,40 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'tt1234567', row[:ids][:imdb]
   end
 
+  def test_omdb_enrichment_fixes_title_when_it_is_an_imdb_id
+    entry = base_entry.merge(
+      title: 'tt0453467',
+      imdb_id: 'tt0453467',
+      ids: { 'imdb' => 'tt0453467' },
+      release_date: Date.today + 1,
+      rating: nil,
+      imdb_votes: nil
+    )
+    provider = FakeProvider.new([entry])
+
+    omdb_client = Class.new do
+      def title(_id)
+        { title: 'Déjà Vu', release_date: Date.new(2006, 11, 22), rating: 7.1,
+          ids: { 'imdb' => 'tt0453467' }, imdb_votes: 343_761 }
+      end
+
+      def find_by_title(title:, year:, type: nil)
+        nil
+      end
+    end.new
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal 'Déjà Vu', row[:title]
+    assert_in_delta 7.1, row[:rating]
+  end
+
   def test_omdb_search_uses_series_type_for_shows
     entry = base_entry.merge(media_type: 'show')
     provider = FakeProvider.new([entry])
