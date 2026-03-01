@@ -6,6 +6,7 @@ const state = {
     status: null,
     watchlist: null,
   },
+  statusFallbackTimer: null,
   watchlistImport: {
     jobId: null,
   },
@@ -743,9 +744,42 @@ function closeSocket(name) {
 function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
+  stopStatusFallback();
+  renderWsStatus('offline');
 }
 
-function openSocket(name, path, onMessage) {
+function renderWsStatus(stateLabel) {
+  const badge = document.getElementById('ws-status');
+  if (!badge) {
+    return;
+  }
+  const online = stateLabel === 'online';
+  badge.textContent = online ? 'WS en ligne' : 'WS hors ligne';
+  badge.classList.toggle('ws-status-online', online);
+  badge.classList.toggle('ws-status-offline', !online);
+}
+
+function startStatusFallback() {
+  if (state.statusFallbackTimer) {
+    return;
+  }
+  state.statusFallbackTimer = window.setInterval(() => {
+    if (!state.authenticated || document.visibilityState === 'hidden') {
+      return;
+    }
+    loadStatus();
+  }, 15000);
+}
+
+function stopStatusFallback() {
+  if (!state.statusFallbackTimer) {
+    return;
+  }
+  window.clearInterval(state.statusFallbackTimer);
+  state.statusFallbackTimer = null;
+}
+
+function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {}) {
   closeSocket(name);
   if (!state.authenticated || document.visibilityState === 'hidden') {
     return;
@@ -754,6 +788,12 @@ function openSocket(name, path, onMessage) {
   const url = `${protocol}//${window.location.host}${buildApiUrl(path)}`;
   const socket = new WebSocket(url);
   state.sockets[name] = socket;
+
+  socket.addEventListener('open', () => {
+    if (typeof onOpen === 'function') {
+      onOpen();
+    }
+  });
 
   socket.addEventListener('message', (event) => {
     try {
@@ -769,10 +809,13 @@ function openSocket(name, path, onMessage) {
       return;
     }
     state.sockets[name] = null;
+    if (typeof onClose === 'function') {
+      onClose();
+    }
     if (state.authenticated && document.visibilityState !== 'hidden') {
       window.setTimeout(() => {
         if (state.sockets[name] === null) {
-          openSocket(name, path, onMessage);
+          openSocket(name, path, onMessage, { onOpen, onClose });
         }
       }, 2000);
     }
@@ -780,14 +823,31 @@ function openSocket(name, path, onMessage) {
 }
 
 function startStatusStream() {
-  openSocket('status', '/ws?stream=status', (payload) => {
-    if (payload?.type !== 'status') {
-      return;
+  renderWsStatus('offline');
+  startStatusFallback();
+  loadStatus();
+  openSocket(
+    'status',
+    '/ws?stream=status',
+    (payload) => {
+      if (payload?.type !== 'status') {
+        return;
+      }
+      const data = payload.data || {};
+      updateJobMetrics(data);
+      renderJobs(data);
+    },
+    {
+      onOpen: () => {
+        renderWsStatus('online');
+        stopStatusFallback();
+      },
+      onClose: () => {
+        renderWsStatus('offline');
+        startStatusFallback();
+      },
     }
-    const data = payload.data || {};
-    updateJobMetrics(data);
-    renderJobs(data);
-  });
+  );
 }
 
 function setTrackerTemplates(trackers = []) {
