@@ -101,6 +101,7 @@ class Daemon
   UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
   INLINE_EXECUTED = Object.new
   SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
+  WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -849,6 +850,8 @@ class Daemon
       @queue_limits = Concurrent::Hash.new
       @jobs = Concurrent::Hash.new
       @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
+      @ws_clients = Concurrent::Array.new
+      @ws_broadcast_mutex = Mutex.new
       # Retain queue_slots for configuration compatibility; the queue is now unbounded.
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
@@ -861,10 +864,11 @@ class Daemon
       @jobs[job.id] = job
       parent_thread = job.parent_thread
       parent_jid = parent_thread && parent_thread[:jid]
-      return unless parent_jid
-
-      job.parent_job_id = parent_jid
-      job_children[parent_jid] << job.id
+      if parent_jid
+        job.parent_job_id = parent_jid
+        job_children[parent_jid] << job.id
+      end
+      broadcast_status_update
     end
 
     def start_job(job, wait_for_capacity:)
@@ -1026,6 +1030,7 @@ class Daemon
         app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
         job.status = :running
         job.started_at = Time.now
+        broadcast_status_update
 
         begin
           Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
@@ -1089,6 +1094,8 @@ class Daemon
       @jobs[job.id] = job
       prune_finished_jobs(limit_per_queue: finished_jobs_limit_per_queue)
       unregister_child(job)
+      broadcast_job_update(job)
+      broadcast_status_update
     end
 
     def prune_finished_jobs(limit_per_queue:)
@@ -1432,6 +1439,12 @@ class Daemon
         next unless require_authorization(req, res)
 
         handle_watchlist_import_csv_request(req, res)
+      end
+
+      @control_server.mount_proc('/ws') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_websocket_request(req, res)
       end
 
       start_socket_server
@@ -3698,6 +3711,10 @@ class Daemon
       @is_daemon = false
       @scheduler_name = nil
       @session_cookie_secure = nil
+      ws_clients_snapshot = @ws_clients&.dup || []
+      @ws_clients = nil
+      @ws_broadcast_mutex = nil
+      ws_clients_snapshot.each { |sock| sock.close rescue nil }
     end
 
     def install_signal_traps
@@ -3748,6 +3765,7 @@ class Daemon
 
       job.progress = progress
       @jobs[jid] = job
+      broadcast_job_update(job)
     end
 
     def append_job_output(jid, line, thread: Thread.current)
@@ -3769,6 +3787,178 @@ class Daemon
     def job_for_thread(thread)
       jid = thread && thread[:jid]
       jid && job_registry[jid]
+    end
+
+    def ws_clients
+      @ws_clients || Concurrent::Array.new
+    end
+
+    def handle_websocket_request(req, res)
+      upgrade = req['Upgrade']&.downcase
+      connection = req['Connection']&.downcase
+      ws_key = req['Sec-WebSocket-Key']
+
+      unless upgrade == 'websocket' && connection&.include?('upgrade') && ws_key
+        res['Upgrade'] = 'websocket'
+        error_response(res, status: 426, message: 'websocket_upgrade_required')
+        return
+      end
+
+      socket = req.instance_variable_get(:@socket)
+      socket.write(ws_handshake_response(ws_key))
+
+      ws_clients << socket
+
+      begin
+        ws_serve_connection(socket)
+      ensure
+        ws_clients.delete(socket)
+        socket.close rescue nil
+      end
+
+      # WEBrick will attempt to send an HTTP response after this returns.
+      # The socket is already closed so that write will fail with IOError,
+      # which WEBrick handles gracefully.
+    end
+
+    def ws_handshake_response(key)
+      accept = Base64.strict_encode64(
+        OpenSSL::Digest::SHA1.digest(key + WS_GUID)
+      )
+      "HTTP/1.1 101 Switching Protocols\r\n" \
+        "Upgrade: websocket\r\n" \
+        "Connection: Upgrade\r\n" \
+        "Sec-WebSocket-Accept: #{accept}\r\n" \
+        "\r\n"
+    end
+
+    def ws_encode_text_frame(message)
+      data = message.encode('UTF-8').b
+      len = data.bytesize
+      if len < 126
+        "\x81".b << [len].pack('C') << data
+      elsif len < 65_536
+        "\x81\x7E".b << [len].pack('n') << data
+      else
+        "\x81\x7F".b << [len].pack('Q>') << data
+      end
+    end
+
+    def ws_encode_close_frame
+      "\x88\x00".b
+    end
+
+    def ws_encode_pong_frame
+      "\x8A\x00".b
+    end
+
+    def ws_read_frame(socket)
+      header = socket.read(2)
+      return nil if header.nil? || header.bytesize < 2
+
+      b0 = header.getbyte(0)
+      b1 = header.getbyte(1)
+      opcode = b0 & 0x0F
+      masked = (b1 & 0x80) != 0
+      len = b1 & 0x7F
+
+      if len == 126
+        extra = socket.read(2)
+        return nil unless extra&.bytesize == 2
+
+        len = extra.unpack1('n')
+      elsif len == 127
+        extra = socket.read(8)
+        return nil unless extra&.bytesize == 8
+
+        len = extra.unpack1('Q>')
+      end
+
+      mask_bytes = masked ? socket.read(4) : nil
+      return nil if masked && (mask_bytes.nil? || mask_bytes.bytesize < 4)
+
+      payload = len.positive? ? socket.read(len) : ''.b
+      return nil if payload.nil? || payload.bytesize < len
+
+      if masked && mask_bytes
+        mask = mask_bytes.bytes
+        payload = payload.bytes.each_with_index.map { |byte, i| byte ^ mask[i % 4] }.pack('C*')
+      end
+
+      { opcode: opcode, payload: payload }
+    rescue IOError, EOFError, Errno::ECONNRESET, Errno::EPIPE
+      nil
+    end
+
+    def ws_serve_connection(socket)
+      loop do
+        frame = ws_read_frame(socket)
+        break if frame.nil?
+
+        case frame[:opcode]
+        when 8 # close
+          socket.write(ws_encode_close_frame) rescue nil
+          break
+        when 9 # ping
+          socket.write(ws_encode_pong_frame) rescue nil
+        end
+      end
+    rescue IOError, Errno::ECONNRESET, Errno::EPIPE, Errno::EBADF
+      # client disconnected
+    end
+
+    def ws_broadcast(message)
+      clients = @ws_clients
+      return if clients.nil? || clients.empty?
+
+      mutex = @ws_broadcast_mutex
+      return unless mutex
+
+      frame = ws_encode_text_frame(message)
+      dead = []
+      mutex.synchronize do
+        clients.each do |sock|
+          begin
+            sock.write(frame)
+          rescue IOError, Errno::ECONNRESET, Errno::EPIPE, Errno::ENOTCONN, Errno::EBADF
+            dead << sock
+          end
+        end
+      end
+      dead.each { |sock| clients.delete(sock) }
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    end
+
+    def broadcast_status_update
+      return if ws_clients.empty?
+
+      snapshot = status_snapshot
+      retain_finished = finished_jobs_limit_per_queue.positive?
+      jobs_source = snapshot[:jobs]
+      jobs_source = jobs_source.reject { |job| finished_job?(job) } unless retain_finished
+      body = {
+        'jobs' => jobs_source.map { |job| serialize_job(job) },
+        'running' => snapshot[:running].map { |job| serialize_job(job) },
+        'queued' => snapshot[:queued].map { |job| serialize_job(job) },
+        'queues' => snapshot[:queues],
+        'lock_time' => Utils.lock_time_get,
+        'started_at' => snapshot[:started_at]&.iso8601,
+        'uptime_seconds' => snapshot[:uptime_seconds],
+        'resources' => snapshot[:resources].is_a?(Hash) ? snapshot[:resources] : {}
+      }
+      body['finished'] = snapshot[:finished].map { |job| serialize_job(job) } if retain_finished
+      ws_broadcast(JSON.dump('type' => 'status', 'data' => body))
+    rescue StandardError => e
+      app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    end
+
+    def broadcast_job_update(job)
+      return if ws_clients.empty?
+
+      ws_broadcast(JSON.dump('type' => 'job_update', 'data' => job.to_h))
+    rescue StandardError
+      nil
     end
 
     def close_socket_server

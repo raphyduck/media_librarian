@@ -2,6 +2,9 @@ const state = {
   authenticated: false,
   username: '',
   autoRefresh: null,
+  ws: null,
+  wsReady: false,
+  wsReconnectTimer: null,
   activeTab: 'jobs',
   watchlistImport: {
     jobId: null,
@@ -321,6 +324,13 @@ const API_BASE_PATH = (() => {
 function buildApiUrl(path) {
   const normalizedPath = (path || '').replace(/^\/+/, '');
   return `${API_BASE_PATH}${normalizedPath}`;
+}
+
+function buildWsUrl() {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = window.location.host || '127.0.0.1:8888';
+  const basePath = (API_BASE_PATH || '/').replace(/\/+$/, '');
+  return `${protocol}://${host}${basePath}/ws`;
 }
 
 const LOG_MAX_LINES = Number.parseInt(window.LOG_MAX_LINES, 10) || 1000;
@@ -1303,6 +1313,7 @@ function setAuthenticated(authenticated, username = '') {
     status.hidden = false;
     usernameLabel.textContent = username || '';
     startAutoRefresh();
+    connectWebSocket();
   } else {
     dashboard.classList.add('hidden');
     loginForm.classList.remove('hidden');
@@ -1313,6 +1324,7 @@ function setAuthenticated(authenticated, username = '') {
     state.calendar.filters.genres = [];
     resetTrackerTemplates();
     stopAutoRefresh();
+    disconnectWebSocket();
     setActiveTab('jobs', { skipLoad: true });
     resetEditors();
   }
@@ -1341,9 +1353,159 @@ function updateConnectionHint() {
 function handleUnauthorized() {
   const wasAuthenticated = state.authenticated;
   stopAutoRefresh();
+  disconnectWebSocket();
   setAuthenticated(false);
   if (wasAuthenticated) {
     showNotification('Session expirée. Veuillez vous reconnecter.', 'error');
+  }
+}
+
+function connectWebSocket() {
+  if (state.ws) {
+    return;
+  }
+  let ws;
+  try {
+    ws = new WebSocket(buildWsUrl());
+  } catch (error) {
+    scheduleWsReconnect();
+    return;
+  }
+  state.ws = ws;
+
+  ws.onopen = () => {
+    state.wsReady = true;
+    clearWsReconnect();
+    stopAutoRefresh();
+  };
+
+  ws.onmessage = (event) => {
+    handleWsMessage(event.data);
+  };
+
+  ws.onclose = () => {
+    state.ws = null;
+    state.wsReady = false;
+    if (state.authenticated) {
+      startAutoRefresh();
+      scheduleWsReconnect();
+    }
+  };
+
+  ws.onerror = () => {
+    // onclose fires after onerror; reconnect logic lives there
+  };
+}
+
+function disconnectWebSocket() {
+  clearWsReconnect();
+  if (state.ws) {
+    state.ws.close();
+    state.ws = null;
+    state.wsReady = false;
+  }
+}
+
+function scheduleWsReconnect() {
+  clearWsReconnect();
+  state.wsReconnectTimer = window.setTimeout(() => {
+    if (state.authenticated) {
+      connectWebSocket();
+    }
+  }, 5000);
+}
+
+function clearWsReconnect() {
+  if (state.wsReconnectTimer) {
+    window.clearTimeout(state.wsReconnectTimer);
+    state.wsReconnectTimer = null;
+  }
+}
+
+function handleWsMessage(raw) {
+  let message;
+  try {
+    message = JSON.parse(raw);
+  } catch (error) {
+    return;
+  }
+  if (!message || typeof message !== 'object') {
+    return;
+  }
+  switch (message.type) {
+    case 'status':
+      if (state.activeTab === 'jobs') {
+        updateJobMetrics(message.data);
+        renderJobs(message.data);
+      }
+      break;
+    case 'job_update':
+      handleJobUpdateFromWs(message.data);
+      break;
+    default:
+      break;
+  }
+}
+
+function handleJobUpdateFromWs(jobData) {
+  if (!jobData || !jobData.id) {
+    return;
+  }
+  if (state.watchlistImport.jobId !== jobData.id) {
+    return;
+  }
+  const progress = jobData.progress || {};
+  const result = jobData.result && typeof jobData.result === 'object' ? jobData.result : {};
+  const added = Number.isFinite(Number(progress.added))
+    ? Number(progress.added)
+    : Number(result.total_added) || 0;
+  const skipped = Number.isFinite(Number(progress.skipped))
+    ? Number(progress.skipped)
+    : Number(result.skipped) || 0;
+  const total = Number.isFinite(Number(progress.total))
+    ? Number(progress.total)
+    : added + skipped;
+  const currentTitle = progress.current_title || '';
+  const titles = Array.isArray(progress.added_titles)
+    ? progress.added_titles
+    : Array.isArray(result.added_titles)
+    ? result.added_titles
+    : [];
+  const skippedEntries = Array.isArray(progress.skipped_entries)
+    ? progress.skipped_entries
+    : Array.isArray(result.skipped_entries)
+    ? result.skipped_entries
+    : [];
+  const status = String(jobData.status || '');
+  const statusLabel = status === 'finished'
+    ? 'Terminé'
+    : status === 'failed' || status === 'cancelled'
+    ? 'Erreur'
+    : 'En cours';
+  const done = status === 'finished' || status === 'failed' || status === 'cancelled';
+  const summary = done
+    ? `${added} ajouté(s) sur ${total}.${skipped ? ` ${skipped} non identifié(s).` : ''}`
+    : '';
+  updateWatchlistImportPanel({
+    statusLabel,
+    added,
+    total,
+    currentTitle,
+    summary,
+    titles: done ? titles : [],
+    skippedEntries: done ? skippedEntries : [],
+    error: done && statusLabel === 'Erreur' ? jobData.error || 'Import échoué.' : '',
+    showBack: done,
+  });
+  if (done) {
+    stopWatchlistImportPolling();
+    renderWatchlistImportResult({
+      total_added: added,
+      skipped,
+      added_titles: titles,
+      skipped_entries: skippedEntries,
+    });
+    loadWatchlist();
   }
 }
 
@@ -3452,7 +3614,9 @@ function startWatchlistImportPolling(jobId) {
   });
   const poll = () => pollWatchlistImport(jobId);
   poll();
-  state.watchlistImport.timer = setInterval(poll, 2000);
+  if (!state.wsReady) {
+    state.watchlistImport.timer = setInterval(poll, 2000);
+  }
 }
 
 async function pollWatchlistImport(jobId) {
