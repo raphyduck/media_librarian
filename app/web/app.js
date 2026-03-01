@@ -7,6 +7,12 @@ const state = {
     jobId: null,
     timer: null,
   },
+  reconnection: {
+    active: false,
+    timer: null,
+    attempt: 0,
+    reason: '',
+  },
   dirty: {
     config: false,
     apiConfig: false,
@@ -690,7 +696,8 @@ function formatAvailability(value) {
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
   container.textContent = message;
-  container.className = kind === 'error' ? 'visible error' : 'visible';
+  const cssClass = kind === 'error' ? 'visible error' : kind === 'success' ? 'visible success' : 'visible';
+  container.className = cssClass;
   window.clearTimeout(container._hideTimer);
   container._hideTimer = window.setTimeout(() => {
     container.className = '';
@@ -1338,6 +1345,71 @@ function updateConnectionHint() {
   hint.textContent = `${base}${urlMessage}${tlsReminder}`;
 }
 
+function stopReconnection() {
+  if (state.reconnection.timer) {
+    clearTimeout(state.reconnection.timer);
+  }
+  state.reconnection.timer = null;
+  state.reconnection.active = false;
+  state.reconnection.attempt = 0;
+  state.reconnection.reason = '';
+}
+
+function startReconnection(reason) {
+  if (state.reconnection.active) {
+    return;
+  }
+  stopAutoRefresh();
+  state.reconnection.active = true;
+  state.reconnection.attempt = 0;
+  state.reconnection.reason = reason || '';
+  showNotification(reason || 'Connexion perdue. Tentative de reconnexion…', 'error');
+  scheduleReconnectionAttempt();
+}
+
+function scheduleReconnectionAttempt() {
+  if (!state.reconnection.active) {
+    return;
+  }
+  const attempt = state.reconnection.attempt;
+  const delay = Math.min(2000 * Math.pow(1.5, attempt), 15000);
+  state.reconnection.timer = setTimeout(() => attemptReconnection(), delay);
+}
+
+async function attemptReconnection() {
+  if (!state.reconnection.active) {
+    return;
+  }
+  state.reconnection.attempt += 1;
+  try {
+    const url = buildApiUrl('/session');
+    const response = await fetch(url, { credentials: 'include' });
+    if (response.ok) {
+      const session = await response.json();
+      stopReconnection();
+      if (session?.username) {
+        setAuthenticated(true, session.username);
+        showNotification('Connexion rétablie.', 'success');
+        await refreshActiveTab();
+        resumeWatchlistImportPolling();
+      } else {
+        setAuthenticated(false);
+        showNotification('Le démon est de retour. Veuillez vous reconnecter.');
+      }
+      return;
+    }
+    if (response.status === 401 || response.status === 403) {
+      stopReconnection();
+      setAuthenticated(false);
+      showNotification('Le démon est de retour. Veuillez vous reconnecter.');
+      return;
+    }
+  } catch (error) {
+    // daemon still unreachable
+  }
+  scheduleReconnectionAttempt();
+}
+
 function handleUnauthorized() {
   const wasAuthenticated = state.authenticated;
   stopAutoRefresh();
@@ -1353,7 +1425,15 @@ async function fetchJson(path, options = {}) {
   init.headers = new Headers(options.headers || {});
 
   const url = buildApiUrl(path);
-  const response = await fetch(url, init);
+  let response;
+  try {
+    response = await fetch(url, init);
+  } catch (networkError) {
+    if (state.authenticated && !state.reconnection.active) {
+      startReconnection('Connexion au démon perdue. Tentative de reconnexion…');
+    }
+    throw networkError;
+  }
   if (response.status === 401 || response.status === 403) {
     const message = await parseErrorMessage(response);
     handleUnauthorized();
@@ -3412,6 +3492,36 @@ function updateWatchlistImportPanel({
   }
 }
 
+function persistWatchlistImportJobId() {
+  const jobId = state.watchlistImport.jobId;
+  try {
+    if (jobId) {
+      sessionStorage.setItem('ml_watchlist_import_job', jobId);
+    } else {
+      sessionStorage.removeItem('ml_watchlist_import_job');
+    }
+  } catch (error) {
+    // sessionStorage unavailable
+  }
+}
+
+function resumeWatchlistImportPolling() {
+  if (state.watchlistImport.jobId && state.watchlistImport.timer) {
+    return;
+  }
+  let jobId = state.watchlistImport.jobId;
+  if (!jobId) {
+    try {
+      jobId = sessionStorage.getItem('ml_watchlist_import_job');
+    } catch (error) {
+      // sessionStorage unavailable
+    }
+  }
+  if (jobId) {
+    startWatchlistImportPolling(jobId);
+  }
+}
+
 function stopWatchlistImportPolling() {
   if (state.watchlistImport.timer) {
     clearInterval(state.watchlistImport.timer);
@@ -3422,6 +3532,7 @@ function stopWatchlistImportPolling() {
 function closeWatchlistImportView() {
   stopWatchlistImportPolling();
   state.watchlistImport.jobId = null;
+  persistWatchlistImportJobId();
   updateWatchlistImportPanel({
     statusLabel: 'En cours',
     added: 0,
@@ -3440,6 +3551,7 @@ function startWatchlistImportPolling(jobId) {
   }
   stopWatchlistImportPolling();
   state.watchlistImport.jobId = jobId;
+  persistWatchlistImportJobId();
   setWatchlistImportView(true);
   updateWatchlistImportPanel({
     statusLabel: 'En cours',
@@ -3506,6 +3618,7 @@ async function pollWatchlistImport(jobId) {
     });
     if (done) {
       stopWatchlistImportPolling();
+      persistWatchlistImportJobId();
       renderWatchlistImportResult({
         total_added: added,
         skipped,
@@ -3514,17 +3627,24 @@ async function pollWatchlistImport(jobId) {
       });
       await loadWatchlist();
     }
+    state.watchlistImport.pollErrors = 0;
   } catch (error) {
-    stopWatchlistImportPolling();
-    updateWatchlistImportPanel({
-      statusLabel: 'Erreur',
-      added: 0,
-      total: 0,
-      currentTitle: '',
-      summary: '',
-      error: error.message || 'Impossible de suivre le job.',
-      showBack: true,
-    });
+    if (state.reconnection.active) {
+      return;
+    }
+    state.watchlistImport.pollErrors = (state.watchlistImport.pollErrors || 0) + 1;
+    if (state.watchlistImport.pollErrors >= 5) {
+      stopWatchlistImportPolling();
+      updateWatchlistImportPanel({
+        statusLabel: 'Erreur',
+        added: 0,
+        total: 0,
+        currentTitle: '',
+        summary: '',
+        error: error.message || 'Impossible de suivre le job.',
+        showBack: true,
+      });
+    }
   }
 }
 
@@ -4010,7 +4130,7 @@ async function loadDownloadsTab() {
   await Promise.all([loadPendingTorrents(), loadWatchlist()]);
 }
 
-async function controlDaemon({ path, buttonId, message }) {
+async function controlDaemon({ path, buttonId, message, reconnect = false }) {
   const button = buttonId ? document.getElementById(buttonId) : null;
   if (button) {
     button.disabled = true;
@@ -4020,7 +4140,13 @@ async function controlDaemon({ path, buttonId, message }) {
     if (message) {
       showNotification(message);
     }
-    setAuthenticated(false);
+    if (reconnect) {
+      persistWatchlistImportJobId();
+      stopAutoRefresh();
+      startReconnection(message || 'Le démon redémarre…');
+    } else {
+      setAuthenticated(false);
+    }
   } catch (error) {
     showNotification(error.message, 'error');
   } finally {
@@ -4035,6 +4161,7 @@ async function restartDaemon() {
     path: '/restart',
     buttonId: 'restart-daemon',
     message: 'Redémarrage du démon en cours…',
+    reconnect: true,
   });
 }
 
@@ -4057,6 +4184,7 @@ async function updateCodeAndStop() {
     path: '/update-stop',
     buttonId: 'update-stop-daemon',
     message: 'Mise à jour + arrêt en cours…',
+    reconnect: true,
   });
 }
 
@@ -4165,6 +4293,7 @@ async function syncSession() {
 async function bootstrapSession() {
   if (await syncSession()) {
     await refreshAll();
+    resumeWatchlistImportPolling();
   }
 }
 
