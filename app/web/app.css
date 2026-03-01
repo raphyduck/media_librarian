@@ -162,6 +162,26 @@ main {
   flex-wrap: wrap;
 }
 
+
+.ws-status {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  vertical-align: middle;
+}
+
+.ws-status-online {
+  background: #173f2a;
+  color: #6be2a2;
+}
+
+.ws-status-offline {
+  background: #4a1b1b;
+  color: #ff9e9e;
+}
+
 .jobs-metrics {
   display: flex;
   flex-wrap: wrap;
