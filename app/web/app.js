@@ -1,11 +1,13 @@
 const state = {
   authenticated: false,
   username: '',
-  autoRefresh: null,
   activeTab: 'jobs',
+  sockets: {
+    status: null,
+    watchlist: null,
+  },
   watchlistImport: {
     jobId: null,
-    timer: null,
   },
   dirty: {
     config: false,
@@ -730,21 +732,62 @@ async function parseErrorMessage(response) {
   return text;
 }
 
-function stopAutoRefresh() {
-  if (state.autoRefresh) {
-    window.clearInterval(state.autoRefresh);
-    state.autoRefresh = null;
+function closeSocket(name) {
+  const socket = state.sockets[name];
+  if (socket) {
+    socket.close();
+    state.sockets[name] = null;
   }
 }
 
-function startAutoRefresh() {
-  stopAutoRefresh();
-  state.autoRefresh = window.setInterval(() => {
-    if (!state.authenticated || document.visibilityState === 'hidden') {
+function closeSockets() {
+  closeSocket('status');
+  closeSocket('watchlist');
+}
+
+function openSocket(name, path, onMessage) {
+  closeSocket(name);
+  if (!state.authenticated || document.visibilityState === 'hidden') {
+    return;
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${protocol}//${window.location.host}${buildApiUrl(path)}`;
+  const socket = new WebSocket(url);
+  state.sockets[name] = socket;
+
+  socket.addEventListener('message', (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      onMessage(payload);
+    } catch (error) {
+      // ignore malformed websocket payloads
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    if (state.sockets[name] !== socket) {
       return;
     }
-    refreshActiveTab();
-  }, 15000);
+    state.sockets[name] = null;
+    if (state.authenticated && document.visibilityState !== 'hidden') {
+      window.setTimeout(() => {
+        if (state.sockets[name] === null) {
+          openSocket(name, path, onMessage);
+        }
+      }, 2000);
+    }
+  });
+}
+
+function startStatusStream() {
+  openSocket('status', '/ws?stream=status', (payload) => {
+    if (payload?.type !== 'status') {
+      return;
+    }
+    const data = payload.data || {};
+    updateJobMetrics(data);
+    renderJobs(data);
+  });
 }
 
 function setTrackerTemplates(trackers = []) {
@@ -1302,7 +1345,7 @@ function setAuthenticated(authenticated, username = '') {
     loginForm.classList.add('hidden');
     status.hidden = false;
     usernameLabel.textContent = username || '';
-    startAutoRefresh();
+    startStatusStream();
   } else {
     dashboard.classList.add('hidden');
     loginForm.classList.remove('hidden');
@@ -1312,7 +1355,7 @@ function setAuthenticated(authenticated, username = '') {
     state.calendar.availableGenres = [];
     state.calendar.filters.genres = [];
     resetTrackerTemplates();
-    stopAutoRefresh();
+    closeSockets();
     setActiveTab('jobs', { skipLoad: true });
     resetEditors();
   }
@@ -1340,7 +1383,7 @@ function updateConnectionHint() {
 
 function handleUnauthorized() {
   const wasAuthenticated = state.authenticated;
-  stopAutoRefresh();
+  closeSockets();
   setAuthenticated(false);
   if (wasAuthenticated) {
     showNotification('Session expirée. Veuillez vous reconnecter.', 'error');
@@ -1786,11 +1829,11 @@ function renderErrorBlocks(logEntry, text) {
     if (openBlockTitles.has(block[0])) {
       details.open = true;
       hasOpenBlock = true;
-      stopAutoRefresh();
+      closeSockets();
     }
     details.addEventListener('toggle', () => {
       if (details.open) {
-        stopAutoRefresh();
+        closeSockets();
       }
       updateRefreshLabel(Boolean(logContent.querySelector('details.log-error[open]')));
     });
@@ -3412,15 +3455,12 @@ function updateWatchlistImportPanel({
   }
 }
 
-function stopWatchlistImportPolling() {
-  if (state.watchlistImport.timer) {
-    clearInterval(state.watchlistImport.timer);
-  }
-  state.watchlistImport.timer = null;
+function stopWatchlistImportStream() {
+  closeSocket('watchlist');
 }
 
 function closeWatchlistImportView() {
-  stopWatchlistImportPolling();
+  stopWatchlistImportStream();
   state.watchlistImport.jobId = null;
   updateWatchlistImportPanel({
     statusLabel: 'En cours',
@@ -3434,11 +3474,11 @@ function closeWatchlistImportView() {
   setWatchlistImportView(false);
 }
 
-function startWatchlistImportPolling(jobId) {
+function startWatchlistImportStream(jobId) {
   if (!jobId) {
     return;
   }
-  stopWatchlistImportPolling();
+  stopWatchlistImportStream();
   state.watchlistImport.jobId = jobId;
   setWatchlistImportView(true);
   updateWatchlistImportPanel({
@@ -3450,17 +3490,11 @@ function startWatchlistImportPolling(jobId) {
     error: '',
     showBack: false,
   });
-  const poll = () => pollWatchlistImport(jobId);
-  poll();
-  state.watchlistImport.timer = setInterval(poll, 2000);
-}
-
-async function pollWatchlistImport(jobId) {
-  if (!jobId || jobId !== state.watchlistImport.jobId) {
-    return;
-  }
-  try {
-    const job = await fetchJson(`/jobs/${encodeURIComponent(jobId)}`);
+  openSocket('watchlist', `/ws?stream=job&job_id=${encodeURIComponent(jobId)}`, (payload) => {
+    if (payload?.type !== 'job' || jobId !== state.watchlistImport.jobId) {
+      return;
+    }
+    const job = payload.data || {};
     const progress = job?.progress || {};
     const result = job?.result && typeof job.result === 'object' ? job.result : {};
     const added = Number.isFinite(Number(progress.added))
@@ -3505,27 +3539,29 @@ async function pollWatchlistImport(jobId) {
       showBack: done,
     });
     if (done) {
-      stopWatchlistImportPolling();
+      stopWatchlistImportStream();
       renderWatchlistImportResult({
         total_added: added,
         skipped,
         added_titles: titles,
         skipped_entries: skippedEntries,
       });
-      await loadWatchlist();
+      loadWatchlist();
     }
-  } catch (error) {
-    stopWatchlistImportPolling();
-    updateWatchlistImportPanel({
-      statusLabel: 'Erreur',
-      added: 0,
-      total: 0,
-      currentTitle: '',
-      summary: '',
-      error: error.message || 'Impossible de suivre le job.',
-      showBack: true,
-    });
-  }
+    if (status === 'not_found') {
+      stopWatchlistImportStream();
+      updateWatchlistImportPanel({
+        statusLabel: 'Erreur',
+        added: 0,
+        total: 0,
+        currentTitle: '',
+        summary: '',
+        error: 'Job introuvable.',
+        showBack: true,
+      });
+      return;
+    }
+  });
 }
 
 async function loadWatchlist() {
@@ -3572,7 +3608,7 @@ async function importWatchlistCsv() {
       throw new Error("Job d'import introuvable.");
     }
     showNotification('Import démarré.');
-    startWatchlistImportPolling(jobId);
+    startWatchlistImportStream(jobId);
   } catch (error) {
     showNotification(error.message || 'Import impossible.', 'error');
     closeWatchlistImportView();
@@ -4403,6 +4439,19 @@ function setupEventListeners() {
   setupCalendarEvents();
   setupCalendarSearchEvents();
   setupCollectionEvents();
+  document.addEventListener('visibilitychange', () => {
+    if (!state.authenticated) {
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      closeSockets();
+      return;
+    }
+    startStatusStream();
+    if (state.watchlistImport.jobId) {
+      startWatchlistImportStream(state.watchlistImport.jobId);
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

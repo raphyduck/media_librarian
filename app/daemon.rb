@@ -13,6 +13,7 @@ require 'bcrypt'
 require 'yaml'
 require 'fileutils'
 require 'base64'
+require 'digest/sha1'
 require 'get_process_mem'
 require 'socket'
 require 'open3'
@@ -1434,6 +1435,12 @@ class Daemon
         handle_watchlist_import_csv_request(req, res)
       end
 
+      @control_server.mount_proc('/ws') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_websocket_request(req, res)
+      end
+
       start_socket_server
       @control_thread = Thread.new { @control_server.start }
     end
@@ -1497,6 +1504,96 @@ class Daemon
       else
         error_response(res, status: 404, message: 'not_found')
       end
+    end
+
+    def handle_websocket_request(req, res)
+      key = req.header['sec-websocket-key']&.first.to_s
+      upgrade = req.header['upgrade']&.first.to_s.downcase
+      connection = req.header['connection']&.first.to_s.downcase
+      unless req.request_method == 'GET' && upgrade == 'websocket' && connection.include?('upgrade') && !key.empty?
+        return error_response(res, status: 400, message: 'invalid_websocket_upgrade')
+      end
+
+      socket = req.instance_variable_get(:@socket)
+      return error_response(res, status: 500, message: 'websocket_unavailable') unless socket
+
+      stream = req.query['stream'].to_s
+      job_id = req.query['job_id'].to_s
+      socket << websocket_handshake_response(key)
+
+      case stream
+      when 'job'
+        stream_job_updates(socket, job_id)
+      else
+        stream_status_updates(socket)
+      end
+
+      raise WEBrick::HTTPStatus::EOFError
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'websocket request failure') if Env.debug?
+    ensure
+      socket&.close unless socket&.closed?
+      res.keep_alive = false
+    end
+
+    def websocket_handshake_response(key)
+      accept = Base64.strict_encode64(Digest::SHA1.digest("#{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+      [
+        'HTTP/1.1 101 Switching Protocols',
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        "Sec-WebSocket-Accept: #{accept}",
+        "Date: #{Time.now.httpdate}",
+        '',
+        ''
+      ].join("\r\n")
+    end
+
+    def stream_status_updates(socket)
+      loop do
+        payload = {
+          type: 'status',
+          data: status_snapshot_payload
+        }
+        socket.write(websocket_text_frame(payload.to_json))
+        sleep 15
+      end
+    rescue IOError, SystemCallError
+      nil
+    end
+
+    def stream_job_updates(socket, job_id)
+      return if job_id.to_s.empty?
+
+      loop do
+        job = job_registry[job_id]
+        payload = {
+          type: 'job',
+          data: job ? job.to_h : { id: job_id, status: 'not_found' }
+        }
+        socket.write(websocket_text_frame(payload.to_json))
+        break if job && FINISHED_STATUSES.include?(job.status.to_s)
+
+        sleep 2
+      end
+    rescue IOError, SystemCallError
+      nil
+    end
+
+    def websocket_text_frame(message)
+      bytes = message.to_s.b
+      length = bytes.bytesize
+      header = [0x81]
+      if length < 126
+        header << length
+      elsif length <= 0xffff
+        header << 126
+        header.concat([(length >> 8) & 0xff, length & 0xff])
+      else
+        header << 127
+        8.times { |i| header << ((length >> (56 - (i * 8))) & 0xff) }
+      end
+      header.pack('C*') + bytes
     end
 
     def handle_jobs_request(req, res)
