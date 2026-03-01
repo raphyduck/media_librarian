@@ -760,10 +760,6 @@ textarea[data-dirty="true"] {
   border-color: rgba(248, 113, 113, 0.6);
 }
 
-.success {
-  border-color: rgba(74, 222, 128, 0.6);
-}
-
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
