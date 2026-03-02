@@ -753,10 +753,11 @@ function renderWsStatus(stateLabel) {
   if (!badge) {
     return;
   }
-  const online = stateLabel === 'online';
-  badge.textContent = online ? 'WS en ligne' : 'WS hors ligne';
-  badge.classList.toggle('ws-status-online', online);
-  badge.classList.toggle('ws-status-offline', !online);
+  const mode = stateLabel === 'online' ? 'online' : stateLabel === 'fallback' ? 'fallback' : 'offline';
+  badge.textContent = mode === 'online' ? 'WS en ligne' : mode === 'fallback' ? 'Mise à jour périodique' : 'WS indisponible';
+  badge.classList.toggle('ws-status-online', mode === 'online');
+  badge.classList.toggle('ws-status-fallback', mode === 'fallback');
+  badge.classList.toggle('ws-status-offline', mode === 'offline');
 }
 
 function startStatusFallback() {
@@ -823,7 +824,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 }
 
 function startStatusStream() {
-  renderWsStatus('offline');
+  renderWsStatus('fallback');
   startStatusFallback();
   loadStatus();
   openSocket(
@@ -843,7 +844,7 @@ function startStatusStream() {
         stopStatusFallback();
       },
       onClose: () => {
-        renderWsStatus('offline');
+        renderWsStatus('fallback');
         startStatusFallback();
       },
     }
