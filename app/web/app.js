@@ -745,7 +745,7 @@ function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
   stopStatusFallback();
-  renderWsStatus('offline');
+  renderWsStatus(state.authenticated ? 'fallback' : 'offline');
 }
 
 function renderWsStatus(stateLabel) {
@@ -753,10 +753,11 @@ function renderWsStatus(stateLabel) {
   if (!badge) {
     return;
   }
-  const online = stateLabel === 'online';
-  badge.textContent = online ? 'WS en ligne' : 'WS hors ligne';
-  badge.classList.toggle('ws-status-online', online);
-  badge.classList.toggle('ws-status-offline', !online);
+  const mode = stateLabel === 'online' ? 'online' : stateLabel === 'fallback' ? 'fallback' : 'offline';
+  badge.textContent = mode === 'online' ? 'WS en ligne' : mode === 'fallback' ? 'Mise à jour périodique' : 'WS indisponible';
+  badge.classList.toggle('ws-status-online', mode === 'online');
+  badge.classList.toggle('ws-status-fallback', mode === 'fallback');
+  badge.classList.toggle('ws-status-offline', mode === 'offline');
 }
 
 function startStatusFallback() {
@@ -768,7 +769,7 @@ function startStatusFallback() {
       return;
     }
     loadStatus();
-  }, 15000);
+  }, 5000);
 }
 
 function stopStatusFallback() {
@@ -823,7 +824,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 }
 
 function startStatusStream() {
-  renderWsStatus('offline');
+  renderWsStatus('fallback');
   startStatusFallback();
   loadStatus();
   openSocket(
@@ -843,7 +844,7 @@ function startStatusStream() {
         stopStatusFallback();
       },
       onClose: () => {
-        renderWsStatus('offline');
+        renderWsStatus('fallback');
         startStatusFallback();
       },
     }
@@ -3144,7 +3145,7 @@ async function loadCollection(options = {}) {
 
 async function loadStatus() {
   try {
-    const data = await fetchJson('/status');
+    const data = await fetchJson(`/status?_=${Date.now()}`);
     updateJobMetrics(data);
     renderJobs(data);
   } catch (error) {
