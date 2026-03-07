@@ -745,7 +745,7 @@ function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
   stopStatusFallback();
-  renderWsStatus('offline');
+  renderWsStatus(state.authenticated ? 'fallback' : 'offline');
 }
 
 function renderWsStatus(stateLabel) {
@@ -769,7 +769,7 @@ function startStatusFallback() {
       return;
     }
     loadStatus();
-  }, 15000);
+  }, 5000);
 }
 
 function stopStatusFallback() {
@@ -3145,7 +3145,7 @@ async function loadCollection(options = {}) {
 
 async function loadStatus() {
   try {
-    const data = await fetchJson('/status');
+    const data = await fetchJson(`/status?_=${Date.now()}`);
     updateJobMetrics(data);
     renderJobs(data);
   } catch (error) {
