@@ -164,17 +164,33 @@ main {
 
 
 .ws-status {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
+  padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
+  line-height: 1;
   vertical-align: middle;
+}
+
+.ws-status::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .ws-status-online {
   background: #173f2a;
   color: #6be2a2;
+}
+
+.ws-status-fallback {
+  background: #3a2f0d;
+  color: #ffd76b;
 }
 
 .ws-status-offline {
