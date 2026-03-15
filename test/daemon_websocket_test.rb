@@ -35,6 +35,30 @@ class DaemonWebsocketTest < Minitest::Test
     assert_equal 'ok', frame.byteslice(2..)
   end
 
+  def test_websocket_socket_prefers_request_socket
+    req_socket = StringIO.new
+    res_socket = StringIO.new
+    request = Struct.new(:query).new({})
+    response = Object.new
+    request.instance_variable_set(:@socket, req_socket)
+    response.instance_variable_set(:@socket, res_socket)
+
+    socket = Daemon.send(:websocket_socket, request, response)
+
+    assert_same req_socket, socket
+  end
+
+  def test_websocket_socket_falls_back_to_response_socket
+    res_socket = StringIO.new
+    request = Struct.new(:query).new({})
+    response = Object.new
+    response.instance_variable_set(:@socket, res_socket)
+
+    socket = Daemon.send(:websocket_socket, request, response)
+
+    assert_same res_socket, socket
+  end
+
   def test_websocket_text_frame_for_126_plus_payload
     payload = 'a' * 130
 
