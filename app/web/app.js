@@ -1890,12 +1890,8 @@ function renderErrorBlocks(logEntry, text) {
     if (openBlockTitles.has(block[0])) {
       details.open = true;
       hasOpenBlock = true;
-      closeSockets();
     }
     details.addEventListener('toggle', () => {
-      if (details.open) {
-        closeSockets();
-      }
       updateRefreshLabel(Boolean(logContent.querySelector('details.log-error[open]')));
     });
     return details;
@@ -3145,7 +3141,7 @@ async function loadCollection(options = {}) {
 
 async function loadStatus() {
   try {
-    const data = await fetchJson(`/status?_=${Date.now()}`);
+    const data = await fetchJson(`/status?_=${Date.now()}`, { cache: 'no-store' });
     updateJobMetrics(data);
     renderJobs(data);
   } catch (error) {
