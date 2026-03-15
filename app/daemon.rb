@@ -1514,12 +1514,12 @@ class Daemon
         return error_response(res, status: 400, message: 'invalid_websocket_upgrade')
       end
 
-      socket = req.instance_variable_get(:@socket)
+      socket = websocket_socket(req, res)
       return error_response(res, status: 500, message: 'websocket_unavailable') unless socket
 
       stream = req.query['stream'].to_s
       job_id = req.query['job_id'].to_s
-      socket << websocket_handshake_response(key)
+      socket.write(websocket_handshake_response(key))
 
       case stream
       when 'job'
@@ -1547,6 +1547,14 @@ class Daemon
         '',
         ''
       ].join("\r\n")
+    end
+
+    def websocket_socket(req, res)
+      [req, res].each do |object|
+        socket = object.instance_variable_get(:@socket)
+        return socket if socket.respond_to?(:write)
+      end
+      nil
     end
 
     def stream_status_updates(socket)
