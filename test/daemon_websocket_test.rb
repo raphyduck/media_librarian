@@ -4,6 +4,24 @@ require 'test_helper'
 require_relative '../app/daemon'
 
 class DaemonWebsocketTest < Minitest::Test
+  FakeSocket = Struct.new(:buffer, :closed_flag) do
+    def initialize
+      super(+'', false)
+    end
+
+    def write(data)
+      self.buffer << data
+    end
+
+    def close
+      self.closed_flag = true
+    end
+
+    def closed?
+      closed_flag
+    end
+  end
+
   def setup
     reset_librarian_state!
     @environment = build_stubbed_environment
@@ -35,28 +53,40 @@ class DaemonWebsocketTest < Minitest::Test
     assert_equal 'ok', frame.byteslice(2..)
   end
 
-  def test_websocket_socket_prefers_request_socket
-    req_socket = StringIO.new
-    res_socket = StringIO.new
-    request = Struct.new(:query).new({})
+  def test_websocket_socket_accepts_direct_socket_object
+    req_socket = FakeSocket.new
     response = Object.new
-    request.instance_variable_set(:@socket, req_socket)
-    response.instance_variable_set(:@socket, res_socket)
 
-    socket = Daemon.send(:websocket_socket, request, response)
+    socket = Daemon.send(:websocket_socket, req_socket, response)
 
     assert_same req_socket, socket
   end
 
-  def test_websocket_socket_falls_back_to_response_socket
-    res_socket = StringIO.new
-    request = Struct.new(:query).new({})
+  def test_websocket_socket_finds_nested_wrapped_socket
+    wrapped_socket = Object.new
+    inner_socket = FakeSocket.new
+    wrapped_socket.instance_variable_set(:@socket, inner_socket)
+    request = Object.new
     response = Object.new
-    response.instance_variable_set(:@socket, res_socket)
+    response.instance_variable_set(:@config, { ssl: wrapped_socket })
 
     socket = Daemon.send(:websocket_socket, request, response)
 
-    assert_same res_socket, socket
+    assert_same inner_socket, socket
+  end
+
+  def test_websocket_socket_logs_request_and_response_shape_when_missing
+    request = Struct.new(:query).new({})
+    request.instance_variable_set(:@peeraddr, ['127.0.0.1'])
+    response = Object.new
+
+    _stdout, stderr = capture_io do
+      assert_nil Daemon.send(:websocket_socket, request, response)
+    end
+
+    assert_includes stderr, 'WebSocket socket unavailable'
+    assert_includes stderr, request.class.to_s
+    assert_includes stderr, response.class.to_s
   end
 
   def test_websocket_text_frame_for_126_plus_payload
