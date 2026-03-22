@@ -633,6 +633,37 @@ class DaemonIntegrationTest < Minitest::Test
     refute_equal password_hash, secret
   end
 
+  def test_websocket_status_upgrade_streams_initial_status_frame
+    boot_daemon_environment(authenticate: false)
+    authenticate_session
+
+    response_head, frame = websocket_upgrade_response('/ws?stream=status', cookie: @session_cookie)
+
+    assert_includes response_head, '101 Switching Protocols'
+    assert_match(/Sec-WebSocket-Accept:/i, response_head)
+    assert_equal 0x1, frame[:opcode]
+
+    message = JSON.parse(frame[:payload])
+    assert_equal 'status', message['type']
+    assert_kind_of Hash, message['data']
+  end
+
+  def test_https_websocket_status_upgrade_streams_initial_status_frame
+    boot_daemon_environment(authenticate: false,
+                            api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
+    authenticate_session
+
+    response_head, frame = websocket_upgrade_response('/ws?stream=status', cookie: @session_cookie)
+
+    assert_includes response_head, '101 Switching Protocols'
+    assert_match(/Sec-WebSocket-Accept:/i, response_head)
+    assert_equal 0x1, frame[:opcode]
+
+    message = JSON.parse(frame[:payload])
+    assert_equal 'status', message['type']
+    assert_kind_of Hash, message['data']
+  end
+
   def test_https_control_server_serves_requests
     boot_daemon_environment(api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
 
@@ -915,6 +946,75 @@ class DaemonIntegrationTest < Minitest::Test
 
   def free_port
     TCPServer.open('127.0.0.1', 0) { |server| server.addr[1] }
+  end
+
+  def websocket_upgrade_response(path, cookie: nil)
+    socket = open_control_socket
+    key = Base64.strict_encode64(Random.bytes(16))
+    request = [
+      "GET #{path} HTTP/1.1",
+      "Host: #{@environment.application.api_option['bind_address']}:#{@environment.application.api_option['listen_port']}",
+      'Upgrade: websocket',
+      'Connection: Upgrade',
+      "Sec-WebSocket-Key: #{key}",
+      'Sec-WebSocket-Version: 13'
+    ]
+    request << "Cookie: #{cookie}" if cookie
+    socket.write(request.join("\r\n") + "\r\n\r\n")
+
+    response = +''
+    until response.include?("\r\n\r\n")
+      response << socket.readpartial(1024)
+    end
+
+    header, payload = response.split("\r\n\r\n", 2)
+    [header, read_websocket_frame(socket, payload.to_s.b)]
+  ensure
+    socket&.close unless socket&.closed?
+  end
+
+  def open_control_socket
+    tcp_socket = TCPSocket.new(@environment.application.api_option['bind_address'],
+                               @environment.application.api_option['listen_port'])
+    return tcp_socket unless control_ssl_enabled?
+
+    context = OpenSSL::SSL::SSLContext.new
+    context.verify_mode = resolve_control_verify_mode(@environment.application.api_option['ssl_verify_mode'])
+    ssl_socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, context)
+    ssl_socket.sync_close = true
+    ssl_socket.hostname = @environment.application.api_option['bind_address'] if ssl_socket.respond_to?(:hostname=)
+    ssl_socket.connect
+    ssl_socket
+  end
+
+  def read_websocket_frame(socket, buffer = ''.b)
+    first_byte, buffer = read_from_socket(socket, buffer, 1)
+    second_byte, buffer = read_from_socket(socket, buffer, 1)
+    raise 'missing websocket frame' if first_byte.nil? || second_byte.nil?
+
+    length = second_byte.getbyte(0) & 0x7f
+    if length == 126
+      extended, buffer = read_from_socket(socket, buffer, 2)
+      length = extended.unpack1('n')
+    elsif length == 127
+      extended, buffer = read_from_socket(socket, buffer, 8)
+      length = extended.unpack1('Q>')
+    end
+
+    payload, = read_from_socket(socket, buffer, length)
+    {
+      fin: (first_byte.getbyte(0) & 0x80) != 0,
+      opcode: first_byte.getbyte(0) & 0x0f,
+      payload: payload
+    }
+  end
+
+  def read_from_socket(socket, buffer, length)
+    while buffer.bytesize < length
+      buffer << socket.readpartial(1024)
+    end
+
+    [buffer.byteslice(0, length), buffer.byteslice(length..) || ''.b]
   end
 
   def control_get(path, token: nil, headers: nil)
