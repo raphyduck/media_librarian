@@ -1551,10 +1551,48 @@ class Daemon
 
     def websocket_socket(req, res)
       [req, res].each do |object|
-        socket = object.instance_variable_get(:@socket)
-        return socket if socket.respond_to?(:write)
+        socket = resolve_websocket_socket(object)
+        return socket if socket
       end
+
+      warn("WebSocket socket unavailable for req=#{req.class}(#{req.instance_variables.inspect}) res=#{res.class}(#{res.instance_variables.inspect})")
       nil
+    end
+
+    def resolve_websocket_socket(object)
+      queue = [object]
+      seen = {}
+
+      until queue.empty?
+        candidate = queue.shift
+        next if candidate.nil? || seen[candidate.__id__]
+
+        seen[candidate.__id__] = true
+        return candidate if websocket_socket_like?(candidate)
+
+        queue.concat(websocket_socket_children(candidate))
+      end
+
+      nil
+    end
+
+    def websocket_socket_like?(object)
+      object.respond_to?(:write) && object.respond_to?(:close) && object.respond_to?(:closed?)
+    end
+
+    def websocket_socket_children(object)
+      children = [:@socket, :@peeraddr, :@config].filter_map do |ivar|
+        object.instance_variable_get(ivar) if object.instance_variable_defined?(ivar)
+      end
+
+      if object.is_a?(Hash)
+        children.concat(object.values_at(:socket, 'socket', :Socket, 'Socket', :io, 'io', :ssl_socket, 'ssl_socket'))
+      end
+
+      children.concat([:@socket, :@io, :@ssl_socket].filter_map do |ivar|
+        object.instance_variable_get(ivar) if object.instance_variable_defined?(ivar)
+      end)
+      children.compact
     end
 
     def stream_status_updates(socket)
