@@ -6,6 +6,10 @@ const state = {
     status: null,
     watchlist: null,
   },
+  socketMeta: {
+    status: { lastError: '', wasOnline: false },
+    watchlist: { lastError: '', wasOnline: false },
+  },
   statusFallbackTimer: null,
   watchlistImport: {
     jobId: null,
@@ -754,7 +758,15 @@ function renderWsStatus(stateLabel) {
     return;
   }
   const mode = stateLabel === 'online' ? 'online' : stateLabel === 'fallback' ? 'fallback' : 'offline';
-  badge.textContent = mode === 'online' ? 'WS en ligne' : mode === 'fallback' ? 'Mise à jour périodique' : 'WS indisponible';
+  const detail = state.socketMeta.status.lastError;
+  badge.textContent = typeof window.formatWsStatusLabel === 'function'
+    ? window.formatWsStatusLabel(mode, detail)
+    : mode === 'online'
+    ? 'WS en ligne'
+    : mode === 'fallback'
+    ? 'Mise à jour périodique'
+    : 'WS indisponible';
+  badge.title = detail || 'Connexion websocket';
   badge.classList.toggle('ws-status-online', mode === 'online');
   badge.classList.toggle('ws-status-fallback', mode === 'fallback');
   badge.classList.toggle('ws-status-offline', mode === 'offline');
@@ -788,9 +800,15 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${protocol}//${window.location.host}${buildApiUrl(path)}`;
   const socket = new WebSocket(url);
+  const meta = state.socketMeta[name] || { lastError: '', wasOnline: false };
+  state.socketMeta[name] = meta;
+  meta.lastError = '';
+  meta.wasOnline = false;
   state.sockets[name] = socket;
 
   socket.addEventListener('open', () => {
+    meta.wasOnline = true;
+    meta.lastError = '';
     if (typeof onOpen === 'function') {
       onOpen();
     }
@@ -799,19 +817,52 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
   socket.addEventListener('message', (event) => {
     try {
       const payload = JSON.parse(event.data);
+      if (payload?.type === 'error') {
+        meta.lastError = payload.error || payload.message || meta.lastError;
+        if (name === 'status') {
+          renderWsStatus('fallback');
+        }
+      }
       onMessage(payload);
     } catch (error) {
       // ignore malformed websocket payloads
     }
   });
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('error', (event) => {
+    const reason = typeof window.normalizeWsError === 'function'
+      ? window.normalizeWsError(event?.message || meta.lastError, {
+          isSecure: window.location.protocol === 'https:',
+          online: navigator.onLine !== false,
+        })
+      : 'WS indisponible';
+    meta.lastError = reason;
+    if (name === 'status') {
+      renderWsStatus('fallback');
+    }
+  });
+
+  socket.addEventListener('close', (event) => {
     if (state.sockets[name] !== socket) {
       return;
     }
     state.sockets[name] = null;
+    meta.lastError = typeof window.getWsCloseDetail === 'function'
+      ? window.getWsCloseDetail({
+          code: event.code,
+          wasOnline: meta.wasOnline,
+          lastError: meta.lastError,
+          isSecure: window.location.protocol === 'https:',
+          online: navigator.onLine !== false,
+        })
+      : meta.lastError;
     if (typeof onClose === 'function') {
-      onClose();
+      onClose({
+        code: event.code,
+        reason: meta.lastError,
+        phase: meta.wasOnline ? 'reconnect' : 'initial',
+        wasOnline: meta.wasOnline,
+      });
     }
     if (state.authenticated && document.visibilityState !== 'hidden') {
       window.setTimeout(() => {
@@ -843,7 +894,8 @@ function startStatusStream() {
         renderWsStatus('online');
         stopStatusFallback();
       },
-      onClose: () => {
+      onClose: ({ reason }) => {
+        state.socketMeta.status.lastError = reason || '';
         renderWsStatus('fallback');
         startStatusFallback();
       },
