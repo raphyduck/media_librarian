@@ -1,4 +1,4 @@
-function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
+function normalizeWsError(raw = '') {
   const message = String(raw || '').toLowerCase();
   if (
     message.includes('tls')
@@ -17,24 +17,18 @@ function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
   ) {
     return 'WS refusé';
   }
-  if (!online) {
-    return 'WS indisponible';
-  }
-  return isSecure ? 'WS indisponible en HTTPS' : 'WS indisponible';
+  return '';
 }
 
 function getWsCloseDetail({
   code = 1000,
   wasOnline = false,
   lastError = '',
-  isSecure = false,
-  online = true,
 } = {}) {
   if (code === 1000 && wasOnline && !lastError) {
     return '';
   }
-  const reason = normalizeWsError(lastError, { isSecure, online });
-  return reason || (wasOnline ? (isSecure ? 'WS indisponible en HTTPS' : 'WS indisponible') : 'WS refusé');
+  return normalizeWsError(lastError);
 }
 
 function formatWsStatusLabel(mode, detail = '') {
