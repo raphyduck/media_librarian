@@ -1,5 +1,8 @@
-function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
+function normalizeWsError(raw = '') {
   const message = String(raw || '').toLowerCase();
+  if (!message) {
+    return '';
+  }
   if (message.includes('tls') || message.includes('ssl') || message.includes('cert')) {
     return 'WS bloqué par TLS/certificat';
   }
@@ -11,24 +14,18 @@ function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
   ) {
     return 'WS refusé';
   }
-  if (!online || isSecure) {
-    return 'WS bloqué par TLS/certificat';
-  }
-  return 'WS indisponible';
+  return '';
 }
 
 function getWsCloseDetail({
   code = 1000,
   wasOnline = false,
   lastError = '',
-  isSecure = false,
-  online = true,
 } = {}) {
   if (code === 1000 && wasOnline && !lastError) {
     return '';
   }
-  const reason = normalizeWsError(lastError, { isSecure, online });
-  return reason || (wasOnline ? 'WS indisponible' : 'WS refusé');
+  return normalizeWsError(lastError) || '';
 }
 
 function formatWsStatusLabel(mode, detail = '') {

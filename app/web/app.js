@@ -749,6 +749,9 @@ function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
   stopStatusFallback();
+  if (state.authenticated) {
+    state.socketMeta.status.lastError = '';
+  }
   renderWsStatus(state.authenticated ? 'fallback' : 'offline');
 }
 
@@ -758,7 +761,7 @@ function renderWsStatus(stateLabel) {
     return;
   }
   const mode = stateLabel === 'online' ? 'online' : stateLabel === 'fallback' ? 'fallback' : 'offline';
-  const detail = state.socketMeta.status.lastError;
+  const detail = stateLabel === 'fallback' ? state.socketMeta.status.lastError : '';
   badge.textContent = typeof window.formatWsStatusLabel === 'function'
     ? window.formatWsStatusLabel(mode, detail)
     : mode === 'online'
@@ -831,12 +834,9 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 
   socket.addEventListener('error', (event) => {
     const reason = typeof window.normalizeWsError === 'function'
-      ? window.normalizeWsError(event?.message || meta.lastError, {
-          isSecure: window.location.protocol === 'https:',
-          online: navigator.onLine !== false,
-        })
-      : 'WS indisponible';
-    meta.lastError = reason;
+      ? window.normalizeWsError(event?.message || meta.lastError)
+      : '';
+    meta.lastError = reason || meta.lastError;
     if (name === 'status') {
       renderWsStatus('fallback');
     }
@@ -852,8 +852,6 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
           code: event.code,
           wasOnline: meta.wasOnline,
           lastError: meta.lastError,
-          isSecure: window.location.protocol === 'https:',
-          online: navigator.onLine !== false,
         })
       : meta.lastError;
     if (typeof onClose === 'function') {
@@ -875,6 +873,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 }
 
 function startStatusStream() {
+  state.socketMeta.status.lastError = '';
   renderWsStatus('fallback');
   startStatusFallback();
   loadStatus();
