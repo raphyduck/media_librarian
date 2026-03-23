@@ -749,16 +749,27 @@ function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
   stopStatusFallback();
-  renderWsStatus(state.authenticated ? 'fallback' : 'offline', '');
+  if (state.authenticated) {
+    renderStatusFallbackWithoutDetail();
+    return;
+  }
+  renderWsStatus('offline');
 }
 
-function renderWsStatus(stateLabel, detailOverride = null) {
+function renderStatusFallbackWithoutDetail() {
+  const { lastError } = state.socketMeta.status;
+  state.socketMeta.status.lastError = '';
+  renderWsStatus('fallback');
+  state.socketMeta.status.lastError = lastError;
+}
+
+function renderWsStatus(stateLabel) {
   const badge = document.getElementById('ws-status');
   if (!badge) {
     return;
   }
   const mode = stateLabel === 'online' ? 'online' : stateLabel === 'fallback' ? 'fallback' : 'offline';
-  const detail = stateLabel === 'fallback' ? (detailOverride ?? state.socketMeta.status.lastError) : '';
+  const detail = stateLabel === 'fallback' ? state.socketMeta.status.lastError : '';
   badge.textContent = typeof window.formatWsStatusLabel === 'function'
     ? window.formatWsStatusLabel(mode, detail)
     : mode === 'online'
@@ -870,7 +881,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 }
 
 function startStatusStream() {
-  renderWsStatus('fallback', '');
+  renderStatusFallbackWithoutDetail();
   startStatusFallback();
   loadStatus();
   openSocket(
