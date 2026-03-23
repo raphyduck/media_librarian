@@ -5,13 +5,15 @@ const { formatWsStatusLabel, getWsCloseDetail, normalizeWsError } = require('../
 
 test('maps websocket errors to short visible messages', () => {
   assert.equal(normalizeWsError('net::ERR_CERT_AUTHORITY_INVALID', { isSecure: true }), 'WS bloqué par TLS/certificat');
-  assert.equal(normalizeWsError('Error during WebSocket handshake: 403', { isSecure: false }), 'WS refusé');
+  assert.equal(normalizeWsError('Error during WebSocket handshake: 403', { isSecure: true }), 'WS refusé');
   assert.equal(normalizeWsError('', { isSecure: false, online: true }), 'WS indisponible');
+  assert.equal(normalizeWsError('', { isSecure: true, online: true }), 'WS indisponible en HTTPS');
 });
 
 test('keeps fallback reason empty for normal closes but visible for failures', () => {
   assert.equal(getWsCloseDetail({ code: 1000, wasOnline: true, lastError: '' }), '');
   assert.equal(getWsCloseDetail({ code: 1006, wasOnline: false, lastError: 'Error during WebSocket handshake: 403' }), 'WS refusé');
+  assert.equal(getWsCloseDetail({ code: 1006, wasOnline: true, lastError: '', isSecure: true }), 'WS indisponible en HTTPS');
   assert.equal(getWsCloseDetail({ code: 1006, wasOnline: true, lastError: '' }), 'WS indisponible');
 });
 

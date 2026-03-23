@@ -1,6 +1,12 @@
 function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
   const message = String(raw || '').toLowerCase();
-  if (message.includes('tls') || message.includes('ssl') || message.includes('cert')) {
+  if (
+    message.includes('tls')
+    || message.includes('ssl')
+    || message.includes('cert')
+    || message.includes('certificate')
+    || message.includes('authority invalid')
+  ) {
     return 'WS bloqué par TLS/certificat';
   }
   if (
@@ -11,10 +17,10 @@ function normalizeWsError(raw = '', { isSecure = false, online = true } = {}) {
   ) {
     return 'WS refusé';
   }
-  if (!online || isSecure) {
-    return 'WS bloqué par TLS/certificat';
+  if (!online) {
+    return 'WS indisponible';
   }
-  return 'WS indisponible';
+  return isSecure ? 'WS indisponible en HTTPS' : 'WS indisponible';
 }
 
 function getWsCloseDetail({
@@ -28,7 +34,7 @@ function getWsCloseDetail({
     return '';
   }
   const reason = normalizeWsError(lastError, { isSecure, online });
-  return reason || (wasOnline ? 'WS indisponible' : 'WS refusé');
+  return reason || (wasOnline ? (isSecure ? 'WS indisponible en HTTPS' : 'WS indisponible') : 'WS refusé');
 }
 
 function formatWsStatusLabel(mode, detail = '') {
