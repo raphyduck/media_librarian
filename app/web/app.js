@@ -831,10 +831,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
 
   socket.addEventListener('error', (event) => {
     const reason = typeof window.normalizeWsError === 'function'
-      ? window.normalizeWsError(event?.message || meta.lastError, {
-          isSecure: window.location.protocol === 'https:',
-          online: navigator.onLine !== false,
-        })
+      ? window.normalizeWsError(event?.message || meta.lastError)
       : 'WS indisponible';
     meta.lastError = reason;
     if (name === 'status') {
