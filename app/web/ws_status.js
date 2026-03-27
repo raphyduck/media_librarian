@@ -1,3 +1,16 @@
+/**
+ * WebSocket utility contracts:
+ * - normalizeWsError(raw: string): string
+ *   Pure textual normalization. Returns a short user-facing reason or '' when unknown.
+ * - getWsCloseDetail(context: {
+ *     code?: number,
+ *     wasOnline?: boolean,
+ *     lastError?: string,
+ *     isSecure?: boolean,
+ *     online?: boolean
+ *   }): string
+ *   Computes the final visible reason on close from close code + connection context.
+ */
 function normalizeWsError(raw = '') {
   const message = String(raw || '').toLowerCase();
   if (
