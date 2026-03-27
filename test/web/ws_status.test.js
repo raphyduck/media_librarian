@@ -14,6 +14,11 @@ test('keeps fallback reason empty unless a qualified failure was observed', () =
   assert.equal(getWsCloseDetail({ code: 1000, wasOnline: true, lastError: '' }), '');
   assert.equal(getWsCloseDetail({ code: 1006, wasOnline: false, lastError: 'Error during WebSocket handshake: 403' }), 'WS refusé');
   assert.equal(getWsCloseDetail({ code: 1006, wasOnline: true, lastError: '' }), '');
+
+  assert.equal(
+    getWsCloseDetail({ code: 1006, wasOnline: false, lastError: '', isSecure: true, online: true }),
+    'WS bloqué par TLS/certificat',
+  );
 });
 
 test('formats fallback badge with visible websocket reason', () => {

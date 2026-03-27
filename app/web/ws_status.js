@@ -24,11 +24,17 @@ function getWsCloseDetail({
   code = 1000,
   wasOnline = false,
   lastError = '',
+  isSecure = false,
+  online = true,
 } = {}) {
   if (code === 1000 && wasOnline && !lastError) {
     return '';
   }
-  return normalizeWsError(lastError);
+  const normalizedError = normalizeWsError(lastError);
+  if (!normalizedError && code === 1006 && wasOnline === false && isSecure === true && online !== false) {
+    return 'WS bloqué par TLS/certificat';
+  }
+  return normalizedError;
 }
 
 function formatWsStatusLabel(mode, detail = '') {
