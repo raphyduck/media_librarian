@@ -99,6 +99,8 @@ class Daemon
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
   CAPTURE_OUTPUT_RETENTION_SECONDS = 5
+  STATUS_STREAM_INTERVAL_SECONDS = 15
+  STATUS_STREAM_HEARTBEAT_SECONDS = 5
   UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
   INLINE_EXECUTED = Object.new
   SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
@@ -1507,6 +1509,10 @@ class Daemon
     end
 
     def handle_websocket_request(req, res)
+      socket = nil
+      started_at = Time.now
+      stream = req.query['stream'].to_s
+      close_code = nil
       key = req.header['sec-websocket-key']&.first.to_s
       upgrade = req.header['upgrade']&.first.to_s.downcase
       connection = req.header['connection']&.first.to_s.downcase
@@ -1517,9 +1523,9 @@ class Daemon
       socket = websocket_socket(req, res)
       return error_response(res, status: 500, message: 'websocket_unavailable') unless socket
 
-      stream = req.query['stream'].to_s
       job_id = req.query['job_id'].to_s
       socket.write(websocket_handshake_response(key))
+      websocket_log('opened', stream:, socket:)
 
       case stream
       when 'job'
@@ -1529,9 +1535,14 @@ class Daemon
       end
 
       raise WEBrick::HTTPStatus::EOFError
+    rescue IOError, SystemCallError => e
+      websocket_log('closed', stream:, socket:, started_at:, close_code:, exception: e, expected: true)
     rescue StandardError => e
+      websocket_log('closed', stream:, socket:, started_at:, close_code:, exception: e, expected: false)
       app.speaker.tell_error(e, 'websocket request failure') if Env.debug?
     ensure
+      close_code = socket.close_code if socket&.respond_to?(:close_code)
+      websocket_log('closed', stream:, socket:, started_at:, close_code:) unless $ERROR_INFO
       socket&.close unless socket&.closed?
       res.keep_alive = false
     end
@@ -1596,16 +1607,22 @@ class Daemon
     end
 
     def stream_status_updates(socket)
+      last_status_sent = nil
       loop do
-        payload = {
-          type: 'status',
-          data: status_snapshot_payload
-        }
-        socket.write(websocket_text_frame(payload.to_json))
-        sleep 15
+        now = Time.now
+        if last_status_sent.nil? || now - last_status_sent >= STATUS_STREAM_INTERVAL_SECONDS
+          socket.write(websocket_text_frame({ type: 'status', data: status_snapshot_payload }.to_json))
+          last_status_sent = now
+        else
+          socket.write(websocket_text_frame({ type: 'hb', t: now.to_i }.to_json))
+        end
+        sleep STATUS_STREAM_HEARTBEAT_SECONDS
       end
-    rescue IOError, SystemCallError
-      nil
+    rescue IOError, SystemCallError => e
+      websocket_log('status_stream_closed', stream: 'status', socket:, exception: e, expected: true)
+    rescue StandardError => e
+      websocket_log('status_stream_closed', stream: 'status', socket:, exception: e, expected: false)
+      raise
     end
 
     def stream_job_updates(socket, job_id)
@@ -1640,6 +1657,23 @@ class Daemon
         8.times { |i| header << ((length >> (56 - (i * 8))) & 0xff) }
       end
       header.pack('C*') + bytes
+    end
+
+    def websocket_log(event, stream:, socket: nil, started_at: nil, close_code: nil, exception: nil, expected: nil)
+      return if event == 'opened' && Env.debug?
+
+      payload = {
+        event: "websocket_#{event}",
+        stream: stream.to_s.empty? ? 'status' : stream.to_s
+      }
+      payload[:duration_ms] = ((Time.now - started_at) * 1000).round if started_at
+      payload[:close_code] = close_code if close_code
+      if exception
+        payload[:exception] = exception.class.name
+        payload[:expected] = expected unless expected.nil?
+      end
+      payload[:socket] = socket.class.name if Env.debug? && socket
+      app.speaker.speak_up(payload.to_json, 0, Thread.current, 1)
     end
 
     def handle_jobs_request(req, res)
