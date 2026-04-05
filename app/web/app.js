@@ -7,8 +7,8 @@ const state = {
     watchlist: null,
   },
   socketMeta: {
-    status: { lastError: '', wasOnline: false },
-    watchlist: { lastError: '', wasOnline: false },
+    status: { lastError: '', wasOnline: false, failures: 0, retryTimer: null },
+    watchlist: { lastError: '', wasOnline: false, failures: 0, retryTimer: null },
   },
   statusFallbackTimer: null,
   watchlistImport: {
@@ -738,6 +738,11 @@ async function parseErrorMessage(response) {
 }
 
 function closeSocket(name) {
+  const meta = state.socketMeta[name];
+  if (meta?.retryTimer) {
+    window.clearTimeout(meta.retryTimer);
+    meta.retryTimer = null;
+  }
   const socket = state.sockets[name];
   if (socket) {
     socket.close();
@@ -792,6 +797,8 @@ function stopStatusFallback() {
   state.statusFallbackTimer = null;
 }
 
+const STATUS_WS_FAILURE_THRESHOLD = 3;
+
 function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {}) {
   closeSocket(name);
   if (!state.authenticated || document.visibilityState === 'hidden') {
@@ -800,15 +807,20 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${protocol}//${window.location.host}${buildApiUrl(path)}`;
   const socket = new WebSocket(url);
-  const meta = state.socketMeta[name] || { lastError: '', wasOnline: false };
+  const meta = state.socketMeta[name] || { lastError: '', wasOnline: false, failures: 0, retryTimer: null };
   state.socketMeta[name] = meta;
   meta.lastError = '';
   meta.wasOnline = false;
+  if (meta.retryTimer) {
+    window.clearTimeout(meta.retryTimer);
+    meta.retryTimer = null;
+  }
   state.sockets[name] = socket;
 
   socket.addEventListener('open', () => {
     meta.wasOnline = true;
     meta.lastError = '';
+    meta.failures = 0;
     if (typeof onOpen === 'function') {
       onOpen();
     }
@@ -834,9 +846,6 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
       ? window.normalizeWsError(event?.message || meta.lastError)
       : 'WS indisponible';
     meta.lastError = reason;
-    if (name === 'status') {
-      renderWsStatus('fallback');
-    }
   });
 
   socket.addEventListener('close', (event) => {
@@ -853,20 +862,28 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
           online: navigator.onLine !== false,
         })
       : meta.lastError;
+    if (state.authenticated && document.visibilityState !== 'hidden') {
+      meta.failures += 1;
+    }
     if (typeof onClose === 'function') {
       onClose({
         code: event.code,
         reason: meta.lastError,
         phase: meta.wasOnline ? 'reconnect' : 'initial',
         wasOnline: meta.wasOnline,
+        failures: meta.failures,
       });
     }
     if (state.authenticated && document.visibilityState !== 'hidden') {
-      window.setTimeout(() => {
+      const retryDelay = typeof window.computeReconnectDelayMs === 'function'
+        ? window.computeReconnectDelayMs(meta.failures)
+        : 2000;
+      meta.retryTimer = window.setTimeout(() => {
+        meta.retryTimer = null;
         if (state.sockets[name] === null) {
           openSocket(name, path, onMessage, { onOpen, onClose });
         }
-      }, 2000);
+      }, retryDelay);
     }
   });
 }
@@ -891,9 +908,15 @@ function startStatusStream() {
         renderWsStatus('online');
         stopStatusFallback();
       },
-      onClose: ({ reason }) => {
+      onClose: ({ reason, failures }) => {
         state.socketMeta.status.lastError = reason || '';
-        renderWsStatus('fallback');
+        const display = typeof window.getWsDisplayState === 'function'
+          ? window.getWsDisplayState(failures, STATUS_WS_FAILURE_THRESHOLD)
+          : { mode: 'fallback', detail: '' };
+        if (display.detail && !state.socketMeta.status.lastError) {
+          state.socketMeta.status.lastError = display.detail;
+        }
+        renderWsStatus(display.mode);
         startStatusFallback();
       },
     }

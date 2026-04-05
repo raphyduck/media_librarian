@@ -55,12 +55,37 @@ function formatWsStatusLabel(mode, detail = '') {
   return detail && mode !== 'online' ? `${label} · ${detail}` : label;
 }
 
+function getWsDisplayState(consecutiveFailures = 0, failureThreshold = 3) {
+  const safeThreshold = Math.max(1, Number(failureThreshold) || 1);
+  return consecutiveFailures >= safeThreshold
+    ? { mode: 'offline', detail: '' }
+    : { mode: 'fallback', detail: 'reconnexion…' };
+}
+
+function computeReconnectDelayMs(
+  attempt = 1,
+  { baseMs = 2000, maxMs = 30000, jitterRatio = 0.25, random = Math.random } = {}
+) {
+  const step = Math.max(1, Number(attempt) || 1) - 1;
+  const backoffMs = Math.min(maxMs, baseMs * 2 ** step);
+  const jitterMs = backoffMs * jitterRatio * ((typeof random === 'function' ? random() : 0.5) * 2 - 1);
+  return Math.max(0, Math.round(backoffMs + jitterMs));
+}
+
 if (typeof window !== 'undefined') {
   window.normalizeWsError = normalizeWsError;
   window.getWsCloseDetail = getWsCloseDetail;
   window.formatWsStatusLabel = formatWsStatusLabel;
+  window.getWsDisplayState = getWsDisplayState;
+  window.computeReconnectDelayMs = computeReconnectDelayMs;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normalizeWsError, getWsCloseDetail, formatWsStatusLabel };
+  module.exports = {
+    normalizeWsError,
+    getWsCloseDetail,
+    formatWsStatusLabel,
+    getWsDisplayState,
+    computeReconnectDelayMs,
+  };
 }
