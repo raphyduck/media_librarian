@@ -664,6 +664,30 @@ class DaemonIntegrationTest < Minitest::Test
     assert_kind_of Hash, message['data']
   end
 
+  def test_websocket_status_stream_remains_active_across_multiple_reads
+    boot_daemon_environment(authenticate: false)
+    authenticate_session
+
+    header, socket, buffer = websocket_upgrade_stream('/ws?stream=status', cookie: @session_cookie)
+    assert_includes header, '101 Switching Protocols'
+
+    frames = []
+    Timeout.timeout(8) do
+      while frames.size < 3
+        frame, buffer = read_websocket_frame_with_buffer(socket, buffer)
+        message = JSON.parse(frame[:payload])
+        next unless %w[status hb].include?(message['type'])
+
+        frames << message
+      end
+    end
+
+    assert_equal 'status', frames.first['type']
+    assert frames.drop(1).all? { |message| %w[status hb].include?(message['type']) }
+  ensure
+    socket&.close unless socket&.closed?
+  end
+
   def test_https_control_server_serves_requests
     boot_daemon_environment(api_overrides: { 'ssl_enabled' => true, 'ssl_verify_mode' => 'none' })
 
@@ -949,6 +973,13 @@ class DaemonIntegrationTest < Minitest::Test
   end
 
   def websocket_upgrade_response(path, cookie: nil)
+    header, socket, payload = websocket_upgrade_stream(path, cookie:)
+    [header, read_websocket_frame(socket, payload.to_s.b)]
+  ensure
+    socket&.close unless socket&.closed?
+  end
+
+  def websocket_upgrade_stream(path, cookie: nil)
     socket = open_control_socket
     key = Base64.strict_encode64(Random.bytes(16))
     request = [
@@ -963,14 +994,10 @@ class DaemonIntegrationTest < Minitest::Test
     socket.write(request.join("\r\n") + "\r\n\r\n")
 
     response = +''
-    until response.include?("\r\n\r\n")
-      response << socket.readpartial(1024)
-    end
+    response << socket.readpartial(1024) until response.include?("\r\n\r\n")
 
     header, payload = response.split("\r\n\r\n", 2)
-    [header, read_websocket_frame(socket, payload.to_s.b)]
-  ensure
-    socket&.close unless socket&.closed?
+    [header, socket, payload.to_s.b]
   end
 
   def open_control_socket
@@ -988,6 +1015,10 @@ class DaemonIntegrationTest < Minitest::Test
   end
 
   def read_websocket_frame(socket, buffer = ''.b)
+    read_websocket_frame_with_buffer(socket, buffer).first
+  end
+
+  def read_websocket_frame_with_buffer(socket, buffer = ''.b)
     first_byte, buffer = read_from_socket(socket, buffer, 1)
     second_byte, buffer = read_from_socket(socket, buffer, 1)
     raise 'missing websocket frame' if first_byte.nil? || second_byte.nil?
@@ -1001,12 +1032,12 @@ class DaemonIntegrationTest < Minitest::Test
       length = extended.unpack1('Q>')
     end
 
-    payload, = read_from_socket(socket, buffer, length)
-    {
+    payload, buffer = read_from_socket(socket, buffer, length)
+    [{
       fin: (first_byte.getbyte(0) & 0x80) != 0,
       opcode: first_byte.getbyte(0) & 0x0f,
       payload: payload
-    }
+    }, buffer]
   end
 
   def read_from_socket(socket, buffer, length)
