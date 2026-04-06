@@ -1608,12 +1608,17 @@ class Daemon
 
     def stream_status_updates(socket)
       last_status_sent = nil
+      step = nil
       loop do
         now = Time.now
         if last_status_sent.nil? || now - last_status_sent >= STATUS_STREAM_INTERVAL_SECONDS
-          socket.write(websocket_text_frame({ type: 'status', data: status_snapshot_payload }.to_json))
+          step = 'status_snapshot_payload'
+          payload = { type: 'status', data: status_snapshot_payload }.to_json
+          step = 'socket.write'
+          socket.write(websocket_text_frame(payload))
           last_status_sent = now
         else
+          step = 'socket.write'
           socket.write(websocket_text_frame({ type: 'hb', t: now.to_i }.to_json))
         end
         sleep STATUS_STREAM_HEARTBEAT_SECONDS
@@ -1621,7 +1626,15 @@ class Daemon
     rescue IOError, SystemCallError => e
       websocket_log('status_stream_closed', stream: 'status', socket:, exception: e, expected: true)
     rescue StandardError => e
-      websocket_log('status_stream_closed', stream: 'status', socket:, exception: e, expected: false)
+      websocket_log(
+        'status_stream_closed',
+        stream: 'status',
+        socket:,
+        exception: e,
+        expected: false,
+        step:,
+        timestamp: Time.now.utc.iso8601
+      )
       raise
     end
 
@@ -1659,7 +1672,17 @@ class Daemon
       header.pack('C*') + bytes
     end
 
-    def websocket_log(event, stream:, socket: nil, started_at: nil, close_code: nil, exception: nil, expected: nil)
+    def websocket_log(
+      event,
+      stream:,
+      socket: nil,
+      started_at: nil,
+      close_code: nil,
+      exception: nil,
+      expected: nil,
+      step: nil,
+      timestamp: nil
+    )
       return if event == 'opened' && Env.debug?
 
       payload = {
@@ -1670,8 +1693,12 @@ class Daemon
       payload[:close_code] = close_code if close_code
       if exception
         payload[:exception] = exception.class.name
+        exception_message = exception.message.to_s.strip.gsub(/\s+/, ' ')[0, 200]
+        payload[:exception_message] = exception_message unless exception_message.empty?
         payload[:expected] = expected unless expected.nil?
       end
+      payload[:step] = step if step
+      payload[:timestamp] = timestamp if timestamp
       payload[:socket] = socket.class.name if Env.debug? && socket
       app.speaker.speak_up(payload.to_json, 0, Thread.current, 1)
     end
