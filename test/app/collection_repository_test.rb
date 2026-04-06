@@ -104,6 +104,20 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal [3], unnamed_entry[:seasons].first[:episodes].map { |episode| episode[:episode] }
   end
 
+  def test_show_grouping_ignores_year_suffix_in_filename_series_name
+    insert_media([
+      { media_type: 'show', imdb_id: '', local_path: '/tmp/media/Midnight.Mass.S01E02.mkv' },
+      { media_type: 'show', imdb_id: '', local_path: '/tmp/media/Midnight.Mass.2021.S01E01.mkv' }
+    ])
+    insert_calendar_entry(imdb_id: '', title: 'Midnight Mass', media_type: 'show')
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, type: 'show')
+
+    assert_equal 1, result[:total]
+    assert_equal 'Midnight Mass', result[:entries].first[:title]
+    assert_equal [1, 2], result[:entries].first[:seasons].first[:episodes].map { |episode| episode[:episode] }
+  end
+
   def test_enriches_entries_with_calendar_metadata_when_available
     insert_media([{ imdb_id: 'ttmeta', local_path: '/tmp/media/meta.mkv', created_at: '2023-02-01T00:00:00Z' }])
     insert_calendar_entry(

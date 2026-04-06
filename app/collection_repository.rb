@@ -219,22 +219,26 @@ class CollectionRepository
 
   def series_name_from(row)
     source = fetch(row, :calendar_title).to_s
-    source = File.basename(fetch(row, :local_path).to_s) if source.empty?
+    from_file = source.empty?
+    source = File.basename(fetch(row, :local_path).to_s) if from_file
     return '' if source.empty?
 
     if (match = source.match(/(.+?)[ ._-]*[sS]\d{1,2}[ ._-]*[eE]\d{1,2}/))
-      return normalize_series_name(match[1])
+      return normalize_series_name(match[1], strip_year_suffix: from_file)
     end
 
     if (match = source.match(/(.+?)\d{1,2}x\d{1,2}/))
-      return normalize_series_name(match[1])
+      return normalize_series_name(match[1], strip_year_suffix: from_file)
     end
 
-    normalize_series_name(source)
+    normalize_series_name(source, strip_year_suffix: from_file)
   end
 
-  def normalize_series_name(value)
-    value.to_s.tr('._', ' ').gsub(/\s+/, ' ').strip
+  def normalize_series_name(value, strip_year_suffix: false)
+    normalized = value.to_s.tr('._', ' ').gsub(/\s+/, ' ').strip
+    return normalized unless strip_year_suffix
+
+    normalized.sub(/\s*(?:\(\d{4}\)|\d{4})\z/, '').strip
   end
 
   def build_released_at(value)
