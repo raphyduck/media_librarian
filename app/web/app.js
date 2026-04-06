@@ -799,6 +799,16 @@ function stopStatusFallback() {
 
 const STATUS_WS_FAILURE_THRESHOLD = 3;
 
+function logWsClose(name, event, meta) {
+  console.warn('[ws.close]', {
+    stream: name,
+    code: event.code,
+    wasOnline: meta.wasOnline,
+    failures: meta.failures,
+    lastError: meta.lastError,
+  });
+}
+
 function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {}) {
   closeSocket(name);
   if (!state.authenticated || document.visibilityState === 'hidden') {
@@ -865,6 +875,7 @@ function openSocket(name, path, onMessage, { onOpen = null, onClose = null } = {
     if (state.authenticated && document.visibilityState !== 'hidden') {
       meta.failures += 1;
     }
+    logWsClose(name, event, meta);
     if (typeof onClose === 'function') {
       onClose({
         code: event.code,
