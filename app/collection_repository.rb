@@ -170,8 +170,8 @@ class CollectionRepository
     return {} if app.db.respond_to?(:table_exists?) && !app.db.table_exists?(:local_media)
 
     grouped = Hash.new { |h, k| h[k] = [] }
-    dataset.where(media_type: 'show').select(:local_path).all.each do |row|
-      key = series_key(row)
+    dataset.where(media_type: 'show').select(:id, :media_type, :imdb_id, :local_path).all.each do |row|
+      key = group_key(row)
       next if key.empty?
 
       grouped[key] << row
@@ -180,12 +180,16 @@ class CollectionRepository
   end
 
   def group_key(row)
+    imdb_id = fetch(row, :imdb_id).to_s
+
     if fetch(row, :media_type) == 'show'
+      return imdb_id unless imdb_id.empty?
+
       series = series_key(row)
       return series unless series.empty?
     end
 
-    key = fetch(row, :imdb_id).to_s
+    key = imdb_id
     key = fetch(row, :id).to_s if key.empty?
     key
   end
