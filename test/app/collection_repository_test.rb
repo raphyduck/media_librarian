@@ -77,6 +77,33 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal ['/tmp/media/Show.1x02.mkv'], seasons.first[:episodes].last[:files]
   end
 
+  def test_show_grouping_prefers_imdb_id_over_series_name
+    insert_media([
+      { media_type: 'show', imdb_id: 'ttshow', local_path: '/tmp/media/Shared.Name.S01E01.mkv' },
+      { media_type: 'show', imdb_id: 'ttshow', local_path: '/tmp/media/Shared.Name.S01E02.mkv' }
+    ])
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, type: 'show')
+
+    assert_equal 1, result[:total]
+    assert_equal 'ttshow', result[:entries].first[:imdb_id]
+    assert_equal [1, 2], result[:entries].first[:seasons].first[:episodes].map { |episode| episode[:episode] }
+  end
+
+  def test_show_seasons_do_not_mix_imdb_and_name_groupings
+    insert_media([
+      { media_type: 'show', imdb_id: 'ttalpha', local_path: '/tmp/media/Shared.Name.S01E01.mkv' },
+      { media_type: 'show', imdb_id: '', local_path: '/tmp/media/Shared.Name.S01E03.mkv' }
+    ])
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, type: 'show')
+    seasons_by_imdb = result[:entries].to_h { |entry| [entry[:imdb_id], entry[:seasons]] }
+
+    assert_equal [1], seasons_by_imdb['ttalpha'].first[:episodes].map { |episode| episode[:episode] }
+    unnamed_entry = result[:entries].find { |entry| entry[:imdb_id].to_s.empty? }
+    assert_equal [3], unnamed_entry[:seasons].first[:episodes].map { |episode| episode[:episode] }
+  end
+
   def test_enriches_entries_with_calendar_metadata_when_available
     insert_media([{ imdb_id: 'ttmeta', local_path: '/tmp/media/meta.mkv', created_at: '2023-02-01T00:00:00Z' }])
     insert_calendar_entry(
