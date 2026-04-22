@@ -102,6 +102,80 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'First', rows.first[:title]
   end
 
+  def test_refresh_updates_existing_entry_when_votes_change
+    imdb_id = 'tt8000001'
+    entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, imdb_votes: 100)
+    provider = FakeProvider.new([entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row_before = @db.get_rows(:calendar_entries).first
+    assert_equal 100, row_before[:imdb_votes]
+    created_at_before = row_before[:created_at]
+
+    updated_entry = entry.merge(imdb_votes: 9999)
+    provider2 = FakeProvider.new([updated_entry])
+    service2 = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider2])
+    service2.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row_after = @db.get_rows(:calendar_entries).first
+    assert_equal 9999, row_after[:imdb_votes]
+    assert_equal created_at_before, row_after[:created_at], 'created_at must not change on update'
+  end
+
+  def test_refresh_updates_existing_entry_when_rating_changes
+    imdb_id = 'tt8000002'
+    entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, rating: 6.5)
+    provider = FakeProvider.new([entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    updated_entry = entry.merge(rating: 8.2)
+    provider2 = FakeProvider.new([updated_entry])
+    service2 = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider2])
+    service2.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    assert_in_delta 8.2, row[:rating], 0.001
+  end
+
+  def test_refresh_does_not_update_updated_at_when_nothing_changes
+    imdb_id = 'tt8000003'
+    entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id })
+    provider = FakeProvider.new([entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row_before = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    updated_at_before = row_before[:updated_at]
+
+    service2 = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service2.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row_after = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    assert_equal updated_at_before, row_after[:updated_at], 'updated_at must not change when nothing differs'
+  end
+
+  def test_refresh_merges_ids_with_existing_on_update
+    imdb_id = 'tt8000004'
+    entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id, 'tmdb' => 42 })
+    provider = FakeProvider.new([entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    updated_entry = entry.merge(ids: { 'imdb' => imdb_id, 'trakt' => 99 }, imdb_votes: 500)
+    provider2 = FakeProvider.new([updated_entry])
+    service2 = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider2])
+    service2.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    ids = row[:ids].is_a?(Hash) ? row[:ids].transform_keys(&:to_s) : {}
+    assert_equal imdb_id, ids['imdb']
+    assert_equal 42, ids['tmdb'], 'existing tmdb id must be preserved'
+    assert_equal 99, ids['trakt'], 'new trakt id must be added'
+    assert_equal 500, row[:imdb_votes]
+  end
+
   def test_enriches_tmdb_entries_with_omdb_details
     entry = base_entry.merge(
       source: 'tmdb',

@@ -119,6 +119,14 @@ class Utils
     def timeperiod_to_sec(*)
       0
     end
+
+    def canonical_media_type(type)
+      normalized = type.to_s.strip.downcase
+      return 'movie' if normalized.start_with?('movie')
+      return 'show' if normalized.start_with?('show') || normalized.start_with?('tv') || normalized.start_with?('series')
+
+      normalized
+    end
   end
 end unless defined?(Utils) && Utils.is_a?(Class)
 
