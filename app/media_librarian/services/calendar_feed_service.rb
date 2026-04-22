@@ -247,14 +247,84 @@ module MediaLibrarian
         ids.merge('imdb' => imdb_id)
       end
 
+      UPDATEABLE_FIELDS = %i[title rating imdb_votes poster_url backdrop_url synopsis release_date genres languages countries ids].freeze
+
       def persist_entries(entries)
         return [] if entries.empty?
 
         prepared = entries.filter_map { |entry| ensure_imdb_id(entry) }
         return [] if prepared.empty?
 
-        db.insert_rows(:calendar_entries, prepared, true)
+        existing_index = load_existing_by_imdb_id
+
+        to_insert = []
+        prepared.each do |entry|
+          imdb_id = normalize_identifier(entry[:imdb_id])
+          existing = existing_index[imdb_id]
+
+          if existing.nil?
+            to_insert << entry
+          else
+            updates = compute_updates(entry, existing)
+            db.update_rows(:calendar_entries, updates, { imdb_id: entry[:imdb_id] }) unless updates.empty?
+          end
+        end
+
+        db.insert_rows(:calendar_entries, to_insert, true) unless to_insert.empty?
         prepared
+      end
+
+      def load_existing_by_imdb_id
+        rows = db.get_rows(:calendar_entries)
+        rows.each_with_object({}) do |row, memo|
+          imdb_id = normalize_identifier(row[:imdb_id] || row['imdb_id'])
+          memo[imdb_id] = row unless imdb_id.empty?
+        end
+      rescue StandardError
+        {}
+      end
+
+      def compute_updates(new_entry, existing_row)
+        UPDATEABLE_FIELDS.each_with_object({}) do |field, updates|
+          new_val = new_entry[field]
+          next if new_val.nil?
+
+          existing_val = existing_row[field]
+
+          if field == :ids
+            merged = merge_ids(existing_val, new_val)
+            updates[field] = merged unless entry_values_equal?(:ids, existing_val, merged)
+          else
+            updates[field] = new_val unless entry_values_equal?(field, new_val, existing_val)
+          end
+        end
+      end
+
+      def merge_ids(existing, incoming)
+        existing_normalized = normalize_ids_to_strings(existing)
+        incoming_normalized = normalize_ids_to_strings(incoming)
+        existing_normalized.merge(incoming_normalized)
+      end
+
+      def normalize_ids_to_strings(value)
+        return {} unless value.is_a?(Hash)
+
+        value.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v unless v.nil? }
+      end
+
+      def entry_values_equal?(field, a, b)
+        case field
+        when :genres, :languages, :countries
+          Array(a).map(&:to_s).sort == Array(b).map(&:to_s).sort
+        when :rating
+          a.to_f.round(3) == b.to_f.round(3)
+        when :release_date
+          a.respond_to?(:iso8601) ? a.iso8601 == b.to_s : a.to_s == b.to_s
+        when :ids
+          normalize_ids_to_strings(a) == normalize_ids_to_strings(b)
+        else
+          a.to_s == b.to_s
+        end
       end
 
       def log_entries(entries)
