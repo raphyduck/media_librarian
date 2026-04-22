@@ -216,6 +216,7 @@ class CalendarEntriesRepository
       imdb_votes: parse_integer(row[:imdb_votes] || row['imdb_votes']),
       synopsis: normalize_synopsis(row[:synopsis] || row['synopsis']),
       release_date: release_date,
+      created_at: parse_time(row[:created_at] || row['created_at']),
       updated_at: parse_time(row[:updated_at] || row['updated_at']),
       downloaded: downloaded?(row, type, ids, downloaded_index),
       in_interest_list: interest_lookup&.include?(normalize_imdb(imdb_id)),
