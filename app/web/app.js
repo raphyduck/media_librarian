@@ -2482,13 +2482,25 @@ function buildCalendarEntryCard(entry, date = resolveCalendarDate(entry)) {
     body.appendChild(meta);
   }
 
+  const dateMetaOptions = { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+  const createdAtRaw = pickEntryValue(entry, ['created_at']);
+  if (createdAtRaw) {
+    const createdAt = new Date(createdAtRaw);
+    if (!isNaN(createdAt.getTime())) {
+      const createdMeta = document.createElement('div');
+      createdMeta.className = 'calendar-meta calendar-meta--updated';
+      createdMeta.textContent = `Ajouté: ${new Intl.DateTimeFormat('fr-FR', dateMetaOptions).format(createdAt)}`;
+      body.appendChild(createdMeta);
+    }
+  }
+
   const updatedAtRaw = pickEntryValue(entry, ['updated_at']);
   if (updatedAtRaw) {
     const updatedAt = new Date(updatedAtRaw);
     if (!isNaN(updatedAt.getTime())) {
       const updatedMeta = document.createElement('div');
       updatedMeta.className = 'calendar-meta calendar-meta--updated';
-      updatedMeta.textContent = `Mis à jour: ${new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(updatedAt)}`;
+      updatedMeta.textContent = `Mis à jour: ${new Intl.DateTimeFormat('fr-FR', dateMetaOptions).format(updatedAt)}`;
       body.appendChild(updatedMeta);
     }
   }
