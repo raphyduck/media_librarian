@@ -2482,6 +2482,17 @@ function buildCalendarEntryCard(entry, date = resolveCalendarDate(entry)) {
     body.appendChild(meta);
   }
 
+  const updatedAtRaw = pickEntryValue(entry, ['updated_at']);
+  if (updatedAtRaw) {
+    const updatedAt = new Date(updatedAtRaw);
+    if (!isNaN(updatedAt.getTime())) {
+      const updatedMeta = document.createElement('div');
+      updatedMeta.className = 'calendar-meta calendar-meta--updated';
+      updatedMeta.textContent = `Mis à jour: ${new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(updatedAt)}`;
+      body.appendChild(updatedMeta);
+    }
+  }
+
   if (!inWatchlist && !downloaded) {
     const actions = document.createElement('div');
     actions.className = 'calendar-actions-row';

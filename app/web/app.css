@@ -1002,6 +1002,11 @@ button:disabled {
   word-break: break-word;
 }
 
+.calendar-meta--updated {
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 .calendar-actions-row {
   display: flex;
   justify-content: space-between;
