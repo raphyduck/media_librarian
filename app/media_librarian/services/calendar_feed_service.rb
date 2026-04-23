@@ -569,11 +569,16 @@ module MediaLibrarian
       end
 
       def omdb_search_details(api, entry)
+        return nil if @omdb_enrichment_failed
         return nil unless entry[:title]
 
         year = entry[:release_date]&.year
         omdb_type = entry[:media_type] == 'show' ? 'series' : entry[:media_type]
         api.find_by_title(title: entry[:title], year: year, type: omdb_type) if api.respond_to?(:find_by_title)
+      rescue StandardError => e
+        speaker&.tell_error(e, 'Calendar OMDb search enrichment failed')
+        @omdb_enrichment_failed = true
+        nil
       end
 
       def omdb_details(api, imdb_id)

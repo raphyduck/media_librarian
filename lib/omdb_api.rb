@@ -10,11 +10,14 @@ class OmdbApi
 
   attr_reader :last_request_path, :last_response_body
 
-  def initialize(api_key:, base_url: nil, http_client: HTTParty, speaker: nil)
+  DEFAULT_TIMEOUT = 30
+
+  def initialize(api_key:, base_url: nil, http_client: HTTParty, speaker: nil, timeout: nil)
     @api_key = api_key.to_s.strip
     @base_url = (base_url || DEFAULT_BASE_URL).to_s.chomp('/')
     @http_client = http_client
     @speaker = speaker
+    @timeout = timeout || DEFAULT_TIMEOUT
     @last_request_path = nil
   end
 
@@ -96,7 +99,7 @@ class OmdbApi
     query_with_key = query.merge(apikey: @api_key, r: 'json')
     @last_request_path = path_with_query(query_with_key)
     log_debug("OMDb request: #{@last_request_path}")
-    response = @http_client.get(@base_url, query: query_with_key)
+    response = @http_client.get(@base_url, query: query_with_key, timeout: @timeout)
     status = response.respond_to?(:code) ? response.code.to_i : nil
     @last_response_body = response&.body
     log_debug("OMDb response (status #{status || 'unknown'}): #{truncate_body(@last_response_body)}")
