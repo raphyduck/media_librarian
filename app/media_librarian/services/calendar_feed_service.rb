@@ -48,10 +48,14 @@ module MediaLibrarian
       def refresh(date_range: default_date_range, limit: 100, sources: nil)
         return [] unless calendar_table_available?
 
+        @omdb_enrichment_failed = nil
         normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
+        speaker.speak_up('[debug] calendar: collect_entries done', 0, Thread.current, 1)
         normalized = enrich_with_omdb(normalized)
+        speaker.speak_up('[debug] calendar: enrich_with_omdb done', 0, Thread.current, 1)
         stats = recompute_stats(stats, normalized)
         speaker.speak_up("Calendar feed collected #{normalized.length} items")
+        speaker.speak_up('[debug] calendar: calling persist_entries', 0, Thread.current, 1)
         persist_entries(normalized)
         speaker.speak_up("Calendar feed persisted #{normalized.length} items#{summary_suffix(stats)}")
         normalized
@@ -252,10 +256,13 @@ module MediaLibrarian
       def persist_entries(entries)
         return [] if entries.empty?
 
+        speaker&.speak_up('[debug] calendar: persist_entries start', 0, Thread.current, 1)
         prepared = entries.filter_map { |entry| ensure_imdb_id(entry) }
         return [] if prepared.empty?
 
+        speaker&.speak_up('[debug] calendar: loading existing entries', 0, Thread.current, 1)
         existing_index = load_existing_by_imdb_id
+        speaker&.speak_up("[debug] calendar: existing_index loaded (#{existing_index.size} rows)", 0, Thread.current, 1)
 
         to_insert = []
         prepared.each do |entry|
@@ -270,7 +277,9 @@ module MediaLibrarian
           end
         end
 
+        speaker&.speak_up("[debug] calendar: inserting #{to_insert.size} new rows", 0, Thread.current, 1)
         db.insert_rows(:calendar_entries, to_insert, true) unless to_insert.empty?
+        speaker&.speak_up('[debug] calendar: persist_entries done', 0, Thread.current, 1)
         prepared
       end
 
