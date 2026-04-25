@@ -122,8 +122,11 @@ class OmdbApi
   rescue JSON::ParserError => e
     fallback = tighten_json(text)
     if fallback && fallback != text
-      body = fallback
-      retry
+      begin
+        return JSON.parse(fallback)
+      rescue JSON::ParserError
+        # fallback also failed
+      end
     end
 
     report_error(e, "OMDb #{op} response was invalid JSON (status #{status || 'unknown'}): #{e.message}")
