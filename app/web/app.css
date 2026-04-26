@@ -963,7 +963,9 @@ button:disabled {
   font-size: 1.05rem;
 }
 
-.calendar-item h4 a {
+.calendar-item h4 a,
+.calendar-item h4 a:link,
+.calendar-item h4 a:visited {
   color: var(--text);
   text-decoration: none;
 }
