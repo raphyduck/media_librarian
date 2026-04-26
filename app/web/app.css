@@ -963,6 +963,15 @@ button:disabled {
   font-size: 1.05rem;
 }
 
+.calendar-item h4 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.calendar-item h4 a:hover {
+  text-decoration: underline;
+}
+
 .calendar-badges {
   display: flex;
   flex-wrap: wrap;
