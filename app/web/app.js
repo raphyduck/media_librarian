@@ -27,6 +27,8 @@ const state = {
     entries: [],
     availableGenres: [],
     loadingGenres: false,
+    availableCountries: [],
+    loadingCountries: false,
     filters: {
       title: '',
       type: '',
@@ -36,7 +38,7 @@ const state = {
       votesMin: '',
       votesMax: '',
       language: '',
-      country: '',
+      countries: [],
     },
   },
   calendarSearch: {
@@ -1498,6 +1500,8 @@ function setAuthenticated(authenticated, username = '') {
     state.calendar.entries = [];
     state.calendar.availableGenres = [];
     state.calendar.filters.genres = [];
+    state.calendar.availableCountries = [];
+    state.calendar.filters.countries = [];
     resetTrackerTemplates();
     closeSockets();
     setActiveTab('jobs', { skipLoad: true });
@@ -2177,6 +2181,45 @@ function updateCalendarGenres() {
   });
 }
 
+function collectCountries(entries = []) {
+  const set = new Set();
+  entries.forEach((entry) => {
+    const raw = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
+    const values = Array.isArray(raw) ? raw : [raw];
+    values.forEach((v) => {
+      const s = String(v || '').trim();
+      if (s) set.add(s);
+    });
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function updateCalendarCountries() {
+  const select = document.getElementById('calendar-country');
+  if (!select) {
+    return;
+  }
+  const previous = new Set(state.calendar.filters.countries);
+  const available = state.calendar.availableCountries || [];
+  if (!available.length) {
+    select.innerHTML = '';
+    const option = document.createElement('option');
+    option.disabled = true;
+    option.value = '';
+    option.textContent = 'Aucun pays détecté';
+    select.appendChild(option);
+    return;
+  }
+  select.innerHTML = '';
+  available.forEach((country) => {
+    const option = document.createElement('option');
+    option.value = country;
+    option.textContent = country;
+    option.selected = previous.has(country);
+    select.appendChild(option);
+  });
+}
+
 function readCalendarFilters() {
   const filters = state.calendar.filters;
   const viewSelect = document.getElementById('calendar-view');
@@ -2206,7 +2249,12 @@ function readCalendarFilters() {
   filters.votesMax = Number.isFinite(votesMax) ? votesMax : '';
 
   filters.language = (document.getElementById('calendar-language')?.value || '').trim();
-  filters.country = (document.getElementById('calendar-country')?.value || '').trim();
+  const countrySelect = document.getElementById('calendar-country');
+  filters.countries = countrySelect
+    ? Array.from(countrySelect.selectedOptions)
+        .map((option) => option.value)
+        .filter(Boolean)
+    : [];
   return filters;
 }
 
@@ -2302,12 +2350,15 @@ function entryMatchesFilters(entry, filters) {
     return false;
   }
 
-  const countryRaw = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
-  const countries = Array.isArray(countryRaw)
-    ? countryRaw.map((value) => String(value || '').toLowerCase())
-    : String(countryRaw || '').toLowerCase();
-  if (filters.country && !countries.toString().includes(filters.country.toLowerCase())) {
-    return false;
+  if (filters.countries.length) {
+    const countryRaw = pickEntryValue(entry, ['country', 'origin_country', 'production_country']);
+    const entryCountries = Array.isArray(countryRaw)
+      ? countryRaw.map((value) => String(value || '').toLowerCase())
+      : [String(countryRaw || '').toLowerCase()];
+    const matches = filters.countries.some((c) => entryCountries.includes(c.toLowerCase()));
+    if (!matches) {
+      return false;
+    }
   }
 
   return true;
@@ -2819,6 +2870,25 @@ async function loadCalendarGenres() {
   }
 }
 
+async function loadCalendarCountries() {
+  if (!state.authenticated || state.calendar.loadingCountries) {
+    return;
+  }
+  state.calendar.loadingCountries = true;
+  try {
+    const data = await fetchJson('/calendar');
+    const entries = normalizeCalendarEntries(data || []);
+    state.calendar.availableCountries = collectCountries(entries);
+    updateCalendarCountries();
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+  } finally {
+    state.calendar.loadingCountries = false;
+  }
+}
+
 async function loadCalendar(options = {}) {
   if (!state.authenticated) {
     return;
@@ -2827,6 +2897,11 @@ async function loadCalendar(options = {}) {
     || (!state.calendar.availableGenres.length && !state.calendar.loadingGenres);
   if (needsGenres) {
     loadCalendarGenres();
+  }
+  const needsCountries = options.refreshCountries
+    || (!state.calendar.availableCountries.length && !state.calendar.loadingCountries);
+  if (needsCountries) {
+    loadCalendarCountries();
   }
   const filters = readCalendarFilters();
   const range = resolveCalendarWindow(options);
@@ -2839,7 +2914,7 @@ async function loadCalendar(options = {}) {
   if (filters.votesMin !== '') search.set('imdb_votes_min', filters.votesMin);
   if (filters.votesMax !== '') search.set('imdb_votes_max', filters.votesMax);
   if (filters.language) search.set('language', filters.language);
-  if (filters.country) search.set('country', filters.country);
+  if (filters.countries.length) search.set('country', filters.countries.join(','));
   if (filters.title) search.set('title', filters.title);
   if (range) {
     search.set('start_date', formatCalendarDate(range.start));
@@ -2911,7 +2986,7 @@ async function refreshCalendarFeed() {
   } catch (error) {
     showNotification(error.message || 'Impossible de rafraîchir le flux calendrier.', 'error');
   } finally {
-    loadCalendar({ preserveFilters: true, refreshGenres: true });
+    loadCalendar({ preserveFilters: true, refreshGenres: true, refreshCountries: true });
   }
 }
 
