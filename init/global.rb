@@ -51,6 +51,7 @@ EXTENSIONS_TYPE= {
 VALID_VIDEO_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
 REGEX_QUALITIES=Regexp.new('(?=(' + SEP_CHARS + '(' + VALID_QUALITIES.join('|') + ')' + SEP_CHARS + '))')
+DOLBY_VISION_REGEX=Regexp.new('(^|' + SEP_CHARS + ')(dolby[\. ]?vision|dovi|dv)(' + SEP_CHARS + '|$)', Regexp::IGNORECASE)
 SPACE_SUBSTITUTE='\. _\-'
 BASIC_EP_MATCH='((([' + SPACE_SUBSTITUTE + ']|^)[sS]|[' + SPACE_SUBSTITUTE + '\^\[])(\d{1,3})[' + SPACE_SUBSTITUTE + ']?[exEX](\d{1,4})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?([\&\-exEX]{1,2}(\d{1,2})([' + SPACE_SUBSTITUTE + '](part|cd|disc|pt)(\d))?)?|([\. \-]|^)[sS](\d{1,3}))'
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([#{SPACE_SUBSTITUTE}]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
