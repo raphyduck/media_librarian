@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require 'csv'
+require 'uri'
+require 'ipaddr'
+require 'resolv'
 
 # Music torrent search.
 #
@@ -53,6 +56,11 @@ class MusicSearch
     name = name.to_s.strip
     raise ArgumentError, 'missing_name' if name.empty?
     raise ArgumentError, 'missing_link' if link.to_s.strip.empty? && torrent_link.to_s.strip.empty?
+    # These links are fetched server-side later; reject ones pointing at
+    # loopback/link-local hosts (SSRF into local services / cloud metadata).
+    [link, torrent_link].each do |candidate|
+      raise ArgumentError, 'unsafe_link' unless safe_download_link?(candidate)
+    end
 
     torrent = {
       :name => name,
@@ -185,6 +193,40 @@ class MusicSearch
     lines = content.lines.map(&:strip).reject(&:empty?)
     lines.shift if lines.first && lines.first.downcase.delete('"').strip == 'query'
     lines.map { |line| line.sub(/\A"(.*)"\z/, '\1').strip }.reject(&:empty?)
+  end
+
+  # Loopback / link-local (incl. cloud metadata 169.254.169.254) / unspecified
+  # ranges that a server-side fetch must never reach. RFC1918 LAN ranges are
+  # intentionally allowed so private/self-hosted trackers keep working.
+  BLOCKED_ADDRESS_RANGES = [
+    IPAddr.new('0.0.0.0/8'), IPAddr.new('127.0.0.0/8'), IPAddr.new('169.254.0.0/16'),
+    IPAddr.new('::1/128'), IPAddr.new('fe80::/10'), IPAddr.new('::/128')
+  ].freeze
+
+  # A blank/absent link is fine (nothing is fetched); otherwise only http(s) and
+  # magnet links pointing at non-loopback/non-link-local hosts are accepted.
+  def self.safe_download_link?(link)
+    link = link.to_s.strip
+    return true if link.empty?
+    return true if link.downcase.start_with?('magnet:')
+
+    uri = URI.parse(link) rescue nil
+    return false unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+    return false if uri.host.downcase == 'localhost'
+
+    addresses = resolve_addresses(uri.host)
+    addresses.none? { |ip| BLOCKED_ADDRESS_RANGES.any? { |range| range.include?(ip) } }
+  rescue StandardError
+    false
+  end
+
+  def self.resolve_addresses(host)
+    literal = (IPAddr.new(host) rescue nil)
+    return [literal] if literal
+
+    Resolv.getaddresses(host).filter_map { |address| IPAddr.new(address) rescue nil }
+  rescue StandardError
+    []
   end
 
   def self.tracker_query_service
