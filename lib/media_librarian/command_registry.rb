@@ -41,7 +41,8 @@ module MediaLibrarian
           search: ['TorrentSearch', 'search_from_torrents']
         },
         music: {
-          import_csv: ['MusicSearch', 'import_csv']
+          import_csv: ['MusicSearch', 'import_csv'],
+          organize: ['MusicLibrary', 'organize']
         },
         tracker: {
           login: ['TrackerTools', 'login']

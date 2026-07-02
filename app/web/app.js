@@ -4605,6 +4605,38 @@ async function importMusicCsv() {
   }
 }
 
+async function organizeMusicLibrary() {
+  const button = document.getElementById('music-organize-button');
+  const summary = document.getElementById('music-organize-summary');
+  if (button) {
+    button.disabled = true;
+  }
+  if (summary) {
+    summary.textContent = 'Organisation en cours…';
+  }
+  try {
+    const data = await fetchJson('/music/organize', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({}),
+    });
+    const count = data?.organized ?? 0;
+    if (summary) {
+      summary.textContent = `${count} fichier(s) organisé(s).`;
+    }
+    showNotification(`Bibliothèque organisée: ${count} fichier(s).`);
+  } catch (error) {
+    if (summary) {
+      summary.textContent = '';
+    }
+    showNotification(error.message || 'Organisation impossible.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
 function setupMusicEvents() {
   const form = document.getElementById('music-search-form');
   if (form) {
@@ -4625,6 +4657,10 @@ function setupMusicEvents() {
   const importButton = document.getElementById('music-import-button');
   if (importButton) {
     importButton.addEventListener('click', importMusicCsv);
+  }
+  const organizeButton = document.getElementById('music-organize-button');
+  if (organizeButton) {
+    organizeButton.addEventListener('click', organizeMusicLibrary);
   }
 }
 

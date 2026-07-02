@@ -1455,6 +1455,12 @@ class Daemon
         handle_music_import_csv_request(req, res)
       end
 
+      @control_server.mount_proc('/music/organize') do |req, res|
+        next unless require_authorization(req, res)
+
+        handle_music_organize_request(req, res)
+      end
+
       @control_server.mount_proc('/ws') do |req, res|
         next unless require_authorization(req, res)
 
@@ -2842,6 +2848,18 @@ class Daemon
       args << "--quality=#{quality}" unless quality.empty?
       args << '--debug=1' if truthy?(payload['debug']) || payload['debug'] == 1
       args
+    end
+
+    def handle_music_organize_request(req, res)
+      return method_not_allowed(res, 'POST') unless req.request_method == 'POST'
+
+      payload = parse_payload(req) rescue {}
+      source = payload['source'].to_s.strip
+      source = MusicSearch.music_destination if source.empty?
+      result = MusicLibrary.organize(source: source)
+      json_response(res, body: result)
+    rescue StandardError => e
+      error_response(res, status: 500, message: e.message)
     end
 
     def serialize_music_result(torrent)
