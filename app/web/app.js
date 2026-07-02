@@ -62,6 +62,15 @@ const state = {
     map: {},
     selections: new Map(),
   },
+  music: {
+    query: '',
+    quality: '',
+    qualities: [],
+    qualitiesLoaded: false,
+    results: [],
+    loading: false,
+    importing: false,
+  },
 };
 
 const calendarWindow = typeof createCalendarWindowManager === 'function'
@@ -4334,6 +4343,291 @@ async function updateCodeAndStop() {
   });
 }
 
+function formatMusicSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '—';
+  }
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} Go`;
+}
+
+function selectedMusicQuality() {
+  const select = document.getElementById('music-quality');
+  return select ? select.value : state.music.quality;
+}
+
+async function ensureMusicQualities() {
+  const select = document.getElementById('music-quality');
+  if (!select || state.music.qualitiesLoaded) {
+    return;
+  }
+  // A blank query returns just the quality options, used to populate the
+  // dropdown before the first real search.
+  try {
+    const data = await fetchJson('/music/search');
+    populateMusicQualities(data?.qualities || []);
+  } catch (error) {
+    // Leave the dropdown empty; searches will still populate it on response.
+  }
+}
+
+function populateMusicQualities(qualities) {
+  const select = document.getElementById('music-quality');
+  if (!select || !Array.isArray(qualities) || !qualities.length) {
+    return;
+  }
+  const current = select.value || state.music.quality;
+  select.innerHTML = '';
+  qualities.forEach((quality) => {
+    const option = document.createElement('option');
+    option.value = quality.value;
+    option.textContent = quality.label;
+    select.appendChild(option);
+  });
+  if (current && qualities.some((quality) => quality.value === current)) {
+    select.value = current;
+  }
+  state.music.quality = select.value;
+  state.music.qualities = qualities;
+  state.music.qualitiesLoaded = true;
+}
+
+async function loadMusic() {
+  if (!state.authenticated) {
+    return;
+  }
+  await ensureMusicQualities();
+}
+
+function renderMusicResults() {
+  const container = document.getElementById('music-search-content');
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  const results = state.music.results;
+  if (!results.length) {
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'Aucun résultat.';
+    container.appendChild(hint);
+    return;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.className = 'table-wrapper';
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['Nom', 'Taille', 'Seeders', 'Tracker', ''].forEach((label) => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  results.forEach((torrent) => {
+    const row = document.createElement('tr');
+    const name = document.createElement('td');
+    name.textContent = torrent.name || '';
+    const size = document.createElement('td');
+    size.textContent = formatMusicSize(torrent.size);
+    const seeders = document.createElement('td');
+    seeders.textContent = String(torrent.seeders ?? 0);
+    const tracker = document.createElement('td');
+    tracker.textContent = torrent.tracker || '';
+    const actions = document.createElement('td');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'primary';
+    button.textContent = 'Télécharger';
+    button.addEventListener('click', () => queueMusicDownload(torrent, button));
+    actions.appendChild(button);
+    [name, size, seeders, tracker, actions].forEach((cell) => row.appendChild(cell));
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  container.appendChild(wrapper);
+}
+
+async function searchMusic(query) {
+  if (!state.authenticated || state.music.loading) {
+    return;
+  }
+  const input = document.getElementById('music-search-input');
+  const normalized = (query ?? input?.value ?? state.music.query ?? '').toString().trim();
+  state.music.query = normalized;
+  const container = document.getElementById('music-search-content');
+  if (!normalized) {
+    state.music.results = [];
+    if (container) {
+      container.innerHTML = '<p class="hint">Entrez une recherche pour démarrer.</p>';
+    }
+    return;
+  }
+  const quality = selectedMusicQuality();
+  state.music.quality = quality;
+  if (container) {
+    container.innerHTML = '<p class="hint">Recherche en cours…</p>';
+  }
+  state.music.loading = true;
+  try {
+    const search = new URLSearchParams({ query: normalized });
+    if (quality) {
+      search.set('quality', quality);
+    }
+    const data = await fetchJson(`/music/search?${search.toString()}`);
+    populateMusicQualities(data?.qualities || []);
+    state.music.results = Array.isArray(data?.results) ? data.results : [];
+    renderMusicResults();
+  } catch (error) {
+    if (state.authenticated) {
+      showNotification(error.message, 'error');
+    }
+    if (container) {
+      container.innerHTML = '<p class="hint">Recherche indisponible.</p>';
+    }
+  } finally {
+    state.music.loading = false;
+  }
+}
+
+async function queueMusicDownload(torrent, button) {
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const payload = {
+      name: torrent.name,
+      link: torrent.link,
+      torrent_link: torrent.torrent_link,
+      tracker: torrent.tracker,
+      size: torrent.size,
+      seeders: torrent.seeders,
+      added: torrent.added,
+      quality: torrent.quality || selectedMusicQuality(),
+    };
+    await fetchJson('/music/download', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    showNotification('Ajouté à la file de téléchargement.');
+    if (button) {
+      button.textContent = 'En file';
+    }
+  } catch (error) {
+    showNotification(error.message || 'Téléchargement impossible.', 'error');
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function renderMusicImportResult(data) {
+  const resultBox = document.getElementById('music-import-result');
+  const summary = document.getElementById('music-import-summary');
+  const list = document.getElementById('music-import-list');
+  const missing = document.getElementById('music-import-missing');
+  if (!resultBox) {
+    return;
+  }
+  resultBox.classList.remove('hidden');
+  if (summary) {
+    summary.textContent = `Mis en file: ${data.total_queued || 0} — sans résultat: ${data.not_found || 0}`;
+  }
+  const fill = (node, title, entries) => {
+    if (!node) {
+      return;
+    }
+    node.innerHTML = '';
+    if (!Array.isArray(entries) || !entries.length) {
+      return;
+    }
+    const heading = document.createElement('p');
+    heading.className = 'hint';
+    heading.textContent = title;
+    node.appendChild(heading);
+    const ul = document.createElement('ul');
+    entries.forEach((entry) => {
+      const li = document.createElement('li');
+      li.textContent = entry;
+      ul.appendChild(li);
+    });
+    node.appendChild(ul);
+  };
+  fill(list, 'Téléchargements ajoutés', data.queued_titles);
+  fill(missing, 'Sans résultat', data.not_found_entries);
+}
+
+async function importMusicCsv() {
+  const input = document.getElementById('music-import-file');
+  const button = document.getElementById('music-import-button');
+  const file = input?.files?.[0];
+  if (!file) {
+    showNotification('Sélectionnez un fichier CSV.', 'error');
+    return;
+  }
+  if (state.music.importing) {
+    return;
+  }
+  state.music.importing = true;
+  if (button) {
+    button.disabled = true;
+  }
+  try {
+    const csvContent = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Lecture du fichier impossible.'));
+      reader.readAsText(file);
+    });
+    const payload = { csv_content: csvContent, quality: selectedMusicQuality() };
+    showNotification('Import en cours…');
+    const data = await fetchJson('/music/import-csv', {
+      method: 'POST',
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    renderMusicImportResult(data || {});
+    showNotification(`Import terminé: ${data?.total_queued || 0} en file.`);
+  } catch (error) {
+    showNotification(error.message || 'Import impossible.', 'error');
+  } finally {
+    state.music.importing = false;
+    if (button) {
+      button.disabled = false;
+    }
+    if (input) {
+      input.value = '';
+    }
+  }
+}
+
+function setupMusicEvents() {
+  const form = document.getElementById('music-search-form');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      searchMusic();
+    });
+  }
+  const quality = document.getElementById('music-quality');
+  if (quality) {
+    quality.addEventListener('change', () => {
+      state.music.quality = quality.value;
+      if (state.music.query) {
+        searchMusic(state.music.query);
+      }
+    });
+  }
+  const importButton = document.getElementById('music-import-button');
+  if (importButton) {
+    importButton.addEventListener('click', importMusicCsv);
+  }
+}
+
 const TAB_LOADERS = {
   jobs: () => loadStatus(),
   logs: () => loadLogs(),
@@ -4342,6 +4636,7 @@ const TAB_LOADERS = {
   calendar: (options = {}) => loadCalendar(options),
   'calendar-search': () => loadCalendarSearch(state.calendarSearch.query),
   collection: (options = {}) => loadCollection(options),
+  music: () => loadMusic(),
   downloads: () => loadDownloadsTab(),
 };
 
@@ -4677,6 +4972,7 @@ function setupEventListeners() {
   setupCalendarEvents();
   setupCalendarSearchEvents();
   setupCollectionEvents();
+  setupMusicEvents();
   document.addEventListener('visibilitychange', () => {
     if (!state.authenticated) {
       return;

@@ -22,6 +22,10 @@ class TorznabTracker
     elsif type.to_s == 'shows' && @tracker.caps.search_modes.tv_search.available
       t = 'tvsearch'
       cat = @tracker.caps.categories.select { |c| c.name.downcase.include?('tv') }.map { |c| c.id }
+    elsif type.to_s == 'music'
+      music_mode = music_search_mode
+      t = 'music' if music_mode && music_mode.available
+      cat = @tracker.caps.categories.select { |c| c.name.downcase.match?(/audio|music|flac|mp3/) || c.id.to_i.between?(3000, 3999) }.map { |c| c.id }
     end
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
     response = Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit})) || {}
@@ -72,6 +76,19 @@ class TorznabTracker
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     []
+  end
+
+  private
+
+  # Torznab indexers expose the audio search capability under different names
+  # depending on the implementation. Probe the known accessors defensively so a
+  # missing capability simply falls back to the generic 'search' mode.
+  def music_search_mode
+    modes = @tracker.caps.search_modes
+    [:music_search, :audio_search].each do |accessor|
+      return modes.send(accessor) if modes.respond_to?(accessor)
+    end
+    nil
   end
 
 end

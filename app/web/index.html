@@ -91,6 +91,16 @@
           Collection
         </button>
         <button
+          id="tab-music"
+          class="tab-button"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          data-tab="music"
+        >
+          Musique
+        </button>
+        <button
           id="tab-config"
           class="tab-button"
           type="button"
@@ -371,6 +381,48 @@
             <div id="collection-modal-body"></div>
           </div>
         </div>
+
+        <section
+          class="tab-panel"
+          data-tab="music"
+          role="tabpanel"
+          aria-labelledby="tab-music"
+          hidden
+        >
+          <section class="panel" id="music-panel">
+            <div class="panel-header">
+              <h2>Musique</h2>
+              <div class="panel-tools">
+                <label for="music-quality">Qualité</label>
+                <select id="music-quality" name="quality"></select>
+              </div>
+            </div>
+
+            <form id="music-search-form" class="collection-search" role="search" autocomplete="off">
+              <label for="music-search-input">Rechercher (artiste, album…)</label>
+              <input id="music-search-input" name="query" type="search" placeholder="Ex. Daft Punk Discovery" />
+              <button type="submit">Chercher</button>
+            </form>
+
+            <div id="music-search-content" class="calendar-content">
+              <p class="hint">Lancez une recherche ou importez un CSV.</p>
+            </div>
+
+            <div class="panel-header">
+              <h2>Import CSV</h2>
+              <p class="hint">Une recherche par ligne (texte libre). La qualité choisie ci-dessus s'applique ; le meilleur résultat de chaque ligne est mis en file de téléchargement.</p>
+            </div>
+            <div class="actions">
+              <input id="music-import-file" type="file" accept=".csv,text/csv" />
+              <button id="music-import-button" type="button" class="primary">Importer CSV</button>
+            </div>
+            <div id="music-import-result" class="hidden">
+              <p class="hint" id="music-import-summary"></p>
+              <div id="music-import-list"></div>
+              <div id="music-import-missing"></div>
+            </div>
+          </section>
+        </section>
 
         <section
           class="tab-panel"

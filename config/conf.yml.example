@@ -28,6 +28,8 @@ email:
 ffmpeg_settings:
   crf: 22
   preset: medium
+music:
+  destination: ~/Music # Completed music torrents are moved here (defaults to ~/Music)
 calendar:
   refresh_every: 12 hours
   refresh_on_start: true
