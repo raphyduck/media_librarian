@@ -424,11 +424,12 @@
 
             <div class="panel-header">
               <h2>Bibliothèque</h2>
-              <p class="hint">Range les fichiers musicaux téléchargés en Artiste / Album à partir de leurs tags (repli sur le nom des fichiers). Lancé automatiquement à la fin de chaque téléchargement ; ce bouton permet de relancer manuellement.</p>
+              <p class="hint">Range les fichiers musicaux en Artiste / Album à partir de leurs tags (repli sur le nom des fichiers). Lancé automatiquement à la fin de chaque téléchargement. Sans dossier source, la bibliothèque elle-même est réorganisée (les fichiers mal classés sont déplacés).</p>
             </div>
             <div class="actions">
-              <button id="music-organize-button" type="button">Organiser la bibliothèque</button>
-              <span id="music-organize-summary" class="hint"></span>
+              <input id="music-organize-source" type="text" placeholder="Dossier source (optionnel)" />
+              <button id="music-organize-button" type="button">Organiser</button>
+              <span id="music-organize-summary" class="hint" aria-live="polite"></span>
             </div>
           </section>
         </section>

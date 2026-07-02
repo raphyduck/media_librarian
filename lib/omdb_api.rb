@@ -4,8 +4,11 @@ require 'date'
 require 'json'
 require 'uri'
 require 'httparty'
+require_relative 'api_client_support'
 
 class OmdbApi
+  include ApiClientSupport
+
   DEFAULT_BASE_URL = 'https://www.omdbapi.com/'.freeze
 
   attr_reader :last_request_path, :last_response_body
@@ -271,14 +274,6 @@ class OmdbApi
     year ? year.to_i : nil
   end
 
-  def log_debug(message)
-    return unless Env.debug?
-
-    @speaker&.speak_up(message)
-  rescue StandardError
-    nil
-  end
-
   def truncate_body(body)
     body.to_s.length > 400 ? "#{body.to_s[0, 400]}...[truncated]" : body.to_s
   end
@@ -290,9 +285,5 @@ class OmdbApi
     body[0..closing]
       .gsub(/([\]\}"0-9])\s*"(?=[A-Za-z0-9_]+":)/, '\\1,"')
       .gsub(/([\]\}"0-9])\s*([A-Za-z0-9_]+":)/, '\\1,"\\2')
-  end
-
-  def report_error(error, message)
-    @speaker&.tell_error(error, message)
   end
 end

@@ -4,6 +4,7 @@ require 'json'
 require 'open3'
 require 'digest'
 require 'httparty'
+require_relative 'api_client_support'
 
 # Identify an audio track from its acoustic fingerprint via AcoustID.
 #
@@ -12,6 +13,8 @@ require 'httparty'
 # MusicBrainz-backed metadata. This is the most reliable identifier when a file
 # has no usable tags or file name. Requires a free AcoustID application API key.
 class AcoustidApi
+  include ApiClientSupport
+
   BASE_URL = 'https://api.acoustid.org/v2/lookup'
   DEFAULT_TIMEOUT = 20
   FINGERPRINT_LENGTH = 120
@@ -76,7 +79,7 @@ class AcoustidApi
     return {} unless recording
 
     release_group = Array(recording['releasegroups']).find { |rg| rg.is_a?(Hash) }
-    compact(
+    compact_tags(
       :artist => artist_names(recording['artists']),
       :title => recording['title'].to_s,
       :album => release_group ? release_group['title'].to_s : '',
@@ -138,21 +141,4 @@ class AcoustidApi
     dates.map { |date| date.to_s[/\d{4}/] }.compact.first.to_s
   end
 
-  def compact(tags)
-    tags.reject { |_, value| value.to_s.strip.empty? }
-  end
-
-  def log_debug(message)
-    return unless defined?(Env) && Env.debug?
-
-    @speaker&.speak_up(message)
-  rescue StandardError
-    nil
-  end
-
-  def report_error(error, message)
-    @speaker&.tell_error(error, message)
-  rescue StandardError
-    nil
-  end
 end

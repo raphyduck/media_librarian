@@ -3,6 +3,7 @@
 require 'json'
 require 'uri'
 require 'httparty'
+require_relative 'api_client_support'
 
 # Minimal MusicBrainz client used to complete missing music tags (artist,
 # album, title, year) when a downloaded file has incomplete metadata.
@@ -11,6 +12,8 @@ require 'httparty'
 # one request per second; both are enforced here. Lookups are memoized per
 # instance and failures degrade gracefully to an empty result.
 class MusicBrainzApi
+  include ApiClientSupport
+
   BASE_URL = 'https://musicbrainz.org/ws/2'
   MIN_INTERVAL = 1.1
   DEFAULT_TIMEOUT = 15
@@ -166,33 +169,11 @@ class MusicBrainzApi
     end
   end
 
-  def compact_tags(tags)
-    tags.reject { |_, value| value.to_s.strip.empty? }
-  end
-
   def year_from(dates)
     Array(dates).map { |date| date.to_s[/\d{4}/] }.compact.first.to_s
   end
 
   def escape(value)
     value.to_s.gsub(/["\\]/, ' ').gsub(/\s+/, ' ').strip
-  end
-
-  def present(value)
-    !value.to_s.strip.empty?
-  end
-
-  def log_debug(message)
-    return unless defined?(Env) && Env.debug?
-
-    @speaker&.speak_up(message)
-  rescue StandardError
-    nil
-  end
-
-  def report_error(error, message)
-    @speaker&.tell_error(error, message)
-  rescue StandardError
-    nil
   end
 end
