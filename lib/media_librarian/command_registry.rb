@@ -40,6 +40,10 @@ module MediaLibrarian
           prevent_delete: ['TorrentClient', 'no_delete_torrent'],
           search: ['TorrentSearch', 'search_from_torrents']
         },
+        music: {
+          import_csv: ['MusicSearch', 'import_csv'],
+          organize: ['MusicLibrary', 'organize']
+        },
         tracker: {
           login: ['TrackerTools', 'login']
         },

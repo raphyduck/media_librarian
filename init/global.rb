@@ -43,10 +43,12 @@ VALID_CONVERSION_OUTPUT = {
     :video => ['mkv']
 }
 VALID_MEDIA_TYPES = {
-    :video => ['movies', 'shows']
+    :video => ['movies', 'shows'],
+    :audio => ['music']
 }
 EXTENSIONS_TYPE= {
-    :video => %w[mkv avi mp4 mpg m4v divx iso ts m2ts].uniq.freeze
+    :video => %w[mkv avi mp4 mpg m4v divx iso ts m2ts].uniq.freeze,
+    :audio => %w[flac mp3 m4a aac ogg opus wav alac ape wv].uniq.freeze
 }
 VALID_VIDEO_EXT="(.*)\\.(#{EXTENSIONS_TYPE[:video].join('|')})$"
 SEP_CHARS='[\/ \.\(\)\-]'
@@ -57,12 +59,14 @@ BASIC_EP_MATCH='((([' + SPACE_SUBSTITUTE + ']|^)[sS]|[' + SPACE_SUBSTITUTE + '\^
 REGEX_TV_EP_NB=/#{BASIC_EP_MATCH}([#{SPACE_SUBSTITUTE}]|$)|(^|\/|[#{SPACE_SUBSTITUTE}\[])(\d{3,4})[#{SPACE_SUBSTITUTE}\]-]#{VALID_VIDEO_EXT}/
 FOLDER_HIERARCHY = {
     'shows' => 3,
-    'movies' => 0
+    'movies' => 0,
+    'music' => 0
 }
 DEFAULT_MEDIA_DESTINATION = {
     'movies' => Dir.home + '/Movie/{{ movies_name }}/{{ movies_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}.{{ part|downcase }}',
     'shows' => Dir.home + '/TV_Shows/{{ series_name }}/Season {{ episode_season }}/{{ series_name|titleize|nospace }}.{{ episode_numbering|nospace }}.{{ episode_name|titleize|nospace }}.{{ quality|downcase|nospace }}.{{ proper|downcase }}'
 }
+DEFAULT_MUSIC_DESTINATION = Dir.home + '/Music'
 DEFAULT_FILTER_PROCESSFOLDER = {
     'movies' => {
         'exclude_path' => ['Plex Versions']

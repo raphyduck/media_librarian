@@ -6,6 +6,24 @@ class FileInfo
     @path = path
   end
 
+  # Read the embedded tags of an audio file from the MediaInfo "general" track.
+  # Field names vary between container formats, so each tag probes a list of
+  # candidate accessors and returns the first non-empty value. Returns a hash
+  # with string values (empty string when unknown).
+  def audio_tags
+    track = general_track
+    {
+      :artist => read_tag(track, :album_performer, :performer, :composer, :artist),
+      :album => read_tag(track, :album, :title),
+      :title => read_tag(track, :track_name, :title),
+      :track => read_tag(track, :track_name_position, :track_position, :position, :track)[/\d+/].to_s,
+      :disc => read_tag(track, :part_position, :disc_position, :part)[/\d+/].to_s,
+      :year => read_tag(track, :recorded_date, :released_date, :date)[/\d{4}/].to_s
+    }
+  rescue
+    { :artist => '', :album => '', :title => '', :track => '', :disc => '', :year => '' }
+  end
+
   def getaudiochannels
     ac = [media_info.audio]
     tr_nb = 2
@@ -190,6 +208,24 @@ class FileInfo
     end
     MediaLibrarian.app.speaker.speak_up "#{type} quality of file #{File.basename(path)} is #{q.join('.')}" if Env.debug? && !q.empty?
     q
+  end
+
+  private
+
+  def general_track
+    media_info.general
+  rescue
+    nil
+  end
+
+  def read_tag(track, *fields)
+    return '' if track.nil?
+    fields.each do |field|
+      value = (track.send(field) rescue nil)
+      value = value.first if value.is_a?(Array)
+      return value.to_s.strip unless value.to_s.strip.empty?
+    end
+    ''
   end
 
 end

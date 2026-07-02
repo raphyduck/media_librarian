@@ -175,6 +175,10 @@ class Library
         process_folder_list += hcd[1]
       end
       app.speaker.speak_up "Traversed #{entries.length} entries in #{(Time.now - entries_start).round(2)}s" if Env.debug?
+    elsif EXTENSIONS_TYPE[:audio].include?(FileUtils.get_extension(torrent_name).to_s.downcase)
+      app.speaker.speak_up "Organizing downloaded music file '#{full_p}'" if Env.debug?
+      dest = MusicLibrary.organize_file(full_p, MusicSearch.music_destination, folder_name: File.basename(torrent_path))
+      handled = 1 if dest
     elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
       app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
