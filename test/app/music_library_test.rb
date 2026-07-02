@@ -68,6 +68,24 @@ class MusicLibraryTest < Minitest::Test
     assert_equal '2', merged[:track]
   end
 
+  def test_name_quality_score_orders_formats
+    flac = MusicLibrary.name_quality_score('01 - Song.flac')
+    flac_hires = MusicLibrary.name_quality_score('01 - Song 24bit.flac')
+    mp3_320 = MusicLibrary.name_quality_score('01 - Song 320.mp3')
+    mp3_v0 = MusicLibrary.name_quality_score('01 - Song V0.mp3')
+    mp3_plain = MusicLibrary.name_quality_score('01 - Song.mp3')
+
+    assert_operator flac_hires, :>, flac
+    assert_operator flac, :>, mp3_320
+    assert_operator mp3_320, :>, mp3_v0
+    assert_operator mp3_v0, :>, mp3_plain
+  end
+
+  def test_name_quality_score_lossless_extension_beats_lossy
+    assert_operator MusicLibrary.name_quality_score('track.flac'),
+                    :>, MusicLibrary.name_quality_score('track 320.mp3')
+  end
+
   def test_build_relative_path_end_to_end_with_name_parsing
     tags = MusicLibrary.merge_tags(
       { artist: '', album: '', title: '', track: '', disc: '', year: '' },
