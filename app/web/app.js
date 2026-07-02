@@ -70,6 +70,7 @@ const state = {
     results: [],
     loading: false,
     importing: false,
+    job: null,
   },
 };
 
@@ -154,6 +155,49 @@ const CONFIG_FORM_SCHEMA = [
         label: 'Preset',
         type: 'select',
         options: ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'],
+      },
+    ],
+  },
+  {
+    title: 'Musique',
+    section: 'music',
+    fields: [
+      {
+        key: 'destination',
+        label: 'Destination',
+        type: 'text',
+        placeholder: '~/Music',
+        description: 'Bibliothèque musicale : les torrents terminés y sont organisés en Artiste/Album',
+      },
+      {
+        key: 'musicbrainz',
+        label: 'MusicBrainz',
+        type: 'checkbox',
+        description: 'Complète les tags manquants (artiste/album/titre) via MusicBrainz',
+      },
+      {
+        key: 'musicbrainz_contact',
+        label: 'Contact MusicBrainz',
+        type: 'text',
+        description: 'Email/URL ajouté au User-Agent (recommandé par MusicBrainz)',
+      },
+      {
+        key: 'acoustid_key',
+        label: 'Clé AcoustID',
+        type: 'password',
+        description: 'Identification par empreinte acoustique (nécessite le binaire fpcalc)',
+      },
+      {
+        key: 'acoustid',
+        label: 'AcoustID',
+        type: 'checkbox',
+        description: 'Activer l’empreinte acoustique (utilisée seulement si une clé est fournie)',
+      },
+      {
+        key: 'cache_ttl_days',
+        label: 'TTL cache (jours)',
+        type: 'number',
+        description: 'Durée de conservation du cache des recherches de métadonnées',
       },
     ],
   },
@@ -764,6 +808,7 @@ function closeSocket(name) {
 function closeSockets() {
   closeSocket('status');
   closeSocket('watchlist');
+  closeSocket('music');
   stopStatusFallback();
   renderWsStatus(state.authenticated ? 'fallback' : 'offline');
 }
@@ -4376,19 +4421,20 @@ function populateMusicQualities(qualities) {
   if (!select || !Array.isArray(qualities) || !qualities.length) {
     return;
   }
+  const entries = [{ value: '', label: 'Toutes qualités' }, ...qualities];
   const current = select.value || state.music.quality;
   select.innerHTML = '';
-  qualities.forEach((quality) => {
+  entries.forEach((quality) => {
     const option = document.createElement('option');
     option.value = quality.value;
     option.textContent = quality.label;
     select.appendChild(option);
   });
-  if (current && qualities.some((quality) => quality.value === current)) {
+  if (entries.some((quality) => quality.value === current)) {
     select.value = current;
   }
   state.music.quality = select.value;
-  state.music.qualities = qualities;
+  state.music.qualities = entries;
   state.music.qualitiesLoaded = true;
 }
 
@@ -4561,9 +4607,75 @@ function renderMusicImportResult(data) {
   fill(missing, 'Sans résultat', data.not_found_entries);
 }
 
+function stopMusicJobStream() {
+  closeSocket('music');
+  state.music.job = null;
+}
+
+// Follow a background music job (CSV import, organize) over the generic
+// /ws?stream=job channel; `render(job, done, status)` receives every update.
+// Transient socket drops are covered by openSocket's built-in reconnect.
+function streamMusicJob(jobId, render) {
+  if (!jobId) {
+    return;
+  }
+  stopMusicJobStream();
+  state.music.job = { id: jobId, render };
+  openSocket('music', `/ws?stream=job&job_id=${encodeURIComponent(jobId)}`, (payload) => {
+    if (payload?.type !== 'job' || state.music.job?.id !== jobId) {
+      return;
+    }
+    const job = payload.data || {};
+    const status = String(job?.status || '');
+    const done = status === 'finished' || status === 'failed' || status === 'cancelled' || status === 'not_found';
+    render(job, done, status === 'not_found' ? 'failed' : status);
+    if (done) {
+      stopMusicJobStream();
+    }
+  });
+}
+
+function setMusicImportBusy(busy) {
+  state.music.importing = busy;
+  const button = document.getElementById('music-import-button');
+  if (button) {
+    button.disabled = busy;
+  }
+}
+
+function renderMusicImportProgress(job, done, status) {
+  const summary = document.getElementById('music-import-summary');
+  document.getElementById('music-import-result')?.classList.remove('hidden');
+  const progress = job?.progress || {};
+  if (!done) {
+    if (summary) {
+      const current = progress.current_query ? ` — ${progress.current_query}` : '';
+      summary.textContent = `Import en cours… ${progress.processed || 0}/${progress.total || '?'}${current}`;
+    }
+    return;
+  }
+  setMusicImportBusy(false);
+  if (status === 'failed' || status === 'cancelled') {
+    if (summary) {
+      summary.textContent = '';
+    }
+    showNotification(job?.error || 'Import échoué.', 'error');
+    return;
+  }
+  const result = job?.result && typeof job.result === 'object' ? job.result : {};
+  const queued = Number(result.total_queued ?? progress.queued) || 0;
+  const notFound = Number(result.not_found ?? progress.not_found) || 0;
+  renderMusicImportResult({
+    total_queued: queued,
+    not_found: notFound,
+    queued_titles: result.queued_titles || progress.queued_titles || [],
+    not_found_entries: result.not_found_entries || progress.not_found_entries || [],
+  });
+  showNotification(`Import terminé: ${queued} en file${notFound ? `, ${notFound} sans résultat` : ''}.`);
+}
+
 async function importMusicCsv() {
   const input = document.getElementById('music-import-file');
-  const button = document.getElementById('music-import-button');
   const file = input?.files?.[0];
   if (!file) {
     showNotification('Sélectionnez un fichier CSV.', 'error');
@@ -4572,10 +4684,7 @@ async function importMusicCsv() {
   if (state.music.importing) {
     return;
   }
-  state.music.importing = true;
-  if (button) {
-    button.disabled = true;
-  }
+  setMusicImportBusy(true);
   try {
     const csvContent = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -4583,54 +4692,87 @@ async function importMusicCsv() {
       reader.onerror = () => reject(reader.error || new Error('Lecture du fichier impossible.'));
       reader.readAsText(file);
     });
-    const payload = { csv_content: csvContent, quality: selectedMusicQuality() };
-    showNotification('Import en cours…');
+    const payload = { csv_content: csvContent, quality: selectedMusicQuality(), async: true };
     const data = await fetchJson('/music/import-csv', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
-    renderMusicImportResult(data || {});
-    showNotification(`Import terminé: ${data?.total_queued || 0} en file.`);
+    const jobId = data?.job_id || data?.job?.id;
+    if (!jobId) {
+      throw new Error("Job d'import introuvable.");
+    }
+    showNotification('Import démarré.');
+    streamMusicJob(jobId, renderMusicImportProgress);
   } catch (error) {
     showNotification(error.message || 'Import impossible.', 'error');
+    setMusicImportBusy(false);
   } finally {
-    state.music.importing = false;
-    if (button) {
-      button.disabled = false;
-    }
     if (input) {
       input.value = '';
     }
   }
 }
 
+function renderMusicOrganizeProgress(job, done, status) {
+  const summary = document.getElementById('music-organize-summary');
+  const button = document.getElementById('music-organize-button');
+  const progress = job?.progress || {};
+  if (!done) {
+    if (summary) {
+      summary.textContent = `Organisation… ${progress.processed || 0}/${progress.total || '?'}`;
+    }
+    return;
+  }
+  if (button) {
+    button.disabled = false;
+  }
+  if (status === 'failed' || status === 'cancelled') {
+    if (summary) {
+      summary.textContent = '';
+    }
+    showNotification(job?.error || 'Organisation échouée.', 'error');
+    return;
+  }
+  const result = job?.result && typeof job.result === 'object' ? job.result : {};
+  const organized = Number(result.organized ?? progress.organized) || 0;
+  const skipped = Number(result.skipped ?? progress.skipped) || 0;
+  if (summary) {
+    summary.textContent = `${organized} fichier(s) organisé(s), ${skipped} déjà en place.`;
+  }
+  showNotification(`Bibliothèque organisée: ${organized} fichier(s).`);
+}
+
 async function organizeMusicLibrary() {
   const button = document.getElementById('music-organize-button');
   const summary = document.getElementById('music-organize-summary');
+  const source = document.getElementById('music-organize-source')?.value.trim() || '';
   if (button) {
     button.disabled = true;
   }
   if (summary) {
-    summary.textContent = 'Organisation en cours…';
+    summary.textContent = 'Organisation démarrée…';
   }
   try {
+    const payload = { async: true };
+    if (source) {
+      payload.source = source;
+    }
     const data = await fetchJson('/music/organize', {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     });
-    const count = data?.organized ?? 0;
-    if (summary) {
-      summary.textContent = `${count} fichier(s) organisé(s).`;
+    const jobId = data?.job_id || data?.job?.id;
+    if (!jobId) {
+      throw new Error("Job d'organisation introuvable.");
     }
-    showNotification(`Bibliothèque organisée: ${count} fichier(s).`);
+    streamMusicJob(jobId, renderMusicOrganizeProgress);
   } catch (error) {
     if (summary) {
       summary.textContent = '';
     }
     showNotification(error.message || 'Organisation impossible.', 'error');
-  } finally {
     if (button) {
       button.disabled = false;
     }
@@ -5020,6 +5162,10 @@ function setupEventListeners() {
     startStatusStream();
     if (state.watchlistImport.jobId) {
       startWatchlistImportStream(state.watchlistImport.jobId);
+    }
+    const musicJob = state.music.job;
+    if (musicJob?.id && typeof musicJob.render === 'function') {
+      streamMusicJob(musicJob.id, musicJob.render);
     }
   });
 }

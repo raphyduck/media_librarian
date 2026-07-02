@@ -2855,7 +2855,13 @@ class Daemon
 
       payload = parse_payload(req) rescue {}
       source = payload['source'].to_s.strip
-      source = MusicSearch.music_destination if source.empty?
+      if truthy?(payload['async'])
+        args = ['music', 'organize']
+        args << "--source=#{source}" unless source.empty?
+        job = enqueue(args: args, parent_thread: nil, task: 'music_organize')
+        return json_response(res, body: { 'job_id' => job&.id, 'job' => job&.to_h })
+      end
+
       result = MusicLibrary.organize(source: source)
       json_response(res, body: result)
     rescue StandardError => e

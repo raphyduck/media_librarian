@@ -2,9 +2,54 @@
 
 require_relative '../test_helper'
 
+require 'tmpdir'
 require_relative '../../app/music_library'
 
 class MusicLibraryTest < Minitest::Test
+  def test_audio_files_handles_glob_metacharacters_in_folder_names
+    Dir.mktmpdir do |dir|
+      album = File.join(dir, 'Artist - Album [FLAC] {2001}')
+      FileUtils.mkdir_p(album)
+      File.write(File.join(album, '01 - Song.flac'), 'x')
+      File.write(File.join(album, 'cover.jpg'), 'x')
+
+      files = MusicLibrary.audio_files(dir)
+      assert_equal ['01 - Song.flac'], files.map { |f| File.basename(f) }
+    end
+  end
+
+  def test_tags_from_library_path_reads_artist_and_album_from_structure
+    tags = MusicLibrary.tags_from_library_path('/lib/Daft Punk/Discovery/03 - Digital Love.flac', '/lib')
+    assert_equal 'Daft Punk', tags[:artist]
+    assert_equal 'Discovery', tags[:album]
+  end
+
+  def test_tags_from_library_path_ignores_unknown_placeholders
+    tags = MusicLibrary.tags_from_library_path('/lib/Unknown Artist/Unknown Album/song.flac', '/lib')
+    assert_empty tags
+  end
+
+  def test_tags_from_library_path_requires_artist_album_depth
+    assert_empty MusicLibrary.tags_from_library_path('/lib/loose-file.flac', '/lib')
+    assert_empty MusicLibrary.tags_from_library_path('/lib/OnlyArtist/song.flac', '/lib')
+  end
+
+  def test_prune_empty_dirs_stops_at_library_root
+    Dir.mktmpdir do |root|
+      leaf = File.join(root, 'Unknown Artist', 'Unknown Album')
+      FileUtils.mkdir_p(leaf)
+      kept = File.join(root, 'Kept Artist')
+      FileUtils.mkdir_p(kept)
+      File.write(File.join(kept, 'song.flac'), 'x')
+
+      MusicLibrary.prune_empty_dirs(leaf, root)
+
+      refute File.exist?(File.join(root, 'Unknown Artist'))
+      assert File.directory?(root)
+      assert File.directory?(kept)
+    end
+  end
+
   def test_build_relative_path_from_full_tags
     tags = { artist: 'Daft Punk', album: 'Discovery', title: 'One More Time', track: '1', disc: '' }
     assert_equal 'Daft Punk/Discovery/01 - One More Time.flac',
