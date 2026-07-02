@@ -749,14 +749,47 @@ function formatAvailability(value) {
   return date > new Date() ? date.toLocaleString() : 'Maintenant';
 }
 
+// Guard irreversible actions behind a confirmation, consistent with the
+// daemon stop/restart prompts.
+function confirmAction(message) {
+  return typeof window.confirm !== 'function' || window.confirm(message);
+}
+
+const NOTIFICATION_AUTO_HIDE_MS = 4000;
+const NOTIFICATION_MAX_STACK = 5;
+
+// Stacked toasts: info/success auto-dismiss; errors persist until the user
+// closes them (with a × button) so an important failure isn't clobbered by a
+// later message or hidden before it's read.
 function showNotification(message, kind = 'info') {
   const container = document.getElementById('notification');
-  container.textContent = message;
-  container.className = kind === 'error' ? 'visible error' : 'visible';
-  window.clearTimeout(container._hideTimer);
-  container._hideTimer = window.setTimeout(() => {
-    container.className = '';
-  }, 3500);
+  if (!container) {
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast${kind === 'error' ? ' error' : kind === 'success' ? ' success' : ''}`;
+
+  const text = document.createElement('span');
+  text.className = 'toast-message';
+  text.textContent = message;
+  toast.appendChild(text);
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'toast-close';
+  close.setAttribute('aria-label', 'Fermer');
+  close.textContent = '×';
+  close.addEventListener('click', () => toast.remove());
+  toast.appendChild(close);
+
+  container.appendChild(toast);
+  while (container.children.length > NOTIFICATION_MAX_STACK) {
+    container.firstElementChild.remove();
+  }
+
+  if (kind !== 'error') {
+    window.setTimeout(() => toast.remove(), NOTIFICATION_AUTO_HIDE_MS);
+  }
 }
 
 function setEditorDirty(editorKey, dirty) {
@@ -1592,13 +1625,38 @@ function handleUnauthorized() {
   }
 }
 
+const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+
 async function fetchJson(path, options = {}) {
-  const init = { ...options };
+  const { timeout = DEFAULT_FETCH_TIMEOUT_MS, ...rest } = options;
+  const init = { ...rest };
   init.credentials = 'include';
   init.headers = new Headers(options.headers || {});
 
+  // Abort a request that hangs (stalled daemon / slow tracker) so tabs surface
+  // a timeout error instead of spinning forever. Callers can pass their own
+  // signal or timeout to override.
+  let timer = null;
+  if (!init.signal && timeout > 0 && typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    init.signal = controller.signal;
+    timer = window.setTimeout(() => controller.abort(), timeout);
+  }
+
   const url = buildApiUrl(path);
-  const response = await fetch(url, init);
+  let response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw new Error('Délai dépassé — le démon ne répond pas.');
+    }
+    throw error;
+  } finally {
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+  }
   if (response.status === 401 || response.status === 403) {
     const message = await parseErrorMessage(response);
     handleUnauthorized();
@@ -1704,6 +1762,9 @@ function updateJobMetrics(snapshot = {}) {
 async function killJob(jobId) {
   if (!jobId) {
     showNotification('Identifiant du job introuvable.', 'error');
+    return;
+  }
+  if (!confirmAction(`Terminer le job ${jobId} ?`)) {
     return;
   }
 
@@ -3423,6 +3484,9 @@ async function deleteTorrent(entry) {
     showNotification('Identifiant de torrent introuvable.', 'error');
     return;
   }
+  if (!confirmAction(`Supprimer le torrent « ${entry?.name || identifier} » ?`)) {
+    return;
+  }
   try {
     await fetchJson('/torrents/delete', {
       method: 'POST',
@@ -3648,7 +3712,7 @@ function renderWatchlist(entries = [], { message } = {}) {
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'Supprimer';
-    removeButton.addEventListener('click', () => removeWatchlistEntry(externalId, type));
+    removeButton.addEventListener('click', () => removeWatchlistEntry(externalId, type, title));
     actionsCell.appendChild(removeButton);
     row.appendChild(actionsCell);
 
@@ -3914,8 +3978,11 @@ async function importWatchlistCsv() {
   }
 }
 
-async function removeWatchlistEntry(imdbId, type) {
+async function removeWatchlistEntry(imdbId, type, title = '') {
   if (!imdbId) {
+    return;
+  }
+  if (!confirmAction(`Retirer « ${title || imdbId} » de la liste d'intérêt ?`)) {
     return;
   }
   const payload = { imdb_id: imdbId };

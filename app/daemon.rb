@@ -110,6 +110,7 @@ class Daemon
       daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
       return app.speaker.speak_up('Daemon already started') if running?
 
+      warn_config_placeholders
       acquire_daemon_lock
       @restart_command ||= [$PROGRAM_NAME.to_s, *ARGV.map(&:to_s)]
       restart_flag = restart_requested_flag
@@ -164,6 +165,44 @@ class Daemon
       end
 
       exit if daemonized
+    end
+
+    # Config keys whose value still matching the shipped example means the user
+    # has not configured that section yet.
+    SENSITIVE_CONFIG_KEYS = %w[
+      host username password api_key apikey access_token refresh_token
+      client_secret client_id token secret account_id device_code
+    ].freeze
+
+    # Warn (non-fatally) at startup when a config section still holds the
+    # example placeholder credentials, so first-run failures surface as
+    # "configure deluge/email/…" rather than cryptic connection errors.
+    def warn_config_placeholders
+      return unless app.config.is_a?(Hash) && File.exist?(app.config_example.to_s)
+
+      example = YAML.safe_load_file(app.config_example, permitted_classes: [Symbol], aliases: true)
+      return unless example.is_a?(Hash)
+
+      sections = example.keys.select { |section| section_has_placeholder?(app.config[section], example[section]) }.map(&:to_s)
+      return if sections.empty?
+
+      app.speaker.speak_up("⚠️  Configuration incomplète : ces sections de #{app.config_file} contiennent encore des valeurs d'exemple (#{sections.join(', ')}). Éditez ce fichier pour éviter des erreurs de connexion.", 0)
+    rescue StandardError
+      nil
+    end
+
+    def section_has_placeholder?(current, example)
+      return false unless example.is_a?(Hash) && current.is_a?(Hash)
+
+      example.any? do |key, example_value|
+        if example_value.is_a?(Hash)
+          section_has_placeholder?(current[key], example_value)
+        else
+          SENSITIVE_CONFIG_KEYS.include?(key.to_s) &&
+            !example_value.to_s.strip.empty? &&
+            current[key].to_s.strip == example_value.to_s.strip
+        end
+      end
     end
 
     def stop

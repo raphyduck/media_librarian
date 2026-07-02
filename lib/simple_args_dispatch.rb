@@ -20,22 +20,23 @@ module SimpleArgsDispatch
       @env_variables = env_variables
     end
 
-    def dispatch(app_name, args, actions, parent = nil, template_dir = '')
+    def dispatch(app_name, args, actions, parent = nil, template_dir = '', descriptions = {})
       arg = args.shift
       actions.each do |k, v|
         if arg == k.to_s
           if v.is_a?(Hash)
-            self.dispatch(app_name, args, v, "#{parent} #{arg}", template_dir)
+            self.dispatch(app_name, args, v, "#{parent} #{arg}", template_dir, descriptions)
           else
             self.launch(app_name, v, args, "#{parent} #{arg}", template_dir)
           end
           return
         end
       end
-      @speaker.speak_up('Unknown command/option
-
-')
-      self.show_available(app_name, actions, parent)
+      message = arg.nil? ? 'Missing command/option' : "Unknown command/option '#{arg}'"
+      suggestion = nearest_command(arg, actions.keys.map(&:to_s))
+      message += ". Did you mean '#{suggestion}'?" if suggestion
+      @speaker.speak_up("#{message}\n\n")
+      self.show_available(app_name, actions, parent, descriptions: descriptions)
     end
 
     def launch(app_name, action, args, parent, template_dir)
@@ -96,7 +97,7 @@ module SimpleArgsDispatch
       end
     end
 
-    def show_available(app_name, available, prepend = nil, join='|', separator = new_line, extra_info = '')
+    def show_available(app_name, available, prepend = nil, join='|', separator = new_line, extra_info = '', descriptions: {})
       entries = available.is_a?(Hash) ? available.to_a : (available ? Array(available) : [])
       display = entries.map do |item|
         key, flag = Array(item).values_at(0, 1)
@@ -104,10 +105,56 @@ module SimpleArgsDispatch
         flag == :key ? "[#{key}]" : key
       end.join(join)
       @speaker.speak_up("Usage: #{app_name} #{prepend + ' ' if prepend}#{display}")
+      unless descriptions.nil? || descriptions.empty?
+        keys = entries.map { |item| Array(item).first.to_s }
+        width = keys.map(&:length).max.to_i
+        described = keys.filter_map do |key|
+          path = [prepend, key].map { |part| part.to_s.strip }.reject(&:empty?).join(' ')
+          desc = descriptions[path]
+          "  #{key.ljust(width)}  #{desc}" if desc
+        end
+        unless described.empty?
+          @speaker.speak_up('')
+          described.each { |line| @speaker.speak_up(line) }
+        end
+      end
       if extra_info.to_s != ''
         @speaker.speak_up(separator)
         @speaker.speak_up(extra_info)
       end
+    end
+
+    # Closest command name to +arg+ among +keys+ by edit distance, used to offer
+    # a "did you mean" suggestion. Returns nil when nothing is close enough.
+    def nearest_command(arg, keys)
+      arg = arg.to_s
+      return nil if arg.empty? || keys.empty?
+
+      best = keys.min_by { |key| levenshtein(arg, key) }
+      return nil unless best
+
+      distance = levenshtein(arg, best)
+      threshold = [3, (best.length / 2.0).ceil].max
+      distance <= threshold ? best : nil
+    end
+
+    def levenshtein(first, second)
+      first = first.to_s
+      second = second.to_s
+      return second.length if first.empty?
+      return first.length if second.empty?
+
+      row = (0..second.length).to_a
+      first.each_char.with_index(1) do |char_a, i|
+        previous = row[0]
+        row[0] = i
+        second.each_char.with_index(1) do |char_b, j|
+          current = row[j]
+          row[j] = [row[j] + 1, row[j - 1] + 1, previous + (char_a == char_b ? 0 : 1)].min
+          previous = current
+        end
+      end
+      row[second.length]
     end
   end
 end
