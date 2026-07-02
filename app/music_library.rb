@@ -40,7 +40,7 @@ class MusicLibrary
     # Idempotency: skip files that already live inside the library root.
     return nil if File.expand_path(path).start_with?(destination_root + '/')
 
-    tags = complete_tags(merge_tags(read_tags(path), parse_from_names(File.basename(path, ".#{ext}"), folder_name)))
+    tags = complete_tags(merge_tags(read_tags(path), parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path)
     relative = build_relative_path(tags, ext, File.basename(path, ".#{ext}"))
     dest = File.join(destination_root, relative)
 
@@ -226,17 +226,29 @@ class MusicLibrary
     {}
   end
 
-  # Fill missing artist/album/title from MusicBrainz when enabled. Existing tags
-  # always take precedence over the looked-up values.
-  def self.complete_tags(tags)
+  # Fill missing artist/album/title from external metadata providers when tags
+  # and name parsing left gaps. AcoustID (acoustic fingerprint) is tried first
+  # because it identifies a track even without any usable tags/name; MusicBrainz
+  # text search then fills any remaining gap. Existing tags always take
+  # precedence over looked-up values.
+  def self.complete_tags(tags, path = nil)
     return tags if present(tags[:artist]) && present(tags[:album]) && present(tags[:title])
-    return tags unless musicbrainz_enabled?
 
-    client = musicbrainz
-    return tags unless client
+    if path && acoustid_enabled? && !(present(tags[:artist]) && present(tags[:title]))
+      client = acoustid
+      found = client&.lookup(path)
+      tags = merge_tags(tags, symbolize_tags(found)) if found && !found.empty?
+      return tags if present(tags[:artist]) && present(tags[:album]) && present(tags[:title])
+    end
 
-    found = client.complete(artist: tags[:artist], album: tags[:album], title: tags[:title], track: tags[:track])
-    found.nil? || found.empty? ? tags : merge_tags(tags, symbolize_tags(found))
+    if musicbrainz_enabled?
+      client = musicbrainz
+      if client
+        found = client.complete(artist: tags[:artist], album: tags[:album], title: tags[:title], track: tags[:track])
+        tags = merge_tags(tags, symbolize_tags(found)) if found && !found.empty?
+      end
+    end
+    tags
   rescue
     tags
   end
@@ -245,17 +257,57 @@ class MusicLibrary
     TAG_KEYS.each_with_object({}) { |key, memo| memo[key] = (hash[key] || hash[key.to_s]).to_s }
   end
 
-  def self.musicbrainz_enabled?
-    value = app.config['music'] && app.config['music']['musicbrainz']
-    value.nil? || value == true || value.to_s.strip.downcase == 'true' || value.to_i > 0
+  def self.config_flag(key, default_when_missing)
+    value = app.config['music'] && app.config['music'][key]
+    return default_when_missing if value.nil?
+
+    value == true || value.to_s.strip.downcase == 'true' || value.to_i > 0
   rescue
     false
+  end
+
+  def self.musicbrainz_enabled?
+    config_flag('musicbrainz', true)
+  end
+
+  def self.acoustid_key
+    (app.config['music'] && app.config['music']['acoustid_key']).to_s.strip
+  rescue
+    ''
+  end
+
+  def self.acoustid_enabled?
+    !acoustid_key.empty? && config_flag('acoustid', true)
+  end
+
+  def self.metadata_cache
+    return @metadata_cache if defined?(@metadata_cache) && @metadata_cache
+
+    ttl = (app.config['music'] && app.config['music']['cache_ttl_days']).to_i
+    @metadata_cache = JsonDiskCache.new(
+      dir: File.join(app.config_dir, 'cache', 'metadata'),
+      ttl_days: ttl.positive? ? ttl : JsonDiskCache::DEFAULT_TTL_DAYS,
+      speaker: (app.respond_to?(:speaker) ? app.speaker : nil)
+    )
+  rescue
+    nil
   end
 
   def self.musicbrainz
     @musicbrainz ||= MusicBrainzApi.new(
       contact: (app.config['music'] && app.config['music']['musicbrainz_contact']).to_s,
-      speaker: (app.respond_to?(:speaker) ? app.speaker : nil)
+      speaker: (app.respond_to?(:speaker) ? app.speaker : nil),
+      cache: metadata_cache
+    )
+  rescue
+    nil
+  end
+
+  def self.acoustid
+    @acoustid ||= AcoustidApi.new(
+      api_key: acoustid_key,
+      speaker: (app.respond_to?(:speaker) ? app.speaker : nil),
+      cache: metadata_cache
     )
   rescue
     nil

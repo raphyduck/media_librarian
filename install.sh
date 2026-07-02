@@ -49,7 +49,7 @@ install_system_dependencies() {
     pacman)
       log "==> Installing system packages with pacman"
       # Arch Linux split MKVToolNix into CLI/GUIs; install the CLI tools which provide mkvmerge.
-      run_as_root pacman -Sy --needed --noconfirm flac lame mediainfo mkvtoolnix-cli
+      run_as_root pacman -Sy --needed --noconfirm flac lame mediainfo mkvtoolnix-cli chromaprint
       if ! command -v ffmpeg &>/dev/null; then
         echo "→ Installing ffmpeg-full from AUR (requires trizen or yay)"
         if command -v trizen &>/dev/null; then
@@ -72,26 +72,26 @@ install_system_dependencies() {
     apt)
       log "==> Installing system packages with apt"
       run_as_root apt-get update
-      run_as_root apt-get install -y flac lame mediainfo ffmpeg mkvtoolnix
+      run_as_root apt-get install -y flac lame mediainfo ffmpeg mkvtoolnix libchromaprint-tools
       ;;
     dnf)
       log "==> Installing system packages with dnf"
-      run_as_root dnf install -y flac lame-tools mediainfo ffmpeg mkvtoolnix
+      run_as_root dnf install -y flac lame-tools mediainfo ffmpeg mkvtoolnix chromaprint-tools
       ;;
     yum)
       log "==> Installing system packages with yum"
-      run_as_root yum install -y flac lame mediainfo ffmpeg mkvtoolnix
+      run_as_root yum install -y flac lame mediainfo ffmpeg mkvtoolnix chromaprint-tools
       ;;
     zypper)
       log "==> Installing system packages with zypper"
-      run_as_root zypper --non-interactive install flac lame mediainfo ffmpeg mkvtoolnix
+      run_as_root zypper --non-interactive install flac lame mediainfo ffmpeg mkvtoolnix chromaprint-fpcalc
       ;;
     apk)
       log "==> Installing system packages with apk"
-      run_as_root apk add --no-cache flac lame mediainfo ffmpeg mkvtoolnix make
+      run_as_root apk add --no-cache flac lame mediainfo ffmpeg mkvtoolnix make chromaprint
       ;;
     *)
-      printf '%s\n' "⚠️  Supported package manager not detected. Install the following manually: flac, lame, mediainfo, ffmpeg (or ffmpeg-full), mkvtoolnix, MakeMKV." >&2
+      printf '%s\n' "⚠️  Supported package manager not detected. Install the following manually: flac, lame, mediainfo, ffmpeg (or ffmpeg-full), mkvtoolnix, chromaprint (fpcalc), MakeMKV." >&2
       ;;
   esac
 
