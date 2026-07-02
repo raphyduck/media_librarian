@@ -25,7 +25,7 @@ class MusicSearch
 
     svc = tracker_query_service
     results = []
-    svc.get_trackers(sources).each do |tracker|
+    svc.get_trackers(sources || default_sources).each do |tracker|
       keyword_with_site = (keyword + svc.get_site_keywords(tracker, CATEGORY)).strip
       tracker_results = svc.launch_search(tracker, CATEGORY, keyword_with_site)
       if (tracker_results.nil? || tracker_results.empty?) && keyword_with_site != keyword
@@ -144,6 +144,19 @@ class MusicSearch
     File.expand_path(configured.empty? ? DEFAULT_MUSIC_DESTINATION : configured)
   rescue
     DEFAULT_MUSIC_DESTINATION
+  end
+
+  # Trackers to use when a search/import does not explicitly pass 'sources'.
+  # Configured via music.sources (array of tracker names, e.g. ['c411', 'torr9']).
+  # Kept separate from other content types because not every configured tracker
+  # indexes music: some return zero results (no audio category at all) and
+  # others may be temporarily broken independently of this feature. Falls back
+  # to every configured tracker (previous behaviour) when unset.
+  def self.default_sources
+    configured = app.config['music'] && app.config['music']['sources']
+    Array(configured).map(&:to_s).map(&:strip).reject(&:empty?)
+  rescue
+    []
   end
 
   def self.sanitize_keyword(keyword)

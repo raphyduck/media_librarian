@@ -35,6 +35,8 @@ music:
   acoustid_key: '' # AcoustID application API key; when set, unidentified tracks are matched by acoustic fingerprint (requires the fpcalc/chromaprint binary)
   acoustid: true # Enable AcoustID fingerprint lookups (only used when acoustid_key is set)
   cache_ttl_days: 180 # How long MusicBrainz/AcoustID lookups are cached on disk (under ~/.medialibrarian/cache/metadata)
+  sources: # Optional: restrict music search/import to these tracker names (from trackers/*.yml). Leave unset/empty to use every configured tracker.
+    - some_tracker_that_indexes_music
 calendar:
   refresh_every: 12 hours
   refresh_on_start: true
