@@ -38,6 +38,7 @@ qualities:
   max_size: 3000 #MB
   target_size: 8000 #MB
   timeframe_size: 96 hours
+  ban_dolby_vision: 0 #Set to 1 to exclude Dolby Vision (DV/DoVi) releases from torrent results
   illegal:
     - x265 2160p
 download_criteria:

@@ -46,6 +46,10 @@ class Quality
       MediaLibrarian.app.speaker.speak_up "'#{filename}' contains hardcoded subtitles, removing from list" if Env.debug?
       return timeframe, false
     end
+    if (qualities['ban_dolby_vision'] == true || qualities['ban_dolby_vision'].to_i > 0) && filename.to_s.match?(DOLBY_VISION_REGEX)
+      MediaLibrarian.app.speaker.speak_up "'#{filename}' is a Dolby Vision release, removing from list" if Env.debug?
+      return timeframe, false
+    end
     file_q = parse_qualities(filename, VALID_QUALITIES, language, category)
     (qualities['illegal'].is_a?(Array) ? qualities['illegal'] : [qualities['illegal'].to_s]).each do |iq|
       next if iq.to_s == ''
