@@ -222,7 +222,7 @@ class Cache
     return false if identifier[0..3] == 'book' # TODO: Find a more elegant way of handling this
     torrent_get(identifier, f_type).each do |t|
       next unless t[:in_db].to_i > 0 && t[:download_now].to_i >= 3
-      timeframe, accept = Quality.filter_quality(t[:name], qualities, language, category)
+      timeframe, accept = Quality.filter_quality(t[:name], qualities, language, nil, category)
       if timeframe.to_s == '' && accept
         MediaLibrarian.app.speaker.speak_up "Torrent for identifier '#{identifier}' already existing at correct quality (#{qualities})" if Env.debug?
         return true

@@ -103,7 +103,7 @@ class Daemon
   STATUS_STREAM_HEARTBEAT_SECONDS = 5
   UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
   INLINE_EXECUTED = Object.new
-  SOCKET_PATH = '/home/raph/.medialibrarian/librarian.sock'
+  SOCKET_PATH = File.join(Dir.home, '.medialibrarian', 'librarian.sock')
 
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
@@ -3254,7 +3254,7 @@ class Daemon
       token = api_token
       return false if token.to_s.empty?
 
-      req['X-Control-Token'] == token
+      secure_compare(req['X-Control-Token'].to_s, token.to_s)
     end
 
     def api_token_provided_outside_header?(req)
@@ -3354,6 +3354,13 @@ class Daemon
       cookie.path = '/'
       cookie.secure = !!@session_cookie_secure
       cookie.instance_variable_set(:@httponly, true)
+      # Block the cookie from being sent on cross-site requests (CSRF hardening)
+      # for state-changing endpoints like /jobs.
+      if cookie.respond_to?(:samesite=)
+        cookie.samesite = :strict
+      else
+        cookie.instance_variable_set(:@samesite, :strict)
+      end
       cookie
     end
 

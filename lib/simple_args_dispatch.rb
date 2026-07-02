@@ -1,5 +1,6 @@
 require_relative 'simple_speaker'
 require 'yaml'
+require 'date'
 
 module SimpleArgsDispatch
   class Agent
@@ -49,7 +50,10 @@ module SimpleArgsDispatch
       dameth = model.method(action[1])
       params = Hash[req_params.map do |k, _|
         val = args[k.to_s] || template_args[k.to_s]
-        val = YAML.load(val.gsub('=>', ': ')) if val.is_a?(String) && val.match(/^[{\[].*[}\]]$/)
+        # Parse `{...}`/`[...]` argument values into data structures, but via
+        # safe_load so a crafted value (e.g. !ruby/object) cannot instantiate
+        # arbitrary Ruby objects (these args can originate from HTTP callers).
+        val = YAML.safe_load(val.gsub('=>', ': '), permitted_classes: [Symbol], aliases: false) if val.is_a?(String) && val.match(/^[{\[].*[}\]]$/)
         [k, val]
       end].select { |_, v| !v.nil? }
       if Thread.current[:debug].to_i > 0
@@ -60,7 +64,7 @@ module SimpleArgsDispatch
 
     def load_template(template_name, template_dir)
       if template_name.to_s != '' && File.exist?(template_dir + '/' + "#{template_name}.yml")
-        return YAML.load_file(template_dir + '/' + "#{template_name}.yml")
+        return YAML.safe_load_file(template_dir + '/' + "#{template_name}.yml", permitted_classes: [Symbol, Date, Time], aliases: true)
       end
       {}
     rescue
@@ -94,7 +98,7 @@ module SimpleArgsDispatch
 
     def show_available(app_name, available, prepend = nil, join='|', separator = new_line, extra_info = '')
       entries = available.is_a?(Hash) ? available.to_a : (available ? Array(available) : [])
-      display = entries.first(2).map do |item|
+      display = entries.map do |item|
         key, flag = Array(item).values_at(0, 1)
         key = key.to_s
         flag == :key ? "[#{key}]" : key

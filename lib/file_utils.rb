@@ -63,13 +63,6 @@ module FileUtils
       size
     end
 
-    def get_disk_space(path)
-      return `df --output=avail -k #{path} | tail -1`.to_i * 1024, `df --output=size -k #{path} | tail -1`.to_i * 1024
-    rescue => e
-      MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding), 0)
-      return 0, 0
-    end
-
     def get_extension(filename)
       ext = filename.gsub(/.*\.(\w{2,4}$)/, '\1').downcase
       ext.size != filename.size ? ext : ''

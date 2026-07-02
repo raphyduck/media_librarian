@@ -4,11 +4,6 @@ class TorrentClient
   class AddTorrentError < StandardError; end
 
   attr_reader :app
-  # Constants
-  DEFAULT_SEED_TIME = 1 # hours
-
-  # Class variables for shared state
-  @@queues = { added: [], completed: [] }
 
   # Instance variables
   attr_reader :connected
