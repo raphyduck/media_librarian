@@ -105,6 +105,14 @@ class Daemon
   INLINE_EXECUTED = Object.new
   SOCKET_PATH = File.join(Dir.home, '.medialibrarian', 'librarian.sock')
 
+  # Config leaf keys whose values are secrets and must not be returned to the
+  # client verbatim (session secret, tokens, credentials).
+  SENSITIVE_CONFIG_LEAVES = %w[
+    password password_hash session_secret api_token client_secret
+    access_token refresh_token api_key apikey token secret
+  ].freeze
+  CONFIG_REDACTION_PLACEHOLDER = '••••••'
+
   class << self
     def start(scheduler: 'scheduler', daemonize: true)
       daemonize = false if ENV['MEDIA_LIBRARIAN_FOREGROUND'].to_s == '1'
@@ -2560,12 +2568,12 @@ class Daemon
     end
 
     def handle_config_request(req, res)
-      handle_file_request(req, res, app.config_file, config_mutex, 'GET, PUT')
+      handle_file_request(req, res, app.config_file, config_mutex, 'GET, PUT', redact_secrets: true)
     end
 
     def handle_api_config_request(req, res)
       handle_file_request(req, res, app.api_config_file, api_config_mutex, 'GET, PUT',
-                          after_save: method(:reload_api_option_config))
+                          redact_secrets: true, after_save: method(:reload_api_option_config))
     end
 
     def handle_tracker_info_request(req, res)
@@ -2950,10 +2958,11 @@ class Daemon
       handle_file_request(req, res, path, mutex, 'GET, PUT', after_save: after_save)
     end
 
-    def handle_file_request(req, res, path, mutex, allowed_methods, after_save: nil)
+    def handle_file_request(req, res, path, mutex, allowed_methods, redact_secrets: false, after_save: nil)
       case req.request_method
       when 'GET'
         content = mutex.synchronize { File.exist?(path) ? File.read(path) : nil }
+        content = redact_config_content(content) if redact_secrets && content
         json_response(res, body: { 'content' => content })
       when 'PUT'
         begin
@@ -2969,6 +2978,14 @@ class Daemon
         content = payload['content']
         unless content.is_a?(String)
           return error_response(res, status: 422, message: 'invalid_content')
+        end
+
+        # Restore any secret left as the redaction placeholder (the GET masks
+        # them) from the on-disk file, so editing/saving never wipes secrets the
+        # client was never shown.
+        if redact_secrets
+          existing = mutex.synchronize { File.exist?(path) ? File.read(path) : '' }
+          content = restore_redacted_config(content, existing)
         end
 
         begin
@@ -2992,6 +3009,76 @@ class Daemon
       else
         method_not_allowed(res, allowed_methods)
       end
+    end
+
+    def sensitive_config_leaf?(key)
+      SENSITIVE_CONFIG_LEAVES.include?(key.to_s.downcase)
+    end
+
+    # Mask secret values in a YAML config text while preserving comments,
+    # indentation and everything else (line-based, not a re-dump).
+    def redact_config_content(content)
+      content.to_s.each_line.map do |line|
+        match = line.match(/\A(\s*)([\w-]+)(\s*:\s*)(\S[^\n]*?)([ \t]*\R?)\z/)
+        next line unless match && sensitive_config_leaf?(match[2])
+        next line if match[4].start_with?('|', '>', '&', '*') # block scalars / anchors
+
+        "#{match[1]}#{match[2]}#{match[3]}#{CONFIG_REDACTION_PLACEHOLDER}#{match[5]}"
+      end.join
+    end
+
+    # On save, swap any secret still set to the placeholder back to the stored
+    # value, matched by full key path so same-named keys in different sections
+    # (e.g. deluge.password vs email.password) never get cross-wired.
+    def restore_redacted_config(new_content, existing_content)
+      existing = config_secret_values(existing_content)
+      stack = []
+      new_content.to_s.each_line.map do |line|
+        stripped = line.strip
+        next line if stripped.empty? || stripped.start_with?('#')
+
+        match = line.match(/\A(\s*)([\w-]+)(\s*:\s*)(.*?)([ \t]*\R?)\z/)
+        next line unless match
+
+        indent = match[1].length
+        stack.pop while stack.any? && stack.last[0] >= indent
+        key = match[2]
+        value = match[4]
+        if value.empty?
+          stack.push([indent, key])
+          next line
+        end
+        if sensitive_config_leaf?(key) && value == CONFIG_REDACTION_PLACEHOLDER
+          path = (stack.map { |entry| entry[1] } + [key]).join('.')
+          original = existing[path]
+          next(original ? "#{match[1]}#{match[2]}#{match[3]}#{original}#{match[5]}" : line)
+        end
+        line
+      end.join
+    end
+
+    def config_secret_values(content)
+      values = {}
+      stack = []
+      content.to_s.each_line do |line|
+        stripped = line.strip
+        next if stripped.empty? || stripped.start_with?('#')
+
+        match = line.match(/\A(\s*)([\w-]+)\s*:\s*(.*?)[ \t]*\R?\z/)
+        next unless match
+
+        indent = match[1].length
+        stack.pop while stack.any? && stack.last[0] >= indent
+        key = match[2]
+        value = match[3]
+        if value.empty?
+          stack.push([indent, key])
+        elsif sensitive_config_leaf?(key)
+          path = (stack.map { |entry| entry[1] } + [key]).join('.')
+          values[path] = value
+        end
+      end
+      values
     end
 
     def sanitize_yaml_path(request_path, base_path, directory)

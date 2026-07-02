@@ -158,6 +158,24 @@ class StorageDbTest < Minitest::Test
     end
   end
 
+  def test_redact_sql_masks_secrets_in_sensitive_statements
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      sql = "INSERT INTO trakt_auth (access_token, refresh_token, account) " \
+            "VALUES ('abc123secret', 'refreshTok', 'me')"
+      redacted = db.send(:redact_sql, sql)
+
+      refute_includes redacted, 'abc123secret'
+      refute_includes redacted, 'refreshTok'
+      assert_includes redacted, '[REDACTED]'
+      assert_includes redacted, 'trakt_auth' # structure still visible for debugging
+
+      benign = "SELECT * FROM torrents WHERE name = 'example.torrent'"
+      assert_equal benign, db.send(:redact_sql, benign)
+      db.database.disconnect
+    end
+  end
+
   private
 
   def with_stubbed_app(&block)

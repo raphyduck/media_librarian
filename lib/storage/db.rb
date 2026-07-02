@@ -420,7 +420,19 @@ module Storage
 
     def log_sql(sql, write: false)
       return if sql.to_s.empty?
-      speaker&.speak_up("Executing SQL query: '#{sql[0..200]}'", 0) if Env.debug?
+      speaker&.speak_up("Executing SQL query: '#{redact_sql(sql)[0..200]}'", 0) if Env.debug?
+    end
+
+    # Statements touching credential tables/columns (e.g. the Trakt OAuth
+    # tokens) reach the logs and the error mailer; mask their string literals so
+    # secrets are never written out.
+    SENSITIVE_SQL_PATTERN = /trakt_auth|access_token|refresh_token|session_secret|password_hash|api_token|client_secret/i
+
+    def redact_sql(sql)
+      text = sql.to_s
+      return text unless text.match?(SENSITIVE_SQL_PATTERN)
+
+      text.gsub(/'(?:[^']|'')*'/, "'[REDACTED]'")
     end
 
     def write_sql?(sql)
@@ -434,7 +446,7 @@ module Storage
 
     def log_corruption(error, sql)
       db_path = @db_path.to_s
-      query = sql.to_s
+      query = redact_sql(sql)
       if error.message.to_s.include?('database disk image is malformed')
         speaker&.speak_up("SQLite corruption detected for #{db_path} while running: #{query}")
       end
@@ -444,7 +456,7 @@ module Storage
     end
 
     def log_error(error, sql = nil)
-      context = sql ? { query: sql } : {}
+      context = sql ? { query: redact_sql(sql) } : {}
       speaker&.tell_error(error, Utils.arguments_dump(binding, 2, 'Storage::Db', context))
     end
 
