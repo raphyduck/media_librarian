@@ -138,7 +138,7 @@ class Librarian
     end
 
     def help
-      app.args_dispatch.show_available(MediaLibrarian::APP_NAME, command_registry.actions)
+      app.args_dispatch.show_available(MediaLibrarian::APP_NAME, command_registry.actions, nil, descriptions: command_registry.descriptions)
     end
 
     def init_thread(thread, object = '', direct = 0, &block)
@@ -301,7 +301,7 @@ class Librarian
             cmd.empty? ? p.call : p.call(*cmd)
           end
         else
-          app.args_dispatch.dispatch(MediaLibrarian::APP_NAME, cmd, command_registry.actions, nil, app.template_dir)
+          app.args_dispatch.dispatch(MediaLibrarian::APP_NAME, cmd, command_registry.actions, nil, app.template_dir, command_registry.descriptions)
         end
 
       run_termination(Thread.current, thread_value)

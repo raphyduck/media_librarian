@@ -43,6 +43,30 @@ class SimpleArgsDispatchTest < Minitest::Test
     end
   end
 
+  def test_show_available_prints_descriptions_when_provided
+    actions = { help: %w[X h], daemon: {} }
+    @agent.show_available('librarian', actions, nil, descriptions: { 'help' => 'Show help', 'daemon' => 'Manage daemon' })
+
+    output = @speaker.messages.join("\n")
+    assert_includes output, 'Show help'
+    assert_includes output, 'Manage daemon'
+  end
+
+  def test_dispatch_suggests_nearest_command_on_typo
+    actions = { help: %w[X h], library: {}, torrent: {} }
+    @agent.dispatch('librarian', ['libary'], actions, nil, '', {})
+
+    output = @speaker.messages.join("\n")
+    assert_includes output, "Did you mean 'library'?"
+  end
+
+  def test_dispatch_offers_no_suggestion_when_nothing_is_close
+    actions = { help: %w[X h], library: {} }
+    @agent.dispatch('librarian', ['zzzzzzzz'], actions, nil, '', {})
+
+    refute_includes @speaker.messages.join("\n"), 'Did you mean'
+  end
+
   def test_launch_parses_structured_argument_values
     @agent.launch('librarian', %w[SimpleArgsDispatchTest::DispatchTarget run], ['--value={a: 1, b: 2}'], nil, '')
     assert_equal({ 'a' => 1, 'b' => 2 }, DispatchTarget.received)
