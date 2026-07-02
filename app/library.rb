@@ -141,7 +141,7 @@ class Library
         FileUtils.ln_r(torrent_path.dup + '/' + torrent_name, torrent_path.gsub!(completed_folder, app.temp_dir + '/') + '/' + torrent_name)
         completed_folder = app.temp_dir
       end
-      opath += +'/' + torrent_name
+      opath += '/' + torrent_name
     end
     full_p = (torrent_path + '/' + torrent_name).gsub(/\/\/*/, '/')
     handled, process_folder_list, error = 0, [], 0
@@ -339,7 +339,7 @@ class Library
       missing_media = BusVariable.new('mising_media', Vash)
       if missing_media[cache_name].nil?
         missing_media[cache_name] = {}
-        return missing_media[cache_name] if files[:shows].nil? & type == 'shows'
+        return missing_media[cache_name] if files[:shows].nil? && type == 'shows'
         qualifying_files = files.deep_dup
         qualifying_files.select! do |k, f|
           next if k.is_a?(Symbol)

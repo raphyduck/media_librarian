@@ -6,10 +6,6 @@ class Utils
   @mutex = {}
   @lock = Mutex.new
 
-  def self.bash(command)
-    system('bash', '-c', command)
-  end
-
   def self.check_if_active(active_hours = {})
     return true unless active_hours.is_a?(Hash)
 

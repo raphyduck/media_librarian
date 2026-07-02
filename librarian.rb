@@ -415,22 +415,6 @@ class Librarian
       Daemon.clear_waiting_worker(thread, thread_value, object, 1)
     end
 
-    def test_childs(how_many: 10_000)
-      (0...how_many.to_i).each do |i|
-        Librarian.route_cmd(
-          ['Librarian', 'da_child', i],
-          1,
-          Thread.current[:object].to_s,
-          6
-        )
-      end
-      app.speaker.speak_up("Finale result is #{Daemon.consolidate_children}")
-    end
-
-    def da_child(i = '')
-      app.speaker.speak_up("i is '#{i}'")
-      1
-    end
   end
 end
 
