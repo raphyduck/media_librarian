@@ -30,6 +30,8 @@ ffmpeg_settings:
   preset: medium
 music:
   destination: ~/Music # Completed music torrents are moved here (defaults to ~/Music)
+  musicbrainz: true # Fill missing tags (artist/album/title) from MusicBrainz when a file's metadata is incomplete
+  musicbrainz_contact: '' # Optional email/URL added to the MusicBrainz User-Agent (recommended by MusicBrainz)
 calendar:
   refresh_every: 12 hours
   refresh_on_start: true

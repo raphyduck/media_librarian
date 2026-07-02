@@ -24,6 +24,29 @@ class FileInfo
     { :artist => '', :album => '', :title => '', :track => '', :disc => '', :year => '' }
   end
 
+  # Comparable score for an audio file based on its main audio stream:
+  # lossless formats always outrank lossy; within a class, higher bit depth /
+  # sample rate (lossless) or bitrate (lossy) wins. Returns nil when MediaInfo
+  # cannot read the file so the caller can fall back to name-based scoring.
+  def audio_quality_score
+    audio = media_info.audio
+    return nil if audio.nil?
+
+    format = audio.format.to_s.downcase
+    lossless = %w[flac alac ape wavpack wav pcm aiff aiff-c tak tta monkey].any? { |f| format.include?(f) } ||
+               format.include?('lossless')
+    if lossless
+      bit_depth = (audio.bitdepth.to_i rescue 0)
+      sample_rate = (audio.samplingrate.to_i rescue 0)
+      1_000_000 + bit_depth * 100_000 + sample_rate / 1000
+    else
+      bitrate = (audio.bitrate.to_i rescue 0)
+      bitrate.positive? ? bitrate / 100 : 1_000
+    end
+  rescue
+    nil
+  end
+
   def getaudiochannels
     ac = [media_info.audio]
     tr_nb = 2
