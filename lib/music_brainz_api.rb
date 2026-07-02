@@ -24,13 +24,14 @@ class MusicBrainzApi
     attr_reader :mutex
   end
 
-  def initialize(contact: nil, http_client: HTTParty, speaker: nil, timeout: nil, user_agent: nil)
+  def initialize(contact: nil, http_client: HTTParty, speaker: nil, timeout: nil, user_agent: nil, cache: nil)
     @http_client = http_client
     @speaker = speaker
     @timeout = timeout || DEFAULT_TIMEOUT
     contact = contact.to_s.strip
     contact = 'https://github.com/raphyduck/media_librarian' if contact.empty?
     @user_agent = user_agent || "media_librarian/1.0 ( #{contact} )"
+    @cache = cache
     @memo = {}
   end
 
@@ -123,9 +124,26 @@ class MusicBrainzApi
   end
 
   def get_json(path, query)
-    cache_key = "#{path}?#{query.sort_by { |k, _| k.to_s }.map { |k, v| "#{k}=#{v}" }.join('&')}"
+    cache_key = "mb:#{path}?#{query.sort_by { |k, _| k.to_s }.map { |k, v| "#{k}=#{v}" }.join('&')}"
     return @memo[cache_key] if @memo.key?(cache_key)
 
+    # Only successful responses are persisted; transient errors raise out of the
+    # block so JsonDiskCache does not cache them.
+    value = begin
+      if @cache
+        @cache.fetch(cache_key) { fetch_remote(path, query) }
+      else
+        fetch_remote(path, query)
+      end
+    rescue StandardError => e
+      report_error(e, 'MusicBrainz request failed')
+      nil
+    end
+    @memo[cache_key] = value
+    value
+  end
+
+  def fetch_remote(path, query)
     throttle
     url = "#{BASE_URL}#{path}"
     log_debug("MusicBrainz request: #{url} #{query.inspect}")
@@ -133,12 +151,7 @@ class MusicBrainzApi
     status = response.respond_to?(:code) ? response.code.to_i : nil
     raise StandardError, "MusicBrainz request failed with status #{status || 'unknown'}" unless status && status.between?(200, 299)
 
-    parsed = JSON.parse(response.body.to_s)
-    @memo[cache_key] = parsed
-    parsed
-  rescue JSON::ParserError => e
-    report_error(e, 'MusicBrainz response was invalid JSON')
-    @memo[cache_key] = nil
+    JSON.parse(response.body.to_s)
   end
 
   # Enforce the one-request-per-second MusicBrainz rate limit across instances.
