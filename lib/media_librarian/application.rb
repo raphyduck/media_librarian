@@ -173,6 +173,7 @@ module MediaLibrarian
       # instead of defining a matching constant, so Zeitwerk must skip them.
       @loader.ignore(File.join(root, 'app', 'daemon', 'session_auth.rb'))
       @loader.ignore(File.join(root, 'app', 'daemon', 'job_executor.rb'))
+      @loader.ignore(File.join(root, 'app', 'daemon', 'calendar_endpoints.rb'))
       register_loader_hooks
       @loader.setup
     end
