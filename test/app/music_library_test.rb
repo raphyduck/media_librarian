@@ -132,6 +132,46 @@ class MusicLibraryTest < Minitest::Test
                     :>, MusicLibrary.name_quality_score('track 320.mp3')
   end
 
+  def test_same_track_matches_on_tags_ignoring_case_punctuation_and_naming
+    a = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '1980' }
+    b = { artist: 'abba', album: 'super  trouper!', title: 'Super Trouper', year: '1980' }
+    assert MusicLibrary.same_track?(a, b)
+  end
+
+  def test_same_track_distinguishes_releases_by_album_year
+    original = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '1980' }
+    remaster = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '2011' }
+    refute MusicLibrary.same_track?(original, remaster)
+  end
+
+  def test_same_track_is_lenient_when_a_year_is_unknown
+    tagged = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '1980' }
+    untagged = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '' }
+    assert MusicLibrary.same_track?(tagged, untagged)
+  end
+
+  def test_same_track_requires_matching_title_artist_and_album
+    base = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '1980' }
+    refute MusicLibrary.same_track?(base, base.merge(title: 'The Winner Takes It All'))
+    refute MusicLibrary.same_track?(base, base.merge(album: 'Arrival'))
+    refute MusicLibrary.same_track?(base, base.merge(artist: 'Boney M'))
+  end
+
+  def test_same_track_requires_a_title_on_both_sides
+    titled = { artist: 'ABBA', album: 'Super Trouper', title: 'Super Trouper', year: '1980' }
+    untitled = { artist: 'ABBA', album: 'Super Trouper', title: '', year: '1980' }
+    refute MusicLibrary.same_track?(titled, untitled)
+    refute MusicLibrary.same_track?(untitled, untitled)
+  end
+
+  def test_years_compatible_only_separates_two_known_differing_years
+    assert MusicLibrary.years_compatible?('1980', '1980')
+    assert MusicLibrary.years_compatible?('1980', '')
+    assert MusicLibrary.years_compatible?(nil, '1980')
+    assert MusicLibrary.years_compatible?('1980-11-03', '1980')
+    refute MusicLibrary.years_compatible?('1980', '2011')
+  end
+
   def test_build_relative_path_end_to_end_with_name_parsing
     tags = MusicLibrary.merge_tags(
       { artist: '', album: '', title: '', track: '', disc: '', year: '' },

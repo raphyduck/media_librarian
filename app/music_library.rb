@@ -71,10 +71,12 @@ class MusicLibrary
     dest = File.join(destination_root, relative)
     return nil if path == dest # already organized
 
-    # Deduplicate by quality: an existing version of the same track (same
-    # "NN - Title" stem, any audio extension) is kept unless the incoming file
-    # is of higher quality, in which case it replaces the older version(s).
-    siblings = audio_siblings(File.dirname(dest), File.basename(dest, ".#{ext}")) - [path]
+    # Deduplicate by quality: any existing copy of the SAME track — matched on
+    # tags (artist, album, album year and title), not on file name — is kept
+    # unless the incoming file is of higher quality, in which case it replaces
+    # the older version(s). Whether a replaced file can actually be removed from
+    # disk is the filesystem's concern, not this program's.
+    siblings = same_track_siblings(File.dirname(dest), tags) - [path]
     unless siblings.empty?
       incoming_score = quality_score(path)
       best_existing = siblings.max_by { |file| quality_score(file) }
@@ -232,9 +234,11 @@ class MusicLibrary
     score || name_quality_score(path)
   end
 
-  # Existing audio files in +dir+ that represent the same track as +stem+
-  # (same base name, ignoring the audio extension).
-  def self.audio_siblings(dir, stem)
+  # Existing audio files in +dir+ that are the SAME track as the incoming file,
+  # matched on tags — artist, album, album year and title — rather than on the
+  # file name, so a higher-quality re-download replaces an existing copy even
+  # when the two follow different naming conventions.
+  def self.same_track_siblings(dir, tags)
     return [] unless File.directory?(dir)
 
     Dir.children(dir).filter_map do |entry|
@@ -243,10 +247,36 @@ class MusicLibrary
 
       ext = FileUtils.get_extension(entry).to_s.downcase
       next unless EXTENSIONS_TYPE[:audio].include?(ext)
-      next unless File.basename(entry, ".#{ext}") == stem
+      next unless same_track?(tags, read_tags(full))
 
       full
     end
+  end
+
+  # Two tag sets describe the same track when their artist, album and title
+  # match (case/spacing/punctuation-insensitive) and their album years are
+  # compatible. A title is required on both sides so untagged files are never
+  # collapsed together.
+  def self.same_track?(a, b)
+    return false unless present(a[:title]) && present(b[:title])
+
+    %i[artist album title].all? { |key| norm_tag(a[key]) == norm_tag(b[key]) } &&
+      years_compatible?(a[:year], b[:year])
+  end
+
+  # Album years are compatible when equal, or when at least one side is unknown.
+  # A known, differing year marks distinct releases (e.g. an original pressing
+  # versus a later remaster) and must not be deduplicated together.
+  def self.years_compatible?(year_a, year_b)
+    a = year_a.to_s[/\d{4}/]
+    b = year_b.to_s[/\d{4}/]
+    a.nil? || b.nil? || a == b
+  end
+
+  # Normalise a tag value for comparison: case-folded, punctuation flattened to
+  # spaces, surrounding/collapsed whitespace removed.
+  def self.norm_tag(value)
+    value.to_s.downcase.gsub(/[^[:alnum:]]+/, ' ').strip.gsub(/\s+/, ' ')
   end
 
   # Remove a file only when it lives inside the library root, to avoid deleting
