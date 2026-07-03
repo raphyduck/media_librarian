@@ -72,7 +72,7 @@ class MusicSearch
       :seeders => seeders,
       :added => (added.to_s.empty? ? Time.now.to_s : added.to_s),
       :category => CATEGORY,
-      :move_completed => music_destination,
+      :move_completed => music_staging,
       :whitelisted_extensions => FileUtils.get_valid_extensions(CATEGORY),
       :music_quality => quality.to_s
     }
@@ -152,6 +152,22 @@ class MusicSearch
     File.expand_path(configured.empty? ? DEFAULT_MUSIC_DESTINATION : configured)
   rescue
     DEFAULT_MUSIC_DESTINATION
+  end
+
+  # Staging folder where Deluge drops completed music torrents. Like movies and
+  # shows, music must land in a staging area first so the Execute plugin can
+  # trigger `library handle_completed_download`, which then files the release
+  # into the final library (music_destination). Passing music_destination here
+  # would make Deluge dump loose files straight into the library, bypassing that
+  # pipeline. Configurable via music.staging; falls back to music_destination
+  # (previous behaviour) when unset.
+  def self.music_staging
+    configured = (app.config['music'] && app.config['music']['staging']).to_s.strip
+    return music_destination if configured.empty?
+
+    File.expand_path(configured)
+  rescue
+    music_destination
   end
 
   # Trackers to use when a search/import does not explicitly pass 'sources'.
