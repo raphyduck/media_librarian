@@ -169,9 +169,10 @@ module MediaLibrarian
       @loader.push_dir(File.join(root, 'min_lib'))
       @loader.ignore(__FILE__)
       @loader.ignore(File.join(root, 'lib', 'db', 'migrations'))
-      # Reopens class Daemon (loaded via require_relative from app/daemon.rb)
-      # instead of defining a Daemon::SessionAuth constant.
+      # Reopen class Daemon (loaded via require_relative from app/daemon.rb)
+      # instead of defining a matching constant, so Zeitwerk must skip them.
       @loader.ignore(File.join(root, 'app', 'daemon', 'session_auth.rb'))
+      @loader.ignore(File.join(root, 'app', 'daemon', 'job_executor.rb'))
       register_loader_hooks
       @loader.setup
     end
