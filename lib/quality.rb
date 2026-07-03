@@ -1,5 +1,17 @@
 class Quality
 
+  # Resolve a quality-category name (as listed in Q_SORT, e.g. "RESOLUTIONS",
+  # "CODECS", plus "DIMENSIONS"/"EXTRA_TAGS") to its token array. Replaces the
+  # former runtime constant eval with an explicit, allow-listed lookup: same
+  # tokens, no arbitrary code execution. Unknown names resolve to an empty list.
+  def self.quality_table(name)
+    (@quality_tables ||= {
+      "DIMENSIONS" => DIMENSIONS, "RESOLUTIONS" => RESOLUTIONS, "SOURCES" => SOURCES,
+      "CODECS" => CODECS, "AUDIO" => AUDIO, "LANGUAGES" => LANGUAGES, "TONES" => TONES,
+      "CUT" => CUT, "EXTRA_TAGS" => EXTRA_TAGS
+    }).fetch(name.to_s, [])
+  end
+
   def self.detect_file_quality(file, fileinfo = nil, mv = 0, ensure_qualities = '', type = '')
     qualities = []
     return file, qualities unless file.match(Regexp.new(VALID_VIDEO_EXT))
@@ -8,10 +20,10 @@ class Quality
     (Q_SORT + ['DIMENSIONS', 'EXTRA_TAGS']).each do |qtitle|
       q = fileinfo.quality(qtitle)
       unless q.nil?
-        nfile = filename_quality_change(nfile, q, eval(qtitle) - q, type)
-        ensure_qualities = filename_quality_change(ensure_qualities, q, eval(qtitle) - q, type)
+        nfile = filename_quality_change(nfile, q, quality_table(qtitle) - q, type)
+        ensure_qualities = filename_quality_change(ensure_qualities, q, quality_table(qtitle) - q, type)
       end
-      qualities += parse_qualities("#{nfile}.#{ensure_qualities}", eval(qtitle), '', type)
+      qualities += parse_qualities("#{nfile}.#{ensure_qualities}", quality_table(qtitle), '', type)
     end
     nfile = File.dirname(file) + '/' + nfile
     FileUtils.mv(file, nfile) if file != nfile && mv.to_i > 0
@@ -21,9 +33,9 @@ class Quality
   def self.filename_quality_change(filename, new_qualities, replaced_qualities = [], type = '')
     extension = FileUtils.get_extension(filename)
     (Q_SORT + ['EXTRA_TAGS']).each do |t|
-      file_q = parse_qualities(filename, eval(t), '', type)
-      t_q = parse_qualities(".#{new_qualities.join('.')}.", eval(t), '', type)
-      r_q = parse_qualities(".#{replaced_qualities.join('.')}.", eval(t), '', type)
+      file_q = parse_qualities(filename, quality_table(t), '', type)
+      t_q = parse_qualities(".#{new_qualities.join('.')}.", quality_table(t), '', type)
+      r_q = parse_qualities(".#{replaced_qualities.join('.')}.", quality_table(t), '', type)
       r_q -= t_q
       next if (r_q - t_q).empty? && (t_q - r_q).empty?
       if (file_q - r_q) != file_q
@@ -64,8 +76,8 @@ class Quality
     end
     return timeframe, true if qualities.nil? || qualities.empty?
     Q_SORT.each do |t|
-      file_q = parse_qualities(filename, eval(t), language, category)[0].to_s
-      file_q = parse_qualities((assume_quality.to_s), eval(t), language, category)[0].to_s if file_q.empty?
+      file_q = parse_qualities(filename, quality_table(t), language, category)[0].to_s
+      file_q = parse_qualities((assume_quality.to_s), quality_table(t), language, category)[0].to_s if file_q.empty?
       if qualities_compare(qualities['min_quality'], t, file_q, '<', "'#{filename}' is of lower quality than the minimum required, removing from list")
         return timeframe, false
       end
@@ -91,8 +103,8 @@ class Quality
   def self.media_qualities(filename, language = '', assume_qualities = '', category = '')
     q = {}
     Q_SORT.each do |t|
-      q[t.downcase] = parse_qualities(filename, eval(t), language, category).first.to_s
-      q[t.downcase] = parse_qualities(assume_qualities, eval(t), language, category).first.to_s if q[t.downcase].empty? && assume_qualities.to_s != ''
+      q[t.downcase] = parse_qualities(filename, quality_table(t), language, category).first.to_s
+      q[t.downcase] = parse_qualities(assume_qualities, quality_table(t), language, category).first.to_s if q[t.downcase].empty? && assume_qualities.to_s != ''
     end
     q['proper'] = identify_proper(filename)[1]
     q
@@ -102,7 +114,7 @@ class Quality
     qualities = if file[:files]
                   file[:files].select { |f| f[:type] == type }.map do |f|
                     Q_SORT.map do |qt|
-                      parse_qualities(f[:name], eval(qt), f[:language], f[:type])[0]
+                      parse_qualities(f[:name], quality_table(qt), f[:language], f[:type])[0]
                     end
                   end.compact.flatten.uniq
                 else
@@ -142,8 +154,8 @@ class Quality
       arr.delete_if do |q|
         delete = false
         Q_SORT.each do |t|
-          if eval(t).include?(cmin) && eval(t).include?(q)
-            cmin = q if eval(t).index(q).send(comparison, eval(t).index(cmin))
+          if quality_table(t).include?(cmin) && quality_table(t).include?(q)
+            cmin = q if quality_table(t).index(q).send(comparison, quality_table(t).index(cmin))
             delete = true
           end
         end
@@ -156,7 +168,7 @@ class Quality
 
   def self.qualities_compare(qualities, type, qt, comparison, message = '')
     qualities.to_s.split(' ').each do |q|
-      if eval(type).include?(q) && ((qt.empty? && comparison == '<') || (!qt.empty? && eval(type).index(q).send(comparison, eval(type).index(qt))))
+      if quality_table(type).include?(q) && ((qt.empty? && comparison == '<') || (!qt.empty? && quality_table(type).index(q).send(comparison, quality_table(type).index(qt))))
         MediaLibrarian.app.speaker.speak_up "#{message} (target '#{q}')" if Env.debug? && message.to_s != ''
         return true
       end
@@ -184,8 +196,8 @@ class Quality
   def self.qualities_merge(oq, aq, lang = '', category = '')
     quality = ''
     Q_SORT.each do |t|
-      cq = parse_qualities(oq.to_s, eval(t), lang, category).join('.')
-      cq = parse_qualities((aq.to_s), eval(t), lang, category).join('.') if cq.to_s == ''
+      cq = parse_qualities(oq.to_s, quality_table(t), lang, category).join('.')
+      cq = parse_qualities((aq.to_s), quality_table(t), lang, category).join('.') if cq.to_s == ''
       quality += ".#{cq}"
     end
     quality
