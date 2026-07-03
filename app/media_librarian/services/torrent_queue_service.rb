@@ -252,7 +252,7 @@ module MediaLibrarian
             rename_main: Utils.parse_filename_template(torrent[:rename_main].to_s, torrent),
             queue: torrent[:queue].to_s,
             assume_quality: torrent[:assume_quality],
-            entry_id: torrent_row[:identifiers].join,
+            entry_id: Array(torrent_row[:identifiers]).join,
             added_at: Time.now.to_i,
             category: torrent[:category]
           }.merge(torrent.select { |key, _| [:add_paused, :expect_main_file, :main_only, :whitelisted_extensions].include?(key) }).merge(whitelisted_extensions: whitelisted_extensions)
