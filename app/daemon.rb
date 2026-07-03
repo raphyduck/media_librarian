@@ -1315,207 +1315,57 @@ class Daemon
         handle_session_request(req, res)
       end
 
-      @control_server.mount_proc('/jobs') do |req, res|
-        next unless require_authorization(req, res)
+      authenticated_routes.each do |path, handler|
+        @control_server.mount_proc(path) do |req, res|
+          next unless require_authorization(req, res)
 
-        handle_jobs_request(req, res)
-      end
-
-      @control_server.mount_proc('/commands') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_commands_request(req, res)
-      end
-
-      @control_server.mount_proc('/template_commands') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_template_commands_request(req, res)
-      end
-
-      @control_server.mount_proc('/status') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_status_request(res)
-      end
-
-      @control_server.mount_proc('/stop') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_stop_request(res)
-      end
-
-      @control_server.mount_proc('/restart') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_restart_request(req, res)
-      end
-
-      @control_server.mount_proc('/update-stop') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_update_stop_request(req, res)
-      end
-
-      @control_server.mount_proc('/calendar') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_calendar_request(req, res)
-      end
-
-      @control_server.mount_proc('/calendar/import') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_calendar_import_request(req, res)
-      end
-
-      @control_server.mount_proc('/calendar/search') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_calendar_search_request(req, res)
-      end
-
-      @control_server.mount_proc('/collection') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_collection_request(req, res)
-      end
-
-      @control_server.mount_proc('/torrents/pending') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_pending_torrents_request(req, res)
-      end
-
-      @control_server.mount_proc('/torrents/validate') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_validate_torrent_request(req, res)
-      end
-
-      @control_server.mount_proc('/torrents/delete') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_delete_torrent_request(req, res)
-      end
-
-      @control_server.mount_proc('/calendar/refresh') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_calendar_refresh_request(req, res)
-      end
-
-      @control_server.mount_proc('/logs') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_logs_request(req, res)
-      end
-
-      @control_server.mount_proc('/config') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_config_request(req, res)
-      end
-
-      @control_server.mount_proc('/api-config') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_api_config_request(req, res)
-      end
-
-      @control_server.mount_proc('/templates') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_directory_request(req, res, '/templates', app.template_dir, template_mutex)
-      end
-
-      @control_server.mount_proc('/scheduler') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_scheduler_request(req, res)
-      end
-
-      @control_server.mount_proc('/trackers') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_directory_request(
-          req,
-          res,
-          '/trackers',
-          app.tracker_dir,
-          tracker_mutex,
-          after_save: method(:rebuild_tracker_registry)
-        )
-      end
-
-      @control_server.mount_proc('/trackers/info') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_tracker_info_request(req, res)
-      end
-
-      @control_server.mount_proc('/config/reload') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_config_reload_request(req, res)
-      end
-
-      @control_server.mount_proc('/api-config/reload') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_api_config_reload_request(req, res)
-      end
-
-      @control_server.mount_proc('/scheduler/reload') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_scheduler_reload_request(req, res)
-      end
-
-      @control_server.mount_proc('/watchlist') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_watchlist_request(req, res)
-      end
-
-      @control_server.mount_proc('/watchlist/import-csv') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_watchlist_import_csv_request(req, res)
-      end
-
-      @control_server.mount_proc('/music/search') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_music_search_request(req, res)
-      end
-
-      @control_server.mount_proc('/music/download') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_music_download_request(req, res)
-      end
-
-      @control_server.mount_proc('/music/import-csv') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_music_import_csv_request(req, res)
-      end
-
-      @control_server.mount_proc('/music/organize') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_music_organize_request(req, res)
-      end
-
-      @control_server.mount_proc('/ws') do |req, res|
-        next unless require_authorization(req, res)
-
-        handle_websocket_request(req, res)
+          handler.call(req, res)
+        end
       end
 
       start_socket_server
       @control_thread = Thread.new { @control_server.start }
+    end
+
+    # Control-interface routes that require authentication, mapped to a callable
+    # handler (req, res). Registered uniformly in start_control_server so the
+    # auth guard can never be forgotten on a new route. '/' (static assets) and
+    # '/session' (login) are the only unauthenticated routes and stay separate.
+    def authenticated_routes
+      {
+        '/jobs' => method(:handle_jobs_request),
+        '/commands' => method(:handle_commands_request),
+        '/template_commands' => method(:handle_template_commands_request),
+        '/status' => ->(_req, res) { handle_status_request(res) },
+        '/stop' => ->(_req, res) { handle_stop_request(res) },
+        '/restart' => method(:handle_restart_request),
+        '/update-stop' => method(:handle_update_stop_request),
+        '/calendar' => method(:handle_calendar_request),
+        '/calendar/import' => method(:handle_calendar_import_request),
+        '/calendar/search' => method(:handle_calendar_search_request),
+        '/calendar/refresh' => method(:handle_calendar_refresh_request),
+        '/collection' => method(:handle_collection_request),
+        '/torrents/pending' => method(:handle_pending_torrents_request),
+        '/torrents/validate' => method(:handle_validate_torrent_request),
+        '/torrents/delete' => method(:handle_delete_torrent_request),
+        '/logs' => method(:handle_logs_request),
+        '/config' => method(:handle_config_request),
+        '/config/reload' => method(:handle_config_reload_request),
+        '/api-config' => method(:handle_api_config_request),
+        '/api-config/reload' => method(:handle_api_config_reload_request),
+        '/templates' => ->(req, res) { handle_directory_request(req, res, '/templates', app.template_dir, template_mutex) },
+        '/scheduler' => method(:handle_scheduler_request),
+        '/scheduler/reload' => method(:handle_scheduler_reload_request),
+        '/trackers' => ->(req, res) { handle_directory_request(req, res, '/trackers', app.tracker_dir, tracker_mutex, after_save: method(:rebuild_tracker_registry)) },
+        '/trackers/info' => method(:handle_tracker_info_request),
+        '/watchlist' => method(:handle_watchlist_request),
+        '/watchlist/import-csv' => method(:handle_watchlist_import_csv_request),
+        '/music/search' => method(:handle_music_search_request),
+        '/music/download' => method(:handle_music_download_request),
+        '/music/import-csv' => method(:handle_music_import_csv_request),
+        '/music/organize' => method(:handle_music_organize_request),
+        '/ws' => method(:handle_websocket_request)
+      }
     end
 
     def start_socket_server
