@@ -169,6 +169,9 @@ module MediaLibrarian
       @loader.push_dir(File.join(root, 'min_lib'))
       @loader.ignore(__FILE__)
       @loader.ignore(File.join(root, 'lib', 'db', 'migrations'))
+      # Reopens class Daemon (loaded via require_relative from app/daemon.rb)
+      # instead of defining a Daemon::SessionAuth constant.
+      @loader.ignore(File.join(root, 'app', 'daemon', 'session_auth.rb'))
       register_loader_hooks
       @loader.setup
     end
