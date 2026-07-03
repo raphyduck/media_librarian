@@ -3367,20 +3367,7 @@ class Daemon
     end
 
     def decode_session_cookie(value)
-      secret = session_secret
-      return unless secret
-
-      encoded, signature = value.to_s.split('.', 2)
-      return unless encoded && signature
-
-      expected = OpenSSL::HMAC.hexdigest('SHA256', secret, encoded)
-      return unless secure_compare(signature, expected)
-
-      decoded = Base64.urlsafe_decode64(encoded)
-      payload = JSON.parse(decoded)
-      payload if payload.is_a?(Hash)
-    rescue ArgumentError, JSON::ParserError
-      nil
+      MediaLibrarian::SessionCrypto.decode(value, session_secret)
     end
 
     def session_valid?(session)
@@ -3424,9 +3411,7 @@ class Daemon
     end
 
     def encode_session_data(data, secret)
-      encoded = Base64.urlsafe_encode64(JSON.dump(data), padding: false)
-      signature = OpenSSL::HMAC.hexdigest('SHA256', secret, encoded)
-      "#{encoded}.#{signature}"
+      MediaLibrarian::SessionCrypto.encode(data, secret)
     end
 
     def session_secret
@@ -3475,15 +3460,7 @@ class Daemon
     end
 
     def secure_compare(a, b)
-      return false unless a && b
-
-      a = a.to_s
-      b = b.to_s
-      return false unless a.bytesize == b.bytesize
-
-      result = 0
-      a.bytes.zip(b.bytes) { |x, y| result |= x ^ y }
-      result.zero?
+      MediaLibrarian::SessionCrypto.secure_compare(a, b)
     end
 
     def resolve_api_token(opts)
