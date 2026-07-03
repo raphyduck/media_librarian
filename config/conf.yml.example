@@ -29,7 +29,8 @@ ffmpeg_settings:
   crf: 22
   preset: medium
 music:
-  destination: ~/Music # Completed music torrents are moved here (defaults to ~/Music)
+  destination: ~/Music # Final music library; releases are filed here after handle_completed_download processing (defaults to ~/Music)
+  staging: ~/completed/Music # Deluge drops completed music torrents here first, so the Execute plugin can trigger handle_completed_download (defaults to music.destination when unset)
   musicbrainz: true # Fill missing tags (artist/album/title) from MusicBrainz when a file's metadata is incomplete
   musicbrainz_contact: '' # Optional email/URL added to the MusicBrainz User-Agent (recommended by MusicBrainz)
   acoustid_key: '' # AcoustID application API key; when set, unidentified tracks are matched by acoustic fingerprint (requires the fpcalc/chromaprint binary)
