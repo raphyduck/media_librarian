@@ -9,11 +9,14 @@ require 'set'
 require_relative '../../../lib/omdb_api'
 require_relative '../../../lib/metadata'
 require_relative '../../../lib/simple_speaker'
+require_relative '../../../lib/media_librarian/imdb_identifier'
 require 'trakt'
 
 module MediaLibrarian
   module Services
     class CalendarFeedService < BaseService
+      include MediaLibrarian::ImdbIdentifier
+
       AuthenticationError = Class.new(StandardError)
       DEFAULT_WINDOW_DAYS = 365
       SOURCES_SEPARATOR = /[\s,|]+/.freeze
@@ -641,20 +644,6 @@ module MediaLibrarian
         entry[:ids]['imdb'] ||= imdb_id if imdb_identifier?(imdb_id)
         entry[:imdb_id] = imdb_id
         entry
-      end
-
-      def imdb_identifier?(value)
-        value.to_s.match?(/\Att\d+/i)
-      end
-
-      def normalize_identifier(value)
-        token = value.to_s.strip
-        return '' if token.empty?
-
-        digits = token.sub(/\A(?:imdb|tt)/i, '')
-        return token unless digits.match?(/\A\d+\z/)
-
-        "tt#{digits}"
       end
 
       def omdb_titles_match?(entry, details)

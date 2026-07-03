@@ -2260,8 +2260,8 @@ class Daemon
     def normalize_calendar_import_payload(payload)
       return [nil, 'invalid_payload'] unless payload.is_a?(Hash)
 
-      imdb_id = normalize_imdb_identifier(payload['imdb_id'] || payload.dig('ids', 'imdb') || payload.dig('ids', 'imdb_id'))
-      return [nil, 'missing_imdb_id'] unless imdb_identifier?(imdb_id)
+      imdb_id = MediaLibrarian::ImdbIdentifier.normalize_identifier(payload['imdb_id'] || payload.dig('ids', 'imdb') || payload.dig('ids', 'imdb_id'))
+      return [nil, 'missing_imdb_id'] unless MediaLibrarian::ImdbIdentifier.imdb_identifier?(imdb_id)
 
       title = payload['title'].to_s.strip
       return [nil, 'missing_title'] if title.empty?
@@ -2368,20 +2368,6 @@ class Daemon
       Integer(value)
     rescue ArgumentError, TypeError
       nil
-    end
-
-    def normalize_imdb_identifier(value)
-      token = value.to_s.strip
-      return '' if token.empty?
-
-      digits = token.sub(/\A(?:imdb|tt)/i, '')
-      return token unless digits.match?(/\A\d+\z/)
-
-      "tt#{digits}"
-    end
-
-    def imdb_identifier?(value)
-      value.to_s.match?(/\Att\d+\z/i)
     end
 
     def handle_pending_torrents_request(req, res)
