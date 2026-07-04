@@ -83,20 +83,23 @@ class MusicSearch
     { 'error' => e.message }
   end
 
-  # CSV import: one free-text query per line. For each query, run a music search
-  # and auto-queue the best matching result for the requested quality.
   # Number of queued / not-found titles echoed back in the import report. The
   # totals are always exact; only the sample lists are capped to keep the job
   # payload reasonable for very large CSVs.
   IMPORT_REPORT_SAMPLE = 200
 
+  # CSV import: one album query per row (structured "Artiste,Album" export) or
+  # one free-text query per line. For each, run a music search and auto-queue
+  # the best matching result for the requested quality. When a structured row's
+  # album is not found, retry the search with the artist alone (once per artist)
+  # to catch a discography, skipping various-artists/compilation buckets.
   def self.import_csv(csv_path: nil, csv_content: nil, quality: nil, limit: 50, detailed: false)
-    # Declared before extract_queries so the report is available even if a
+    # Declared before extract_entries so the report is available even if a
     # failure happens before or during the loop.
     queued = []
     not_found = []
-    queries = extract_queries(csv_path: csv_path, csv_content: csv_content)
-    total = queries.size
+    entries = extract_entries(csv_path: csv_path, csv_content: csv_content)
+    total = entries.size
     speaker = app.respond_to?(:speaker) ? app.speaker : nil
     speaker&.speak_up("music import_csv: starting (total #{total}, quality '#{MusicQuality.label(quality)}')", 0)
 
@@ -113,12 +116,28 @@ class MusicSearch
     end
     update_progress.call(true)
 
-    queries.each do |query|
+    # Artists whose album-less fallback search has already run, so an entire
+    # unfound discography is not re-searched (and re-queued) once per album.
+    fallback_done = {}
+
+    entries.each do |entry|
+      query = entry['query']
       progress['processed'] += 1
       progress['current_query'] = query
       begin
         results = search(keyword: query, quality: quality, limit: limit)
         best = results.first
+
+        if best.nil?
+          fallback = artist_fallback(entry['artist'], query)
+          if fallback && !fallback_done[fallback.downcase]
+            fallback_done[fallback.downcase] = true
+            speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no album match, retrying artist '#{fallback}'", 0)
+            results = search(keyword: fallback, quality: quality, limit: limit)
+            best = results.first
+          end
+        end
+
         if best.nil?
           not_found << query
           progress['not_found'] += 1
@@ -219,6 +238,14 @@ class MusicSearch
   end
 
   def self.extract_queries(csv_path: nil, csv_content: nil)
+    extract_entries(csv_path: csv_path, csv_content: csv_content).map { |entry| entry['query'] }
+  end
+
+  # Like extract_queries, but returns one entry per row: { 'query' => ...,
+  # 'artist' => ... }. For a structured CSV the artist is kept separately so an
+  # unfound album can be retried with the artist alone; free-text lines have no
+  # separable artist, so 'artist' is nil.
+  def self.extract_entries(csv_path: nil, csv_content: nil)
     content = if !csv_content.to_s.empty?
                 csv_content.to_s
               elsif csv_path.to_s.strip != ''
@@ -232,12 +259,13 @@ class MusicSearch
     # a daemon running under a non-UTF-8 locale does not choke on the first
     # accented byte when splitting or CSV-parsing the content.
     content = content.to_s.dup.force_encoding('UTF-8').scrub
-    structured = structured_queries(content)
+    structured = structured_entries(content)
     return structured if structured
 
     lines = content.lines.map(&:strip).reject(&:empty?)
     lines.shift if lines.first && lines.first.downcase.delete('"').strip == 'query'
     lines.map { |line| line.sub(/\A"(.*)"\z/, '\1').strip }.reject(&:empty?)
+         .map { |query| { 'query' => query, 'artist' => nil } }
   end
 
   # Column headers a structured export (e.g. a Spotify/library dump
@@ -246,12 +274,14 @@ class MusicSearch
   STRUCTURED_ALBUM_HEADERS = %w[album albums disque].freeze
 
   # When the CSV carries a header row with recognizable artist and/or album
-  # columns, build one "<artist> <album>" search query per row. Returns nil when
-  # the content is not such a structured CSV, so the caller falls back to the
-  # one-free-text-query-per-line format. Quoted fields, embedded commas/newlines
-  # and a trailing quantity column (e.g. number of tracks) are handled by the
-  # CSV parser rather than choking the naive line splitter.
-  def self.structured_queries(content)
+  # columns, return one entry per row — { 'query' => "<artist> <album>",
+  # 'artist' => "<artist>" } — keeping the artist alone so an unfound album can
+  # be retried with just the artist. Returns nil when the content is not such a
+  # structured CSV, so the caller falls back to the one-free-text-query-per-line
+  # format. Quoted fields, embedded commas/newlines and a trailing quantity
+  # column (e.g. number of tracks) are handled by the CSV parser rather than
+  # choking the naive line splitter.
+  def self.structured_entries(content)
     first_line = content.to_s.lines.first.to_s
     separator = first_line.count(';') > first_line.count(',') ? ';' : ','
     rows = CSV.parse(content, headers: true, col_sep: separator)
@@ -261,15 +291,45 @@ class MusicSearch
     album_key = rows.headers.find { |h| STRUCTURED_ALBUM_HEADERS.include?(h.to_s.strip.downcase) }
     return nil unless artist_key || album_key
 
-    rows.filter_map do |row|
-      query = [artist_key && row[artist_key], album_key && row[album_key]]
-              .filter_map { |value| value.to_s.strip unless value.nil? }
-              .reject(&:empty?)
-              .join(' ')
-      query.empty? ? nil : query
-    end.uniq
+    seen = {}
+    rows.each_with_object([]) do |row, entries|
+      artist = artist_key ? row[artist_key].to_s.strip : ''
+      album = album_key ? row[album_key].to_s.strip : ''
+      query = [artist, album].reject(&:empty?).join(' ')
+      next if query.empty? || seen[query]
+
+      seen[query] = true
+      entries << { 'query' => query, 'artist' => (artist.empty? ? nil : artist) }
+    end
   rescue CSV::MalformedCSVError, ArgumentError, EncodingError
     nil
+  end
+
+  # Artist-column values that are not a single real artist, so the not-found
+  # fallback must not grab "their" discography (compilations / various-artists
+  # buckets). Matched case-insensitively against the trimmed artist name.
+  NON_ARTIST_NAMES = [
+    'various', 'various artist', 'various artists', 'va', 'v.a.', 'v/a',
+    'compilation', 'compilations', 'divers', 'artistes divers',
+    'multi-interprètes', 'multi interprètes', 'multinterprètes',
+    'unknown', 'unknown artist', 'soundtrack', 'original soundtrack',
+    'ost', 'o.s.t.', 'cast', 'original cast', 'traditional'
+  ].freeze
+
+  # The artist to retry an unfound album with, or nil when there is no usable
+  # artist: absent, identical to the album-query already tried, or a
+  # various-artists/compilation-style bucket rather than a real performer.
+  def self.artist_fallback(artist, full_query)
+    name = artist.to_s.strip
+    return nil if name.empty? || name.casecmp?(full_query.to_s.strip)
+    return nil if non_artist?(name)
+
+    name
+  end
+
+  def self.non_artist?(name)
+    normalized = name.to_s.downcase.strip.gsub(/\s+/, ' ')
+    NON_ARTIST_NAMES.include?(normalized) || normalized.start_with?('various')
   end
 
   # Loopback / link-local (incl. cloud metadata 169.254.169.254) / unspecified
