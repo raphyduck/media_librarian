@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../test_helper'
+require_relative '../../lib/music_quality'
 require_relative '../../app/music_search'
 
 class MusicSearchCsvTest < Minitest::Test
