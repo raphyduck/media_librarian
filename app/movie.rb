@@ -202,7 +202,7 @@ class Movie
       end
       if (movie.nil? || movie['title'].nil?)
         if ids['imdb'].to_s == '' && ids['tmdb'].to_s != ''
-          tmdb_ids = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.external_ids(ids['tmdb']) }
+          tmdb_ids = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(ids['tmdb'], append_to_response: 'external_ids') }
           imdb_id = tmdb_ids && (tmdb_ids['imdb_id'] || tmdb_ids.dig('external_ids', 'imdb_id'))
           ids['imdb'] = imdb_id if imdb_id.to_s != ''
         end
