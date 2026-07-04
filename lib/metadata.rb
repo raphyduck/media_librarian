@@ -263,7 +263,7 @@ class Metadata
     unless (items || []).empty?
       year = identify_release_year(title)
       items.sort_by! { |i| iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3); ((year.to_i > 0 ? year : iyear) - iyear).abs } if keys['year']
-      items.map! { |i| i[keys['titles']].map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
+      items.map! { |i| titles = Array(i[keys['titles']]).compact; titles.empty? ? [i] : titles.map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
       results = items.map { |m| { :title => m[keys['name']], :info => m[keys['url']] } }
       results += [{ :title => 'Edit title manually', :info => '' }]
       (0..results.count - 2).each do |i|
