@@ -206,9 +206,48 @@ class MusicSearch
               else
                 raise ArgumentError, 'missing_csv'
               end
+    # The CSV is UTF-8 (accented artist/album names are common). Retag/scrub so
+    # a daemon running under a non-UTF-8 locale does not choke on the first
+    # accented byte when splitting or CSV-parsing the content.
+    content = content.to_s.dup.force_encoding('UTF-8').scrub
+    structured = structured_queries(content)
+    return structured if structured
+
     lines = content.lines.map(&:strip).reject(&:empty?)
     lines.shift if lines.first && lines.first.downcase.delete('"').strip == 'query'
     lines.map { |line| line.sub(/\A"(.*)"\z/, '\1').strip }.reject(&:empty?)
+  end
+
+  # Column headers a structured export (e.g. a Spotify/library dump
+  # "Artiste,Album,Année,Titres") may use for the artist and album fields.
+  STRUCTURED_ARTIST_HEADERS = %w[artiste artist artists interprete interprète].freeze
+  STRUCTURED_ALBUM_HEADERS = %w[album albums disque].freeze
+
+  # When the CSV carries a header row with recognizable artist and/or album
+  # columns, build one "<artist> <album>" search query per row. Returns nil when
+  # the content is not such a structured CSV, so the caller falls back to the
+  # one-free-text-query-per-line format. Quoted fields, embedded commas/newlines
+  # and a trailing quantity column (e.g. number of tracks) are handled by the
+  # CSV parser rather than choking the naive line splitter.
+  def self.structured_queries(content)
+    first_line = content.to_s.lines.first.to_s
+    separator = first_line.count(';') > first_line.count(',') ? ';' : ','
+    rows = CSV.parse(content, headers: true, col_sep: separator)
+    return nil if rows.headers.nil?
+
+    artist_key = rows.headers.find { |h| STRUCTURED_ARTIST_HEADERS.include?(h.to_s.strip.downcase) }
+    album_key = rows.headers.find { |h| STRUCTURED_ALBUM_HEADERS.include?(h.to_s.strip.downcase) }
+    return nil unless artist_key || album_key
+
+    rows.filter_map do |row|
+      query = [artist_key && row[artist_key], album_key && row[album_key]]
+              .filter_map { |value| value.to_s.strip unless value.nil? }
+              .reject(&:empty?)
+              .join(' ')
+      query.empty? ? nil : query
+    end.uniq
+  rescue CSV::MalformedCSVError, ArgumentError, EncodingError
+    nil
   end
 
   # Loopback / link-local (incl. cloud metadata 169.254.169.254) / unspecified
