@@ -41,4 +41,47 @@ class MusicSearchCsvTest < Minitest::Test
     csv = +"Artiste;Album;Année\nMano Negra;Casa Babylon;1994\n"
     assert_equal ['Mano Negra Casa Babylon'], MusicSearch.extract_queries(csv_content: csv)
   end
+
+  def test_import_csv_report_builds_detailed_and_plain
+    detailed = MusicSearch.import_csv_report(%w[a b], %w[c], true)
+    assert_equal 2, detailed['total_queued']
+    assert_equal %w[a b], detailed['queued_titles']
+    assert_equal 1, detailed['not_found']
+    assert_equal %w[c], detailed['not_found_entries']
+    assert_equal 2, MusicSearch.import_csv_report(%w[a b], %w[c], false)
+  end
+
+  # A single failing query must not abort the whole import or wipe the report.
+  def test_import_csv_survives_a_raising_query_and_still_reports
+    speaker = Object.new
+    def speaker.speak_up(*); end
+    def speaker.tell_error(*); end
+    fake_app = Object.new
+    fake_app.define_singleton_method(:speaker) { speaker }
+    fake_app.define_singleton_method(:respond_to?) { |*| true }
+
+    sc = MusicSearch.singleton_class
+    saved = {}
+    %i[app search queue_download].each do |m|
+      saved[m] = sc.instance_method(m) if sc.method_defined?(m) || sc.private_method_defined?(m)
+    end
+
+    begin
+      MusicSearch.define_singleton_method(:app) { fake_app }
+      MusicSearch.define_singleton_method(:search) do |keyword:, **|
+        raise 'boom tracker' if keyword.include?('BOOM')
+        keyword.include?('NOPE') ? [] : [{ name: "#{keyword} [FLAC]", link: 'http://x/y.torrent', tracker: 't' }]
+      end
+      MusicSearch.define_singleton_method(:queue_download) { |**| { 'queued' => 'ok' } }
+
+      csv = +"Artiste,Album\nABBA,Waterloo\nDaft Punk,BOOM\nSomeone,NOPE\nQueen,Jazz\n"
+      report = MusicSearch.import_csv(csv_content: csv, quality: 'flac', detailed: true)
+
+      assert_equal 2, report['total_queued']
+      assert_equal 2, report['not_found']
+      assert_equal ['Daft Punk BOOM', 'Someone NOPE'], report['not_found_entries'].sort
+    ensure
+      saved.each { |m, um| sc.send(:define_method, m, um) }
+    end
+  end
 end

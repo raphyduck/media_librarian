@@ -85,14 +85,21 @@ class MusicSearch
 
   # CSV import: one free-text query per line. For each query, run a music search
   # and auto-queue the best matching result for the requested quality.
+  # Number of queued / not-found titles echoed back in the import report. The
+  # totals are always exact; only the sample lists are capped to keep the job
+  # payload reasonable for very large CSVs.
+  IMPORT_REPORT_SAMPLE = 200
+
   def self.import_csv(csv_path: nil, csv_content: nil, quality: nil, limit: 50, detailed: false)
+    # Declared before extract_queries so the report is available even if a
+    # failure happens before or during the loop.
+    queued = []
+    not_found = []
     queries = extract_queries(csv_path: csv_path, csv_content: csv_content)
     total = queries.size
     speaker = app.respond_to?(:speaker) ? app.speaker : nil
     speaker&.speak_up("music import_csv: starting (total #{total}, quality '#{MusicQuality.label(quality)}')", 0)
 
-    queued = []
-    not_found = []
     progress = {
       'processed' => 0, 'queued' => 0, 'not_found' => 0, 'total' => total,
       'current_query' => nil, 'queued_titles' => [], 'not_found_entries' => []
@@ -109,38 +116,53 @@ class MusicSearch
     queries.each do |query|
       progress['processed'] += 1
       progress['current_query'] = query
-      results = search(keyword: query, quality: quality, limit: limit)
-      best = results.first
-      if best.nil?
+      begin
+        results = search(keyword: query, quality: quality, limit: limit)
+        best = results.first
+        if best.nil?
+          not_found << query
+          progress['not_found'] += 1
+          progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
+          speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no result", 0)
+        else
+          queue_download(
+            name: best[:name], link: best[:link], tracker: best[:tracker],
+            size: best[:size], seeders: best[:seeders], torrent_link: best[:torrent_link],
+            added: best[:added], quality: quality
+          )
+          queued << best[:name]
+          progress['queued'] += 1
+          progress['queued_titles'] = queued.first(IMPORT_REPORT_SAMPLE)
+          speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> queued '#{best[:name]}'", 0)
+        end
+      rescue StandardError => e
+        # One failing query must never abort the whole import (and wipe the
+        # report): record it as not-found, log it, and carry on.
         not_found << query
         progress['not_found'] += 1
-        progress['not_found_entries'] = not_found.first(50)
-        speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no result", 0)
-      else
-        queue_download(
-          name: best[:name], link: best[:link], tracker: best[:tracker],
-          size: best[:size], seeders: best[:seeders], torrent_link: best[:torrent_link],
-          added: best[:added], quality: quality
-        )
-        queued << best[:name]
-        progress['queued'] += 1
-        progress['queued_titles'] = queued.first(50)
-        speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> queued '#{best[:name]}'", 0)
+        progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
+        app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
       end
       update_progress.call
     end
 
     update_progress.call(true)
     speaker&.speak_up("music import_csv: done (queued #{queued.size}, not found #{not_found.size})", 0)
-    if detailed
-      { 'total_queued' => queued.size, 'queued_titles' => queued.first(50),
-        'not_found' => not_found.size, 'not_found_entries' => not_found.first(50) }
-    else
-      queued.size
-    end
+    import_csv_report(queued, not_found, detailed)
   rescue => e
+    # Even on an unexpected top-level failure, return what was accumulated so the
+    # UI shows a real report instead of a blank "failed" with zeroes.
     app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
-    detailed ? { 'total_queued' => 0, 'queued_titles' => [], 'not_found' => 0, 'not_found_entries' => [] } : 0
+    import_csv_report(queued, not_found, detailed)
+  end
+
+  def self.import_csv_report(queued, not_found, detailed)
+    return queued.size unless detailed
+
+    {
+      'total_queued' => queued.size, 'queued_titles' => queued.first(IMPORT_REPORT_SAMPLE),
+      'not_found' => not_found.size, 'not_found_entries' => not_found.first(IMPORT_REPORT_SAMPLE)
+    }
   end
 
   def self.qualities
