@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'bencode'
+require 'digest'
 
 module MediaLibrarian
   module Services
