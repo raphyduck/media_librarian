@@ -224,24 +224,35 @@ class TorrentClientTest < Minitest::Test
     @speaker.messages.select { |m| m.is_a?(Array) && m[0] == :error }
   end
 
-  # A duplicate/failed add is expected and recovered downstream, so it must
-  # still raise (for the caller's recovery path) but must NOT be error-logged.
-  # Regression guard for the flush_queues error-log flood.
-  def test_add_torrent_error_is_raised_but_not_logged
+  # A duplicate/failed add and an invalid-torrent lookup are recovered by the
+  # caller, so method_missing must skip error-logging them (it logs everything
+  # else). Classifying these correctly is what stops the flush_queues flood.
+  def test_recoverable_deluge_error_predicate
+    tc = @torrent_client
+    assert tc.send(:recoverable_deluge_error?, TorrentClient::AddTorrentError.new('x'))
+    assert tc.send(:recoverable_deluge_error?, RuntimeError.new('AddTorrentError: already in session'))
+    assert tc.send(:recoverable_deluge_error?, RuntimeError.new('InvalidTorrentError'))
+    refute tc.send(:recoverable_deluge_error?, RuntimeError.new('kaboom'))
+  end
+
+  # safely_execute_deluge_operation must re-raise a rejected add (so the caller
+  # can recover) but must NOT log it — method_missing is the single log point.
+  # Regression guard for the doubled error entries behind the flood.
+  def test_safely_execute_does_not_log_rejected_add
     @torrent_client.define_singleton_method(:authenticate) {}
     @torrent_client.define_singleton_method(:deluge) do
       FakeDeluge.new(RaisingCore.new(TorrentClient::AddTorrentError.new('already in session')))
     end
 
     assert_raises(TorrentClient::AddTorrentError) do
-      @torrent_client.add_torrent_file('x.torrent', 'ZGF0YQ==', {})
+      @torrent_client.send(:safely_execute_deluge_operation, :add_torrent_file, ['x'], 'dbg', 3)
     end
-    assert_empty error_messages, 'a recoverable AddTorrentError must not be error-logged'
+    assert_empty error_messages, 'safely_execute must not log; method_missing is the single log point'
   end
 
-  # A genuine, non-recoverable error is still logged — but exactly once, not
-  # once in safely_execute_deluge_operation and again in method_missing.
-  def test_non_recoverable_error_is_logged_exactly_once
+  # A genuine, non-recoverable error is re-raised after retries and, again, not
+  # logged at this layer (method_missing logs it exactly once).
+  def test_safely_execute_reraises_generic_error_without_logging
     @torrent_client.define_singleton_method(:authenticate) {}
     @torrent_client.define_singleton_method(:reset_connection) {}
     @torrent_client.define_singleton_method(:sleep) { |*| }
@@ -250,8 +261,8 @@ class TorrentClientTest < Minitest::Test
     end
 
     assert_raises(RuntimeError) do
-      @torrent_client.get_torrent_status('tid', ['name'])
+      @torrent_client.send(:safely_execute_deluge_operation, :get_torrent_status, ['tid'], 'dbg', 3)
     end
-    assert_equal 1, error_messages.length, 'non-recoverable errors must be logged exactly once'
+    assert_empty error_messages, 'logging happens once in method_missing, not here'
   end
 end
