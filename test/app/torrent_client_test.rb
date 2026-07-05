@@ -201,4 +201,57 @@ class TorrentClientTest < Minitest::Test
     assert_nil result[2]
     assert_equal true, result[3]
   end
+
+  # Raises whatever error it is handed on any method call, standing in for a
+  # Deluge core RPC that rejects an operation.
+  class RaisingCore
+    def initialize(error)
+      @error = error
+    end
+
+    def method_missing(_name, *_args)
+      raise @error
+    end
+
+    def respond_to_missing?(*)
+      true
+    end
+  end
+
+  FakeDeluge = Struct.new(:core)
+
+  def error_messages
+    @speaker.messages.select { |m| m.is_a?(Array) && m[0] == :error }
+  end
+
+  # A duplicate/failed add is expected and recovered downstream, so it must
+  # still raise (for the caller's recovery path) but must NOT be error-logged.
+  # Regression guard for the flush_queues error-log flood.
+  def test_add_torrent_error_is_raised_but_not_logged
+    @torrent_client.define_singleton_method(:authenticate) {}
+    @torrent_client.define_singleton_method(:deluge) do
+      FakeDeluge.new(RaisingCore.new(TorrentClient::AddTorrentError.new('already in session')))
+    end
+
+    assert_raises(TorrentClient::AddTorrentError) do
+      @torrent_client.add_torrent_file('x.torrent', 'ZGF0YQ==', {})
+    end
+    assert_empty error_messages, 'a recoverable AddTorrentError must not be error-logged'
+  end
+
+  # A genuine, non-recoverable error is still logged — but exactly once, not
+  # once in safely_execute_deluge_operation and again in method_missing.
+  def test_non_recoverable_error_is_logged_exactly_once
+    @torrent_client.define_singleton_method(:authenticate) {}
+    @torrent_client.define_singleton_method(:reset_connection) {}
+    @torrent_client.define_singleton_method(:sleep) { |*| }
+    @torrent_client.define_singleton_method(:deluge) do
+      FakeDeluge.new(RaisingCore.new(RuntimeError.new('kaboom')))
+    end
+
+    assert_raises(RuntimeError) do
+      @torrent_client.get_torrent_status('tid', ['name'])
+    end
+    assert_equal 1, error_messages.length, 'non-recoverable errors must be logged exactly once'
+  end
 end
