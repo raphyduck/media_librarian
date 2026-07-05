@@ -164,7 +164,7 @@ class TorrentClient
 
   def self.flush_queues
     if app.t_client
-      app.t_client.parse_torrents_to_download(20)
+      app.t_client.parse_torrents_to_download(50)
       sleep 15
       app.t_client.process_added_torrents
       app.t_client.process_completed_torrents

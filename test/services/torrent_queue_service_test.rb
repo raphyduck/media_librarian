@@ -88,6 +88,45 @@ class TorrentQueueServiceTest < Minitest::Test
     refute_nil values[:torrent_id]
   end
 
+  def test_process_download_request_skips_add_when_already_in_client
+    # Minimal valid torrent payload: {'info' => {'name' => 'x'}}.
+    path = File.join(Dir.tmpdir, "queue_precheck_#{Process.pid}.torrent")
+    File.binwrite(path, 'd4:infod4:name1:xee')
+
+    t_client = Object.new
+    def t_client.get_torrent_status(*)
+      { 'name' => 'x' }
+    end
+    app = FakeApp.new(db: @db)
+    app.define_singleton_method(:t_client) { t_client }
+
+    client = FakeClient.new
+    added = []
+    client.define_singleton_method(:download_file) { |*args| added << args }
+
+    service = MediaLibrarian::Services::TorrentQueueService.new(
+      app: app, speaker: @speaker, client: client
+    )
+    request = MediaLibrarian::Services::TorrentDownloadRequest.new(
+      torrent_name: 'already-there', torrent_type: 1, path: path,
+      options: {}, tracker: 't', nodl: 0, queue_file_handling: {}
+    )
+
+    result = nil
+    Cache.stub(:queue_state_add_or_update, nil) do
+      Cache.stub(:queue_state_remove, nil) do
+        result = service.process_download_request(request)
+      end
+    end
+
+    assert result
+    assert_empty added, 'download_file must not be called when the torrent is already in the client'
+    assert(@db.updated_rows.any? { |(table, values, _c)| table == 'torrents' && values[:status] == 3 },
+           'the row must be reconciled to status 3')
+  ensure
+    File.delete(path) if path && File.exist?(path)
+  end
+
   def test_parse_pending_downloads_uses_link_url
     torrent_attributes = {
       link: 'https://primary.example/download',
