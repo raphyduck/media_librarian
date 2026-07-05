@@ -303,7 +303,16 @@ class TorrentSearch
     }
     attributes[:identifiers] = torrent[:identifiers] unless torrent[:identifiers].nil?
     selector = {:name => torrent[:name]}
-    if torrent[:in_db] || app.db.get_rows('torrents', selector).first
+    existing = app.db.get_rows('torrents', selector).first
+    # Never demote a torrent already handed to the download client (added /
+    # downloading = 3, completed = 4) back to a pending status: re-queuing the
+    # same name (e.g. a repeated import) must not reset the row and trigger a
+    # redundant, doomed re-add to the client.
+    if existing && [3, 4].include?(existing[:status].to_i)
+      app.speaker.speak_up("Torrent '#{torrent[:name]}' is already active (status #{existing[:status]}), leaving it untouched", 0) if Env.debug?
+      return
+    end
+    if torrent[:in_db] || existing
       app.db.update_rows('torrents', attributes, selector)
     else
       app.db.insert_row('torrents', attributes.merge(:name => torrent[:name]))

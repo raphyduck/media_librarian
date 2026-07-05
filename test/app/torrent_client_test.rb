@@ -201,4 +201,68 @@ class TorrentClientTest < Minitest::Test
     assert_nil result[2]
     assert_equal true, result[3]
   end
+
+  # Raises whatever error it is handed on any method call, standing in for a
+  # Deluge core RPC that rejects an operation.
+  class RaisingCore
+    def initialize(error)
+      @error = error
+    end
+
+    def method_missing(_name, *_args)
+      raise @error
+    end
+
+    def respond_to_missing?(*)
+      true
+    end
+  end
+
+  FakeDeluge = Struct.new(:core)
+
+  def error_messages
+    @speaker.messages.select { |m| m.is_a?(Array) && m[0] == :error }
+  end
+
+  # A duplicate/failed add and an invalid-torrent lookup are recovered by the
+  # caller, so method_missing must skip error-logging them (it logs everything
+  # else). Classifying these correctly is what stops the flush_queues flood.
+  def test_recoverable_deluge_error_predicate
+    tc = @torrent_client
+    assert tc.send(:recoverable_deluge_error?, TorrentClient::AddTorrentError.new('x'))
+    assert tc.send(:recoverable_deluge_error?, RuntimeError.new('AddTorrentError: already in session'))
+    assert tc.send(:recoverable_deluge_error?, RuntimeError.new('InvalidTorrentError'))
+    refute tc.send(:recoverable_deluge_error?, RuntimeError.new('kaboom'))
+  end
+
+  # safely_execute_deluge_operation must re-raise a rejected add (so the caller
+  # can recover) but must NOT log it — method_missing is the single log point.
+  # Regression guard for the doubled error entries behind the flood.
+  def test_safely_execute_does_not_log_rejected_add
+    @torrent_client.define_singleton_method(:authenticate) {}
+    @torrent_client.define_singleton_method(:deluge) do
+      FakeDeluge.new(RaisingCore.new(TorrentClient::AddTorrentError.new('already in session')))
+    end
+
+    assert_raises(TorrentClient::AddTorrentError) do
+      @torrent_client.send(:safely_execute_deluge_operation, :add_torrent_file, ['x'], 'dbg', 3)
+    end
+    assert_empty error_messages, 'safely_execute must not log; method_missing is the single log point'
+  end
+
+  # A genuine, non-recoverable error is re-raised after retries and, again, not
+  # logged at this layer (method_missing logs it exactly once).
+  def test_safely_execute_reraises_generic_error_without_logging
+    @torrent_client.define_singleton_method(:authenticate) {}
+    @torrent_client.define_singleton_method(:reset_connection) {}
+    @torrent_client.define_singleton_method(:sleep) { |*| }
+    @torrent_client.define_singleton_method(:deluge) do
+      FakeDeluge.new(RaisingCore.new(RuntimeError.new('kaboom')))
+    end
+
+    assert_raises(RuntimeError) do
+      @torrent_client.send(:safely_execute_deluge_operation, :get_torrent_status, ['tid'], 'dbg', 3)
+    end
+    assert_empty error_messages, 'logging happens once in method_missing, not here'
+  end
 end

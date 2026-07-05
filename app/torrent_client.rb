@@ -164,7 +164,7 @@ class TorrentClient
 
   def self.flush_queues
     if app.t_client
-      app.t_client.parse_torrents_to_download(20)
+      app.t_client.parse_torrents_to_download(50)
       sleep 15
       app.t_client.process_added_torrents
       app.t_client.process_completed_torrents
@@ -209,7 +209,13 @@ class TorrentClient
 
     safely_execute_deluge_operation(name, binarize_strings(sanitized_args), debug_message, tries)
   rescue => e
-    app.speaker.tell_error(e, error_context(debug_message, sanitized_args))
+    # Single logging point for every Deluge operation. A failed/duplicate add and
+    # an invalid-torrent lookup are both expected, recoverable conditions: the
+    # caller re-checks the session and either marks the torrent downloading or
+    # marks it failed, each with its own clean log line. Logging them here (and
+    # again inside safely_execute_deluge_operation) just floods the error log.
+    # Still re-raise the add error so the caller's recovery path runs.
+    app.speaker.tell_error(e, error_context(debug_message, sanitized_args)) unless recoverable_deluge_error?(e)
     raise e unless invalid_torrent_error?(e)
   end
 
@@ -236,8 +242,9 @@ class TorrentClient
     end
   rescue => e
     return handle_invalid_torrent(args) if invalid_torrent_error?(e)
+    # method_missing is the single logging point (see its rescue); do not
+    # tell_error here or every failure is recorded twice.
     if add_torrent_error?(e) || rpc_error?(e)
-      app.speaker.tell_error(e, error_context(debug_message, args))
       raise AddTorrentError, e.message, e.backtrace if add_torrent_error?(e)
       raise e
     end
@@ -247,9 +254,16 @@ class TorrentClient
       sleep 5
       safely_execute_deluge_operation(name, args, debug_message, tries_remaining - 1)
     else
-      app.speaker.tell_error(e, error_context(debug_message, args))
       raise e
     end
+  end
+
+  # Errors the caller recovers from on its own, so the RPC layer must not log
+  # them as hard errors: a duplicate/failed add (the download pipeline re-checks
+  # the session and marks the torrent downloading or failed) and an
+  # invalid-torrent lookup (handled by handle_invalid_torrent / the caller).
+  def recoverable_deluge_error?(error)
+    invalid_torrent_error?(error) || add_torrent_error?(error)
   end
 
   def invalid_torrent_error?(error)

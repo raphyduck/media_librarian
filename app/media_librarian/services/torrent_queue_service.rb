@@ -194,6 +194,15 @@ module MediaLibrarian
             client.delete_torrent(request.torrent_name, 0, 1)
             return true
           end
+          # The torrent may already be in the client from a previous, half-recorded
+          # attempt (added to Deluge but its row never reached status 3). Re-adding
+          # it just fails with AddTorrentError; instead confirm its presence with a
+          # single status lookup and reconcile the row to downloading.
+          if request.torrent_type == 1 && meta_id.to_s != '' && torrent_in_client?(meta_id)
+            speaker.speak_up "Torrent #{request.torrent_name} is already in the client, marking as downloading"
+            app.db.update_rows('torrents', { status: 3, torrent_id: meta_id }, { name: request.torrent_name })
+            return true
+          end
           speaker.speak_up "Adding #{download[:type_str]} torrent #{request.torrent_name}"
           client.download_file(download, request.options.deep_dup, meta_id)
           Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && request.torrent_type == 1
@@ -241,6 +250,17 @@ module MediaLibrarian
 
       def failed_torrent?(torrent_name)
         app.db.get_rows('torrents', { name: torrent_name }).first&.dig(:status).to_i == FAILED_STATUS
+      end
+
+      # True when a torrent (identified by its info-hash) is already present in
+      # the download client, so re-adding it would be a wasted RPC that only
+      # errors out. A missing torrent makes get_torrent_status raise or return
+      # blank, which we treat as absent.
+      def torrent_in_client?(info_hash)
+        status = app.t_client.get_torrent_status(info_hash, ['name'])
+        status.is_a?(Hash) && !status.empty?
+      rescue StandardError
+        false
       end
 
       def build_download_options(torrent_row, torrent, tdid)
