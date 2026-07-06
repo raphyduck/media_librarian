@@ -73,11 +73,13 @@ class SoulseekSearch
           speak "sockseek exited #{status.exitstatus}#{" (#{last})" unless last.empty?}"
         end
 
-        downloaded, failed = classify(list, index_path)
         # sockseek dropped files straight into the staging folder outside Deluge,
-        # so the Execute-plugin hook never fires — file them explicitly.
-        organize_staging if downloaded.any?
+        # so the Execute-plugin hook never fires — file whatever landed there
+        # explicitly. Done unconditionally (not gated on the parsed index) so a
+        # sockseek index-format change can never leave downloads unfiled.
+        organize_staging
 
+        downloaded, failed = classify(list, index_path)
         build_report(list, downloaded, failed)
       end
     rescue StandardError => e
@@ -120,6 +122,17 @@ class SoulseekSearch
       DEFAULT_PREF_FORMAT
     end
 
+    # sockseek v3 flags (verified against v3.0.3 --help):
+    #   --input-type csv / --input <file>  : batch input
+    #   --config <file>                    : holds the Soulseek credentials
+    #   --pref-format <fmt>                : soft preference (not --format, which requires it)
+    #   --skip-music-dir <dir>            : don't re-fetch what the library already has
+    #   --no-progress                     : clean captured output
+    #   --index-path <file>               : per-run result index
+    # Skipping already-downloaded tracks is the v3 default (the opt-out is
+    # --no-skip-existing), so no flag is needed. No --number (that truncates an
+    # album to n tracks) and never --interactive (fully automatic). The CSV
+    # carries an Album column, so sockseek searches albums without --song.
     def build_command(csv_path:, index_path:, quality:)
       [
         binary_path,
@@ -128,9 +141,7 @@ class SoulseekSearch
         '--config', config_path,
         '--pref-format', pref_format(quality),
         '--skip-music-dir', MusicSearch.music_destination,
-        '--skip-existing',
         '--no-progress',
-        '--number', '1',
         '--index-path', index_path
       ]
     end

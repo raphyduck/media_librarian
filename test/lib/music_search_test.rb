@@ -95,7 +95,7 @@ class MusicSearchTest < Minitest::Test
     with_class_singletons(
       MusicSearch => {
         app: -> { app },
-        search: lambda { |keyword:, **_r| searched << keyword; [result("#{keyword} [FLAC]", 9)] },
+        search: lambda { |keyword:, **_r| searched << keyword; [{ name: "#{keyword} [FLAC]", link: 'l', tracker: 't', seeders: 9 }] },
         queue_download: ->(**_a) { { 'queued' => 'ok' } }
       },
       SoulseekSearch => {
@@ -145,7 +145,7 @@ class MusicSearchTest < Minitest::Test
     with_class_singletons(
       MusicSearch => {
         app: -> { app },
-        search: lambda { |keyword:, **_r| order << :search; [result("#{keyword} [FLAC]", 9)] },
+        search: lambda { |keyword:, **_r| order << :search; [{ name: "#{keyword} [FLAC]", link: 'l', tracker: 't', seeders: 9 }] },
         queue_download: ->(**_a) { { 'queued' => 'ok' } }
       },
       SoulseekSearch => {
