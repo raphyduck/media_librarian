@@ -20,6 +20,11 @@ class MusicSearch
 
   CATEGORY = 'music'
 
+  # Un release avec trop peu de seeders meurt souvent avant la fin du
+  # téléchargement ; l'import automatique exige un minimum. Surchargeable via
+  # conf.yml : music.min_seeders
+  DEFAULT_MIN_SEEDERS_IMPORT = 3
+
   # Interactive search: returns an array of torrent result hashes ordered by
   # seeders (descending), keeping only releases matching the requested quality.
   def self.search(keyword:, quality: nil, sources: nil, limit: 50, filter_dead: 1)
@@ -125,7 +130,8 @@ class MusicSearch
       progress['processed'] += 1
       progress['current_query'] = query
       begin
-        results = search(keyword: query, quality: quality, limit: limit)
+        results = search(keyword: query, quality: quality, limit: limit,
+                         filter_dead: min_seeders_import)
         best = results.first
 
         if best.nil?
@@ -133,7 +139,8 @@ class MusicSearch
           if fallback && !fallback_done[fallback.downcase]
             fallback_done[fallback.downcase] = true
             speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no album match, retrying artist '#{fallback}'", 0)
-            results = search(keyword: fallback, quality: quality, limit: limit)
+            results = search(keyword: fallback, quality: quality, limit: limit,
+                             filter_dead: min_seeders_import)
             best = results.first
           end
         end
@@ -222,6 +229,17 @@ class MusicSearch
     Array(configured).map(&:to_s).map(&:strip).reject(&:empty?)
   rescue
     []
+  end
+
+  # Minimum seeders a release must have to be auto-queued by the CSV import.
+  # Configured via music.min_seeders; falls back to DEFAULT_MIN_SEEDERS_IMPORT.
+  # Only the automatic import enforces this; the interactive search keeps its
+  # lenient default so a rare 1-seeder result stays visible.
+  def self.min_seeders_import
+    configured = app.config['music'] && app.config['music']['min_seeders']
+    configured.to_i.positive? ? configured.to_i : DEFAULT_MIN_SEEDERS_IMPORT
+  rescue
+    DEFAULT_MIN_SEEDERS_IMPORT
   end
 
   def self.sanitize_keyword(keyword)
