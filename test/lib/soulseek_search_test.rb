@@ -6,6 +6,7 @@ require 'fileutils'
 require_relative '../test_helper'
 require_relative '../../lib/music_quality'
 require_relative '../../app/music_search'
+require_relative '../../app/music_library'
 require_relative '../../app/soulseek_search'
 
 # Tests for the Soulseek (sockseek) fallback: availability gating, safe
@@ -84,8 +85,11 @@ class SoulseekSearchTest < Minitest::Test
               assert_equal 'flac', arg_after(captured, '--pref-format')
               assert_equal '/library/Music', arg_after(captured, '--skip-music-dir')
               assert_includes captured, '--no-progress'
-              assert_includes captured, '--skip-existing'
-              assert_equal %w[csv], [arg_after(captured, '--input-type')]
+              assert_equal 'csv', arg_after(captured, '--input-type')
+              # v3: skipping existing is the default; the flag was removed and
+              # --number (album truncation) must not be passed.
+              refute_includes captured, '--skip-existing'
+              refute_includes captured, '--number'
               refute_includes captured, '--interactive'
 
               # Input CSV is well-formed for sockseek (Artist,Title,Album).
