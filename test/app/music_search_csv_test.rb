@@ -3,8 +3,21 @@
 require_relative '../test_helper'
 require_relative '../../lib/music_quality'
 require_relative '../../app/music_search'
+require_relative '../../app/soulseek_search'
 
 class MusicSearchCsvTest < Minitest::Test
+  # These import_csv tests exercise the tracker path only; neutralise the
+  # Soulseek fallback so a machine that actually has sockseek installed does not
+  # launch the real binary during the suite. Restored in teardown.
+  def setup
+    @__soulseek_available = SoulseekSearch.singleton_class.instance_method(:available?)
+    SoulseekSearch.define_singleton_method(:available?) { false }
+  end
+
+  def teardown
+    SoulseekSearch.singleton_class.send(:define_method, :available?, @__soulseek_available) if @__soulseek_available
+  end
+
   def test_structured_csv_builds_artist_album_queries_per_row
     csv = +"Artiste,Album,Année,Titres\n" \
            "\"ABBA\",\"Super Trouper\",,7\n" \

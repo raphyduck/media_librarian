@@ -39,8 +39,10 @@ music:
   min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
   sources: # Optional: restrict music search/import to these tracker names (from trackers/*.yml). Leave unset/empty to use every configured tracker.
     - some_tracker_that_indexes_music
-  soulseek: # Optional Soulseek (sockseek) fallback: whatever the trackers do not carry is fetched over Soulseek into music.staging, then filed like any other download. Inactive unless the binary and config file below both exist.
+  soulseek: # Optional Soulseek (sockseek) integration: music is fetched over Soulseek into music.staging, then filed like any other download. Inactive unless the binary and config file below both exist.
     enabled: true
+    primary: true # true = Soulseek is tried first (option B), trackers only as a fallback; false = trackers first, Soulseek as a fallback (option A)
+    tracker_fallback: true # When primary is true: true = fall back to BitTorrent trackers for what Soulseek misses; false = Soulseek only, no torrent recourse
     binary: ~/bin/sockseek/sockseek # Path to the sockseek (fiso64/sockseek, .NET 8) executable
     config: ~/.config/sockseek/sockseek.conf # sockseek config holding the Soulseek credentials (kept outside git; its output-dir must match music.staging)
     pref_format: flac # Preferred (not required) format, so rare MP3-only titles are still fetched
