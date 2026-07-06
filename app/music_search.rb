@@ -99,17 +99,16 @@ class MusicSearch
   # album is not found, retry the search with the artist alone (once per artist)
   # to catch a discography, skipping various-artists/compilation buckets.
   def self.import_csv(csv_path: nil, csv_content: nil, quality: nil, limit: 50, detailed: false)
-    # Declared before extract_entries so the report is available even if a
-    # failure happens before or during the loop.
-    queued = []
-    not_found = []
-    # Tracker misses, kept as { artist:, album:, query: } so the Soulseek
-    # fallback can be handed the whole batch once the tracker pass is done.
-    soulseek_candidates = []
+    # Declared up front so the report is available even if a failure happens
+    # before or during processing.
+    queued = []              # releases queued on a tracker (async -> Deluge)
+    not_found = []           # queries found on neither Soulseek nor a tracker
+    soulseek_downloaded = [] # queries fetched from Soulseek (synchronous)
     entries = extract_entries(csv_path: csv_path, csv_content: csv_content)
     total = entries.size
     speaker = app.respond_to?(:speaker) ? app.speaker : nil
-    speaker&.speak_up("music import_csv: starting (total #{total}, quality '#{MusicQuality.label(quality)}')", 0)
+    source = soulseek_primary? ? 'soulseek-first' : 'trackers-first'
+    speaker&.speak_up("music import_csv: starting (total #{total}, quality '#{MusicQuality.label(quality)}', source '#{source}')", 0)
 
     progress = {
       'processed' => 0, 'queued' => 0, 'not_found' => 0, 'total' => total,
@@ -127,85 +126,152 @@ class MusicSearch
     # Artists whose album-less fallback search has already run, so an entire
     # unfound discography is not re-searched (and re-queued) once per album.
     fallback_done = {}
-
-    entries.each do |entry|
-      query = entry['query']
-      progress['processed'] += 1
-      progress['current_query'] = query
-      begin
-        results = search(keyword: query, quality: quality, limit: limit,
-                         filter_dead: min_seeders_import)
-        best = results.first
-
-        if best.nil?
-          fallback = artist_fallback(entry['artist'], query)
-          if fallback && !fallback_done[fallback.downcase]
-            fallback_done[fallback.downcase] = true
-            speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no album match, retrying artist '#{fallback}'", 0)
-            results = search(keyword: fallback, quality: quality, limit: limit,
-                             filter_dead: min_seeders_import)
-            best = results.first
-          end
-        end
-
-        if best.nil?
-          not_found << query
-          soulseek_candidates << soulseek_entry(entry, query)
-          progress['not_found'] += 1
-          progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
-          speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no result", 0)
-        else
-          queue_download(
-            name: best[:name], link: best[:link], tracker: best[:tracker],
-            size: best[:size], seeders: best[:seeders], torrent_link: best[:torrent_link],
-            added: best[:added], quality: quality
-          )
-          queued << best[:name]
-          progress['queued'] += 1
-          progress['queued_titles'] = queued.first(IMPORT_REPORT_SAMPLE)
-          speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> queued '#{best[:name]}'", 0)
-        end
-      rescue StandardError => e
-        # One failing query must never abort the whole import (and wipe the
-        # report): record it as not-found, log it, and carry on.
-        not_found << query
-        soulseek_candidates << soulseek_entry(entry, query)
-        progress['not_found'] += 1
-        progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
-        app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
-      end
-      update_progress.call
+    record_queued = lambda do |name|
+      queued << name
+      progress['queued'] += 1
+      progress['queued_titles'] = queued.first(IMPORT_REPORT_SAMPLE)
+    end
+    record_not_found = lambda do |query|
+      not_found << query
+      progress['not_found'] += 1
+      progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
     end
 
-    # Hand every tracker miss to Soulseek in a single batch (if configured); its
-    # downloads land in the music staging folder and are filed from there.
-    soulseek_result = run_soulseek_fallback(soulseek_candidates, quality)
-    soulseek_queued = soulseek_result ? Array(soulseek_result['downloaded_entries']) : []
-    still_not_found = not_found - soulseek_queued
+    if soulseek_primary?
+      # Option B: Soulseek is the primary source — hand it the whole batch first,
+      # then fall back to the trackers only for what it could not fetch.
+      sl = SoulseekSearch.fetch(entries: entries.map { |e| soulseek_entry(e, e['query']) }, quality: quality)
+      soulseek_downloaded = sl ? Array(sl['downloaded_entries']) : []
+      progress['processed'] = soulseek_downloaded.size
+      remaining = entries.reject { |e| soulseek_downloaded.include?(e['query']) }
+      speaker&.speak_up("music import_csv: soulseek downloaded #{soulseek_downloaded.size}/#{total}; #{remaining.size} left#{' for the trackers' if tracker_fallback?}", 0)
+
+      remaining.each do |entry|
+        query = entry['query']
+        progress['processed'] += 1
+        progress['current_query'] = query
+        # tracker_fallback:false -> Soulseek only: unfound stays unfound.
+        unless tracker_fallback?
+          record_not_found.call(query)
+          update_progress.call
+          next
+        end
+        begin
+          name = tracker_queue_entry(entry, quality: quality, limit: limit, fallback_done: fallback_done)
+          name ? record_queued.call(name) : record_not_found.call(query)
+        rescue StandardError => e
+          record_not_found.call(query)
+          app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
+        end
+        update_progress.call
+      end
+    else
+      # Option A (rollback path): trackers first, Soulseek as a fallback for the
+      # misses. Kept working so switching back only takes a config change.
+      soulseek_candidates = []
+      entries.each do |entry|
+        query = entry['query']
+        progress['processed'] += 1
+        progress['current_query'] = query
+        begin
+          name = tracker_queue_entry(entry, quality: quality, limit: limit, fallback_done: fallback_done)
+          if name
+            record_queued.call(name)
+          else
+            record_not_found.call(query)
+            soulseek_candidates << soulseek_entry(entry, query)
+          end
+        rescue StandardError => e
+          record_not_found.call(query)
+          soulseek_candidates << soulseek_entry(entry, query)
+          app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
+        end
+        update_progress.call
+      end
+      sl = run_soulseek_fallback(soulseek_candidates, quality)
+      soulseek_downloaded = sl ? Array(sl['downloaded_entries']) : []
+      not_found -= soulseek_downloaded
+    end
 
     update_progress.call(true)
-    speaker&.speak_up("music import_csv: done (queued #{queued.size}, soulseek #{soulseek_queued.size}, not found #{still_not_found.size})", 0)
-    import_csv_report(queued, still_not_found, detailed, soulseek_queued: soulseek_queued)
+    speaker&.speak_up("music import_csv: done (soulseek #{soulseek_downloaded.size}, queued #{queued.size}, not found #{not_found.size})", 0)
+    import_csv_report(queued, not_found, detailed, soulseek_downloaded: soulseek_downloaded)
   rescue => e
     # Even on an unexpected top-level failure, return what was accumulated so the
     # UI shows a real report instead of a blank "failed" with zeroes.
     app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
-    import_csv_report(queued, not_found, detailed)
+    import_csv_report(queued, not_found, detailed, soulseek_downloaded: soulseek_downloaded)
   end
 
-  def self.import_csv_report(queued, not_found, detailed, soulseek_queued: [])
-    soulseek_queued = Array(soulseek_queued)
-    return queued.size + soulseek_queued.size unless detailed
+  # Report the three possible outcomes distinctly: tracker-queued (async, waiting
+  # on Deluge), soulseek-downloaded (already on disk), and still-not-found.
+  def self.import_csv_report(queued, not_found, detailed, soulseek_downloaded: [])
+    soulseek_downloaded = Array(soulseek_downloaded)
+    return queued.size + soulseek_downloaded.size unless detailed
 
     report = {
       'total_queued' => queued.size, 'queued_titles' => queued.first(IMPORT_REPORT_SAMPLE),
       'not_found' => not_found.size, 'not_found_entries' => not_found.first(IMPORT_REPORT_SAMPLE)
     }
-    unless soulseek_queued.empty?
-      report['soulseek_queued'] = soulseek_queued.size
-      report['soulseek_queued_entries'] = soulseek_queued.first(IMPORT_REPORT_SAMPLE)
+    unless soulseek_downloaded.empty?
+      report['soulseek_downloaded'] = soulseek_downloaded.size
+      report['soulseek_downloaded_entries'] = soulseek_downloaded.first(IMPORT_REPORT_SAMPLE)
     end
     report
+  end
+
+  # Runs the existing tracker search (with the min-seeders hardening and the
+  # once-per-artist discography fallback) for one entry and queues the best
+  # match. Returns the queued release name, or nil when nothing was found.
+  def self.tracker_queue_entry(entry, quality:, limit:, fallback_done:)
+    query = entry['query']
+    results = search(keyword: query, quality: quality, limit: limit, filter_dead: min_seeders_import)
+    best = results.first
+    if best.nil?
+      fallback = artist_fallback(entry['artist'], query)
+      if fallback && !fallback_done[fallback.downcase]
+        fallback_done[fallback.downcase] = true
+        results = search(keyword: fallback, quality: quality, limit: limit, filter_dead: min_seeders_import)
+        best = results.first
+      end
+    end
+    return nil if best.nil?
+
+    queue_download(
+      name: best[:name], link: best[:link], tracker: best[:tracker],
+      size: best[:size], seeders: best[:seeders], torrent_link: best[:torrent_link],
+      added: best[:added], quality: quality
+    )
+    best[:name]
+  end
+
+  def self.soulseek_conf
+    cfg = app.config['music'] && app.config['music']['soulseek']
+    cfg.is_a?(Hash) ? cfg : {}
+  rescue StandardError
+    {}
+  end
+
+  def self.soulseek_config_flag(value, default)
+    return default if value.nil?
+
+    value != false && value.to_s.strip.downcase != 'false'
+  end
+
+  # Option B is active only when the config opts in (music.soulseek.primary) and
+  # the sockseek fallback is actually usable.
+  def self.soulseek_primary?
+    return false unless soulseek_config_flag(soulseek_conf['primary'], false)
+
+    SoulseekSearch.available?
+  rescue StandardError
+    false
+  end
+
+  # Whether Soulseek misses fall back to the BitTorrent trackers (default true);
+  # set false for a Soulseek-only import.
+  def self.tracker_fallback?
+    soulseek_config_flag(soulseek_conf['tracker_fallback'], true)
   end
 
   # Runs the Soulseek fallback over the collected tracker misses, returning its

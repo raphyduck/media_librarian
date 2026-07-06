@@ -3,11 +3,25 @@
 require_relative '../test_helper'
 require_relative '../../lib/music_quality'
 require_relative '../../app/music_search'
+require_relative '../../app/soulseek_search'
 
-# Focused tests for the CSV import seeder-threshold hardening: the automatic
-# import must reject near-dead releases (default 3 seeders, configurable via
-# music.min_seeders) while the interactive search keeps its lenient default.
+# Focused tests for the CSV import seeder-threshold hardening and the
+# Soulseek-primary / tracker-fallback ordering. The automatic import rejects
+# near-dead releases (default 3 seeders, configurable via music.min_seeders)
+# while the interactive search keeps its lenient default.
 class MusicSearchTest < Minitest::Test
+  # Neutralise the real sockseek binary by default so a machine that actually
+  # has it installed never launches it during the suite; the Soulseek-ordering
+  # tests opt back in explicitly. Restored in teardown.
+  def setup
+    @__soulseek_available = SoulseekSearch.singleton_class.instance_method(:available?)
+    SoulseekSearch.define_singleton_method(:available?) { false }
+  end
+
+  def teardown
+    SoulseekSearch.singleton_class.send(:define_method, :available?, @__soulseek_available) if @__soulseek_available
+  end
+
   def test_min_seeders_import_defaults_to_three
     with_music_config({}) do
       assert_equal 3, MusicSearch.min_seeders_import
@@ -70,10 +84,104 @@ class MusicSearchTest < Minitest::Test
     end
   end
 
+  # ---------- Soulseek-primary ordering (option B) ----------
+
+  # primary + tracker_fallback: Soulseek gets the whole batch first; only its
+  # misses reach the trackers.
+  def test_primary_soulseek_falls_back_to_trackers_only_for_misses
+    handed = nil
+    searched = []
+    app = build_app({ 'soulseek' => { 'enabled' => true, 'primary' => true, 'tracker_fallback' => true } })
+    with_class_singletons(
+      MusicSearch => {
+        app: -> { app },
+        search: lambda { |keyword:, **_r| searched << keyword; [result("#{keyword} [FLAC]", 9)] },
+        queue_download: ->(**_a) { { 'queued' => 'ok' } }
+      },
+      SoulseekSearch => {
+        available?: -> { true },
+        fetch: lambda { |entries:, **_r| handed = entries; { 'downloaded_entries' => ['A One', 'B Two'] } }
+      }
+    ) do
+      report = MusicSearch.import_csv(csv_content: +"query\nA One\nB Two\nC Three\n", detailed: true)
+
+      assert_equal ['A One', 'B Two', 'C Three'], handed.map { |e| e[:query] }, 'soulseek gets the whole batch first'
+      assert_equal ['C Three'], searched, 'only the soulseek miss reaches the trackers'
+      assert_equal 2, report['soulseek_downloaded']
+      assert_equal ['A One', 'B Two'], report['soulseek_downloaded_entries']
+      assert_equal 1, report['total_queued']
+      assert_equal 0, report['not_found']
+    end
+  end
+
+  # primary + tracker_fallback:false -> Soulseek only, no tracker recourse.
+  def test_soulseek_only_makes_no_tracker_calls
+    searched = []
+    app = build_app({ 'soulseek' => { 'enabled' => true, 'primary' => true, 'tracker_fallback' => false } })
+    with_class_singletons(
+      MusicSearch => {
+        app: -> { app },
+        search: lambda { |**_r| searched << :search; [] },
+        queue_download: ->(**_a) { { 'queued' => 'ok' } }
+      },
+      SoulseekSearch => {
+        available?: -> { true },
+        fetch: lambda { |entries:, **_r| { 'downloaded_entries' => ['A One'] } }
+      }
+    ) do
+      report = MusicSearch.import_csv(csv_content: +"query\nA One\nB Two\n", detailed: true)
+
+      assert_empty searched, 'no tracker calls in soulseek-only mode'
+      assert_equal 1, report['soulseek_downloaded']
+      assert_equal 0, report['total_queued']
+      assert_equal ['B Two'], report['not_found_entries']
+    end
+  end
+
+  # primary:false -> the legacy order (trackers first, Soulseek as fallback).
+  def test_primary_false_uses_trackers_first
+    order = []
+    app = build_app({ 'soulseek' => { 'enabled' => true, 'primary' => false } })
+    with_class_singletons(
+      MusicSearch => {
+        app: -> { app },
+        search: lambda { |keyword:, **_r| order << :search; [result("#{keyword} [FLAC]", 9)] },
+        queue_download: ->(**_a) { { 'queued' => 'ok' } }
+      },
+      SoulseekSearch => {
+        available?: -> { true },
+        fetch: lambda { |entries:, **_r| order << :soulseek; { 'downloaded_entries' => [] } }
+      }
+    ) do
+      report = MusicSearch.import_csv(csv_content: +"query\nSomething\n", detailed: true)
+
+      assert_equal :search, order.first, 'trackers are tried first in legacy mode'
+      refute_includes order, :soulseek, 'a tracker hit leaves no candidate for the soulseek fallback'
+      assert_equal 1, report['total_queued']
+    end
+  end
+
   private
 
   def result(name, seeders)
     { name: name, link: 'http://tracker.example/x.torrent', tracker: 't', seeders: seeders }
+  end
+
+  # Like with_singletons but across multiple classes: { Klass => { method => impl } }.
+  def with_class_singletons(overrides)
+    saved = []
+    overrides.each do |klass, methods|
+      sc = klass.singleton_class
+      methods.each_key do |m|
+        saved << [sc, m, sc.instance_method(m)] if sc.method_defined?(m) || sc.private_method_defined?(m)
+      end
+    end
+    begin
+      overrides.each { |klass, methods| methods.each { |m, impl| klass.define_singleton_method(m, &impl) } }
+      yield
+    ensure
+      saved.each { |sc, m, um| sc.send(:define_method, m, um) }
+    end
   end
 
   # Runs the block with search/queue_download stubbed under the given music

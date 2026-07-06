@@ -144,8 +144,8 @@ class SoulseekSearchTest < Minitest::Test
       report = MusicSearch.import_csv(csv_content: +"query\nHIT Album\nMISS One\nMISS Two\n", detailed: true)
 
       assert_equal 1, report['total_queued'], 'tracker-queued'
-      assert_equal 1, report['soulseek_queued'], 'soulseek-queued'
-      assert_equal ['MISS One'], report['soulseek_queued_entries']
+      assert_equal 1, report['soulseek_downloaded'], 'soulseek-downloaded'
+      assert_equal ['MISS One'], report['soulseek_downloaded_entries']
       assert_equal 1, report['not_found'], 'still not found'
       assert_equal ['MISS Two'], report['not_found_entries']
 
