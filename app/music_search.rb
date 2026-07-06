@@ -103,6 +103,9 @@ class MusicSearch
     # failure happens before or during the loop.
     queued = []
     not_found = []
+    # Tracker misses, kept as { artist:, album:, query: } so the Soulseek
+    # fallback can be handed the whole batch once the tracker pass is done.
+    soulseek_candidates = []
     entries = extract_entries(csv_path: csv_path, csv_content: csv_content)
     total = entries.size
     speaker = app.respond_to?(:speaker) ? app.speaker : nil
@@ -147,6 +150,7 @@ class MusicSearch
 
         if best.nil?
           not_found << query
+          soulseek_candidates << soulseek_entry(entry, query)
           progress['not_found'] += 1
           progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
           speaker&.speak_up("music import_csv: #{progress['processed']}/#{total} '#{query}' -> no result", 0)
@@ -165,6 +169,7 @@ class MusicSearch
         # One failing query must never abort the whole import (and wipe the
         # report): record it as not-found, log it, and carry on.
         not_found << query
+        soulseek_candidates << soulseek_entry(entry, query)
         progress['not_found'] += 1
         progress['not_found_entries'] = not_found.first(IMPORT_REPORT_SAMPLE)
         app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
@@ -172,9 +177,15 @@ class MusicSearch
       update_progress.call
     end
 
+    # Hand every tracker miss to Soulseek in a single batch (if configured); its
+    # downloads land in the music staging folder and are filed from there.
+    soulseek_result = run_soulseek_fallback(soulseek_candidates, quality)
+    soulseek_queued = soulseek_result ? Array(soulseek_result['downloaded_entries']) : []
+    still_not_found = not_found - soulseek_queued
+
     update_progress.call(true)
-    speaker&.speak_up("music import_csv: done (queued #{queued.size}, not found #{not_found.size})", 0)
-    import_csv_report(queued, not_found, detailed)
+    speaker&.speak_up("music import_csv: done (queued #{queued.size}, soulseek #{soulseek_queued.size}, not found #{still_not_found.size})", 0)
+    import_csv_report(queued, still_not_found, detailed, soulseek_queued: soulseek_queued)
   rescue => e
     # Even on an unexpected top-level failure, return what was accumulated so the
     # UI shows a real report instead of a blank "failed" with zeroes.
@@ -182,13 +193,46 @@ class MusicSearch
     import_csv_report(queued, not_found, detailed)
   end
 
-  def self.import_csv_report(queued, not_found, detailed)
-    return queued.size unless detailed
+  def self.import_csv_report(queued, not_found, detailed, soulseek_queued: [])
+    soulseek_queued = Array(soulseek_queued)
+    return queued.size + soulseek_queued.size unless detailed
 
-    {
+    report = {
       'total_queued' => queued.size, 'queued_titles' => queued.first(IMPORT_REPORT_SAMPLE),
       'not_found' => not_found.size, 'not_found_entries' => not_found.first(IMPORT_REPORT_SAMPLE)
     }
+    unless soulseek_queued.empty?
+      report['soulseek_queued'] = soulseek_queued.size
+      report['soulseek_queued_entries'] = soulseek_queued.first(IMPORT_REPORT_SAMPLE)
+    end
+    report
+  end
+
+  # Runs the Soulseek fallback over the collected tracker misses, returning its
+  # report or nil when the fallback is unconfigured, unavailable, or errors.
+  def self.run_soulseek_fallback(candidates, quality)
+    return nil if candidates.nil? || candidates.empty?
+    return nil unless SoulseekSearch.available?
+
+    SoulseekSearch.fetch(entries: candidates, quality: quality)
+  rescue StandardError => e
+    app.speaker.tell_error(e, 'music import_csv soulseek fallback') rescue nil
+    nil
+  end
+
+  # Builds the { artist:, album:, query: } entry the Soulseek fallback expects
+  # from a not-found CSV row. When the artist is known and prefixes the
+  # "<artist> <album>" query, only the album part is kept so sockseek searches
+  # the album rather than the concatenation; free-text lines pass the whole
+  # query as the album search term.
+  def self.soulseek_entry(entry, query)
+    artist = (entry.is_a?(Hash) ? entry['artist'] : nil).to_s.strip
+    album = query.to_s.strip
+    if !artist.empty? && album.downcase.start_with?(artist.downcase)
+      trimmed = album[artist.length..].to_s.strip
+      album = trimmed unless trimmed.empty?
+    end
+    { artist: (artist.empty? ? nil : artist), album: album, query: query }
   end
 
   def self.qualities

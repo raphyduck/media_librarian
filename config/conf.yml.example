@@ -36,8 +36,14 @@ music:
   acoustid_key: '' # AcoustID application API key; when set, unidentified tracks are matched by acoustic fingerprint (requires the fpcalc/chromaprint binary)
   acoustid: true # Enable AcoustID fingerprint lookups (only used when acoustid_key is set)
   cache_ttl_days: 180 # How long MusicBrainz/AcoustID lookups are cached on disk (under ~/.medialibrarian/cache/metadata)
+  min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
   sources: # Optional: restrict music search/import to these tracker names (from trackers/*.yml). Leave unset/empty to use every configured tracker.
     - some_tracker_that_indexes_music
+  soulseek: # Optional Soulseek (sockseek) fallback: whatever the trackers do not carry is fetched over Soulseek into music.staging, then filed like any other download. Inactive unless the binary and config file below both exist.
+    enabled: true
+    binary: ~/bin/sockseek/sockseek # Path to the sockseek (fiso64/sockseek, .NET 8) executable
+    config: ~/.config/sockseek/sockseek.conf # sockseek config holding the Soulseek credentials (kept outside git; its output-dir must match music.staging)
+    pref_format: flac # Preferred (not required) format, so rare MP3-only titles are still fetched
 calendar:
   refresh_every: 12 hours
   refresh_on_start: true
