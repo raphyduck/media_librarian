@@ -169,7 +169,7 @@ class MusicSearchTest < Minitest::Test
 
     with_flag = []
     with_class_singletons(
-      MusicSearch => { app: -> { app } },
+      MusicSearch => { app: -> { app }, music_staging: -> { '/staging' } },
       SoulseekSearch => soulseek,
       MusicLibrary => { organize: ->(*_a, **_k) { with_flag << :organize; { 'organized' => 1 } } }
     ) do
@@ -179,7 +179,7 @@ class MusicSearchTest < Minitest::Test
 
     without_flag = []
     with_class_singletons(
-      MusicSearch => { app: -> { app } },
+      MusicSearch => { app: -> { app }, music_staging: -> { '/staging' } },
       SoulseekSearch => soulseek,
       MusicLibrary => { organize: ->(*_a, **_k) { without_flag << :organize; {} } }
     ) do

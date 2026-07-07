@@ -7,6 +7,12 @@ require 'tmpdir'
 require_relative '../../lib/tag_writer'
 require_relative '../../app/music_library'
 
+# EXTENSIONS_TYPE is defined in init/global.rb, which boots the whole app; when
+# these tests run in isolation (single file) that boot has not happened, so
+# provide the audio set the organize code needs. Guarded so the full-suite
+# definition wins when present.
+EXTENSIONS_TYPE = { audio: %w[flac mp3 m4a aac ogg opus wav alac ape wv aiff aif tak tta] }.freeze unless defined?(EXTENSIONS_TYPE)
+
 class MusicLibraryTest < Minitest::Test
   def test_audio_files_handles_glob_metacharacters_in_folder_names
     Dir.mktmpdir do |dir|
@@ -287,7 +293,7 @@ class MusicLibraryTest < Minitest::Test
       write_file(root, 'Artist/Album/01 - Song.flac', 'AUDIO')
       dup = write_file(root, 'Dup/01 - Song.flac', 'AUDIO')
       result = stub_read_tags('01 - Song.flac' => song_tags) do
-        MusicLibrary.organize(source: root)
+        MusicLibrary.organize(source: root, destination: root)
       end
       assert_equal true, result['dry_run'], 'organize is dry-run unless --apply'
       assert File.exist?(dup), 'nothing trashed by default'
