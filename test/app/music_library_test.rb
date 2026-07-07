@@ -2,6 +2,9 @@
 
 require_relative '../test_helper'
 require_relative '../../lib/file_utils'
+# FileUtils.mv delegates to MergerfsIO (NAS-safe moves); load it so the
+# apply/trash path works when this file is run on its own.
+require_relative '../../lib/mergerfs_io'
 
 require 'tmpdir'
 require_relative '../../lib/tag_writer'
