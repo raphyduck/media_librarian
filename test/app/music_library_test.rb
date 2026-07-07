@@ -4,6 +4,7 @@ require_relative '../test_helper'
 require_relative '../../lib/file_utils'
 
 require 'tmpdir'
+require_relative '../../lib/tag_writer'
 require_relative '../../app/music_library'
 
 class MusicLibraryTest < Minitest::Test
@@ -291,6 +292,62 @@ class MusicLibraryTest < Minitest::Test
       assert_equal true, result['dry_run'], 'organize is dry-run unless --apply'
       assert File.exist?(dup), 'nothing trashed by default'
       assert_empty trashed(base)
+    end
+  end
+
+  # --- Compilations (section 4) ---
+
+  def test_norm_album_base_strips_edition_suffixes
+    assert_equal 'Discovery', MusicLibrary.norm_album_base('Discovery (Deluxe Edition)')
+    assert_equal 'Abbey Road', MusicLibrary.norm_album_base('Abbey Road - Remastered')
+    assert_equal 'Nevermind', MusicLibrary.norm_album_base("Nevermind: 30th Anniversary Edition")
+    assert_equal 'Discovery', MusicLibrary.norm_album_base('Discovery')
+  end
+
+  def test_build_relative_path_folder_artist_override
+    tags = { artist: 'Track Artist', album: 'Ragga Connection', title: 'Song', track: '2', disc: '' }
+    assert_equal 'Various Artists/Ragga Connection/02 - Song.flac',
+                 MusicLibrary.build_relative_path(tags, 'flac', '', folder_artist: 'Various Artists')
+  end
+
+  def test_compilation_dirs_flags_multi_artist_album_folder_only
+    Dir.mktmpdir do |dir|
+      comp = File.join(dir, 'comp'); FileUtils.mkdir_p(comp)
+      a1 = File.join(comp, 'a1.flac'); File.write(a1, 'x')
+      a2 = File.join(comp, 'a2.flac'); File.write(a2, 'x')
+      solo = File.join(dir, 'solo'); FileUtils.mkdir_p(solo)
+      s1 = File.join(solo, 's1.flac'); File.write(s1, 'x')
+      s2 = File.join(solo, 's2.flac'); File.write(s2, 'x')
+
+      map = {
+        'a1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
+        'a2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
+        's1.flac' => { artist: 'Solo', album: 'Their Album' },
+        's2.flac' => { artist: 'Solo', album: 'Their Album' }
+      }
+      dirs = stub_read_tags(map) { MusicLibrary.compilation_dirs([a1, a2, s1, s2]) }
+      assert_equal [comp], dirs, 'only the multi-artist same-album folder is a compilation'
+    end
+  end
+
+  def test_organize_file_files_compilation_under_various_artists
+    with_library do |root, _base|
+      # keep the incoming outside the library root (staging) so it is linked in
+      staging = Dir.mktmpdir('staging')
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO')
+        tags = { artist: 'Artist A', album: 'Ragga Connection', title: 'Song', track: '1', disc: '', year: '1998' }
+        dest = stub_read_tags('track.flac' => tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Ragga', dry_run: true, compilation: true)
+        end
+        assert dest, 'the compilation track is filed'
+        assert_includes dest, File.join('Various Artists', 'Ragga Connection'),
+                        'filed under a single Various Artists/<Album>/ folder'
+        assert File.exist?(dest)
+      ensure
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
     end
   end
 

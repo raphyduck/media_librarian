@@ -33,7 +33,11 @@ class MusicLibrary
 
     dry_run = !flag_true?(apply)
     files = audio_files(source)
-    app.speaker.speak_up("music organize: #{files.size} file(s) under '#{source}'#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
+    # A folder whose tracks share one album but carry several artists is a
+    # compilation: file it under a single "Various Artists" folder and stamp
+    # ALBUMARTIST/COMPILATION so Navidrome shows one album, not one per artist.
+    compilation_dirs = compilation_dirs(files)
+    app.speaker.speak_up("music organize: #{files.size} file(s) under '#{source}'#{", #{compilation_dirs.size} compilation folder(s)" unless compilation_dirs.empty?}#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
     progress = { 'processed' => 0, 'organized' => 0, 'skipped' => 0, 'total' => files.size, 'current_file' => nil }
     jid = Thread.current[:jid]
     update_progress = lambda do |force = false|
@@ -46,7 +50,8 @@ class MusicLibrary
     files.each do |file|
       progress['processed'] += 1
       progress['current_file'] = File.basename(file)
-      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)), dry_run: dry_run)
+      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
+                                              dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)))
       progress[dest ? 'organized' : 'skipped'] += 1
       update_progress.call
     end
@@ -60,7 +65,7 @@ class MusicLibrary
 
   # Organize a single audio file. Returns the destination path when the library
   # changed (file linked, moved or deduplicated), nil when nothing was done.
-  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true)
+  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false)
     ext = FileUtils.get_extension(path).to_s.downcase
     return nil unless EXTENSIONS_TYPE[:audio].include?(ext)
 
@@ -74,7 +79,10 @@ class MusicLibrary
     # with unreadable tags would demote well-placed files to 'Unknown Artist'.
     tags = merge_tags(tags, tags_from_library_path(path, destination_root)) if in_place
     tags = complete_tags(merge_tags(tags, parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path)
-    relative = build_relative_path(tags, ext, File.basename(path, ".#{ext}"))
+    # A compilation track keeps its own :artist tag but is filed under a single
+    # "Various Artists" folder (the album-artist), not one folder per track artist.
+    folder_artist = compilation ? compilation_artist : nil
+    relative = build_relative_path(tags, ext, File.basename(path, ".#{ext}"), folder_artist: folder_artist)
     dest = fs_utf8(File.join(destination_root, relative))
     return nil if path == dest # already organized
 
@@ -112,6 +120,10 @@ class MusicLibrary
     else
       link_or_copy(path, dest)
     end
+    # Stamp ALBUMARTIST + COMPILATION so Navidrome groups the release as one
+    # album. Gated by apply (dry-run only logs) since it rewrites the file.
+    TagWriter.stamp_compilation(dest, album_artist: compilation_artist, dry_run: dry_run,
+                                      speaker: (app.speaker if app.respond_to?(:speaker))) if compilation
     app.speaker.speak_up("music organize: '#{File.basename(path)}' -> '#{relative}'") if Env.debug?
     dest
   rescue => e
@@ -121,8 +133,14 @@ class MusicLibrary
 
   # --- Pure helpers (no I/O, unit-tested) -----------------------------------
 
-  def self.build_relative_path(tags, ext, fallback_base = '')
-    artist = present(tags[:artist]) ? tags[:artist] : 'Unknown Artist'
+  # folder_artist overrides the artist directory (used to file a compilation
+  # under "Various Artists" while each track keeps its own :artist tag).
+  def self.build_relative_path(tags, ext, fallback_base = '', folder_artist: nil)
+    artist = if present(folder_artist)
+               folder_artist
+             else
+               present(tags[:artist]) ? tags[:artist] : 'Unknown Artist'
+             end
     album = present(tags[:album]) ? tags[:album] : 'Unknown Album'
     title = present(tags[:title]) ? tags[:title] : fallback_base.to_s
     title = 'Unknown Title' unless present(title)
@@ -299,6 +317,39 @@ class MusicLibrary
   # spaces, surrounding/collapsed whitespace removed.
   def self.norm_tag(value)
     value.to_s.downcase.gsub(/[^[:alnum:]]+/, ' ').strip.gsub(/\s+/, ' ')
+  end
+
+  # Album title stripped of edition/version qualifiers, so different editions of
+  # the same album compare equal ("Discovery (Deluxe Edition)" -> "Discovery").
+  EDITION_WORDS = "deluxe|expanded|remaster(?:ed)?|anniversary|collector'?s?|special|bonus|legacy|edition|version"
+  def self.norm_album_base(album)
+    s = album.to_s.strip
+    s = s.gsub(/\s*[\(\[][^)\]]*\b(?:#{EDITION_WORDS})\b[^)\]]*[\)\]]/i, '')
+    s = s.sub(/\s*[:\-]\s*[^:]*\b(?:#{EDITION_WORDS})\b.*\z/i, '')
+    s.gsub(/\s+/, ' ').strip
+  end
+
+  # Album-artist used for compilations, configurable via music.compilation_artist.
+  def self.compilation_artist
+    configured = (app.config['music'] && app.config['music']['compilation_artist']).to_s.strip
+    configured.empty? ? TagWriter::COMPILATION_ARTIST : configured
+  rescue StandardError
+    TagWriter::COMPILATION_ARTIST
+  end
+
+  # Source directories that hold a various-artists compilation: their audio
+  # tracks share ONE (base) album title but carry two or more distinct artists.
+  # Grouping by directory (co-located tracks) avoids false positives such as
+  # several unrelated artists each having a "Greatest Hits" album.
+  def self.compilation_dirs(files)
+    Array(files).group_by { |f| File.dirname(f) }.each_with_object([]) do |(dir, dfiles), comps|
+      tagset = dfiles.map { |f| read_tags(f) }
+      albums = tagset.map { |t| norm_album_base(t[:album]) }.reject(&:empty?).uniq
+      artists = tagset.map { |t| norm_tag(t[:artist]) }.reject(&:empty?).uniq
+      comps << dir if albums.size == 1 && artists.size >= 2
+    end
+  rescue StandardError
+    []
   end
 
   # Retag a filesystem string as UTF-8 (its bytes already are), scrubbing any
