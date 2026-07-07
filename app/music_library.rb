@@ -442,6 +442,36 @@ class MusicLibrary
     !normalized.empty? && !%w[0 false no off].include?(normalized)
   end
 
+  def self.lossless?(path)
+    LOSSLESS_EXTENSIONS.include?(FileUtils.get_extension(path).to_s.downcase)
+  end
+
+  # Section 6 (quality upgrade): once a lossless copy of the SAME track is present
+  # in the library, reversibly move the superseded lossy file to the trash.
+  # Removes nothing unless a confirmed lossless replacement of the same track
+  # exists (never before the better copy is on disk), fails closed if the sibling
+  # scan errors, and dry-run only logs. Returns the trashed path / :dry_run, or
+  # nil when nothing was done.
+  def self.supersede_if_better(old_path, dry_run: true)
+    old_path = fs_utf8(File.expand_path(old_path.to_s))
+    return nil unless File.file?(old_path)
+    return nil if lossless?(old_path) # already lossless — never touch
+
+    root = fs_utf8(File.expand_path(MusicSearch.music_destination))
+    return nil unless inside_library?(old_path, root)
+
+    tags = read_tags(old_path)
+    siblings = same_track_siblings(File.dirname(old_path), tags)
+    return nil if siblings.nil? # scan failed -> fail closed, never delete
+    replacement = (siblings - [old_path]).find { |f| lossless?(f) }
+    return nil unless replacement
+
+    remove_or_log(old_path, root, dry_run: dry_run, reason: "superseded by lossless #{File.basename(replacement)}")
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    nil
+  end
+
   # Find.find rather than Dir.glob: torrent folder names routinely contain glob
   # metacharacters ('[FLAC]', '{...}') that would silently match nothing.
   def self.audio_files(source)

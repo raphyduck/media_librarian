@@ -9,6 +9,7 @@ require_relative '../../lib/mergerfs_io'
 require 'tmpdir'
 require_relative '../../lib/tag_writer'
 require_relative '../../app/music_library'
+require_relative '../../app/music_search'
 
 # EXTENSIONS_TYPE is defined in init/global.rb, which boots the whole app; when
 # these tests run in isolation (single file) that boot has not happened, so
@@ -360,6 +361,66 @@ class MusicLibraryTest < Minitest::Test
     end
   end
 
+  # --- Section 6: supersede_if_better ---------------------------------------
+
+  def test_supersede_if_better_trashes_lossy_when_lossless_present
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags, '01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: false)
+        end
+        assert res, 'a trashed path is returned'
+        refute File.exist?(old), 'the superseded lossy file is moved out of the library'
+        assert_equal 1, trashed(base).size, 'the lossy file lands in the reversible trash'
+      end
+    end
+  end
+
+  def test_supersede_if_better_dry_run_keeps_lossy_file
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags, '01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: true)
+        end
+        assert_equal :dry_run, res
+        assert File.exist?(old), 'dry-run never removes the original'
+        assert_empty trashed(base)
+      end
+    end
+  end
+
+  def test_supersede_if_better_noop_without_lossless_sibling
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: false)
+        end
+        assert_nil res, 'nothing is done when no lossless copy of the track exists'
+        assert File.exist?(old)
+        assert_empty trashed(base)
+      end
+    end
+  end
+
+  def test_supersede_if_better_never_touches_a_lossless_source
+    with_library do |root, base|
+      flac = write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(flac, dry_run: false)
+        end
+        assert_nil res, 'an already-lossless file is never superseded'
+        assert File.exist?(flac)
+        assert_empty trashed(base)
+      end
+    end
+  end
+
   private
 
   def song_tags
@@ -396,6 +457,20 @@ class MusicLibraryTest < Minitest::Test
       ensure
         sc.send(:define_method, :app, saved)
       end
+    end
+  end
+
+  # supersede_if_better resolves the library root via MusicSearch.music_destination,
+  # which otherwise reaches for DEFAULT_MUSIC_DESTINATION (from init/global.rb, not
+  # loaded here). Pin it to the sandbox root for the duration of the block.
+  def with_music_destination(path)
+    sc = MusicSearch.singleton_class
+    saved = sc.instance_method(:music_destination)
+    MusicSearch.define_singleton_method(:music_destination) { path }
+    begin
+      yield
+    ensure
+      sc.send(:define_method, :music_destination, saved)
     end
   end
 

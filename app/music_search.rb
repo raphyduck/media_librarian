@@ -271,6 +271,156 @@ class MusicSearch
     best[:name]
   end
 
+  # === Album grouping (section 7) + quality upgrade (section 6) ===
+
+  ALBUM_JOB_THRESHOLD = 3
+
+  # Split entries into whole-album jobs and single-track jobs. Entries that
+  # belong to the same album+edition (>= threshold of them, default 3) become one
+  # album job; the rest stay per-track. Grouping is by normalized album *base*
+  # (edition suffixes stripped, section 5) + album-artist, so different editions
+  # of one album collapse to a single album job and unrelated "Greatest Hits"
+  # albums by different artists stay apart. entries use symbol or string keys
+  # with :artist/:album (and optional :album_artist, :title, :path).
+  def self.plan_album_jobs(entries, threshold: ALBUM_JOB_THRESHOLD)
+    grouped = Array(entries).group_by { |e| album_group_key(e) }
+    albums = []
+    tracks = []
+    grouped.each do |key, group|
+      if key && group.size >= threshold
+        albums << album_job_entry(group)
+      else
+        tracks.concat(group)
+      end
+    end
+    { 'albums' => albums, 'tracks' => tracks }
+  end
+
+  def self.album_group_key(entry)
+    h = entry.is_a?(Hash) ? entry : {}
+    album = MusicLibrary.norm_album_base(field(h, :album))
+    return nil if album.strip.empty?
+
+    artist = field(h, :album_artist)
+    artist = field(h, :artist) if artist.empty?
+    "#{norm(album)}|#{norm(artist)}"
+  end
+
+  def self.album_job_entry(group)
+    first = group.first
+    album = field(first, :album)
+    artist = field(first, :album_artist)
+    artist = field(first, :artist) if artist.empty?
+    { 'artist' => artist, 'album' => album,
+      'query' => [artist, album].reject(&:empty?).join(' '), 'tracks' => group.size }
+  end
+
+  # Quality upgrade pass (section 6). Reads target tracks (typically the
+  # to_upgrade.csv produced by music_remediation.py --problem quality), keeps
+  # only genuinely-lossy ones (any FLAC is treated as lossless regardless of
+  # bitrate), groups them into album/track jobs, fetches better (FLAC) versions
+  # via Soulseek, and — only with apply — reversibly moves each superseded lossy
+  # file to the trash once a lossless copy of the same track is confirmed present.
+  # Dry-run by default: nothing is deleted, it only reports.
+  def self.upgrade(csv_path: nil, min_bitrate: 160, quality: 'flac', apply: false)
+    speaker = app.respond_to?(:speaker) ? app.speaker : nil
+    do_apply = flag_true?(apply)
+    targets = read_upgrade_targets(csv_path)
+    candidates = targets.select { |t| upgrade_candidate?(t, min_bitrate.to_i) }
+    speaker&.speak_up("music upgrade: #{candidates.size}/#{targets.size} lossy target(s) < #{min_bitrate}kbps#{' [DRY-RUN: pass --apply=1 to replace]' unless do_apply}", 0)
+    return upgrade_report([], [], do_apply) if candidates.empty?
+
+    plan = plan_album_jobs(candidates)
+    fetched = fetch_upgrades(plan, quality, speaker)
+
+    superseded = []
+    candidates.each do |t|
+      path = field(t, :path)
+      next if path.empty?
+
+      trashed = MusicLibrary.supersede_if_better(path, dry_run: !do_apply)
+      superseded << path if trashed
+    end
+    speaker&.speak_up("music upgrade: fetched #{fetched} release(s), #{do_apply ? 'trashed' : 'would trash'} #{superseded.size} superseded lossy file(s)", 0)
+    upgrade_report(superseded, plan, do_apply).merge('fetched' => fetched)
+  rescue => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding), 0) rescue nil
+    upgrade_report([], { 'albums' => [], 'tracks' => [] }, flag_true?(apply))
+  end
+
+  def self.fetch_upgrades(plan, quality, speaker)
+    return 0 unless SoulseekSearch.available?
+
+    fetched = 0
+    unless plan['albums'].empty?
+      speaker&.speak_up("music upgrade: fetching #{plan['albums'].size} album(s) via Soulseek", 0)
+      r = SoulseekSearch.fetch(entries: plan['albums'].map { |a| { artist: a['artist'], album: a['album'], query: a['query'] } },
+                               quality: quality, album_job: true)
+      fetched += r ? r['downloaded'].to_i : 0
+    end
+    unless plan['tracks'].empty?
+      speaker&.speak_up("music upgrade: fetching #{plan['tracks'].size} track(s) via Soulseek", 0)
+      r = SoulseekSearch.fetch(entries: plan['tracks'].map { |t| { artist: field(t, :artist), album: field(t, :album), title: field(t, :title) } },
+                               quality: quality)
+      fetched += r ? r['downloaded'].to_i : 0
+    end
+    fetched
+  end
+
+  # A row is worth upgrading when it is not already lossless and either its
+  # bitrate is unknown or below the threshold. FLAC is always lossless.
+  def self.upgrade_candidate?(target, min_bitrate)
+    path = field(target, :path)
+    ext = path.empty? ? field(target, :format) : File.extname(path).sub('.', '')
+    return false if %w[flac alac ape wav wv aiff aif tak tta].include?(ext.to_s.downcase)
+
+    bitrate = field(target, :bitrate)[/\d+/]
+    bitrate.nil? || bitrate.to_i < min_bitrate.to_i
+  end
+
+  # Reads upgrade targets from a CSV with a flexible header (artist/title/album/
+  # path/bitrate/format, any case). Returns an array of symbol-keyed hashes.
+  def self.read_upgrade_targets(csv_path)
+    return [] if csv_path.to_s.strip.empty? || !File.file?(csv_path)
+
+    content = File.read(csv_path).force_encoding('UTF-8').scrub
+    rows = CSV.parse(content, headers: true)
+    return [] if rows.headers.nil?
+
+    key_map = rows.headers.each_with_object({}) do |h, m|
+      norm = h.to_s.strip.downcase
+      %i[artist album title path bitrate format].each { |k| m[h] = k if norm == k.to_s || norm.include?(k.to_s) }
+    end
+    rows.filter_map do |row|
+      entry = {}
+      key_map.each { |header, k| entry[k] = row[header].to_s.strip }
+      entry.values.any? { |v| !v.to_s.empty? } ? entry : nil
+    end
+  rescue CSV::MalformedCSVError, ArgumentError, EncodingError
+    []
+  end
+
+  def self.upgrade_report(superseded, plan, applied)
+    {
+      'candidates' => (plan.is_a?(Hash) ? (Array(plan['albums']).sum { |a| a['tracks'].to_i } + Array(plan['tracks']).size) : 0),
+      'album_jobs' => (plan.is_a?(Hash) ? Array(plan['albums']).size : 0),
+      'track_jobs' => (plan.is_a?(Hash) ? Array(plan['tracks']).size : 0),
+      'superseded' => Array(superseded).size,
+      'superseded_files' => Array(superseded).first(IMPORT_REPORT_SAMPLE),
+      'applied' => !!applied
+    }
+  end
+
+  def self.field(hash, key)
+    return '' unless hash.is_a?(Hash)
+
+    (hash[key] || hash[key.to_s]).to_s.strip
+  end
+
+  def self.norm(value)
+    value.to_s.downcase.gsub(/[^[:alnum:]]+/, ' ').strip.gsub(/\s+/, ' ')
+  end
+
   def self.soulseek_conf
     cfg = app.config['music'] && app.config['music']['soulseek']
     cfg.is_a?(Hash) ? cfg : {}
