@@ -17,6 +17,12 @@ require_relative '../../app/music_search'
 # definition wins when present.
 EXTENSIONS_TYPE = { audio: %w[flac mp3 m4a aac ogg opus wav alac ape wv aiff aif tak tta] }.freeze unless defined?(EXTENSIONS_TYPE)
 
+# Likewise for IRRELEVANT_EXTENSIONS: FileUtils#mv prunes now-empty parent dirs
+# via file_remove_parents, which consults this constant. Without it a real move
+# still happens but the post-move pruning raises, so move_to_trash swallows the
+# error and returns nil. Guarded so the full-suite definition wins when present.
+IRRELEVANT_EXTENSIONS = %w[srt nfo txt url] unless defined?(IRRELEVANT_EXTENSIONS)
+
 class MusicLibraryTest < Minitest::Test
   def test_audio_files_handles_glob_metacharacters_in_folder_names
     Dir.mktmpdir do |dir|
