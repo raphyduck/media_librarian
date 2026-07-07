@@ -98,7 +98,7 @@ class MusicSearch
   # the best matching result for the requested quality. When a structured row's
   # album is not found, retry the search with the artist alone (once per artist)
   # to catch a discography, skipping various-artists/compilation buckets.
-  def self.import_csv(csv_path: nil, csv_content: nil, quality: nil, limit: 50, detailed: false)
+  def self.import_csv(csv_path: nil, csv_content: nil, quality: nil, limit: 50, detailed: false, then_organize: false)
     # Declared up front so the report is available even if a failure happens
     # before or during processing.
     queued = []              # releases queued on a tracker (async -> Deluge)
@@ -146,7 +146,15 @@ class MusicSearch
       remaining = entries.reject { |e| soulseek_downloaded.include?(e['query']) }
       speaker&.speak_up("music import_csv: soulseek downloaded #{soulseek_downloaded.size}/#{total}; #{remaining.size} left#{' for the trackers' if tracker_fallback?}", 0)
 
-      remaining.each do |entry|
+      # The tracker fallback queries Jackett/trackers and only enqueues torrents
+      # (nothing hits the staging folder yet), so without these lines the run
+      # looks hung for a long time. Announce the phase and log each query.
+      n = remaining.size
+      fb_queued = 0
+      fb_no_result = 0
+      speaker&.speak_up("music import_csv: entering tracker fallback for #{n} release(s)", 0) if tracker_fallback? && n.positive?
+
+      remaining.each_with_index do |entry, i|
         query = entry['query']
         progress['processed'] += 1
         progress['current_query'] = query
@@ -156,15 +164,26 @@ class MusicSearch
           update_progress.call
           next
         end
+        speaker&.speak_up("music import_csv: tracker fallback [#{i + 1}/#{n}] querying: #{query}", 0)
         begin
           name = tracker_queue_entry(entry, quality: quality, limit: limit, fallback_done: fallback_done)
-          name ? record_queued.call(name) : record_not_found.call(query)
+          if name
+            record_queued.call(name)
+            fb_queued += 1
+            speaker&.speak_up("music import_csv: tracker fallback [#{i + 1}/#{n}] queued torrent: #{name}", 0)
+          else
+            record_not_found.call(query)
+            fb_no_result += 1
+            speaker&.speak_up("music import_csv: tracker fallback [#{i + 1}/#{n}] no result", 0)
+          end
         rescue StandardError => e
           record_not_found.call(query)
+          fb_no_result += 1
           app.speaker.tell_error(e, "music import_csv query '#{query}'") rescue nil
         end
         update_progress.call
       end
+      speaker&.speak_up("music import_csv: tracker fallback: queued #{fb_queued}, no-result #{fb_no_result}", 0) if tracker_fallback? && n.positive?
     else
       # Option A (rollback path): trackers first, Soulseek as a fallback for the
       # misses. Kept working so switching back only takes a config change.
@@ -195,6 +214,13 @@ class MusicSearch
 
     update_progress.call(true)
     speaker&.speak_up("music import_csv: done (soulseek #{soulseek_downloaded.size}, queued #{queued.size}, not found #{not_found.size})", 0)
+    # Optional convenience: file the just-downloaded (Soulseek) releases now.
+    # Off by default because the tracker-fallback torrents land later via Deluge,
+    # so this pass only organizes the synchronous Soulseek part.
+    if flag_true?(then_organize)
+      speaker&.speak_up('music import_csv: organizing downloaded releases from staging', 0)
+      organize_downloaded
+    end
     import_csv_report(queued, not_found, detailed, soulseek_downloaded: soulseek_downloaded)
   rescue => e
     # Even on an unexpected top-level failure, return what was accumulated so the
@@ -272,6 +298,23 @@ class MusicSearch
   # set false for a Soulseek-only import.
   def self.tracker_fallback?
     soulseek_config_flag(soulseek_conf['tracker_fallback'], true)
+  end
+
+  # Files everything currently in the music staging folder into the library
+  # (Artist/Album) — the same operation as the `music organize` subcommand,
+  # reused so import_csv --then_organize=1 and a standalone organize behave
+  # identically. Targets the staging folder where downloads land.
+  def self.organize_downloaded(source: nil)
+    MusicLibrary.organize(source: (source.to_s.strip.empty? ? music_staging : source.to_s))
+  end
+
+  # Truthiness for a CLI/HTTP flag value (nil/''/0/false/no/off -> false).
+  def self.flag_true?(value)
+    return false if value.nil?
+    return value if [true, false].include?(value)
+
+    normalized = value.to_s.strip.downcase
+    !normalized.empty? && !%w[0 false no off].include?(normalized)
   end
 
   # Runs the Soulseek fallback over the collected tracker misses, returning its
