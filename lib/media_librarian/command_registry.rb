@@ -37,7 +37,7 @@ module MediaLibrarian
         'torrent prevent_delete' => 'Protect a torrent from automatic deletion',
         'music' => 'Music search and library organization',
         'music import_csv' => 'Search and queue one music query per CSV line',
-        'music organize' => 'Organize downloaded music into Artist/Album',
+        'music organize' => 'Organize downloaded music into Artist/Album (dry-run by default; pass --apply=1 to move exact duplicates to the trash folder)',
         'tracker' => 'Tracker authentication',
         'tracker login' => 'Authenticate with a tracker (supports browser login)',
         'calendar' => 'Release calendar operations',

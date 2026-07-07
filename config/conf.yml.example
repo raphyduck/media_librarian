@@ -37,6 +37,7 @@ music:
   acoustid: true # Enable AcoustID fingerprint lookups (only used when acoustid_key is set)
   cache_ttl_days: 180 # How long MusicBrainz/AcoustID lookups are cached on disk (under ~/.medialibrarian/cache/metadata)
   min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
+  organize_trash: '' # Optional: folder where `music organize --apply` moves exact duplicates (reversible). Defaults to a `.trash-organize` sibling of the library. Organize is dry-run unless --apply=1 and only ever removes byte-identical duplicates.
   sources: # Optional: restrict music search/import to these tracker names (from trackers/*.yml). Leave unset/empty to use every configured tracker.
     - some_tracker_that_indexes_music
   soulseek: # Optional Soulseek (sockseek) integration: music is fetched over Soulseek into music.staging, then filed like any other download. Inactive unless the binary and config file below both exist.

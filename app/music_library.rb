@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'find'
+require 'digest'
 
 # Organizes downloaded music files into an "Artist/Album/NN - Title.ext" tree.
 #
@@ -21,12 +22,18 @@ class MusicLibrary
   # into +destination+ (defaults to the configured music library root, which is
   # also the default source: organizing the library itself re-files misplaced
   # tracks in place). Reports progress on the current job when run as one.
-  def self.organize(source: nil, destination: nil)
+  # +apply+ (default false) gates the *destructive* part only: by default organize
+  # runs in DRY-RUN mode and just logs which duplicates it *would* trash — files
+  # are still filed into place (that is non-destructive). Pass apply:true
+  # (CLI: --apply=1) to actually move exact duplicates to the trash folder.
+  def self.organize(source: nil, destination: nil, apply: false)
     destination = (destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)
     source = source.to_s.strip.empty? ? destination : source.to_s
     return { 'organized' => 0, 'skipped' => 0, 'destination' => destination } unless File.exist?(source)
 
+    dry_run = !flag_true?(apply)
     files = audio_files(source)
+    app.speaker.speak_up("music organize: #{files.size} file(s) under '#{source}'#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
     progress = { 'processed' => 0, 'organized' => 0, 'skipped' => 0, 'total' => files.size, 'current_file' => nil }
     jid = Thread.current[:jid]
     update_progress = lambda do |force = false|
@@ -39,13 +46,13 @@ class MusicLibrary
     files.each do |file|
       progress['processed'] += 1
       progress['current_file'] = File.basename(file)
-      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)))
+      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)), dry_run: dry_run)
       progress[dest ? 'organized' : 'skipped'] += 1
       update_progress.call
     end
     update_progress.call(true)
-    app.speaker.speak_up("music organize: #{progress['organized']} file(s) organized, #{progress['skipped']} already in place (destination #{destination})", 0) if app.respond_to?(:speaker)
-    { 'organized' => progress['organized'], 'skipped' => progress['skipped'], 'destination' => destination }
+    app.speaker.speak_up("music organize: #{progress['organized']} file(s) organized, #{progress['skipped']} already in place (destination #{destination})#{' [DRY-RUN]' if dry_run}", 0) if app.respond_to?(:speaker)
+    { 'organized' => progress['organized'], 'skipped' => progress['skipped'], 'destination' => destination, 'dry_run' => dry_run }
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
     { 'organized' => 0, 'skipped' => 0, 'destination' => destination }
@@ -53,12 +60,12 @@ class MusicLibrary
 
   # Organize a single audio file. Returns the destination path when the library
   # changed (file linked, moved or deduplicated), nil when nothing was done.
-  def self.organize_file(path, destination_root, folder_name: nil)
+  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true)
     ext = FileUtils.get_extension(path).to_s.downcase
     return nil unless EXTENSIONS_TYPE[:audio].include?(ext)
 
-    destination_root = File.expand_path(destination_root.to_s)
-    path = File.expand_path(path.to_s)
+    destination_root = fs_utf8(File.expand_path(destination_root.to_s))
+    path = fs_utf8(File.expand_path(fs_utf8(path)))
     in_place = path.start_with?(destination_root + '/')
 
     tags = read_tags(path)
@@ -68,31 +75,34 @@ class MusicLibrary
     tags = merge_tags(tags, tags_from_library_path(path, destination_root)) if in_place
     tags = complete_tags(merge_tags(tags, parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path)
     relative = build_relative_path(tags, ext, File.basename(path, ".#{ext}"))
-    dest = File.join(destination_root, relative)
+    dest = fs_utf8(File.join(destination_root, relative))
     return nil if path == dest # already organized
 
-    # Deduplicate by quality: any existing copy of the SAME track — matched on
-    # tags (artist, album, album year and title), not on file name — is kept
-    # unless the incoming file is of higher quality, in which case it replaces
-    # the older version(s). Whether a replaced file can actually be removed from
-    # disk is the filesystem's concern, not this program's.
-    siblings = same_track_siblings(File.dirname(dest), tags) - [path]
-    unless siblings.empty?
-      incoming_score = quality_score(path)
-      best_existing = siblings.max_by { |file| quality_score(file) }
-      if incoming_score > quality_score(best_existing)
-        siblings.each { |file| safe_remove(file, destination_root) }
-        app.speaker.speak_up("music organize: replacing lower-quality version of '#{File.basename(dest)}'") if Env.debug?
-      else
-        app.speaker.speak_up("music organize: keeping existing higher/equal-quality '#{File.basename(best_existing)}', skipping") if Env.debug?
-        if in_place
-          # The source is a redundant lower-quality copy inside the library.
-          safe_remove(path, destination_root)
-          prune_empty_dirs(File.dirname(path), destination_root)
-          return best_existing
-        end
-        return nil
+    # DEDUP SAFETY: only ever remove a file that is byte-for-byte identical to the
+    # incoming one (a true duplicate). We never delete based on tag/title matches
+    # — that logic once wiped unrelated albums. And if the sibling scan itself
+    # failed (e.g. an encoding error), we abandon dedup entirely and never delete.
+    siblings = same_track_siblings(File.dirname(dest), tags)
+    return nil if siblings.nil? && in_place # scan failed on an in-place file: do nothing, never delete
+    siblings = Array(siblings) - [path]
+    exact_dups = siblings.select { |file| same_content?(path, file) }
+
+    unless exact_dups.empty?
+      if in_place
+        # This copy inside the library is identical to another already-filed one.
+        removed = remove_or_log(path, destination_root, dry_run: dry_run, reason: "identical to #{File.basename(exact_dups.first)}")
+        prune_empty_dirs(File.dirname(path), destination_root) if removed && removed != :dry_run
+        return exact_dups.first
       end
+      # Incoming (from outside) is already present identically — nothing to add.
+      app.speaker.speak_up("music organize: '#{File.basename(path)}' already present identically, skipping") if Env.debug?
+      return nil
+    end
+
+    # Never clobber a different file that already sits at the destination path.
+    if File.exist?(dest) && !same_content?(path, dest)
+      app.speaker.speak_up("music organize: '#{relative}' already exists with different content, leaving both") if Env.debug?
+      return nil
     end
 
     FileUtils.mkdir_p(File.dirname(dest))
@@ -238,10 +248,17 @@ class MusicLibrary
   # matched on tags — artist, album, album year and title — rather than on the
   # file name, so a higher-quality re-download replaces an existing copy even
   # when the two follow different naming conventions.
+  # Returns the matching sibling paths, or nil when the scan could not be
+  # completed (e.g. an encoding error) so the caller can fail closed and never
+  # delete on uncertainty. Filesystem entries are retagged to UTF-8 because a
+  # daemon started without a UTF-8 locale hands them back as ASCII-8BIT, and
+  # joining those with a UTF-8 path raised "incompatible character encodings".
   def self.same_track_siblings(dir, tags)
+    dir = fs_utf8(dir)
     return [] unless File.directory?(dir)
 
     Dir.children(dir).filter_map do |entry|
+      entry = fs_utf8(entry)
       full = File.join(dir, entry)
       next unless File.file?(full)
 
@@ -250,7 +267,12 @@ class MusicLibrary
       next unless same_track?(tags, read_tags(full))
 
       full
+    rescue StandardError
+      next # a single bad entry must not abort the scan
     end
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    nil
   end
 
   # Two tag sets describe the same track when their artist, album and title
@@ -279,14 +301,94 @@ class MusicLibrary
     value.to_s.downcase.gsub(/[^[:alnum:]]+/, ' ').strip.gsub(/\s+/, ' ')
   end
 
-  # Remove a file only when it lives inside the library root, to avoid deleting
-  # anything outside the organized destination.
-  def self.safe_remove(path, destination_root)
-    return unless File.expand_path(path).start_with?(File.expand_path(destination_root) + '/')
+  # Retag a filesystem string as UTF-8 (its bytes already are), scrubbing any
+  # genuinely invalid byte. Frozen/short-circuits handled.
+  def self.fs_utf8(str)
+    s = str.to_s
+    s = s.dup.force_encoding('UTF-8')
+    s.valid_encoding? ? s : s.scrub
+  end
 
-    File.delete(path) if File.exist?(path)
-  rescue
+  # True only when two files are byte-for-byte identical (same size + SHA-256).
+  # This is the ONLY basis on which organize deletes anything.
+  def self.same_content?(a, b)
+    return false unless a && b && File.file?(a) && File.file?(b)
+    return false unless File.size(a) == File.size(b)
+
+    Digest::SHA256.file(a).digest == Digest::SHA256.file(b).digest
+  rescue StandardError
+    false
+  end
+
+  # Root of the reversible trash used instead of a permanent delete. Configurable
+  # via music.organize_trash; defaults to a sibling of the library so it is not
+  # itself re-scanned by organize.
+  def self.trash_root(destination_root)
+    configured = (app.config['music'] && app.config['music']['organize_trash']).to_s.strip rescue ''
+    return File.expand_path(configured) unless configured.empty?
+
+    File.join(File.dirname(File.expand_path(destination_root.to_s)), '.trash-organize')
+  end
+
+  # Reversible removal: move the file into a dated trash folder (never a hard
+  # delete), returning the trashed path. Only files inside the library are
+  # touched. A failed move leaves the original in place.
+  def self.move_to_trash(path, destination_root)
+    return nil unless inside_library?(path, destination_root)
+    return nil unless File.exist?(path)
+
+    root = File.expand_path(destination_root.to_s)
+    rel = File.expand_path(path).sub(root + '/', '')
+    rel = File.basename(path) if rel == File.expand_path(path)
+    dest = unique_path(File.join(trash_root(destination_root), Time.now.strftime('%Y%m%d'), rel))
+    FileUtils.mkdir_p(File.dirname(dest))
+    FileUtils.mv(path, dest)
+    dest
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
     nil
+  end
+
+  # Perform (or, in dry-run, just log) the reversible removal of a library file.
+  # Returns :dry_run when only logged, the trashed path when moved, nil otherwise.
+  def self.remove_or_log(path, destination_root, dry_run:, reason: '')
+    return nil unless inside_library?(path, destination_root)
+
+    if dry_run
+      app.speaker.speak_up("music organize [DRY-RUN]: would trash '#{path}'#{" (#{reason})" unless reason.to_s.empty?}", 0) if app.respond_to?(:speaker)
+      return :dry_run
+    end
+    trashed = move_to_trash(path, destination_root)
+    app.speaker.speak_up("music organize: trashed '#{path}' -> '#{trashed}'#{" (#{reason})" unless reason.to_s.empty?}", 0) if trashed && app.respond_to?(:speaker)
+    trashed
+  end
+
+  def self.inside_library?(path, destination_root)
+    File.expand_path(path.to_s).start_with?(File.expand_path(destination_root.to_s) + '/')
+  rescue StandardError
+    false
+  end
+
+  # A non-colliding path: append " (2)", " (3)"… before the extension if needed.
+  def self.unique_path(path)
+    return path unless File.exist?(path)
+
+    dir = File.dirname(path)
+    ext = File.extname(path)
+    base = File.basename(path, ext)
+    (2..1000).each do |i|
+      candidate = File.join(dir, "#{base} (#{i})#{ext}")
+      return candidate unless File.exist?(candidate)
+    end
+    path
+  end
+
+  def self.flag_true?(value)
+    return false if value.nil?
+    return value if [true, false].include?(value)
+
+    normalized = value.to_s.strip.downcase
+    !normalized.empty? && !%w[0 false no off].include?(normalized)
   end
 
   # Find.find rather than Dir.glob: torrent folder names routinely contain glob
@@ -296,6 +398,7 @@ class MusicLibrary
 
     files = []
     Find.find(source) do |file|
+      file = fs_utf8(file)
       files << file if File.file?(file) && EXTENSIONS_TYPE[:audio].include?(FileUtils.get_extension(file).to_s.downcase)
     end
     files.sort
