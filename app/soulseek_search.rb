@@ -55,7 +55,11 @@ class SoulseekSearch
     # Returns a report hash: { 'attempted', 'downloaded', 'failed',
     # 'downloaded_entries', 'failed_entries', 'destination' }, where the *_entries
     # are the original queries so the caller can reconcile its own report.
-    def fetch(entries:, quality: DEFAULT_PREF_FORMAT)
+    # album_job:true fetches whole albums instead of individual tracks: sockseek
+    # runs in --album mode with --strict-album-quality (the WHOLE album must meet
+    # the preferred format), and the input CSV carries Artist,Album only. Used by
+    # the caller for releases with several liked tracks or for a quality upgrade.
+    def fetch(entries:, quality: DEFAULT_PREF_FORMAT, album_job: false)
       list = normalize_entries(entries)
       return empty_report(list.size) unless available?
       return empty_report(0) if list.empty?
@@ -63,11 +67,11 @@ class SoulseekSearch
       Dir.mktmpdir('sockseek') do |dir|
         csv_path = File.join(dir, 'input.csv')
         index_path = File.join(dir, 'index.sldl')
-        write_input_csv(csv_path, list)
+        write_input_csv(csv_path, list, album_job)
 
-        cmd = build_command(csv_path: csv_path, index_path: index_path, quality: quality)
+        cmd = build_command(csv_path: csv_path, index_path: index_path, quality: quality, album_job: album_job)
         role = (MusicSearch.soulseek_primary? ? 'primary' : 'fallback') rescue 'primary'
-        speak "Soulseek (#{role}): handing #{list.size} release(s) to sockseek"
+        speak "Soulseek (#{role}): handing #{list.size} #{album_job ? 'album(s)' : 'release(s)'} to sockseek"
         _out, err, status = Open3.capture3(*cmd)
         unless status.success?
           last = err.to_s.lines.last.to_s.strip
@@ -134,8 +138,8 @@ class SoulseekSearch
     # --no-skip-existing), so no flag is needed. No --number (that truncates an
     # album to n tracks) and never --interactive (fully automatic). The CSV
     # carries an Album column, so sockseek searches albums without --song.
-    def build_command(csv_path:, index_path:, quality:)
-      [
+    def build_command(csv_path:, index_path:, quality:, album_job: false)
+      cmd = [
         binary_path,
         '--input-type', 'csv',
         '--input', csv_path,
@@ -145,6 +149,10 @@ class SoulseekSearch
         '--no-progress',
         '--index-path', index_path
       ]
+      # --album: fetch the whole album; --strict-album-quality: require every track
+      # in the album folder to satisfy the preferred format.
+      cmd.concat(['--album', '--strict-album-quality']) if album_job
+      cmd
     end
 
     def normalize_entries(entries)
@@ -171,9 +179,12 @@ class SoulseekSearch
     # CSV the way sockseek expects it for --input-type csv (mapped to
     # sartist/stitle/salbum). Ruby's CSV handles quoting/escaping of commas and
     # accents in artist/album names.
-    def write_input_csv(path, list)
-      CSV.open(path, 'w', write_headers: true, headers: %w[Artist Title Album]) do |csv|
-        list.each { |e| csv << [e[:artist], e[:title], e[:album]] }
+    def write_input_csv(path, list, album_job = false)
+      headers = album_job ? %w[Artist Album] : %w[Artist Title Album]
+      CSV.open(path, 'w', write_headers: true, headers: headers) do |csv|
+        list.each do |e|
+          csv << (album_job ? [e[:artist], e[:album]] : [e[:artist], e[:title], e[:album]])
+        end
       end
     end
 
