@@ -3,6 +3,7 @@
 require_relative '../test_helper'
 require_relative '../../lib/music_quality'
 require_relative '../../app/music_search'
+require_relative '../../app/music_library'
 require_relative '../../app/soulseek_search'
 
 # Focused tests for the CSV import seeder-threshold hardening and the
@@ -159,6 +160,37 @@ class MusicSearchTest < Minitest::Test
       refute_includes order, :soulseek, 'a tracker hit leaves no candidate for the soulseek fallback'
       assert_equal 1, report['total_queued']
     end
+  end
+
+  # --then_organize runs organize once after the import; off by default.
+  def test_then_organize_flag_runs_organize_after_import
+    app = build_app({ 'soulseek' => { 'enabled' => true, 'primary' => true, 'tracker_fallback' => false } })
+    soulseek = { available?: -> { true }, fetch: ->(entries:, **_r) { { 'downloaded_entries' => ['A One'] } } }
+
+    with_flag = []
+    with_class_singletons(
+      MusicSearch => { app: -> { app } },
+      SoulseekSearch => soulseek,
+      MusicLibrary => { organize: ->(*_a, **_k) { with_flag << :organize; { 'organized' => 1 } } }
+    ) do
+      MusicSearch.import_csv(csv_content: +"query\nA One\n", detailed: true, then_organize: '1')
+    end
+    assert_equal [:organize], with_flag, 'organize runs once when --then_organize is set'
+
+    without_flag = []
+    with_class_singletons(
+      MusicSearch => { app: -> { app } },
+      SoulseekSearch => soulseek,
+      MusicLibrary => { organize: ->(*_a, **_k) { without_flag << :organize; {} } }
+    ) do
+      MusicSearch.import_csv(csv_content: +"query\nA One\n", detailed: true)
+    end
+    assert_empty without_flag, 'organize does not run by default'
+  end
+
+  def test_flag_true_recognizes_common_values
+    %w[1 true yes on TRUE].each { |v| assert MusicSearch.flag_true?(v), v }
+    [nil, false, '', '0', 'false', 'no', 'off'].each { |v| refute MusicSearch.flag_true?(v), v.inspect }
   end
 
   private

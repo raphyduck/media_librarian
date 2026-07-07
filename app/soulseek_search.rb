@@ -66,7 +66,8 @@ class SoulseekSearch
         write_input_csv(csv_path, list)
 
         cmd = build_command(csv_path: csv_path, index_path: index_path, quality: quality)
-        speak "Soulseek fallback: handing #{list.size} release(s) to sockseek"
+        role = (MusicSearch.soulseek_primary? ? 'primary' : 'fallback') rescue 'primary'
+        speak "Soulseek (#{role}): handing #{list.size} release(s) to sockseek"
         _out, err, status = Open3.capture3(*cmd)
         unless status.success?
           last = err.to_s.lines.last.to_s.strip
