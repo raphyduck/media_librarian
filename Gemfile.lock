@@ -83,7 +83,7 @@ GEM
       mutex_m
       securerandom (>= 0.3)
       tzinfo (~> 2.0)
-    addressable (2.8.8)
+    addressable (2.9.0)
       public_suffix (>= 2.0.2, < 8.0)
     base64 (0.3.0)
     bcrypt (3.1.20)
@@ -175,7 +175,7 @@ GEM
     nkf (0.2.0)
     nokogiri (1.18.10-x86_64-linux-gnu)
       racc (~> 1.4)
-    public_suffix (7.0.0)
+    public_suffix (7.0.5)
     racc (1.8.1)
     rake (13.3.1)
     rencoder (0.2.0)
