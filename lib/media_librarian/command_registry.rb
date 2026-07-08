@@ -39,6 +39,7 @@ module MediaLibrarian
         'music import_csv' => 'Search and queue one music query per CSV line',
         'music organize' => 'Organize downloaded music into Artist/Album (dry-run by default; pass --apply=1 to move exact duplicates to the trash folder)',
         'music upgrade' => 'Upgrade lossy tracks to FLAC via Soulseek from a CSV (dry-run by default; --apply=1 to reversibly replace once a lossless copy is confirmed)',
+        'music consolidate_compilations' => 'Re-file scattered various-artists compilations under a single Various Artists/<Album>/ folder (dry-run by default; --apply=1 to move; --min_artists=N tunes detection)',
         'tracker' => 'Tracker authentication',
         'tracker login' => 'Authenticate with a tracker (supports browser login)',
         'calendar' => 'Release calendar operations',
@@ -86,7 +87,8 @@ module MediaLibrarian
         music: {
           import_csv: ['MusicSearch', 'import_csv'],
           organize: ['MusicLibrary', 'organize'],
-          upgrade: ['MusicSearch', 'upgrade']
+          upgrade: ['MusicSearch', 'upgrade'],
+          consolidate_compilations: ['MusicLibrary', 'consolidate_compilations']
         },
         tracker: {
           login: ['TrackerTools', 'login']

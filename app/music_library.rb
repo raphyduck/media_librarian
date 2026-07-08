@@ -472,6 +472,111 @@ class MusicLibrary
     nil
   end
 
+  # One-shot remediation: consolidate various-artists compilations that an older
+  # organize run scattered as many single-track "albums" (one folder per track
+  # artist, all sharing one album). Unlike organize's per-folder detection, this
+  # groups library-wide: tracks sharing one base album but spread across several
+  # artist folders are re-filed under a single "Various Artists/<Album>/" folder
+  # and stamped ALBUMARTIST/COMPILATION (the move/tagging reuses organize_file,
+  # so all its dedup/never-clobber safety applies). Dry-run by default: it only
+  # reports the plan and changes nothing unless --apply=1 is passed.
+  def self.consolidate_compilations(destination: nil, min_artists: nil, apply: false)
+    root = fs_utf8(File.expand_path((destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)))
+    dry_run = !flag_true?(apply)
+    return { 'compilations' => 0, 'files' => 0, 'destination' => root, 'dry_run' => dry_run } unless File.directory?(root)
+
+    threshold = compilation_min_artists(min_artists)
+    groups = scattered_compilation_groups(audio_files(root), threshold)
+    total = groups.sum { |g| g['files'].size }
+    app.speaker.speak_up("music consolidate_compilations: #{groups.size} scattered compilation(s), #{total} track(s), min #{threshold} artists#{' [DRY-RUN: no changes, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
+
+    va = compilation_artist
+    relocated = 0
+    groups.each do |group|
+      if dry_run
+        app.speaker.speak_up("music consolidate_compilations [DRY-RUN]: '#{group['album']}' — #{group['files'].size} track(s) from #{group['dirs']} folder(s), #{group['artists']} artist(s) -> '#{File.join(va, group['album'])}'", 0) if app.respond_to?(:speaker)
+        relocated += group['files'].size
+      else
+        group['files'].each do |file|
+          dest = organize_file(file, root, folder_name: File.basename(File.dirname(file)), dry_run: false, compilation: true)
+          relocated += 1 if dest
+        end
+      end
+    end
+    app.speaker.speak_up("music consolidate_compilations: #{groups.size} compilation(s), #{relocated} track(s) #{dry_run ? 'to relocate' : 'relocated'} (destination #{root})#{' [DRY-RUN]' if dry_run}", 0) if app.respond_to?(:speaker)
+    { 'compilations' => groups.size, 'files' => relocated, 'destination' => root, 'dry_run' => dry_run }
+  rescue => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    { 'compilations' => 0, 'files' => 0, 'destination' => root, 'dry_run' => !flag_true?(apply) }
+  end
+
+  # Library-wide scattered compilations: audio files sharing one base album but
+  # carrying >= min_artists distinct artists across >= 2 directories. The
+  # multi-directory requirement excludes already-consolidated compilations (all
+  # tracks in one folder); the distinct-artist threshold and a generic-title
+  # blocklist guard against unrelated albums that merely share a common title
+  # ("Greatest Hits", "Live"...). Returns [{ 'album', 'files', 'artists', 'dirs' }].
+  def self.scattered_compilation_groups(files, min_artists)
+    index = Hash.new { |h, k| h[k] = [] }
+    Array(files).each do |file|
+      tags = read_tags(file)
+      base = norm_album_base(tags[:album])
+      next if base.strip.empty?
+
+      key = norm_tag(base)
+      next if key.empty? || generic_compilation_title?(key)
+
+      index[key] << { file: file, album: base, artist: norm_tag(tags[:artist]), dir: File.dirname(file) }
+    end
+
+    index.filter_map do |_key, entries|
+      artists = entries.map { |e| e[:artist] }.reject(&:empty?).uniq
+      dirs = entries.map { |e| e[:dir] }.uniq
+      next unless artists.size >= min_artists && dirs.size >= 2
+
+      { 'album' => most_common(entries.map { |e| e[:album] }), 'files' => entries.map { |e| e[:file] }.sort,
+        'artists' => artists.size, 'dirs' => dirs.size }
+    end
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    []
+  end
+
+  def self.most_common(values)
+    values.group_by(&:itself).max_by { |_v, occurrences| occurrences.size }&.first.to_s
+  end
+
+  DEFAULT_COMPILATION_MIN_ARTISTS = 3
+  # Minimum distinct artists for a shared-album group to count as a compilation.
+  # CLI override wins, then music.compilation_min_artists, else the default. A
+  # floor of 2 is enforced so the guard can never be disabled into merging pairs.
+  def self.compilation_min_artists(override = nil)
+    candidate = override.to_s.strip.empty? ? nil : override.to_i
+    candidate ||= (app.config['music'] && app.config['music']['compilation_min_artists']).to_i rescue nil
+    candidate && candidate >= 2 ? candidate : DEFAULT_COMPILATION_MIN_ARTISTS
+  rescue StandardError
+    DEFAULT_COMPILATION_MIN_ARTISTS
+  end
+
+  # Album titles too generic to treat as a compilation when shared by several
+  # artists (each artist legitimately having their own). Extendable via
+  # music.compilation_blocklist. Compared against norm_tag-normalised titles.
+  GENERIC_COMPILATION_TITLES = [
+    'greatest hits', 'best of', 'the best of', 'hits', 'live', 'unplugged',
+    'demos', 'rarities', 'b sides', 'singles', 'anthology', 'collection'
+  ].freeze
+  def self.generic_compilation_title?(normalized_album)
+    compilation_blocklist.include?(normalized_album)
+  end
+
+  def self.compilation_blocklist
+    configured = (app.config['music'] && app.config['music']['compilation_blocklist']) rescue nil
+    extra = Array(configured).map { |v| norm_tag(v) }.reject(&:empty?)
+    (GENERIC_COMPILATION_TITLES + extra).uniq
+  rescue StandardError
+    GENERIC_COMPILATION_TITLES
+  end
+
   # Find.find rather than Dir.glob: torrent folder names routinely contain glob
   # metacharacters ('[FLAC]', '{...}') that would silently match nothing.
   def self.audio_files(source)
