@@ -16,7 +16,7 @@ class MusicBrainzApi
 
   BASE_URL = 'https://musicbrainz.org/ws/2'
   MIN_INTERVAL = 1.1
-  DEFAULT_TIMEOUT = 15
+  DEFAULT_TIMEOUT = 20
   SEARCH_LIMIT = 5
 
   @mutex = Mutex.new
@@ -147,14 +147,25 @@ class MusicBrainzApi
   end
 
   def fetch_remote(path, query)
-    throttle
     url = "#{BASE_URL}#{path}"
-    log_debug("MusicBrainz request: #{url} #{query.inspect}")
-    response = @http_client.get(url, query: query, timeout: @timeout, headers: { 'User-Agent' => @user_agent })
-    status = response.respond_to?(:code) ? response.code.to_i : nil
-    raise StandardError, "MusicBrainz request failed with status #{status || 'unknown'}" unless status && status.between?(200, 299)
+    with_retries do
+      throttle
+      log_debug("MusicBrainz request: #{url} #{query.inspect}")
+      response = @http_client.get(url, query: query, timeout: @timeout, headers: { 'User-Agent' => @user_agent })
+      status = response.respond_to?(:code) ? response.code.to_i : nil
+      if status == 429 || status == 503
+        raise RateLimitedError.new("MusicBrainz #{status}", retry_after: retry_after_seconds(response))
+      end
+      raise StandardError, "MusicBrainz request failed with status #{status || 'unknown'}" unless status && status.between?(200, 299)
 
-    JSON.parse(response.body.to_s)
+      JSON.parse(response.body.to_s)
+    end
+  end
+
+  def retry_after_seconds(response)
+    header = response.respond_to?(:headers) ? response.headers['retry-after'] : nil
+    value = header.to_s[/\d+/]
+    value && value.to_i.clamp(1, 30)
   end
 
   # Enforce the one-request-per-second MusicBrainz rate limit across instances.

@@ -4,7 +4,12 @@
 # nothing (e.g. rate-limited / IP-blocked). The iTunes Search API needs no API
 # key; official guidance is ~20 requests/minute, enforced here with a 3s
 # throttle shared across instances. Interface mirrors MusicBrainzApi#complete.
+require 'json'
+require 'net/http'
+require_relative 'api_client_support'
+
 class ItunesSearchApi
+  include ApiClientSupport
   BASE_URL = 'https://itunes.apple.com/search'
   DEFAULT_TIMEOUT = 10
   SEARCH_LIMIT = 5
@@ -98,14 +103,18 @@ class ItunesSearchApi
   end
 
   def fetch_remote(query)
-    throttle
-    response = @http_client.get(BASE_URL, query: query, timeout: @timeout,
-                                          headers: { 'Accept' => 'application/json' })
-    raise "iTunes HTTP #{response.code}" unless response.code.to_i == 200
+    with_retries do
+      throttle
+      response = @http_client.get(BASE_URL, query: query, timeout: @timeout,
+                                            headers: { 'Accept' => 'application/json' })
+      code = response.code.to_i
+      raise RateLimitedError.new("iTunes #{code}") if code == 429 || code == 403
+      raise "iTunes HTTP #{code}" unless code == 200
 
-    payload = response.parsed_response
-    payload = JSON.parse(payload) if payload.is_a?(String)
-    payload
+      payload = response.parsed_response
+      payload = JSON.parse(payload) if payload.is_a?(String)
+      payload
+    end
   end
 
   def throttle
@@ -122,17 +131,4 @@ class ItunesSearchApi
     match.to_s
   end
 
-  def compact_tags(hash)
-    hash.reject { |_, value| value.to_s.strip.empty? }
-  end
-
-  def present(value)
-    !value.to_s.strip.empty?
-  end
-
-  def report_error(error, message)
-    @speaker&.tell_error(error, message)
-  rescue StandardError
-    nil
-  end
 end
