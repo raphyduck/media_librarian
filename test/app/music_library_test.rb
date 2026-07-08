@@ -370,12 +370,12 @@ class MusicLibraryTest < Minitest::Test
   # --- Scattered-compilation consolidation ----------------------------------
 
   def test_scattered_compilation_groups_flags_multi_artist_shared_album
-    files = %w[
-      /lib/Artist A/Ragga Connection/ragga1.flac
-      /lib/Artist B/Ragga Connection/ragga2.flac
-      /lib/Artist C/Ragga Connection/ragga3.flac
-      /lib/Solo/Their Album/solo1.flac
-      /lib/Solo/Their Album/solo2.flac
+    files = [
+      '/lib/Artist A/Ragga Connection/ragga1.flac',
+      '/lib/Artist B/Ragga Connection/ragga2.flac',
+      '/lib/Artist C/Ragga Connection/ragga3.flac',
+      '/lib/Solo/Their Album/solo1.flac',
+      '/lib/Solo/Their Album/solo2.flac'
     ]
     map = {
       'ragga1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
@@ -394,10 +394,10 @@ class MusicLibraryTest < Minitest::Test
   end
 
   def test_scattered_compilation_groups_merges_edition_variants
-    files = %w[
-      /lib/Artist A/Discovery/a.flac
-      /lib/Artist B/Discovery (Deluxe Edition)/b.flac
-      /lib/Artist C/Discovery/c.flac
+    files = [
+      '/lib/Artist A/Discovery/a.flac',
+      '/lib/Artist B/Discovery (Deluxe Edition)/b.flac',
+      '/lib/Artist C/Discovery/c.flac'
     ]
     map = {
       'a.flac' => { artist: 'Artist A', album: 'Discovery' },
@@ -411,7 +411,7 @@ class MusicLibraryTest < Minitest::Test
   end
 
   def test_scattered_compilation_groups_respects_min_artists_threshold
-    files = %w[/lib/A/Split/x.flac /lib/B/Split/y.flac]
+    files = ['/lib/A/Split/x.flac', '/lib/B/Split/y.flac']
     map = { 'x.flac' => { artist: 'A', album: 'Split' }, 'y.flac' => { artist: 'B', album: 'Split' } }
     assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
                  'two artists do not meet the default threshold of three'
@@ -420,7 +420,7 @@ class MusicLibraryTest < Minitest::Test
   end
 
   def test_scattered_compilation_groups_skips_generic_titles
-    files = %w[/lib/A/Greatest Hits/x.flac /lib/B/Greatest Hits/y.flac /lib/C/Greatest Hits/z.flac]
+    files = ['/lib/A/Greatest Hits/x.flac', '/lib/B/Greatest Hits/y.flac', '/lib/C/Greatest Hits/z.flac']
     map = {
       'x.flac' => { artist: 'A', album: 'Greatest Hits' },
       'y.flac' => { artist: 'B', album: 'Greatest Hits' },
@@ -431,10 +431,10 @@ class MusicLibraryTest < Minitest::Test
   end
 
   def test_scattered_compilation_groups_skips_already_consolidated_single_folder
-    files = %w[
-      /lib/Various Artists/Ragga Connection/1.flac
-      /lib/Various Artists/Ragga Connection/2.flac
-      /lib/Various Artists/Ragga Connection/3.flac
+    files = [
+      '/lib/Various Artists/Ragga Connection/1.flac',
+      '/lib/Various Artists/Ragga Connection/2.flac',
+      '/lib/Various Artists/Ragga Connection/3.flac'
     ]
     map = {
       '1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
