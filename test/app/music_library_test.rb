@@ -485,6 +485,90 @@ class MusicLibraryTest < Minitest::Test
     end
   end
 
+  # --- Section 8: conditional MusicBrainz ------------------------------------
+
+  def test_tags_complete_requires_artist_album_title_and_track
+    assert MusicLibrary.tags_complete?(artist: 'A', album: 'B', title: 'C', track: '1')
+    refute MusicLibrary.tags_complete?(artist: 'A', album: 'B', title: 'C', track: ''), 'track number is required'
+    refute MusicLibrary.tags_complete?(artist: '', album: 'B', title: 'C', track: '1'), 'artist is required'
+    refute MusicLibrary.tags_complete?(artist: 'A', album: '', title: 'C', track: '1'), 'album is required'
+    refute MusicLibrary.tags_complete?(artist: 'A', album: 'B', title: '', track: '1'), 'title is required'
+  end
+
+  def test_complete_tags_auto_skips_musicbrainz_for_fully_tagged_file
+    with_library do
+      tags = { artist: 'A', album: 'B', title: 'C', track: '1', disc: '', year: '' }
+      with_fake_musicbrainz(artist: 'WRONG') do |calls|
+        out = MusicLibrary.complete_tags(tags, nil, mode: 'auto')
+        assert_empty calls, 'a fully-tagged file never hits MusicBrainz in auto mode'
+        assert_equal 'A', out[:artist], 'existing tags are kept as-is'
+      end
+    end
+  end
+
+  def test_complete_tags_auto_queries_musicbrainz_when_incomplete
+    with_library do
+      tags = { artist: 'A', album: 'B', title: '', track: '1', disc: '', year: '' }
+      with_fake_musicbrainz(title: 'Filled') do |calls|
+        out = MusicLibrary.complete_tags(tags, nil, mode: 'auto')
+        assert_equal 1, calls.size, 'MusicBrainz is queried once to fill the gap'
+        assert_equal 'Filled', out[:title], 'the looked-up value fills the missing field'
+      end
+    end
+  end
+
+  def test_complete_tags_never_skips_musicbrainz_even_when_incomplete
+    with_library do
+      tags = { artist: 'A', album: 'B', title: '', track: '1', disc: '', year: '' }
+      with_fake_musicbrainz(title: 'Filled') do |calls|
+        out = MusicLibrary.complete_tags(tags, nil, mode: 'never')
+        assert_empty calls, 'never mode issues no MusicBrainz lookup'
+        assert_equal '', out[:title].to_s, 'the gap is left as-is'
+      end
+    end
+  end
+
+  def test_complete_tags_always_queries_musicbrainz_even_when_complete
+    with_library do
+      tags = { artist: 'A', album: 'B', title: 'C', track: '1', disc: '', year: '' }
+      with_fake_musicbrainz(year: '1999') do |calls|
+        MusicLibrary.complete_tags(tags, nil, mode: 'always')
+        assert_equal 1, calls.size, 'always mode queries MusicBrainz regardless of completeness'
+      end
+    end
+  end
+
+  def test_resolve_musicbrainz_mode_prefers_cli_then_config_then_default
+    with_library do
+      assert_equal 'never', MusicLibrary.resolve_musicbrainz_mode('never'), 'a valid CLI value wins'
+      assert_equal 'always', MusicLibrary.resolve_musicbrainz_mode('ALWAYS'), 'value is case-insensitive'
+      assert_equal 'auto', MusicLibrary.resolve_musicbrainz_mode('bogus'), 'an invalid value falls back'
+      assert_equal 'auto', MusicLibrary.resolve_musicbrainz_mode(nil), 'default is auto when enabled'
+    end
+  end
+
+  def test_organize_file_threads_musicbrainz_mode_through
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO')
+        # deliberately incomplete tags (no track) so auto/always would query MB
+        tags = { artist: 'Artist', album: 'Album', title: 'Song', track: '', disc: '', year: '' }
+        dest = with_fake_musicbrainz(track: '7') do |calls|
+          d = stub_read_tags('track.flac' => tags) do
+            MusicLibrary.organize_file(incoming, root, folder_name: 'Album', dry_run: true, musicbrainz_mode: 'never')
+          end
+          assert_empty calls, 'never mode reaches complete_tags and suppresses the lookup'
+          d
+        end
+        assert dest, 'the file is still organized best-effort without MusicBrainz'
+      ensure
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
   # --- Section 6: supersede_if_better ---------------------------------------
 
   def test_supersede_if_better_trashes_lossy_when_lossless_present
@@ -595,6 +679,26 @@ class MusicLibraryTest < Minitest::Test
       yield
     ensure
       sc.send(:define_method, :music_destination, saved)
+    end
+  end
+
+  # Swap MusicLibrary.musicbrainz for a recorder returning `found`, and disable
+  # AcoustID, so complete_tags exercises only the MusicBrainz branch. Yields the
+  # list of calls made to #complete.
+  def with_fake_musicbrainz(found = {})
+    calls = []
+    fake = Object.new
+    fake.define_singleton_method(:complete) { |**kwargs| calls << kwargs; found }
+    sc = MusicLibrary.singleton_class
+    saved_mb = sc.instance_method(:musicbrainz)
+    saved_ac = sc.instance_method(:acoustid_enabled?)
+    MusicLibrary.define_singleton_method(:musicbrainz) { fake }
+    MusicLibrary.define_singleton_method(:acoustid_enabled?) { false }
+    begin
+      yield calls
+    ensure
+      sc.send(:define_method, :musicbrainz, saved_mb)
+      sc.send(:define_method, :acoustid_enabled?, saved_ac)
     end
   end
 

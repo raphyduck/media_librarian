@@ -26,18 +26,19 @@ class MusicLibrary
   # runs in DRY-RUN mode and just logs which duplicates it *would* trash — files
   # are still filed into place (that is non-destructive). Pass apply:true
   # (CLI: --apply=1) to actually move exact duplicates to the trash folder.
-  def self.organize(source: nil, destination: nil, apply: false)
+  def self.organize(source: nil, destination: nil, apply: false, musicbrainz: nil)
     destination = (destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)
     source = source.to_s.strip.empty? ? destination : source.to_s
     return { 'organized' => 0, 'skipped' => 0, 'destination' => destination } unless File.exist?(source)
 
     dry_run = !flag_true?(apply)
+    mb_mode = resolve_musicbrainz_mode(musicbrainz)
     files = audio_files(source)
     # A folder whose tracks share one album but carry several artists is a
     # compilation: file it under a single "Various Artists" folder and stamp
     # ALBUMARTIST/COMPILATION so Navidrome shows one album, not one per artist.
     compilation_dirs = compilation_dirs(files)
-    app.speaker.speak_up("music organize: #{files.size} file(s) under '#{source}'#{", #{compilation_dirs.size} compilation folder(s)" unless compilation_dirs.empty?}#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
+    app.speaker.speak_up("music organize: #{files.size} file(s) under '#{source}'#{", #{compilation_dirs.size} compilation folder(s)" unless compilation_dirs.empty?} (musicbrainz=#{mb_mode})#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
     progress = { 'processed' => 0, 'organized' => 0, 'skipped' => 0, 'total' => files.size, 'current_file' => nil }
     jid = Thread.current[:jid]
     update_progress = lambda do |force = false|
@@ -51,7 +52,8 @@ class MusicLibrary
       progress['processed'] += 1
       progress['current_file'] = File.basename(file)
       dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
-                                              dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)))
+                                              dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
+                                              musicbrainz_mode: mb_mode)
       progress[dest ? 'organized' : 'skipped'] += 1
       update_progress.call
     end
@@ -65,7 +67,7 @@ class MusicLibrary
 
   # Organize a single audio file. Returns the destination path when the library
   # changed (file linked, moved or deduplicated), nil when nothing was done.
-  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false)
+  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false, musicbrainz_mode: nil)
     ext = FileUtils.get_extension(path).to_s.downcase
     return nil unless EXTENSIONS_TYPE[:audio].include?(ext)
 
@@ -78,7 +80,8 @@ class MusicLibrary
     # is authoritative when tags are missing — without this, a re-organize run
     # with unreadable tags would demote well-placed files to 'Unknown Artist'.
     tags = merge_tags(tags, tags_from_library_path(path, destination_root)) if in_place
-    tags = complete_tags(merge_tags(tags, parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path)
+    tags = complete_tags(merge_tags(tags, parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path,
+                         mode: musicbrainz_mode || resolve_musicbrainz_mode)
     # A compilation track keeps its own :artist tag but is filed under a single
     # "Various Artists" folder (the album-artist), not one folder per track artist.
     folder_artist = compilation ? compilation_artist : nil
@@ -616,17 +619,25 @@ class MusicLibrary
   # because it identifies a track even without any usable tags/name; MusicBrainz
   # text search then fills any remaining gap. Existing tags always take
   # precedence over looked-up values.
-  def self.complete_tags(tags, path = nil)
-    return tags if present(tags[:artist]) && present(tags[:album]) && present(tags[:title])
+  #
+  # `mode` governs the (slow, ~1 req/s, timeout-prone) MusicBrainz call:
+  #   - 'auto' (default): a fully-tagged file is organized straight from its own
+  #     tags with NO network lookup — the fast path for the ~90% already tagged
+  #     by sockseek. MusicBrainz is queried only when tags are still incomplete.
+  #   - 'never': MusicBrainz is never queried (organize best-effort from tags).
+  #   - 'always': MusicBrainz is queried even when tags look complete.
+  # AcoustID keeps its own enable flag (it needs a key) and is unaffected.
+  def self.complete_tags(tags, path = nil, mode: 'auto')
+    return tags if mode != 'always' && tags_complete?(tags)
 
     if path && acoustid_enabled? && !(present(tags[:artist]) && present(tags[:title]))
       client = acoustid
       found = client&.lookup(path)
       tags = merge_tags(tags, symbolize_tags(found)) if found && !found.empty?
-      return tags if present(tags[:artist]) && present(tags[:album]) && present(tags[:title])
+      return tags if mode != 'always' && tags_complete?(tags)
     end
 
-    if musicbrainz_enabled?
+    if mode != 'never'
       client = musicbrainz
       if client
         found = client.complete(artist: tags[:artist], album: tags[:album], title: tags[:title], track: tags[:track])
@@ -636,6 +647,31 @@ class MusicLibrary
     tags
   rescue
     tags
+  end
+
+  # A file is ready to organize straight from its own tags — no metadata lookup —
+  # when artist (album-artist preferred; FileInfo reads album_performer first),
+  # album, title and track number are all present. Disc number is best-effort
+  # (we cannot tell per-file whether the album is multi-disc) and year, while
+  # desirable, is non-blocking.
+  def self.tags_complete?(tags)
+    present(tags[:artist]) && present(tags[:album]) && present(tags[:title]) && present(tags[:track])
+  end
+
+  MUSICBRAINZ_MODES = %w[always auto never].freeze
+  # Resolve the MusicBrainz policy: an explicit CLI value wins, then
+  # music.musicbrainz_mode, else 'auto' when MusicBrainz is enabled (the legacy
+  # music.musicbrainz:false still disables it entirely, mapping to 'never').
+  def self.resolve_musicbrainz_mode(override = nil)
+    candidate = override.to_s.strip.downcase
+    return candidate if MUSICBRAINZ_MODES.include?(candidate)
+
+    configured = (app.config['music'] && app.config['music']['musicbrainz_mode']).to_s.strip.downcase
+    return configured if MUSICBRAINZ_MODES.include?(configured)
+
+    musicbrainz_enabled? ? 'auto' : 'never'
+  rescue StandardError
+    'auto'
   end
 
   def self.symbolize_tags(hash)
