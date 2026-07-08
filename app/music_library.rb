@@ -132,6 +132,31 @@ class MusicLibrary
       prune_empty_dirs(File.dirname(path), destination_root)
     else
       link_or_copy(path, dest)
+      # STAGING CLEANUP: the library copy is authoritative, so remove the
+      # source from the download staging once the copy is verified byte-size
+      # identical. Only for real copies (cross-filesystem: library is on NFS,
+      # staging on root fs, so File.link never shares an inode here) and only
+      # when applying. A hardlink (same inode, links>1) is left alone. If the
+      # copy looks wrong, we keep the source and log — never delete blindly.
+      # NOTE: this assumes no live Soulseek share seeding from staging (sockseek
+      # is a one-shot downloader, not a seeding client). See handoff note about
+      # re-enabling P2P sharing from the library.
+      unless dry_run
+        begin
+          same_inode = File.identical?(path, dest)
+          if !same_inode && File.exist?(dest) && File.size(dest) == File.size(path)
+            File.delete(path)
+            # Remove the now-empty staging album folder (one level only; never
+            # recurse up past it to avoid touching unrelated staging dirs).
+            src_dir = File.dirname(path)
+            Dir.rmdir(src_dir) if File.directory?(src_dir) && Dir.empty?(src_dir)
+          elsif !same_inode
+            app.speaker.speak_up("music organize: kept staging source '#{File.basename(path)}' (copy unverified)")
+          end
+        rescue => e
+          app.speaker.tell_error(e, "staging cleanup skipped for '#{path}'") rescue nil
+        end
+      end
     end
     # Stamp ALBUMARTIST + COMPILATION so Navidrome groups the release as one
     # album. Gated by apply (dry-run only logs) since it rewrites the file.

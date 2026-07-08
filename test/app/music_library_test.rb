@@ -361,7 +361,76 @@ class MusicLibraryTest < Minitest::Test
     end
   end
 
+  # Cross-filesystem case (real deployment: staging on root fs, library on NFS):
+  # link fails -> a real copy is made -> the staging source is removed once the
+  # copy is verified byte-size identical. We force copy mode by stubbing
+  # link_or_copy to a plain copy so the test is filesystem-independent.
+  def test_organize_file_apply_removes_soulseek_source_after_verified_copy
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      sc = MusicLibrary.singleton_class
+      saved = sc.instance_method(:link_or_copy)
+      MusicLibrary.define_singleton_method(:link_or_copy) { |src, dst| IO.copy_stream(src, dst) }
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO-DATA')
+        dest = stub_read_tags('track.flac' => song_tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: false)
+        end
+        assert dest, 'the file is filed into the library'
+        assert File.exist?(dest), 'the library copy exists'
+        assert_equal 'AUDIO-DATA'.bytesize, File.size(dest), 'copy is complete'
+        refute File.exist?(incoming), 'the staging source is removed after a verified copy'
+      ensure
+        sc.send(:define_method, :link_or_copy, saved)
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
+  # Hardlink case (same filesystem): the source shares the inode with the
+  # library, so we must NOT delete it (it would not free space and could break
+  # a same-fs share). Left in place.
+  def test_organize_file_keeps_source_when_hardlinked
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      sc = MusicLibrary.singleton_class
+      saved = sc.instance_method(:link_or_copy)
+      MusicLibrary.define_singleton_method(:link_or_copy) { |src, dst| File.link(src, dst) }
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO-DATA')
+        dest = stub_read_tags('track.flac' => song_tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: false)
+        end
+        assert dest
+        assert File.identical?(incoming, dest), 'same inode (hardlink)'
+        assert File.exist?(incoming), 'a hardlinked source is preserved'
+      ensure
+        sc.send(:define_method, :link_or_copy, saved)
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
+  def test_organize_file_dry_run_keeps_staging_source
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO-DATA')
+        stub_read_tags('track.flac' => song_tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: true)
+        end
+        assert File.exist?(incoming), 'dry-run never deletes the staging source'
+      ensure
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
   def test_organize_file_files_compilation_under_various_artists
+
     with_library do |root, _base|
       # keep the incoming outside the library root (staging) so it is linked in
       staging = Dir.mktmpdir('staging')
