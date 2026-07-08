@@ -200,7 +200,10 @@ class MusicLibrary
     end
 
     base = basename.to_s.gsub(/\[[^\]]*\]/, ' ').gsub(/\s+/, ' ').strip
-    if (match = base.match(/\A(?:(\d+)[-.])?\s*(\d{1,3})[\s._-]+(.+)\z/))
+    # A leading numeric prefix is a track number (optionally disc-track like
+    # "1-03" or a zero-padded position like "0152"), NEVER an artist. We accept
+    # 1-4 digits so "0152 - Lasgo - Something" is track 152, not artist "0152".
+    if (match = base.match(/\A(?:(\d{1,2})[-.])?\s*(\d{1,4})[\s._-]+(.+)\z/))
       tags[:disc] = match[1].to_s
       tags[:track] = match[2].to_s
       title = match[3].to_s.strip
@@ -217,6 +220,10 @@ class MusicLibrary
     else
       tags[:title] = base
     end
+    # A purely-numeric artist/title is never real (a mis-parsed track number);
+    # blank it so tags_complete? stays false and lookups/staging-guard kick in.
+    tags[:artist] = '' if tags[:artist].to_s.strip.match?(/\A\d+\z/)
+    tags[:title] = '' if tags[:title].to_s.strip.match?(/\A\d+\z/)
     tags
   end
 
@@ -675,6 +682,8 @@ class MusicLibrary
   # (we cannot tell per-file whether the album is multi-disc) and year, while
   # desirable, is non-blocking.
   def self.tags_complete?(tags)
+    return false if tags[:artist].to_s.strip.match?(/\A\d+\z/) # numeric = mis-parsed track no.
+    return false if tags[:title].to_s.strip.match?(/\A\d+\z/)
     present(tags[:artist]) && present(tags[:album]) && present(tags[:title]) && present(tags[:track])
   end
 

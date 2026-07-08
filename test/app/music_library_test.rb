@@ -102,7 +102,22 @@ class MusicLibraryTest < Minitest::Test
     assert_equal 'One More Time', tags[:title]
   end
 
+  def test_parse_from_names_zero_padded_prefix_is_track_not_artist
+    # Regression: compilation files like "0152 - Lasgo - Something" once filed
+    # the track number "0152" as the artist (creating bogus numeric folders).
+    tags = MusicLibrary.parse_from_names('0152 - Lasgo - Something (2001)', 'Top 1200 2000s Dance Flac')
+    assert_equal 'Lasgo', tags[:artist], 'the real artist is extracted, not the numeric prefix'
+    assert_equal '0152', tags[:track], 'the 4-digit prefix is the track number'
+    refute_match(/\A\d+\z/, tags[:artist], 'artist is never purely numeric')
+  end
+
+  def test_tags_complete_rejects_numeric_artist
+    numeric = { artist: '0081', album: 'Some Comp', title: '01', track: '81', disc: '', year: '' }
+    refute MusicLibrary.tags_complete?(numeric), 'a numeric artist/title means the file is not ready to file'
+  end
+
   def test_parse_from_names_track_with_dot_separator
+
     tags = MusicLibrary.parse_from_names('05. Aerodynamic', 'Daft Punk - Discovery')
     assert_equal '05', tags[:track]
     assert_equal 'Aerodynamic', tags[:title]
