@@ -367,6 +367,124 @@ class MusicLibraryTest < Minitest::Test
     end
   end
 
+  # --- Scattered-compilation consolidation ----------------------------------
+
+  def test_scattered_compilation_groups_flags_multi_artist_shared_album
+    files = [
+      '/lib/Artist A/Ragga Connection/ragga1.flac',
+      '/lib/Artist B/Ragga Connection/ragga2.flac',
+      '/lib/Artist C/Ragga Connection/ragga3.flac',
+      '/lib/Solo/Their Album/solo1.flac',
+      '/lib/Solo/Their Album/solo2.flac'
+    ]
+    map = {
+      'ragga1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
+      'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
+      'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection' },
+      'solo1.flac' => { artist: 'Solo', album: 'Their Album' },
+      'solo2.flac' => { artist: 'Solo', album: 'Their Album' }
+    }
+    groups = stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) }
+    assert_equal 1, groups.size, 'only the multi-artist shared album is a scattered compilation'
+    g = groups.first
+    assert_equal 'Ragga Connection', g['album']
+    assert_equal 3, g['artists']
+    assert_equal 3, g['dirs']
+    assert_equal 3, g['files'].size
+  end
+
+  def test_scattered_compilation_groups_merges_edition_variants
+    files = [
+      '/lib/Artist A/Discovery/a.flac',
+      '/lib/Artist B/Discovery (Deluxe Edition)/b.flac',
+      '/lib/Artist C/Discovery/c.flac'
+    ]
+    map = {
+      'a.flac' => { artist: 'Artist A', album: 'Discovery' },
+      'b.flac' => { artist: 'Artist B', album: 'Discovery (Deluxe Edition)' },
+      'c.flac' => { artist: 'Artist C', album: 'Discovery' }
+    }
+    groups = stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) }
+    assert_equal 1, groups.size, 'edition variants collapse onto one base album'
+    assert_equal 'Discovery', groups.first['album'], 'the plain (most common) title represents the group'
+    assert_equal 3, groups.first['files'].size
+  end
+
+  def test_scattered_compilation_groups_respects_min_artists_threshold
+    files = ['/lib/A/Split/x.flac', '/lib/B/Split/y.flac']
+    map = { 'x.flac' => { artist: 'A', album: 'Split' }, 'y.flac' => { artist: 'B', album: 'Split' } }
+    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
+                 'two artists do not meet the default threshold of three'
+    assert_equal 1, (stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 2) }).size,
+                 'lowering the threshold to two flags the split'
+  end
+
+  def test_scattered_compilation_groups_skips_generic_titles
+    files = ['/lib/A/Greatest Hits/x.flac', '/lib/B/Greatest Hits/y.flac', '/lib/C/Greatest Hits/z.flac']
+    map = {
+      'x.flac' => { artist: 'A', album: 'Greatest Hits' },
+      'y.flac' => { artist: 'B', album: 'Greatest Hits' },
+      'z.flac' => { artist: 'C', album: 'Greatest Hits' }
+    }
+    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
+                 'generic shared titles are never treated as compilations'
+  end
+
+  def test_scattered_compilation_groups_skips_already_consolidated_single_folder
+    files = [
+      '/lib/Various Artists/Ragga Connection/1.flac',
+      '/lib/Various Artists/Ragga Connection/2.flac',
+      '/lib/Various Artists/Ragga Connection/3.flac'
+    ]
+    map = {
+      '1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
+      '2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
+      '3.flac' => { artist: 'Artist C', album: 'Ragga Connection' }
+    }
+    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
+                 'a compilation already in one folder needs no consolidation'
+  end
+
+  def test_consolidate_compilations_dry_run_changes_nothing
+    with_library do |root, _base|
+      f1 = write_file(root, File.join('Artist A', 'Ragga Connection', 'ragga1.flac'), 'A')
+      f2 = write_file(root, File.join('Artist B', 'Ragga Connection', 'ragga2.flac'), 'B')
+      f3 = write_file(root, File.join('Artist C', 'Ragga Connection', 'ragga3.flac'), 'C')
+      map = {
+        'ragga1.flac' => { artist: 'Artist A', album: 'Ragga Connection', title: 'One', track: '1' },
+        'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection', title: 'Two', track: '2' },
+        'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection', title: 'Three', track: '3' }
+      }
+      res = stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: false) }
+      assert_equal true, res['dry_run']
+      assert_equal 1, res['compilations']
+      assert_equal 3, res['files']
+      assert File.exist?(f1) && File.exist?(f2) && File.exist?(f3), 'dry-run relocates nothing'
+      refute File.directory?(File.join(root, 'Various Artists')), 'no destination folder is created in dry-run'
+    end
+  end
+
+  def test_consolidate_compilations_apply_files_under_various_artists
+    with_library do |root, _base|
+      write_file(root, File.join('Artist A', 'Ragga Connection', 'ragga1.flac'), 'A')
+      write_file(root, File.join('Artist B', 'Ragga Connection', 'ragga2.flac'), 'B')
+      write_file(root, File.join('Artist C', 'Ragga Connection', 'ragga3.flac'), 'C')
+      map = {
+        'ragga1.flac' => { artist: 'Artist A', album: 'Ragga Connection', title: 'One', track: '1', disc: '', year: '1998' },
+        'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection', title: 'Two', track: '2', disc: '', year: '1998' },
+        'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection', title: 'Three', track: '3', disc: '', year: '1998' }
+      }
+      res = stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: true) }
+      assert_equal false, res['dry_run']
+      assert_equal 1, res['compilations']
+      assert_equal 3, res['files']
+      va = File.join(root, 'Various Artists', 'Ragga Connection')
+      assert_equal 3, Dir.glob(File.join(va, '*.flac')).size, 'all three tracks land in one Various Artists/<Album>/ folder'
+      refute File.directory?(File.join(root, 'Artist A', 'Ragga Connection')), 'emptied source folders are pruned'
+      refute File.directory?(File.join(root, 'Artist B', 'Ragga Connection'))
+    end
+  end
+
   # --- Section 6: supersede_if_better ---------------------------------------
 
   def test_supersede_if_better_trashes_lossy_when_lossless_present

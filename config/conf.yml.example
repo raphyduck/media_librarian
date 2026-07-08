@@ -39,6 +39,8 @@ music:
   min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
   organize_trash: '' # Optional: folder where `music organize --apply` moves exact duplicates (reversible). Defaults to a `.trash-organize` sibling of the library. Organize is dry-run unless --apply=1 and only ever removes byte-identical duplicates.
   compilation_artist: Various Artists # Album-artist written on various-artists compilations (same album, multiple track artists), which are filed under a single <compilation_artist>/<Album>/ folder. Requires metaflac (FLAC) / mid3v2 (MP3) to write ALBUMARTIST+COMPILATION; --apply only.
+  compilation_min_artists: 3 # `music consolidate_compilations`: minimum distinct artists sharing one album (across >=2 folders) for it to be treated as a scattered compilation. Floor of 2; higher is safer against coincidental shared titles. Overridable per-run with --min_artists=N.
+  compilation_blocklist: [] # `music consolidate_compilations`: extra album titles never treated as compilations even when shared by several artists (each artist may legitimately own one). Generic titles like "Greatest Hits"/"Live" are always excluded.
   sources: # Optional: restrict music search/import to these tracker names (from trackers/*.yml). Leave unset/empty to use every configured tracker.
     - some_tracker_that_indexes_music
   soulseek: # Optional Soulseek (sockseek) integration: music is fetched over Soulseek into music.staging, then filed like any other download. Inactive unless the binary and config file below both exist.
