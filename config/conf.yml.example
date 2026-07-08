@@ -32,6 +32,7 @@ music:
   destination: ~/Music # Final music library; releases are filed here after handle_completed_download processing (defaults to ~/Music)
   staging: ~/completed/Music # Deluge drops completed music torrents here first, so the Execute plugin can trigger handle_completed_download (defaults to music.destination when unset)
   musicbrainz: true # Fill missing tags (artist/album/title) from MusicBrainz when a file's metadata is incomplete
+  musicbrainz_mode: auto # organize lookup policy: auto (query MusicBrainz only when a file's own tags are incomplete — the fast default), never (never query, organize from tags as-is), always (query even when tags look complete). Override per-run with --musicbrainz=auto|never|always. `musicbrainz: false` above forces never.
   musicbrainz_contact: '' # Optional email/URL added to the MusicBrainz User-Agent (recommended by MusicBrainz)
   acoustid_key: '' # AcoustID application API key; when set, unidentified tracks are matched by acoustic fingerprint (requires the fpcalc/chromaprint binary)
   acoustid: true # Enable AcoustID fingerprint lookups (only used when acoustid_key is set)
