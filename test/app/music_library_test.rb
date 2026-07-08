@@ -562,7 +562,11 @@ class MusicLibraryTest < Minitest::Test
           assert_empty calls, 'never mode reaches complete_tags and suppresses the lookup'
           d
         end
-        assert dest, 'the file is still organized best-effort without MusicBrainz'
+        # STAGING GUARD: with lookups suppressed the tags stay incomplete, so
+        # the file must NOT be filed (no best-effort 'Unknown Artist' entries)
+        # — it remains in staging for a later retry.
+        assert_nil dest, 'an incomplete file never leaves staging'
+        assert File.exist?(incoming), 'the incomplete file stays in the staging area'
       ensure
         FileUtils.remove_entry(staging) if File.directory?(staging)
       end

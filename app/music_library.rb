@@ -82,6 +82,16 @@ class MusicLibrary
     tags = merge_tags(tags, tags_from_library_path(path, destination_root)) if in_place
     tags = complete_tags(merge_tags(tags, parse_from_names(File.basename(path, ".#{ext}"), folder_name)), path,
                          mode: musicbrainz_mode || resolve_musicbrainz_mode)
+    # STAGING GUARD: a file whose tags are still incomplete after every lookup
+    # (MusicBrainz, then iTunes) must NEVER leave the staging area — filing it
+    # would pollute the library with 'Unknown Artist' entries. It stays put for
+    # a later retry; only fully-tagged files may enter the library. In-place
+    # files are exempt (their path already encodes artist/album authority).
+    unless in_place || tags_complete?(tags)
+      app.speaker.speak_up("music organize: '#{File.basename(path)}' tags incomplete after lookups, left in staging")
+      return nil
+    end
+
     # A compilation track keeps its own :artist tag but is filed under a single
     # "Various Artists" folder (the album-artist), not one folder per track artist.
     folder_artist = compilation ? compilation_artist : nil
@@ -643,6 +653,16 @@ class MusicLibrary
         found = client.complete(artist: tags[:artist], album: tags[:album], title: tags[:title], track: tags[:track])
         tags = merge_tags(tags, symbolize_tags(found)) if found && !found.empty?
       end
+      # Secondary provider: when MusicBrainz is unavailable (rate-limited,
+      # IP-blocked) or returned nothing useful, try the keyless iTunes Search
+      # API before giving up — an incomplete file never leaves staging.
+      unless tags_complete?(tags)
+        fallback = itunes
+        if fallback
+          found = fallback.complete(artist: tags[:artist], album: tags[:album], title: tags[:title], track: tags[:track])
+          tags = merge_tags(tags, symbolize_tags(found)) if found && !found.empty?
+        end
+      end
     end
     tags
   rescue
@@ -716,7 +736,8 @@ class MusicLibrary
     )
     @metadata_clients = [(cfg.respond_to?(:deep_dup) ? cfg.deep_dup : cfg), {
       :musicbrainz => MusicBrainzApi.new(contact: (cfg && cfg['musicbrainz_contact']).to_s, speaker: speaker, cache: cache),
-      :acoustid => AcoustidApi.new(api_key: acoustid_key, speaker: speaker, cache: cache)
+      :acoustid => AcoustidApi.new(api_key: acoustid_key, speaker: speaker, cache: cache),
+      :itunes => ItunesSearchApi.new(speaker: speaker, cache: cache)
     }]
     @metadata_clients[1]
   rescue
@@ -729,6 +750,10 @@ class MusicLibrary
 
   def self.acoustid
     metadata_clients&.dig(:acoustid)
+  end
+
+  def self.itunes
+    metadata_clients&.dig(:itunes)
   end
 
   def self.link_or_copy(source, dest)
