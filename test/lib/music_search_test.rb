@@ -169,7 +169,7 @@ class MusicSearchTest < Minitest::Test
 
     with_flag = []
     with_class_singletons(
-      MusicSearch => { app: -> { app } },
+      MusicSearch => { app: -> { app }, music_staging: -> { '/staging' } },
       SoulseekSearch => soulseek,
       MusicLibrary => { organize: ->(*_a, **_k) { with_flag << :organize; { 'organized' => 1 } } }
     ) do
@@ -179,7 +179,7 @@ class MusicSearchTest < Minitest::Test
 
     without_flag = []
     with_class_singletons(
-      MusicSearch => { app: -> { app } },
+      MusicSearch => { app: -> { app }, music_staging: -> { '/staging' } },
       SoulseekSearch => soulseek,
       MusicLibrary => { organize: ->(*_a, **_k) { without_flag << :organize; {} } }
     ) do
@@ -191,6 +191,91 @@ class MusicSearchTest < Minitest::Test
   def test_flag_true_recognizes_common_values
     %w[1 true yes on TRUE].each { |v| assert MusicSearch.flag_true?(v), v }
     [nil, false, '', '0', 'false', 'no', 'off'].each { |v| refute MusicSearch.flag_true?(v), v.inspect }
+  end
+
+  # --- Album grouping (§7) + edition merge (§5) ---
+
+  def test_plan_album_jobs_groups_three_or_more_and_merges_editions
+    entries = [
+      { artist: 'Daft Punk', album: 'Discovery', title: 't1' },
+      { artist: 'Daft Punk', album: 'Discovery', title: 't2' },
+      { artist: 'Daft Punk', album: 'Discovery (Deluxe Edition)', title: 't3' }, # §5: same base album
+      { artist: 'Solo', album: 'EP', title: 's1' },
+      { artist: 'Solo', album: 'EP', title: 's2' }
+    ]
+    plan = MusicSearch.plan_album_jobs(entries)
+    assert_equal 1, plan['albums'].size
+    assert_equal 'Discovery', plan['albums'].first['album']
+    assert_equal 3, plan['albums'].first['tracks'], 'the deluxe edition track merges into the base album'
+    assert_equal 2, plan['tracks'].size
+  end
+
+  def test_plan_album_jobs_keeps_unrelated_same_name_albums_apart
+    entries = %w[X Y Z].map { |a| { artist: a, album: 'Greatest Hits', title: 't' } }
+    plan = MusicSearch.plan_album_jobs(entries)
+    assert_empty plan['albums'], 'different artists sharing an album name is not one album'
+    assert_equal 3, plan['tracks'].size
+  end
+
+  def test_plan_album_jobs_groups_compilation_by_album_artist
+    entries = %w[A B C].map { |a| { artist: a, album: 'Ragga', album_artist: 'Various Artists', title: a } }
+    plan = MusicSearch.plan_album_jobs(entries)
+    assert_equal 1, plan['albums'].size
+    assert_equal 'Various Artists', plan['albums'].first['artist']
+  end
+
+  # --- Upgrade candidate detection + CSV (§6) ---
+
+  def test_upgrade_candidate_only_lossy_below_threshold
+    assert MusicSearch.upgrade_candidate?({ path: '/x/s.mp3', bitrate: '128' }, 160)
+    assert MusicSearch.upgrade_candidate?({ path: '/x/s.mp3' }, 160), 'unknown bitrate -> candidate'
+    refute MusicSearch.upgrade_candidate?({ path: '/x/s.mp3', bitrate: '320' }, 160)
+    refute MusicSearch.upgrade_candidate?({ path: '/x/s.flac' }, 160), 'FLAC is always lossless'
+    refute MusicSearch.upgrade_candidate?({ format: 'flac' }, 160)
+  end
+
+  def test_read_upgrade_targets_parses_flexible_headers
+    require 'tmpdir'
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, 'to_upgrade.csv')
+      File.write(file, "Artist,Title,Album,Path,Bitrate\nDaft Punk,One More Time,Discovery,/lib/o.mp3,128\n")
+      targets = MusicSearch.read_upgrade_targets(file)
+      assert_equal 1, targets.size
+      assert_equal 'Daft Punk', targets.first[:artist]
+      assert_equal '/lib/o.mp3', targets.first[:path]
+      assert_equal '128', targets.first[:bitrate]
+    end
+  end
+
+  # --- Upgrade wiring (§6) ---
+
+  def test_upgrade_splits_album_and_track_jobs_and_supersedes_reversibly
+    app = build_app({})
+    album_job_flags = []
+    superseded = []
+    candidates = [
+      { artist: 'Daft Punk', album: 'Discovery', title: 't1', path: '/lib/a1.mp3', bitrate: '128' },
+      { artist: 'Daft Punk', album: 'Discovery', title: 't2', path: '/lib/a2.mp3', bitrate: '128' },
+      { artist: 'Daft Punk', album: 'Discovery', title: 't3', path: '/lib/a3.mp3', bitrate: '128' },
+      { artist: 'Solo', album: 'EP', title: 's1', path: '/lib/s1.mp3', bitrate: '128' }
+    ]
+    with_class_singletons(
+      MusicSearch => { app: -> { app }, read_upgrade_targets: ->(*) { candidates } },
+      SoulseekSearch => {
+        available?: -> { true },
+        fetch: ->(entries:, album_job: false, **_r) { album_job_flags << album_job; { 'downloaded' => entries.size } }
+      },
+      MusicLibrary => { supersede_if_better: ->(path, **_k) { superseded << path; :dry_run } }
+    ) do
+      report = MusicSearch.upgrade(csv_path: '/tmp/x.csv')
+
+      assert_equal 1, report['album_jobs'], '3 same-album tracks -> one album job'
+      assert_equal 1, report['track_jobs'], 'the lone track stays per-track'
+      assert_includes album_job_flags, true
+      assert_includes album_job_flags, false
+      assert_equal 4, report['superseded']
+      refute report['applied'], 'dry-run by default'
+    end
   end
 
   private

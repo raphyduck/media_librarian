@@ -113,6 +113,38 @@ class SoulseekSearchTest < Minitest::Test
     end
   end
 
+  def test_fetch_album_job_uses_album_mode_and_artist_album_csv
+    bin = touch('sockseek')
+    conf = touch('sockseek.conf')
+    captured = nil
+    input_csv = nil
+
+    run = lambda do |*args|
+      captured = args
+      input_csv = File.read(args[args.index('--input') + 1])
+      File.write(args[args.index('--index-path') + 1], "artist,album,title,state\n")
+      ['done', '', build_status(0)]
+    end
+
+    with_soulseek_app(binary: bin, config: conf) do
+      Open3.stub(:capture3, run) do
+        MusicSearch.stub(:music_destination, '/library/Music') do
+          MusicSearch.stub(:music_staging, @tmp) do
+            MusicLibrary.stub(:organize, ->(*_a, **_k) { {} }) do
+              SoulseekSearch.fetch(entries: [{ artist: 'Various', album: 'Ragga Connection' }],
+                                   quality: 'flac', album_job: true)
+
+              assert_includes captured, '--album'
+              assert_includes captured, '--strict-album-quality'
+              assert_equal 'Artist,Album', input_csv.lines.first.strip
+              refute_includes input_csv.lines.first, 'Title'
+            end
+          end
+        end
+      end
+    end
+  end
+
   def test_fetch_is_inert_when_unavailable
     with_soulseek_app(binary: File.join(@tmp, 'absent'), config: File.join(@tmp, 'absent.conf')) do
       report = SoulseekSearch.fetch(entries: [{ artist: 'A', album: 'B' }], quality: 'flac')

@@ -2,9 +2,26 @@
 
 require_relative '../test_helper'
 require_relative '../../lib/file_utils'
+# FileUtils.mv delegates to MergerfsIO (NAS-safe moves); load it so the
+# apply/trash path works when this file is run on its own.
+require_relative '../../lib/mergerfs_io'
 
 require 'tmpdir'
+require_relative '../../lib/tag_writer'
 require_relative '../../app/music_library'
+require_relative '../../app/music_search'
+
+# EXTENSIONS_TYPE is defined in init/global.rb, which boots the whole app; when
+# these tests run in isolation (single file) that boot has not happened, so
+# provide the audio set the organize code needs. Guarded so the full-suite
+# definition wins when present.
+EXTENSIONS_TYPE = { audio: %w[flac mp3 m4a aac ogg opus wav alac ape wv aiff aif tak tta] }.freeze unless defined?(EXTENSIONS_TYPE)
+
+# Likewise for IRRELEVANT_EXTENSIONS: FileUtils#mv prunes now-empty parent dirs
+# via file_remove_parents, which consults this constant. Without it a real move
+# still happens but the post-move pruning raises, so move_to_trash swallows the
+# error and returns nil. Guarded so the full-suite definition wins when present.
+IRRELEVANT_EXTENSIONS = %w[srt nfo txt url] unless defined?(IRRELEVANT_EXTENSIONS)
 
 class MusicLibraryTest < Minitest::Test
   def test_audio_files_handles_glob_metacharacters_in_folder_names
@@ -286,11 +303,127 @@ class MusicLibraryTest < Minitest::Test
       write_file(root, 'Artist/Album/01 - Song.flac', 'AUDIO')
       dup = write_file(root, 'Dup/01 - Song.flac', 'AUDIO')
       result = stub_read_tags('01 - Song.flac' => song_tags) do
-        MusicLibrary.organize(source: root)
+        MusicLibrary.organize(source: root, destination: root)
       end
       assert_equal true, result['dry_run'], 'organize is dry-run unless --apply'
       assert File.exist?(dup), 'nothing trashed by default'
       assert_empty trashed(base)
+    end
+  end
+
+  # --- Compilations (section 4) ---
+
+  def test_norm_album_base_strips_edition_suffixes
+    assert_equal 'Discovery', MusicLibrary.norm_album_base('Discovery (Deluxe Edition)')
+    assert_equal 'Abbey Road', MusicLibrary.norm_album_base('Abbey Road - Remastered')
+    assert_equal 'Nevermind', MusicLibrary.norm_album_base("Nevermind: 30th Anniversary Edition")
+    assert_equal 'Discovery', MusicLibrary.norm_album_base('Discovery')
+  end
+
+  def test_build_relative_path_folder_artist_override
+    tags = { artist: 'Track Artist', album: 'Ragga Connection', title: 'Song', track: '2', disc: '' }
+    assert_equal 'Various Artists/Ragga Connection/02 - Song.flac',
+                 MusicLibrary.build_relative_path(tags, 'flac', '', folder_artist: 'Various Artists')
+  end
+
+  def test_compilation_dirs_flags_multi_artist_album_folder_only
+    Dir.mktmpdir do |dir|
+      comp = File.join(dir, 'comp'); FileUtils.mkdir_p(comp)
+      a1 = File.join(comp, 'a1.flac'); File.write(a1, 'x')
+      a2 = File.join(comp, 'a2.flac'); File.write(a2, 'x')
+      solo = File.join(dir, 'solo'); FileUtils.mkdir_p(solo)
+      s1 = File.join(solo, 's1.flac'); File.write(s1, 'x')
+      s2 = File.join(solo, 's2.flac'); File.write(s2, 'x')
+
+      map = {
+        'a1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
+        'a2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
+        's1.flac' => { artist: 'Solo', album: 'Their Album' },
+        's2.flac' => { artist: 'Solo', album: 'Their Album' }
+      }
+      dirs = stub_read_tags(map) { MusicLibrary.compilation_dirs([a1, a2, s1, s2]) }
+      assert_equal [comp], dirs, 'only the multi-artist same-album folder is a compilation'
+    end
+  end
+
+  def test_organize_file_files_compilation_under_various_artists
+    with_library do |root, _base|
+      # keep the incoming outside the library root (staging) so it is linked in
+      staging = Dir.mktmpdir('staging')
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO')
+        tags = { artist: 'Artist A', album: 'Ragga Connection', title: 'Song', track: '1', disc: '', year: '1998' }
+        dest = stub_read_tags('track.flac' => tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Ragga', dry_run: true, compilation: true)
+        end
+        assert dest, 'the compilation track is filed'
+        assert_includes dest, File.join('Various Artists', 'Ragga Connection'),
+                        'filed under a single Various Artists/<Album>/ folder'
+        assert File.exist?(dest)
+      ensure
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
+  # --- Section 6: supersede_if_better ---------------------------------------
+
+  def test_supersede_if_better_trashes_lossy_when_lossless_present
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags, '01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: false)
+        end
+        assert res, 'a trashed path is returned'
+        refute File.exist?(old), 'the superseded lossy file is moved out of the library'
+        assert_equal 1, trashed(base).size, 'the lossy file lands in the reversible trash'
+      end
+    end
+  end
+
+  def test_supersede_if_better_dry_run_keeps_lossy_file
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags, '01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: true)
+        end
+        assert_equal :dry_run, res
+        assert File.exist?(old), 'dry-run never removes the original'
+        assert_empty trashed(base)
+      end
+    end
+  end
+
+  def test_supersede_if_better_noop_without_lossless_sibling
+    with_library do |root, base|
+      old = write_file(root, File.join('Artist', 'Album', '01 - Song.mp3'), 'LOSSY')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.mp3' => song_tags) do
+          MusicLibrary.supersede_if_better(old, dry_run: false)
+        end
+        assert_nil res, 'nothing is done when no lossless copy of the track exists'
+        assert File.exist?(old)
+        assert_empty trashed(base)
+      end
+    end
+  end
+
+  def test_supersede_if_better_never_touches_a_lossless_source
+    with_library do |root, base|
+      flac = write_file(root, File.join('Artist', 'Album', '01 - Song.flac'), 'LOSSLESS')
+      with_music_destination(root) do
+        res = stub_read_tags('01 - Song.flac' => song_tags) do
+          MusicLibrary.supersede_if_better(flac, dry_run: false)
+        end
+        assert_nil res, 'an already-lossless file is never superseded'
+        assert File.exist?(flac)
+        assert_empty trashed(base)
+      end
     end
   end
 
@@ -330,6 +463,20 @@ class MusicLibraryTest < Minitest::Test
       ensure
         sc.send(:define_method, :app, saved)
       end
+    end
+  end
+
+  # supersede_if_better resolves the library root via MusicSearch.music_destination,
+  # which otherwise reaches for DEFAULT_MUSIC_DESTINATION (from init/global.rb, not
+  # loaded here). Pin it to the sandbox root for the duration of the block.
+  def with_music_destination(path)
+    sc = MusicSearch.singleton_class
+    saved = sc.instance_method(:music_destination)
+    MusicSearch.define_singleton_method(:music_destination) { path }
+    begin
+      yield
+    ensure
+      sc.send(:define_method, :music_destination, saved)
     end
   end
 
