@@ -7,6 +7,7 @@ require_relative '../../lib/file_utils'
 require_relative '../../lib/mergerfs_io'
 
 require 'tmpdir'
+require_relative '../../lib/file_info'
 require_relative '../../lib/tag_writer'
 require_relative '../../app/music_library'
 require_relative '../../app/music_search'
@@ -423,6 +424,34 @@ class MusicLibraryTest < Minitest::Test
         FileUtils.remove_entry(staging) if File.directory?(staging)
       end
     end
+  end
+
+  # Scan cache: an unchanged file (same size+mtime) is not re-scanned; a change
+  # to mtime invalidates the cache and triggers a fresh scan.
+  def test_read_tags_scan_cache_skips_unchanged_file
+    Dir.mktmpdir do |dir|
+      # isolate the scan cache in the temp config dir
+      f = File.join(dir, 'song.flac')
+      File.write(f, 'DATA')
+      calls = 0
+      fake = { artist: 'A', album: 'B', title: 'T', track: '1', disc: '', year: '' }
+      ::FileInfo.stub(:new, ->(_p) { obj = Object.new; obj.define_singleton_method(:audio_tags) { calls += 1; fake }; obj }) do
+        # clear any memoized cache handle so it rebuilds against this config dir
+        MusicLibrary.instance_variable_set(:@scan_cache, nil)
+        t1 = MusicLibrary.read_tags(f)
+        t2 = MusicLibrary.read_tags(f) # unchanged -> cache hit
+        assert_equal 'A', t1[:artist]
+        assert_equal t1, t2, 'cache hit returns identical tags'
+        assert_equal 1, calls, 'second read served from cache (no re-scan)'
+        # touch mtime -> invalidates
+        future = Time.now + 120
+        File.utime(future, future, f)
+        MusicLibrary.read_tags(f)
+        assert_equal 2, calls, 'mtime change forces a re-scan'
+      end
+    end
+  ensure
+    MusicLibrary.instance_variable_set(:@scan_cache, nil)
   end
 
   def test_organize_file_keeps_source_when_hardlinked

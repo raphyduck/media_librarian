@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'find'
+require_relative '../lib/json_disk_cache'
 require 'digest'
 
 # Organizes downloaded music files into an "Artist/Album/NN - Title.ext" tree.
@@ -667,9 +668,52 @@ class MusicLibrary
   def self.read_tags(path)
     return {} if Env.pretend?
 
-    FileInfo.new(path).audio_tags
+    # Scan cache: reading tags goes through mediainfo (an external process per
+    # file), which dominates a full-library scan over NFS. Key the cached tags
+    # by path and invalidate on size/mtime change, so an unchanged file is never
+    # re-scanned. First scan is normal; subsequent passes skip mediainfo for
+    # untouched files.
+    cache = scan_cache
+    begin
+      stat = File.stat(path)
+      sig = "#{stat.size}:#{stat.mtime.to_i}"
+    rescue StandardError
+      stat = nil
+      sig = nil
+    end
+
+    if cache && sig
+      cached = cache.get(path)
+      if cached.is_a?(Hash) && cached['sig'] == sig && cached['tags'].is_a?(Hash)
+        return symbolize_tags(cached['tags'])
+      end
+    end
+
+    tags = FileInfo.new(path).audio_tags
+    if cache && sig && tags.is_a?(Hash)
+      cache.set(path, 'sig' => sig, 'tags' => stringify_tags(tags)) rescue nil
+    end
+    tags
   rescue
     {}
+  end
+
+  def self.scan_cache
+    return @scan_cache[1] if defined?(@scan_cache) && @scan_cache && @scan_cache[0] == app.config_dir
+
+    c = JsonDiskCache.new(
+      dir: File.join(app.config_dir, 'cache', 'scan'),
+      ttl_days: 3650, # effectively permanent; correctness comes from size+mtime, not TTL
+      speaker: (app.respond_to?(:speaker) ? app.speaker : nil)
+    )
+    @scan_cache = [app.config_dir, c]
+    c
+  rescue StandardError
+    nil
+  end
+
+  def self.stringify_tags(tags)
+    tags.each_with_object({}) { |(k, v), h| h[k.to_s] = v }
   end
 
   # Fill missing artist/album/title from external metadata providers when tags
