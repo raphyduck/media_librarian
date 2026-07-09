@@ -65,4 +65,52 @@ class MusicBrainzApiTest < Minitest::Test
   def test_complete_returns_empty_when_no_usable_input
     assert_empty @api.complete(artist: '', album: '', title: '', track: '')
   end
+  def test_compilation_release_yes_when_va_release_matches
+    payload = { 'releases' => [
+      { 'title' => 'Ragga Connection',
+        'artist-credit' => [{ 'name' => 'Various Artists',
+                              'artist' => { 'id' => MusicBrainzApi::VARIOUS_ARTISTS_MBID, 'name' => 'Various Artists' } }] }
+    ] }
+    @api.stub(:search, payload) do
+      assert_equal :yes, @api.compilation_release('Ragga Connection')
+    end
+  end
+
+  def test_compilation_release_no_when_single_artist_release
+    payload = { 'releases' => [
+      { 'title' => 'The Best of Boney M.',
+        'artist-credit' => [{ 'name' => 'Boney M.', 'artist' => { 'id' => 'abc', 'name' => 'Boney M.' } }] }
+    ] }
+    @api.stub(:search, payload) do
+      assert_equal :no, @api.compilation_release('The Best of Boney M.')
+    end
+  end
+
+  def test_compilation_release_unknown_when_nothing_found
+    @api.stub(:search, { 'releases' => [] }) do
+      assert_equal :unknown, @api.compilation_release('Totally Unknown Album')
+    end
+  end
+
+  def test_compilation_release_matches_va_by_name_without_mbid
+    payload = { 'releases' => [
+      { 'title' => 'Now Dance', 'artist-credit' => [{ 'name' => 'various artists' }] }
+    ] }
+    @api.stub(:search, payload) do
+      assert_equal :yes, @api.compilation_release('Now Dance')
+    end
+  end
+
+  def test_compilation_release_fuzzy_fallback_on_dirty_title
+    payload = { 'releases' => [
+      { 'title' => 'Ragga Connection',
+        'artist-credit' => [{ 'name' => 'Various Artists',
+                              'artist' => { 'id' => MusicBrainzApi::VARIOUS_ARTISTS_MBID } }] }
+    ] }
+    @api.stub(:search, payload) do
+      # dirty incoming title (extra punctuation) still matches via fuzzy contains
+      assert_equal :yes, @api.compilation_release('Ragga Connection!!!')
+    end
+  end
+
 end

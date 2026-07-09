@@ -94,6 +94,55 @@ class MusicBrainzApi
     end.join.strip
   end
 
+  # Various Artists MBID in MusicBrainz. A release credited to this artist is a
+  # genuine multi-artist compilation.
+  VARIOUS_ARTISTS_MBID = '89ad4ac3-39f7-470e-963a-56509c546377'
+
+  # Does MusicBrainz know a *Various Artists* release with this album title?
+  # Returns:
+  #   :yes       - a VA release matches the title (strict, then fuzzy)
+  #   :no        - releases with this title exist but none is VA (homonymous
+  #                single-artist albums)
+  #   :unknown   - nothing found / lookup failed -> caller should flag for review
+  # Strict first: exact normalised-title match. Fuzzy fallback: title contained
+  # (either way) once punctuation is stripped, to absorb dirty tags.
+  def compilation_release(album)
+    title = album.to_s.strip
+    return :unknown if title.empty?
+
+    payload = search('release', %(release:"#{escape(title)}"))
+    releases = Array(payload && payload['releases']).select { |r| r.is_a?(Hash) }
+    return :unknown if releases.empty?
+
+    want = mb_norm(title)
+    strict = releases.select { |r| mb_norm(r['title']) == want }
+    pool = strict.empty? ? releases.select { |r| mb_fuzzy_match(mb_norm(r['title']), want) } : strict
+    return :unknown if pool.empty?
+
+    va = pool.any? { |r| release_is_various?(r) }
+    va ? :yes : :no
+  rescue StandardError
+    :unknown
+  end
+
+  def release_is_various?(release)
+    Array(release['artist-credit']).any? do |credit|
+      next false unless credit.is_a?(Hash)
+      id = credit.dig('artist', 'id').to_s
+      name = (credit['name'] || credit.dig('artist', 'name')).to_s
+      id == VARIOUS_ARTISTS_MBID || name.strip.casecmp('various artists').zero?
+    end
+  end
+
+  def mb_norm(str)
+    str.to_s.downcase.gsub(/[^\p{Alnum}\s]/u, ' ').gsub(/\s+/, ' ').strip
+  end
+
+  def mb_fuzzy_match(a, b)
+    return false if a.empty? || b.empty?
+    a == b || a.include?(b) || b.include?(a)
+  end
+
   private
 
   def recording_query(artist, title)

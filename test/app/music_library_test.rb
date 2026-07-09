@@ -577,65 +577,77 @@ class MusicLibraryTest < Minitest::Test
 
   # --- Scattered-compilation consolidation ----------------------------------
 
-  def test_scattered_compilation_groups_flags_multi_artist_shared_album
+  # Fake MusicBrainz client: verdict driven by album title so tests are
+  # deterministic and offline.
+  class FakeMB
+    def initialize(map); @map = map; end
+    def compilation_release(album); @map.fetch(album, :unknown); end
+  end
+
+  def with_mb(verdicts)
+    MusicLibrary.stub(:musicbrainz, FakeMB.new(verdicts)) { yield }
+  end
+
+  def test_scattered_compilation_groups_uses_mb_confirmation
     files = [
       '/lib/Artist A/Ragga Connection/ragga1.flac',
       '/lib/Artist B/Ragga Connection/ragga2.flac',
-      '/lib/Artist C/Ragga Connection/ragga3.flac',
       '/lib/Solo/Their Album/solo1.flac',
       '/lib/Solo/Their Album/solo2.flac'
     ]
     map = {
       'ragga1.flac' => { artist: 'Artist A', album: 'Ragga Connection' },
       'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
-      'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection' },
       'solo1.flac' => { artist: 'Solo', album: 'Their Album' },
       'solo2.flac' => { artist: 'Solo', album: 'Their Album' }
     }
-    groups = stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) }
-    assert_equal 1, groups.size, 'only the multi-artist shared album is a scattered compilation'
-    g = groups.first
-    assert_equal 'Ragga Connection', g['album']
-    assert_equal 3, g['artists']
-    assert_equal 3, g['dirs']
-    assert_equal 3, g['files'].size
+    groups = with_mb('Ragga Connection' => :yes) do
+      stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files) }
+    end
+    assert_equal 1, groups.size, 'only the MB-confirmed VA album is consolidated'
+    assert_equal 'Ragga Connection', groups.first['album']
+    assert_equal 2, groups.first['artists']
   end
 
-  def test_scattered_compilation_groups_merges_edition_variants
-    files = [
-      '/lib/Artist A/Discovery/a.flac',
-      '/lib/Artist B/Discovery (Deluxe Edition)/b.flac',
-      '/lib/Artist C/Discovery/c.flac'
-    ]
+  def test_scattered_compilation_groups_skips_when_mb_says_not_va
+    # Two distinct artists share a title, but MB says it is NOT a various-artists
+    # release (homonymous single-artist albums) -> never merged.
+    files = ['/lib/A/Greatest Hits/x.flac', '/lib/B/Greatest Hits/y.flac']
+    map = { 'x.flac' => { artist: 'A', album: 'Greatest Hits' },
+            'y.flac' => { artist: 'B', album: 'Greatest Hits' } }
+    groups = with_mb('Greatest Hits' => :no) do
+      stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files) }
+    end
+    assert_empty groups, 'a shared title MB does not confirm as VA is left alone'
+  end
+
+  def test_scattered_compilation_groups_flags_unknown_for_review
+    files = ['/lib/A/Obscure Split/x.flac', '/lib/B/Obscure Split/y.flac']
+    map = { 'x.flac' => { artist: 'A', album: 'Obscure Split' },
+            'y.flac' => { artist: 'B', album: 'Obscure Split' } }
+    review = []
+    groups = with_mb('Obscure Split' => :unknown) do
+      stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, review) }
+    end
+    assert_empty groups, 'unknown verdict is never auto-merged'
+    assert_equal 1, review.size, 'unknown candidate is collected for manual review'
+    assert_equal 'Obscure Split', review.first['album']
+  end
+
+  def test_scattered_compilation_groups_ignores_single_artist_or_single_dir
+    # single artist across dirs, and single dir: neither is a candidate, so MB is
+    # never even consulted.
+    files = ['/lib/Solo/Alb/a.flac', '/lib/Solo/Alb (Deluxe)/b.flac', '/lib/VA/One/c.flac', '/lib/VA/One/d.flac']
     map = {
-      'a.flac' => { artist: 'Artist A', album: 'Discovery' },
-      'b.flac' => { artist: 'Artist B', album: 'Discovery (Deluxe Edition)' },
-      'c.flac' => { artist: 'Artist C', album: 'Discovery' }
+      'a.flac' => { artist: 'Solo', album: 'Alb' },
+      'b.flac' => { artist: 'Solo', album: 'Alb' },
+      'c.flac' => { artist: 'X', album: 'One' },
+      'd.flac' => { artist: 'Y', album: 'One' } # same dir -> not scattered
     }
-    groups = stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) }
-    assert_equal 1, groups.size, 'edition variants collapse onto one base album'
-    assert_equal 'Discovery', groups.first['album'], 'the plain (most common) title represents the group'
-    assert_equal 3, groups.first['files'].size
-  end
-
-  def test_scattered_compilation_groups_respects_min_artists_threshold
-    files = ['/lib/A/Split/x.flac', '/lib/B/Split/y.flac']
-    map = { 'x.flac' => { artist: 'A', album: 'Split' }, 'y.flac' => { artist: 'B', album: 'Split' } }
-    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
-                 'two artists do not meet the default threshold of three'
-    assert_equal 1, (stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 2) }).size,
-                 'lowering the threshold to two flags the split'
-  end
-
-  def test_scattered_compilation_groups_skips_generic_titles
-    files = ['/lib/A/Greatest Hits/x.flac', '/lib/B/Greatest Hits/y.flac', '/lib/C/Greatest Hits/z.flac']
-    map = {
-      'x.flac' => { artist: 'A', album: 'Greatest Hits' },
-      'y.flac' => { artist: 'B', album: 'Greatest Hits' },
-      'z.flac' => { artist: 'C', album: 'Greatest Hits' }
-    }
-    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
-                 'generic shared titles are never treated as compilations'
+    groups = with_mb({}) do
+      stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files) }
+    end
+    assert_empty groups
   end
 
   def test_scattered_compilation_groups_skips_already_consolidated_single_folder
@@ -649,8 +661,8 @@ class MusicLibraryTest < Minitest::Test
       '2.flac' => { artist: 'Artist B', album: 'Ragga Connection' },
       '3.flac' => { artist: 'Artist C', album: 'Ragga Connection' }
     }
-    assert_empty stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files, 3) },
-                 'a compilation already in one folder needs no consolidation'
+    assert_empty(with_mb('Ragga Connection' => :yes) { stub_read_tags(map) { MusicLibrary.scattered_compilation_groups(files) } },
+                 'a compilation already in one folder needs no consolidation (single dir)')
   end
 
   def test_consolidate_compilations_dry_run_changes_nothing
@@ -663,7 +675,7 @@ class MusicLibraryTest < Minitest::Test
         'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection', title: 'Two', track: '2' },
         'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection', title: 'Three', track: '3' }
       }
-      res = stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: false) }
+      res = with_mb('Ragga Connection' => :yes) { stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: false) } }
       assert_equal true, res['dry_run']
       assert_equal 1, res['compilations']
       assert_equal 3, res['files']
@@ -682,7 +694,7 @@ class MusicLibraryTest < Minitest::Test
         'ragga2.flac' => { artist: 'Artist B', album: 'Ragga Connection', title: 'Two', track: '2', disc: '', year: '1998' },
         'ragga3.flac' => { artist: 'Artist C', album: 'Ragga Connection', title: 'Three', track: '3', disc: '', year: '1998' }
       }
-      res = stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: true) }
+      res = with_mb('Ragga Connection' => :yes) { stub_read_tags(map) { MusicLibrary.consolidate_compilations(destination: root, apply: true) } }
       assert_equal false, res['dry_run']
       assert_equal 1, res['compilations']
       assert_equal 3, res['files']
