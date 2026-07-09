@@ -59,7 +59,15 @@ class JsonDiskCache
 
   def write(key, value)
     path = path_for(key)
-    FileUtils.mkdir_p(File.dirname(path))
+    # Use the un-patched mkdir_p so the cache persists even under --dry-run/pretend:
+    # a cache is a pure performance store, never a library change, so it must warm
+    # up on dry-runs too (subsequent runs then skip the lookup/scan). The pretend
+    # monkey-patch on FileUtils.mkdir_p would otherwise turn this into a no-op.
+    if FileUtils.respond_to?(:mkdir_p_orig)
+      FileUtils.mkdir_p_orig(File.dirname(path))
+    else
+      FileUtils.mkdir_p(File.dirname(path))
+    end
     File.write(path, JSON.generate('key' => key.to_s, 'value' => value))
     value
   rescue StandardError => e

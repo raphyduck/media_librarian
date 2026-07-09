@@ -15,7 +15,7 @@ require 'digest'
 class MusicLibrary
   include MediaLibrarian::AppContainerSupport
 
-  TAG_KEYS = %i[artist album title track disc year].freeze
+  TAG_KEYS = %i[artist albumartist album title track disc year].freeze
   MAX_COMPONENT_LENGTH = 120
   LOSSLESS_EXTENSIONS = %w[flac alac ape wav wv aiff aif tak tta].freeze
 
@@ -117,10 +117,19 @@ class MusicLibrary
     # formats (e.g. m4a with no tagger installed) are a silent no-op.
     if write_tags
       wt = tags.dup
-      wt[:albumartist] = compilation_artist if compilation
+      # ALBUMARTIST is what Navidrome groups an album by, yet it is the most
+      # commonly missing field. Derive it (no network) when the file has none:
+      #   - a compilation track  -> "Various Artists"
+      #   - otherwise            -> the (album) artist, correct for the single-
+      #                             artist albums that dominate the library.
+      # only_missing keeps any existing ALBUMARTIST untouched.
+      unless present(wt[:albumartist])
+        wt[:albumartist] = compilation ? compilation_artist : wt[:artist]
+      end
       TagWriter.write_tags(path, wt, only_missing: true, current: original_tags,
                            dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
     end
+
 
     # A compilation track keeps its own :artist tag but is filed under a single
     # "Various Artists" folder (the album-artist), not one folder per track artist.

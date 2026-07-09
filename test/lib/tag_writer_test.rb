@@ -120,4 +120,20 @@ class TagWriterTest < Minitest::Test
     refute ran, 'dry-run must not shell out to the tagger'
   end
 
+  def test_write_tags_includes_albumartist_when_missing
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      tags    = { artist: 'Radiohead', albumartist: 'Radiohead', album: 'OK Computer', title: 'Airbag', track: '1' }
+      current = { artist: 'Radiohead', albumartist: '', album: 'OK Computer', title: 'Airbag', track: '1' }
+      written = TagWriter.write_tags('/lib/x.flac', tags, only_missing: true, current: current, dry_run: true)
+      assert_includes written, :albumartist, 'fills a blank ALBUMARTIST (Navidrome grouping key)'
+    end
+  end
+
+  def test_flac_content_commands_map_albumartist_to_vorbis_field
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      cmds = TagWriter.content_commands('/lib/x.flac', { albumartist: 'Various Artists' }, %i[albumartist])
+      assert_includes cmds.first, '--set-tag=ALBUMARTIST=Various Artists'
+    end
+  end
+
 end

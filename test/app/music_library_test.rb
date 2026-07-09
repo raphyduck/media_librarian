@@ -495,7 +495,7 @@ class MusicLibraryTest < Minitest::Test
       f = File.join(dir, 'song.flac')
       File.write(f, 'DATA')
       calls = 0
-      fake = { artist: 'A', album: 'B', title: 'T', track: '1', disc: '', year: '' }
+      fake = { artist: 'A', albumartist: '', album: 'B', title: 'T', track: '1', disc: '', year: '' }
       ::FileInfo.stub(:new, ->(_p) { obj = Object.new; obj.define_singleton_method(:audio_tags) { calls += 1; fake }; obj }) do
         # clear any memoized cache handle so it rebuilds against this config dir
         MusicLibrary.instance_variable_set(:@scan_cache, nil)

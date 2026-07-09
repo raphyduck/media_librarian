@@ -14,6 +14,9 @@ class FileInfo
     track = general_track
     {
       :artist => read_tag(track, :album_performer, :performer, :composer, :artist),
+      # albumartist read on its own (the file's ALBUMARTIST / album_performer),
+      # kept distinct from :artist so Navidrome grouping can be completed from it.
+      :albumartist => read_tag(track, :album_performer),
       :album => read_tag(track, :album, :title),
       :title => read_tag(track, :track_name, :title),
       :track => read_tag(track, :track_name_position, :track_position, :position, :track)[/\d+/].to_s,
@@ -21,7 +24,7 @@ class FileInfo
       :year => read_tag(track, :recorded_date, :released_date, :date)[/\d{4}/].to_s
     }
   rescue
-    { :artist => '', :album => '', :title => '', :track => '', :disc => '', :year => '' }
+    { :artist => '', :albumartist => '', :album => '', :title => '', :track => '', :disc => '', :year => '' }
   end
 
   # Comparable score for an audio file based on its main audio stream:
