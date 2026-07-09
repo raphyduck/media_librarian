@@ -124,18 +124,18 @@ class MusicLibrary
       #                             artist albums that dominate the library.
       # only_missing keeps any existing ALBUMARTIST untouched.
       unless present(wt[:albumartist])
-        # Ask MusicBrainz for the album artist first (release-level artist-credit,
-        # cached per album so all tracks of one album share a single lookup),
-        # then fall back to a no-network derivation: Various Artists for a
-        # compilation, otherwise the track/album artist.
-        mb_aa = album_artist_from_mb(wt[:artist], wt[:album]) if resolve_musicbrainz_mode != 'never'
-        wt[:albumartist] = if present(mb_aa)
-                             mb_aa
-                           elsif compilation
-                             compilation_artist
-                           else
-                             wt[:artist]
-                           end
+        # A compilation ALWAYS gets Various Artists (never a single-artist value
+        # from a MusicBrainz score/soundtrack match, which would break Navidrome
+        # grouping). For non-compilations, ask MusicBrainz for the album artist
+        # (release lookup, cached per album), and fall back to the track artist
+        # when MB is unavailable or has no match.
+        wt[:albumartist] =
+          if compilation
+            compilation_artist
+          else
+            mb_aa = (album_artist_from_mb(wt[:artist], wt[:album]) if resolve_musicbrainz_mode != 'never')
+            present(mb_aa) ? mb_aa : wt[:artist]
+          end
       end
       TagWriter.write_tags(path, wt, only_missing: true, current: original_tags,
                            dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
