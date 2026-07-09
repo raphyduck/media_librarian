@@ -154,10 +154,17 @@ class MusicLibrary
       return nil
     end
 
+    # In a dry-run we only computed what WOULD happen; do not create the
+    # destination folder, move, or copy anything.
+    if dry_run
+      app.speaker.speak_up("music organize [DRY-RUN]: would place '#{File.basename(path)}' -> '#{relative}'") if Env.debug?
+      return dest
+    end
+
     FileUtils.mkdir_p(File.dirname(dest))
     if in_place
       FileUtils.mv(path, dest)
-      prune_empty_dirs(File.dirname(path), destination_root)
+      prune_empty_dirs(File.dirname(path), destination_root, dry_run: dry_run)
     else
       link_or_copy(path, dest)
       # STAGING CLEANUP: the library copy is authoritative, so remove the
@@ -665,7 +672,11 @@ class MusicLibrary
 
   # Remove now-empty directories left behind by an in-place move, up to (but
   # never including) the library root.
-  def self.prune_empty_dirs(dir, destination_root)
+  def self.prune_empty_dirs(dir, destination_root, dry_run: false)
+    # A dry-run must never touch the filesystem, not even to remove an already
+    # empty leftover directory. Only prune for real when applying.
+    return if dry_run
+
     root = File.expand_path(destination_root)
     dir = File.expand_path(dir)
     while dir.start_with?(root + '/') && File.directory?(dir) && Dir.empty?(dir)

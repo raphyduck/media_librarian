@@ -270,6 +270,30 @@ class MusicLibraryTest < Minitest::Test
   # library folder must not BOTH be trashed. Organizing each in place should
   # elect one deterministic survivor and keep exactly one copy, whatever the
   # visit order.
+  # Regression guard: a dry-run must not touch the filesystem at all. It must not
+  # create the destination folder, move, copy, or remove/prune anything. Only the
+  # plan is computed (dest returned).
+  def test_organize_file_dry_run_touches_nothing
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      begin
+        incoming = File.join(staging, 'track.flac')
+        File.write(incoming, 'AUDIO')
+        before = Dir.glob(File.join(root, '**', '*')).sort
+        dest = stub_read_tags('track.flac' => song_tags) do
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: true)
+        end
+        assert dest, 'the plan still resolves a destination path'
+        refute File.exist?(dest), 'dry-run does NOT create the library copy'
+        assert File.exist?(incoming), 'dry-run leaves the source untouched'
+        after = Dir.glob(File.join(root, '**', '*')).sort
+        assert_equal before, after, 'dry-run creates/removes nothing in the library'
+      ensure
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
   def test_organize_file_in_place_keeps_one_of_symmetric_duplicates
     with_library do |root, base|
       a = write_file(root, 'Artist/Album/45.mp3', 'SAME-BYTES')
@@ -522,7 +546,7 @@ class MusicLibraryTest < Minitest::Test
         File.write(incoming, 'AUDIO')
         tags = { artist: 'Artist A', album: 'Ragga Connection', title: 'Song', track: '1', disc: '', year: '1998' }
         dest = stub_read_tags('track.flac' => tags) do
-          MusicLibrary.organize_file(incoming, root, folder_name: 'Ragga', dry_run: true, compilation: true)
+          MusicLibrary.organize_file(incoming, root, folder_name: 'Ragga', dry_run: false, compilation: true)
         end
         assert dest, 'the compilation track is filed'
         assert_includes dest, File.join('Various Artists', 'Ragga Connection'),
