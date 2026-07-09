@@ -60,10 +60,16 @@ class MusicBrainzApi
     return {} unless recording.is_a?(Hash)
 
     releases = Array(recording['releases'])
+    first_release = releases.find { |r| r.is_a?(Hash) }
+    rec_artist = artist_credit_name(recording['artist-credit'])
+    # Prefer the release artist-credit for albumartist (captures a compilation);
+    # fall back to the recording artist for a plain single-artist album.
+    rel_ac = first_release && present(first_release['artist-credit']) ? artist_credit_name(first_release['artist-credit']) : ''
     compact_tags(
-      :artist => artist_credit_name(recording['artist-credit']),
+      :artist => rec_artist,
+      :albumartist => present(rel_ac) ? rel_ac : rec_artist,
       :title => recording['title'].to_s,
-      :album => releases.first.is_a?(Hash) ? releases.first['title'].to_s : '',
+      :album => first_release ? first_release['title'].to_s : '',
       :year => year_from(releases.map { |release| release.is_a?(Hash) ? release['date'] : nil })
     )
   end
@@ -72,8 +78,12 @@ class MusicBrainzApi
     release = Array(payload && payload['releases']).first
     return {} unless release.is_a?(Hash)
 
+    # The release-level artist-credit is the album artist (VA for a
+    # compilation); expose it as :albumartist too (Navidrome grouping key).
+    release_artist = artist_credit_name(release['artist-credit'])
     tags = compact_tags(
-      :artist => artist_credit_name(release['artist-credit']),
+      :artist => release_artist,
+      :albumartist => release_artist,
       :album => release['title'].to_s,
       :year => year_from([release['date']])
     )

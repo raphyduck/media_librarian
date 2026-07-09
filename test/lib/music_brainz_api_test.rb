@@ -49,7 +49,41 @@ class MusicBrainzApiTest < Minitest::Test
     refute tags.key?(:title)
   end
 
+  def test_normalize_release_exposes_albumartist
+    payload = {
+      'releases' => [
+        {
+          'title' => 'Now 42',
+          'date' => '1999',
+          'artist-credit' => [{ 'name' => 'Various Artists', 'joinphrase' => '' }]
+        }
+      ]
+    }
+    tags = @api.normalize_release(payload)
+    assert_equal 'Various Artists', tags[:albumartist], 'release artist-credit becomes albumartist'
+    assert_equal 'Various Artists', tags[:artist]
+  end
+
+  def test_normalize_recording_albumartist_prefers_release_credit
+    payload = {
+      'recordings' => [
+        {
+          'title' => 'Song',
+          'artist-credit' => [{ 'name' => 'Some Artist', 'joinphrase' => '' }],
+          'releases' => [
+            { 'title' => 'A Comp', 'date' => '2005',
+              'artist-credit' => [{ 'name' => 'Various Artists', 'joinphrase' => '' }] }
+          ]
+        }
+      ]
+    }
+    tags = @api.normalize_recording(payload)
+    assert_equal 'Various Artists', tags[:albumartist], 'albumartist from release credit'
+    assert_equal 'Some Artist', tags[:artist], 'track artist stays the recording artist'
+  end
+
   def test_artist_credit_name_joins_multiple_artists
+
     credit = [
       { 'name' => 'Artist A', 'joinphrase' => ' & ' },
       { 'name' => 'Artist B', 'joinphrase' => '' }

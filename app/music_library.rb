@@ -124,7 +124,18 @@ class MusicLibrary
       #                             artist albums that dominate the library.
       # only_missing keeps any existing ALBUMARTIST untouched.
       unless present(wt[:albumartist])
-        wt[:albumartist] = compilation ? compilation_artist : wt[:artist]
+        # Ask MusicBrainz for the album artist first (release-level artist-credit,
+        # cached per album so all tracks of one album share a single lookup),
+        # then fall back to a no-network derivation: Various Artists for a
+        # compilation, otherwise the track/album artist.
+        mb_aa = album_artist_from_mb(wt[:artist], wt[:album]) if resolve_musicbrainz_mode != 'never'
+        wt[:albumartist] = if present(mb_aa)
+                             mb_aa
+                           elsif compilation
+                             compilation_artist
+                           else
+                             wt[:artist]
+                           end
       end
       TagWriter.write_tags(path, wt, only_missing: true, current: original_tags,
                            dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
@@ -891,6 +902,19 @@ class MusicLibrary
     @metadata_clients[1]
   rescue
     nil
+  end
+
+  # Album artist per MusicBrainz for a given (artist, album): a release lookup
+  # whose result is cached by query, so every track of one album triggers at
+  # most one network call. Returns '' when MB is unavailable or has no match.
+  def self.album_artist_from_mb(artist, album)
+    return '' unless present(album)
+    client = musicbrainz
+    return '' unless client
+    found = client.complete(artist: artist.to_s, album: album.to_s, title: '', track: '')
+    found.is_a?(Hash) ? found[:albumartist].to_s : ''
+  rescue StandardError
+    ''
   end
 
   def self.musicbrainz
