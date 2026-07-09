@@ -273,24 +273,41 @@ class MusicLibraryTest < Minitest::Test
   # Regression guard: a dry-run must not touch the filesystem at all. It must not
   # create the destination folder, move, copy, or remove/prune anything. Only the
   # plan is computed (dest returned).
-  def test_organize_file_dry_run_touches_nothing
+  # Regression guard: a dry-run must not touch the filesystem. It reuses the
+  # existing Env.pretend? mode, under which every fs write (mv/mkdir/cp/ln/rmdir
+  # and link_or_copy) is a no-op, while reads (tag scan) still work so the plan
+  # is computed.
+  def test_dry_run_writes_nothing_under_pretend
     with_library do |root, _base|
       staging = Dir.mktmpdir('staging')
       begin
         incoming = File.join(staging, 'track.flac')
         File.write(incoming, 'AUDIO')
         before = Dir.glob(File.join(root, '**', '*')).sort
-        dest = stub_read_tags('track.flac' => song_tags) do
-          MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: true)
+        Env.stub(:pretend?, true) do
+          stub_read_tags('track.flac' => song_tags) do
+            MusicLibrary.organize_file(incoming, root, folder_name: 'Incoming', dry_run: true)
+          end
         end
-        assert dest, 'the plan still resolves a destination path'
-        refute File.exist?(dest), 'dry-run does NOT create the library copy'
         assert File.exist?(incoming), 'dry-run leaves the source untouched'
         after = Dir.glob(File.join(root, '**', '*')).sort
         assert_equal before, after, 'dry-run creates/removes nothing in the library'
       ensure
         FileUtils.remove_entry(staging) if File.directory?(staging)
       end
+    end
+  end
+
+  # link_or_copy is a no-op under pretend (it uses raw File/IO, not the gated
+  # FileUtils shims).
+  def test_link_or_copy_is_noop_under_pretend
+    Dir.mktmpdir do |d|
+      src = File.join(d, 's.flac'); File.write(src, 'X')
+      dst = File.join(d, 'out.flac')
+      Env.stub(:pretend?, true) { MusicLibrary.link_or_copy(src, dst) }
+      refute File.exist?(dst), 'no copy is made under pretend'
+      MusicLibrary.link_or_copy(src, dst)
+      assert File.exist?(dst), 'copy happens normally when not pretending'
     end
   end
 

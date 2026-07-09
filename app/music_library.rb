@@ -49,14 +49,26 @@ class MusicLibrary
       Daemon.send(:update_job_progress, jid, progress.dup)
     end
     update_progress.call(true)
-    files.each do |file|
-      progress['processed'] += 1
-      progress['current_file'] = File.basename(file)
-      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
-                                              dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
-                                              musicbrainz_mode: mb_mode)
-      progress[dest ? 'organized' : 'skipped'] += 1
-      update_progress.call
+    # A dry-run reuses the existing Env.pretend? mode: every filesystem write
+    # (mv, mkdir, cp, ln, rmdir) is already gated on it, so setting it for the
+    # duration makes the run strictly read-only with no parallel dry_run plumbing.
+    # Reads (tag scan, quality score) are intentionally NOT gated on pretend, so
+    # the plan is still computed. dry_run stays threaded through only to drive the
+    # "would trash / would ..." wording in the log.
+    prev_pretend = Thread.current[:pretend]
+    Thread.current[:pretend] = 1 if dry_run
+    begin
+      files.each do |file|
+        progress['processed'] += 1
+        progress['current_file'] = File.basename(file)
+        dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
+                                                dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
+                                                musicbrainz_mode: mb_mode)
+        progress[dest ? 'organized' : 'skipped'] += 1
+        update_progress.call
+      end
+    ensure
+      Thread.current[:pretend] = prev_pretend if dry_run
     end
     update_progress.call(true)
     app.speaker.speak_up("music organize: #{progress['organized']} file(s) organized, #{progress['skipped']} already in place (destination #{destination})#{' [DRY-RUN]' if dry_run}", 0) if app.respond_to?(:speaker)
@@ -154,17 +166,10 @@ class MusicLibrary
       return nil
     end
 
-    # In a dry-run we only computed what WOULD happen; do not create the
-    # destination folder, move, or copy anything.
-    if dry_run
-      app.speaker.speak_up("music organize [DRY-RUN]: would place '#{File.basename(path)}' -> '#{relative}'") if Env.debug?
-      return dest
-    end
-
     FileUtils.mkdir_p(File.dirname(dest))
     if in_place
       FileUtils.mv(path, dest)
-      prune_empty_dirs(File.dirname(path), destination_root, dry_run: dry_run)
+      prune_empty_dirs(File.dirname(path), destination_root)
     else
       link_or_copy(path, dest)
       # STAGING CLEANUP: the library copy is authoritative, so remove the
@@ -335,7 +340,7 @@ class MusicLibrary
 
   def self.quality_score(path)
     score = begin
-      Env.pretend? ? nil : FileInfo.new(path).audio_quality_score
+      FileInfo.new(path).audio_quality_score
     rescue
       nil
     end
@@ -672,11 +677,7 @@ class MusicLibrary
 
   # Remove now-empty directories left behind by an in-place move, up to (but
   # never including) the library root.
-  def self.prune_empty_dirs(dir, destination_root, dry_run: false)
-    # A dry-run must never touch the filesystem, not even to remove an already
-    # empty leftover directory. Only prune for real when applying.
-    return if dry_run
-
+  def self.prune_empty_dirs(dir, destination_root)
     root = File.expand_path(destination_root)
     dir = File.expand_path(dir)
     while dir.start_with?(root + '/') && File.directory?(dir) && Dir.empty?(dir)
@@ -688,8 +689,8 @@ class MusicLibrary
   end
 
   def self.read_tags(path)
-    return {} if Env.pretend?
-
+    # NB: reading tags never writes anything, so it stays active even under
+    # Env.pretend? (a dry-run still needs to scan to compute its plan).
     # Scan cache: reading tags goes through mediainfo (an external process per
     # file), which dominates a full-library scan over NFS. Key the cached tags
     # by path and invalidate on size/mtime change, so an unchanged file is never
@@ -873,6 +874,10 @@ class MusicLibrary
   end
 
   def self.link_or_copy(source, dest)
+    # Honour the dry-run mode: never write in pretend (this uses raw File/IO,
+    # not the FileUtils shims that are already pretend-gated).
+    return if Env.pretend?
+
     File.link(source, dest)
   rescue SystemCallError
     IO.copy_stream(source, dest)
