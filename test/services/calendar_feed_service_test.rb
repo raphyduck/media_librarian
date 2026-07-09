@@ -1419,6 +1419,52 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal [22, 33], results.map { |entry| entry[:imdb_votes] }
   end
 
+  def test_tmdb_search_prefers_original_language_title
+    client = Module.new do
+      api_mod = Module.new do
+        def self.key(*); nil; end
+
+        def self.language(*); nil; end
+
+        def self.config
+          @config ||= {}
+        end
+
+        def self.request(_path, _params = {})
+          { 'results' => [{ 'id' => 55, 'release_date' => '2024-02-14' }], 'total_pages' => 1 }
+        end
+      end
+
+      movie_mod = Module.new do
+        def self.detail(id, **_opts)
+          {
+            'id' => id,
+            'title' => 'The Taste of Things',
+            'original_title' => 'La Passion de Dodin Bouffant',
+            'genres' => [],
+            'languages' => [],
+            'spoken_languages' => [],
+            'origin_country' => [],
+            'production_countries' => [],
+            'vote_count' => 10,
+            'imdb_id' => 'tt0000055'
+          }
+        end
+      end
+
+      const_set(:Api, api_mod)
+      const_set(:Movie, movie_mod)
+    end
+
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    results = provider.search(title: 'The Taste of Things', type: 'movie')
+
+    assert_equal ['La Passion de Dodin Bouffant'], results.map { |entry| entry[:title] }
+  end
+
   private
 
   def base_entry

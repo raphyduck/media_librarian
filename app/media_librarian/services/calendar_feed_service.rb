@@ -1367,8 +1367,9 @@ module MediaLibrarian
             {
               source: source,
               external_id: "#{kind}-#{details['id']}",
-              title: (kind == :movie ? details['title'] : details['name']) ||
-                     details['original_title'] || details['original_name'] || '',
+              title: [details['original_title'], details['original_name'],
+                      kind == :movie ? details['title'] : details['name']]
+                     .find { |value| !value.to_s.strip.empty? } || '',
               media_type: kind == :movie ? 'movie' : 'show',
               genres: Array(details['genres']).filter_map { |genre| genre['name'] },
               languages: extract_languages(details),
