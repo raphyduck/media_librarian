@@ -391,6 +391,40 @@ class MusicLibraryTest < Minitest::Test
   # Hardlink case (same filesystem): the source shares the inode with the
   # library, so we must NOT delete it (it would not free space and could break
   # a same-fs share). Left in place.
+  # Re-run case: the staging file is already present identically in the library.
+  # The library copy is authoritative, so the staging original must be removed
+  # (this is what drains the staging on a second organize pass).
+  def test_organize_file_removes_staging_source_when_already_present
+    with_library do |root, _base|
+      staging = Dir.mktmpdir('staging')
+      begin
+        # first: file it into the library
+        first = File.join(staging, 'track.flac')
+        File.write(first, 'AUDIO-DATA')
+        sc = MusicLibrary.singleton_class
+        saved = sc.instance_method(:link_or_copy)
+        MusicLibrary.define_singleton_method(:link_or_copy) { |src, dst| IO.copy_stream(src, dst) }
+        dest = stub_read_tags('track.flac' => song_tags) do
+          MusicLibrary.organize_file(first, root, folder_name: 'Incoming', dry_run: false)
+        end
+        assert dest && File.exist?(dest)
+        # second: a new staging copy of the same content (recreate the staging
+        # dir since the first pass pruned it after removing the source)
+        FileUtils.mkdir_p(staging)
+        again = File.join(staging, 'again.flac')
+        File.write(again, 'AUDIO-DATA')
+        result = stub_read_tags('again.flac' => song_tags) do
+          MusicLibrary.organize_file(again, root, folder_name: 'Incoming', dry_run: false)
+        end
+        assert_equal dest, result, 'returns the existing library copy'
+        refute File.exist?(again), 'the redundant staging source is removed'
+      ensure
+        MusicLibrary.singleton_class.send(:define_method, :link_or_copy, saved) if defined?(saved) && saved
+        FileUtils.remove_entry(staging) if File.directory?(staging)
+      end
+    end
+  end
+
   def test_organize_file_keeps_source_when_hardlinked
     with_library do |root, _base|
       staging = Dir.mktmpdir('staging')

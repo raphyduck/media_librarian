@@ -115,9 +115,25 @@ class MusicLibrary
         prune_empty_dirs(File.dirname(path), destination_root) if removed && removed != :dry_run
         return exact_dups.first
       end
-      # Incoming (from outside) is already present identically — nothing to add.
-      app.speaker.speak_up("music organize: '#{File.basename(path)}' already present identically, skipping") if Env.debug?
-      return nil
+      # Incoming (from outside) is already present identically. The library copy
+      # is authoritative, so the staging original is redundant: remove it (same
+      # guards as the post-copy cleanup: only when applying, only a real file,
+      # never a hardlink to the existing library copy). This drains the staging
+      # on a re-run where everything is already filed.
+      dup = exact_dups.first
+      unless dry_run
+        begin
+          if !File.identical?(path, dup) && File.exist?(dup)
+            File.delete(path)
+            src_dir = File.dirname(path)
+            Dir.rmdir(src_dir) if File.directory?(src_dir) && Dir.empty?(src_dir)
+          end
+        rescue => e
+          app.speaker.tell_error(e, "staging cleanup skipped for already-present '#{path}'") rescue nil
+        end
+      end
+      app.speaker.speak_up("music organize: '#{File.basename(path)}' already present identically, removed from staging") if Env.debug?
+      return dup
     end
 
     # Never clobber a different file that already sits at the destination path.
