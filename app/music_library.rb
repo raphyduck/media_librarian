@@ -111,10 +111,21 @@ class MusicLibrary
 
     unless exact_dups.empty?
       if in_place
-        # This copy inside the library is identical to another already-filed one.
-        removed = remove_or_log(path, destination_root, dry_run: dry_run, reason: "identical to #{File.basename(exact_dups.first)}")
+        # This copy inside the library is identical to one or more already-filed
+        # ones. Deleting on both sides of a duplicate pair would wipe the track
+        # entirely (A says "dup of B" and B says "dup of A"), so elect a single
+        # deterministic survivor — the lexicographically smallest path among the
+        # identical set — and only remove the current file when it is NOT that
+        # survivor. This keeps exactly one copy no matter the visit order.
+        identical_group = ([path] + exact_dups).uniq
+        survivor = identical_group.min_by { |f| f.to_s }
+        if path == survivor
+          # Current file is the one we keep; leave it in place.
+          return survivor
+        end
+        removed = remove_or_log(path, destination_root, dry_run: dry_run, reason: "identical to #{File.basename(survivor)}")
         prune_empty_dirs(File.dirname(path), destination_root) if removed && removed != :dry_run
-        return exact_dups.first
+        return survivor
       end
       # Incoming (from outside) is already present identically. The library copy
       # is authoritative, so the staging original is redundant: remove it (same

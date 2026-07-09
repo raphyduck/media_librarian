@@ -266,6 +266,26 @@ class MusicLibraryTest < Minitest::Test
 
   # The core of the incident: a same-track file with DIFFERENT content must never
   # be deleted, even when apply is on.
+  # Symmetric-duplicate safety: two identical files already sitting in the same
+  # library folder must not BOTH be trashed. Organizing each in place should
+  # elect one deterministic survivor and keep exactly one copy, whatever the
+  # visit order.
+  def test_organize_file_in_place_keeps_one_of_symmetric_duplicates
+    with_library do |root, base|
+      a = write_file(root, 'Artist/Album/45.mp3', 'SAME-BYTES')
+      b = write_file(root, 'Artist/Album/45.1.mp3', 'SAME-BYTES')
+      tags = song_tags
+      stub_read_tags('45.mp3' => tags, '45.1.mp3' => tags) do
+        # visit both, in the "wrong" order (the survivor last)
+        MusicLibrary.organize_file(b, root, folder_name: 'Album', dry_run: false)
+        MusicLibrary.organize_file(a, root, folder_name: 'Album', dry_run: false)
+      end
+      survivors = [a, b].select { |f| File.exist?(f) }
+      assert_equal 1, survivors.size, 'exactly one identical copy is kept'
+      assert_equal 1, trashed(base).size, 'only one file moved to trash'
+    end
+  end
+
   def test_organize_file_never_deletes_non_identical_sibling
     with_library do |root, base|
       existing = write_file(root, 'Artist/Album/01 - Song.flac', 'ORIGINAL-CONTENT')
