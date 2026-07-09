@@ -2694,7 +2694,18 @@ function buildCalendarSearchCard(entry) {
   body.className = 'calendar-body';
   const header = document.createElement('header');
   const title = document.createElement('h4');
-  title.textContent = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+  const titleText = pickEntryValue(entry, ['title', 'name']) || 'Titre inconnu';
+  const externalUrl = resolveExternalUrl(entry);
+  if (externalUrl) {
+    const link = document.createElement('a');
+    link.href = externalUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = titleText;
+    title.appendChild(link);
+  } else {
+    title.textContent = titleText;
+  }
   header.appendChild(title);
 
   const year = pickEntryValue(entry, ['year', 'release_year']) || resolveCalendarDate(entry)?.getFullYear();
