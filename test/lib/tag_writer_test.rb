@@ -50,4 +50,74 @@ class TagWriterTest < Minitest::Test
       refute TagWriter.stamp_compilation('/lib/x.flac', dry_run: false)
     end
   end
+  # --- write_tags (full internal tag writing) ---------------------------------
+
+  def test_flac_content_commands_map_keys_to_vorbis_fields
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      tags = { artist: 'Daft Punk', title: 'Aerodynamic', album: 'Discovery',
+               track: '03', disc: '1', year: '2001' }
+      cmds = TagWriter.content_commands('/lib/x.flac', tags, %i[artist title album track disc year])
+      assert_equal 1, cmds.size, 'metaflac writes all fields in one invocation'
+      cmd = cmds.first
+      assert_includes cmd, '--set-tag=ARTIST=Daft Punk'
+      assert_includes cmd, '--set-tag=TITLE=Aerodynamic'
+      assert_includes cmd, '--set-tag=ALBUM=Discovery'
+      assert_includes cmd, '--set-tag=TRACKNUMBER=3'
+      assert_includes cmd, '--set-tag=DISCNUMBER=1'
+      assert_includes cmd, '--set-tag=DATE=2001'
+      assert_equal '/lib/x.flac', cmd.last
+    end
+  end
+
+  def test_mp3_content_commands_one_frame_each
+    TagWriter.stub(:which, '/usr/bin/mid3v2') do
+      tags = { artist: 'Air', title: 'La Femme d\'Argent', album: 'Moon Safari', track: '1' }
+      cmds = TagWriter.content_commands('/lib/x.mp3', tags, %i[artist title album track])
+      assert_equal 4, cmds.size
+      assert(cmds.any? { |c| c.include?('--TPE1') && c.include?('Air') })
+      assert(cmds.any? { |c| c.include?('--TIT2') })
+      assert(cmds.any? { |c| c.include?('--TALB') && c.include?('Moon Safari') })
+      assert(cmds.any? { |c| c.include?('--TRCK') && c.include?('1') })
+      assert(cmds.all? { |c| c.last == '/lib/x.mp3' })
+    end
+  end
+
+  def test_write_tags_only_missing_skips_present_fields
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      tags = { artist: 'X', title: 'Y', album: 'Z', track: '1' }
+      current = { artist: 'X', title: '', album: 'Z', track: '' } # title+track missing
+      written = TagWriter.write_tags('/lib/x.flac', tags, only_missing: true,
+                                     current: current, dry_run: true)
+      assert_equal %i[title track], written, 'writes only the fields blank in the file'
+    end
+  end
+
+  def test_write_tags_overwrite_mode_writes_all_present_lookup_fields
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      tags = { artist: 'X', title: 'Y', album: 'Z', track: '1' }
+      current = { artist: 'OLD', title: 'OLD', album: 'Z', track: '1' }
+      written = TagWriter.write_tags('/lib/x.flac', tags, only_missing: false,
+                                     current: current, dry_run: true)
+      assert_equal %i[artist title album track], written
+    end
+  end
+
+  def test_write_tags_noop_for_unsupported_format
+    TagWriter.stub(:which, nil) do
+      written = TagWriter.write_tags('/lib/x.m4a', { artist: 'X' }, dry_run: true)
+      assert_equal [], written, 'unsupported format is a graceful no-op'
+    end
+  end
+
+  def test_write_tags_dry_run_never_executes
+    ran = false
+    TagWriter.stub(:which, '/usr/bin/metaflac') do
+      TagWriter.stub(:run, ->(*) { ran = true; true }) do
+        TagWriter.write_tags('/lib/x.flac', { artist: 'X', title: 'Y', album: 'Z', track: '1' },
+                             current: {}, dry_run: true)
+      end
+    end
+    refute ran, 'dry-run must not shell out to the tagger'
+  end
+
 end

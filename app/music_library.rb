@@ -27,12 +27,13 @@ class MusicLibrary
   # runs in DRY-RUN mode and just logs which duplicates it *would* trash — files
   # are still filed into place (that is non-destructive). Pass apply:true
   # (CLI: --apply=1) to actually move exact duplicates to the trash folder.
-  def self.organize(source: nil, destination: nil, apply: false, musicbrainz: nil)
+  def self.organize(source: nil, destination: nil, apply: false, musicbrainz: nil, write_tags: false)
     destination = (destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)
     source = source.to_s.strip.empty? ? destination : source.to_s
     return { 'organized' => 0, 'skipped' => 0, 'destination' => destination } unless File.exist?(source)
 
     dry_run = !flag_true?(apply)
+    write_tags = flag_true?(write_tags)
     mb_mode = resolve_musicbrainz_mode(musicbrainz)
     files = audio_files(source)
     # A folder whose tracks share one album but carry several artists is a
@@ -63,7 +64,7 @@ class MusicLibrary
         progress['current_file'] = File.basename(file)
         dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
                                                 dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
-                                                musicbrainz_mode: mb_mode)
+                                                musicbrainz_mode: mb_mode, write_tags: write_tags)
         progress[dest ? 'organized' : 'skipped'] += 1
         update_progress.call
       end
@@ -80,7 +81,7 @@ class MusicLibrary
 
   # Organize a single audio file. Returns the destination path when the library
   # changed (file linked, moved or deduplicated), nil when nothing was done.
-  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false, musicbrainz_mode: nil)
+  def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false, musicbrainz_mode: nil, write_tags: false)
     ext = FileUtils.get_extension(path).to_s.downcase
     return nil unless EXTENSIONS_TYPE[:audio].include?(ext)
 
@@ -88,7 +89,8 @@ class MusicLibrary
     path = fs_utf8(File.expand_path(fs_utf8(path)))
     in_place = path.start_with?(destination_root + '/')
 
-    tags = read_tags(path)
+    original_tags = read_tags(path)
+    tags = original_tags
     # For files already inside the library, the Artist/Album directory structure
     # is authoritative when tags are missing — without this, a re-organize run
     # with unreadable tags would demote well-placed files to 'Unknown Artist'.
@@ -105,9 +107,25 @@ class MusicLibrary
       return nil
     end
 
+    # INTERNAL TAG WRITING (organize --write_tags=1): stamp the looked-up
+    # metadata into the file itself so Navidrome and other readers see clean
+    # tags, not just a tidy folder tree. Fills only fields the file is missing
+    # (existing curated tags are preserved). Runs before the move so the library
+    # copy carries the tags, and also for already-in-place files (path == dest)
+    # whose folder is fine but whose internal tags are incomplete. dry_run only
+    # logs; real writes are gated behind --apply by the dry_run flag. Unsupported
+    # formats (e.g. m4a with no tagger installed) are a silent no-op.
+    if write_tags
+      wt = tags.dup
+      wt[:albumartist] = compilation_artist if compilation
+      TagWriter.write_tags(path, wt, only_missing: true, current: original_tags,
+                           dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
+    end
+
     # A compilation track keeps its own :artist tag but is filed under a single
     # "Various Artists" folder (the album-artist), not one folder per track artist.
     folder_artist = compilation ? compilation_artist : nil
+
     relative = build_relative_path(tags, ext, File.basename(path, ".#{ext}"), folder_artist: folder_artist)
     dest = fs_utf8(File.join(destination_root, relative))
     return nil if path == dest # already organized

@@ -61,7 +61,111 @@ module TagWriter
     end
   end
 
+  # --- Full internal-tag writing (organize --write-tags) -------------------
+  #
+  # Canonical tag set organize can stamp into the file itself, so Navidrome and
+  # any other reader see clean metadata (not just a tidy folder tree). Maps the
+  # organizer's tag hash keys to the on-disk frames/fields for each format.
+  #
+  #   :artist :title :album :albumartist :track :disc :year
+  #
+  # only_missing:true (default) writes a field ONLY when the file's current value
+  # for it is blank, so an existing, curated tag is never clobbered. Pass
+  # only_missing:false to let the looked-up value win (MB/iTunes as source of
+  # truth). +current+ is the file's existing tag hash (same keys); when omitted
+  # nothing is treated as present, i.e. everything missing is written.
+  #
+  # Returns the list of field keys actually written (or, in dry_run, that would
+  # be); [] when the format is unsupported on this host (graceful no-op, e.g.
+  # m4a with no tagger installed) or nothing needed writing.
+  CONTENT_KEYS = %i[artist title album albumartist track disc year].freeze
+
+  def write_tags(path, tags, only_missing: true, current: {}, dry_run: true, speaker: nil)
+    bin = binary_for(path)
+    return [] unless bin # unsupported format on this host -> no-op
+
+    cur = current || {}
+    to_write = CONTENT_KEYS.select do |k|
+      v = tags[k]
+      next false unless present_val(v)
+      only_missing ? !present_val(cur[k]) : true
+    end
+    return [] if to_write.empty?
+
+    cmds = content_commands(path, tags, to_write)
+    return [] if cmds.empty?
+
+    if dry_run
+      speaker&.speak_up("tag [DRY-RUN]: would write #{to_write.join(', ')} on '#{path}'", 0)
+      return to_write
+    end
+
+    ok = cmds.all? { |cmd| run(cmd, speaker) }
+    speaker&.speak_up("tag: wrote #{to_write.join(', ')} on '#{path}'", 0) if ok
+    ok ? to_write : []
+  end
+
+  # Build the tagger invocation(s) (argument arrays) to set +keys+ from +tags+.
+  # Exposed for unit tests so the command shape is verified without running it.
+  def content_commands(path, tags, keys)
+    ext = File.extname(path.to_s).sub('.', '').downcase
+    bin = binary_for(path)
+    return [] unless bin
+
+    case ext
+    when 'flac'
+      args = [bin]
+      keys.each do |k|
+        vorbis = FLAC_FIELDS[k]
+        next unless vorbis && present_val(tags[k])
+        args << "--remove-tag=#{vorbis}"
+      end
+      keys.each do |k|
+        vorbis = FLAC_FIELDS[k]
+        next unless vorbis && present_val(tags[k])
+        args << "--set-tag=#{vorbis}=#{normalize_val(k, tags[k])}"
+      end
+      args.length > 1 ? [args + [path.to_s]] : []
+    when 'mp3'
+      # mid3v2 takes one frame per invocation.
+      keys.filter_map do |k|
+        frame = ID3_FRAMES[k]
+        next unless frame && present_val(tags[k])
+        [bin, frame, normalize_val(k, tags[k]).to_s, path.to_s]
+      end
+    else
+      []
+    end
+  end
+
+  # Vorbis comment field names (FLAC / metaflac).
+  FLAC_FIELDS = {
+    artist: 'ARTIST', title: 'TITLE', album: 'ALBUM', albumartist: 'ALBUMARTIST',
+    track: 'TRACKNUMBER', disc: 'DISCNUMBER', year: 'DATE'
+  }.freeze
+
+  # mid3v2 long-option flags per frame (MP3 / ID3v2).
+  ID3_FRAMES = {
+    artist: '--TPE1', title: '--TIT2', album: '--TALB', albumartist: '--TPE2',
+    track: '--TRCK', disc: '--TPOS', year: '--TDRC'
+  }.freeze
+
+  # track/disc are stored bare (the number only); everything else as-is.
+  def normalize_val(key, val)
+    case key
+    when :track, :disc
+      n = val.to_s[/\d+/]
+      n ? n.to_i.to_s : '' # bare number, no leading zeros (padding is for filenames)
+    else val.to_s
+    end
+  end
+
+  def present_val(v)
+    !v.nil? && !v.to_s.strip.empty?
+  end
+
   def binary_for(path)
+
     case File.extname(path.to_s).sub('.', '').downcase
     when 'flac' then which('metaflac')
     when 'mp3' then which('mid3v2')
