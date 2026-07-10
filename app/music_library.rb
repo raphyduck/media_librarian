@@ -80,6 +80,75 @@ class MusicLibrary
     { 'organized' => 0, 'skipped' => 0, 'destination' => destination }
   end
 
+  # Targeted AcoustID pass over "bare" files — those with no usable artist or
+  # title tag, which text matching (MusicBrainz/iTunes) cannot identify. Scans
+  # +source+, fingerprints each bare file and reports it as identified /
+  # low-confidence / unidentified. Dry-run by default: pure report, nothing is
+  # written or moved. With --apply=1, each identified file first gets the
+  # recovered tags STAMPED INTO IT (only_missing: an existing embedded tag is
+  # never overwritten), and is then organized into the library. Writing before
+  # organizing matters: the file's embedded tags are what organize trusts most,
+  # so the fingerprint identification takes precedence over whatever junk the
+  # parasite folder/file names would parse into. Low-confidence matches (score
+  # under music.acoustid_min_score) are never written.
+  def self.identify_untagged(source: nil, destination: nil, apply: false, write_tags: true)
+    destination = (destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)
+    source = source.to_s.strip.empty? ? destination : source.to_s
+    dry_run = !flag_true?(apply)
+    report = { 'scanned' => 0, 'untagged' => 0, 'identified' => 0, 'low_confidence' => 0,
+               'unidentified' => 0, 'written' => 0, 'organized' => 0, 'dry_run' => dry_run }
+    return report unless File.exist?(source)
+
+    unless acoustid_enabled?
+      app.speaker.speak_up('music identify: AcoustID is disabled — set music.acoustid_key in conf.yml (free key: https://acoustid.org/new-application)', 0)
+      return report
+    end
+
+    client = acoustid
+    write_tags = flag_true?(write_tags)
+    @album_artist_memo = {} # per-run: one ALBUMARTIST lookup per album folder
+    files = audio_files(source)
+    report['scanned'] = files.size
+    bare = files.each_with_object({}) do |file, memo|
+      tags = read_tags(file)
+      memo[file] = tags unless present(tags[:artist]) && present(tags[:title])
+    end
+    report['untagged'] = bare.size
+    app.speaker.speak_up("music identify: #{bare.size}/#{files.size} file(s) without artist/title under '#{source}' (min score #{client.min_score})#{' [DRY-RUN: report only, pass --apply=1 to write tags and organize]' if dry_run}", 0)
+
+    bare.each do |file, embedded|
+      result = client.identify(file)
+      score = result[:score] ? format('%.2f', result[:score]) : '?'
+      case result[:status]
+      when :identified
+        found = result[:tags]
+        report['identified'] += 1
+        app.speaker.speak_up("music identify: OK   (#{score}) '#{File.basename(file)}' -> #{found[:artist]} - #{found[:title]}#{" [#{found[:album]}]" unless found[:album].to_s.strip.empty?}", 0)
+        if write_tags
+          written = TagWriter.write_tags(file, found, only_missing: true, current: embedded,
+                                         dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
+          report['written'] += 1 unless written.empty?
+        end
+        unless dry_run
+          dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
+                                                  dry_run: false, write_tags: write_tags)
+          report['organized'] += 1 if dest
+        end
+      when :low_confidence
+        report['low_confidence'] += 1
+        app.speaker.speak_up("music identify: LOW  (#{score} < #{client.min_score}) '#{file}' — match not trusted, left untouched", 0)
+      else
+        report['unidentified'] += 1
+        app.speaker.speak_up("music identify: MISS '#{file}' — no fingerprint match", 0)
+      end
+    end
+    app.speaker.speak_up("music identify: #{report['identified']} identified, #{report['low_confidence']} low-confidence, #{report['unidentified']} unidentified — #{report['written']} tagged, #{report['organized']} organized#{' [DRY-RUN]' if dry_run}", 0)
+    report
+  rescue => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    report || { 'dry_run' => true }
+  end
+
   # Organize a single audio file. Returns the destination path when the library
   # changed (file linked, moved or deduplicated), nil when nothing was done.
   def self.organize_file(path, destination_root, folder_name: nil, dry_run: true, compilation: false, musicbrainz_mode: nil, write_tags: false)
@@ -873,6 +942,16 @@ class MusicLibrary
     !acoustid_key.empty? && config_flag('acoustid', true)
   end
 
+  # Confidence floor for AcoustID matches (music.acoustid_min_score). Below it a
+  # match is discarded rather than risk writing a wrong identification into the
+  # library. nil defers to the client default (AcoustidApi::MIN_SCORE).
+  def self.acoustid_min_score
+    value = (app.config['music'] && app.config['music']['acoustid_min_score']).to_s.strip
+    value.empty? ? nil : value.to_f
+  rescue
+    nil
+  end
+
   # Metadata clients are memoized against the current 'music' config so a
   # `daemon reload` with a changed key/contact/TTL rebuilds them.
   def self.metadata_clients
@@ -888,7 +967,7 @@ class MusicLibrary
     )
     @metadata_clients = [(cfg.respond_to?(:deep_dup) ? cfg.deep_dup : cfg), {
       :musicbrainz => MusicBrainzApi.new(contact: (cfg && cfg['musicbrainz_contact']).to_s, speaker: speaker, cache: cache),
-      :acoustid => AcoustidApi.new(api_key: acoustid_key, speaker: speaker, cache: cache),
+      :acoustid => AcoustidApi.new(api_key: acoustid_key, speaker: speaker, cache: cache, min_score: acoustid_min_score),
       :itunes => ItunesSearchApi.new(speaker: speaker, cache: cache)
     }]
     @metadata_clients[1]

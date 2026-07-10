@@ -853,6 +853,73 @@ class MusicLibraryTest < Minitest::Test
     end
   end
 
+  # --- AcoustID targeted pass (music identify) ---
+
+  def test_identify_untagged_reports_and_organizes_only_confident_matches
+    with_library do |root, _base|
+      identified = write_file(root, 'Incoming/mystery1.flac', 'AUDIO-1')
+      low = write_file(root, 'Incoming/mystery2.flac', 'AUDIO-2')
+      miss = write_file(root, 'Incoming/mystery3.flac', 'AUDIO-3')
+      tagged = write_file(root, 'Artist/Album/01 - Song.flac', 'AUDIO-4')
+
+      good_tags = { artist: 'Daft Punk', album: 'Discovery', title: 'One More Time', track: '1', disc: '', year: '2001' }
+      fake_acoustid = Object.new
+      fake_acoustid.define_singleton_method(:min_score) { 0.85 }
+      fake_acoustid.define_singleton_method(:identify) do |path|
+        case File.basename(path)
+        when 'mystery1.flac' then { :status => :identified, :score => 0.95, :tags => good_tags }
+        when 'mystery2.flac' then { :status => :low_confidence, :score => 0.6 }
+        else { :status => :no_match }
+        end
+      end
+      fake_acoustid.define_singleton_method(:lookup) do |path|
+        File.basename(path) == 'mystery1.flac' ? good_tags : {}
+      end
+
+      tag_writes = []
+      sc = MusicLibrary.singleton_class
+      saved_enabled = sc.instance_method(:acoustid_enabled?)
+      saved_client = sc.instance_method(:acoustid)
+      MusicLibrary.define_singleton_method(:acoustid_enabled?) { true }
+      MusicLibrary.define_singleton_method(:acoustid) { fake_acoustid }
+      begin
+        TagWriter.stub(:write_tags, lambda { |path, tags, **kwargs|
+          tag_writes << { path: path, tags: tags }.merge(kwargs)
+          %i[artist title]
+        }) do
+          stub_read_tags('01 - Song.flac' => song_tags) do
+            report = MusicLibrary.identify_untagged(source: File.join(root, 'Incoming'), destination: root)
+            assert_equal true, report['dry_run'], 'identify is dry-run unless --apply'
+            assert_equal 3, report['untagged'], 'only the bare files are considered'
+            assert_equal 1, report['identified']
+            assert_equal 1, report['low_confidence']
+            assert_equal 1, report['unidentified']
+            assert_equal 0, report['organized'], 'dry-run only reports'
+            assert File.exist?(identified), 'dry-run moves nothing'
+            assert_equal 1, tag_writes.size, 'only the confident match gets a (dry-run) tag write'
+            assert_equal true, tag_writes.first[:dry_run]
+            assert_equal true, tag_writes.first[:only_missing], 'recovered tags never overwrite existing ones'
+
+            tag_writes.clear
+            report = MusicLibrary.identify_untagged(source: File.join(root, 'Incoming'), destination: root, apply: 1)
+            assert_equal 1, report['identified']
+            assert_equal 1, report['written']
+            assert_equal 1, report['organized'], 'the confident match is filed into the library'
+            refute File.exist?(identified), 'the identified file moved into the library'
+            assert File.exist?(low), 'a low-confidence file is never touched'
+            assert File.exist?(miss), 'an unidentified file is never touched'
+            assert File.exist?(tagged), 'files outside the source are untouched'
+            # The AcoustID write targets the file itself, before organize moves it.
+            assert tag_writes.any? { |w| w[:path] == identified && w[:dry_run] == false && w[:tags][:artist] == 'Daft Punk' }
+          end
+        end
+      ensure
+        sc.send(:define_method, :acoustid_enabled?, saved_enabled)
+        sc.send(:define_method, :acoustid, saved_client)
+      end
+    end
+  end
+
   private
 
   def song_tags

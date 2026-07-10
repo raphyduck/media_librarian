@@ -18,17 +18,33 @@ class AcoustidApi
   BASE_URL = 'https://api.acoustid.org/v2/lookup'
   DEFAULT_TIMEOUT = 20
   FINGERPRINT_LENGTH = 120
-  MIN_SCORE = 0.5
+  # Below this match score a result is treated as a miss: writing a wrong
+  # identification into a clean library is worse than leaving the file
+  # unidentified. Overridable per instance (music.acoustid_min_score).
+  MIN_SCORE = 0.85
+  # AcoustID allows ~3 requests/second per application key; stay safely under.
+  MIN_INTERVAL = 0.4
 
-  def initialize(api_key:, http_client: HTTParty, speaker: nil, timeout: nil, cache: nil, fpcalc: 'fpcalc')
+  @mutex = Mutex.new
+  @last_request_at = nil
+
+  class << self
+    attr_accessor :last_request_at
+    attr_reader :mutex
+  end
+
+  def initialize(api_key:, http_client: HTTParty, speaker: nil, timeout: nil, cache: nil, fpcalc: 'fpcalc', min_score: nil)
     @api_key = api_key.to_s.strip
     @http_client = http_client
     @speaker = speaker
     @timeout = timeout || DEFAULT_TIMEOUT
     @cache = cache
     @fpcalc = fpcalc
+    @min_score = min_score.to_f.positive? ? min_score.to_f : MIN_SCORE
     @memo = {}
   end
+
+  attr_reader :min_score
 
   def enabled?
     !@api_key.empty?
@@ -46,6 +62,34 @@ class AcoustidApi
   rescue StandardError => e
     report_error(e, 'AcoustID lookup failed')
     {}
+  end
+
+  # Identify +path+ with diagnostics for reporting. Returns a hash:
+  #   :status => :identified | :low_confidence | :no_match | :no_fingerprint | :disabled
+  #   :score  => best match score when the service returned any result
+  #   :tags   => same hash as #lookup, only when :identified
+  # :low_confidence means AcoustID found something but under min_score, so the
+  # match is deliberately not trusted (and #lookup would return {} too).
+  def identify(path)
+    return { :status => :disabled } unless enabled?
+
+    fp = fingerprint(path)
+    return { :status => :no_fingerprint } if fp.nil?
+
+    payload = query(fp[:fingerprint], fp[:duration])
+    return { :status => :no_match } unless payload.is_a?(Hash) && payload['status'].to_s == 'ok'
+
+    best = Array(payload['results']).select { |entry| entry.is_a?(Hash) }.max_by { |entry| entry['score'].to_f }
+    return { :status => :no_match } unless best
+
+    score = best['score'].to_f
+    tags = normalize_response(payload)
+    return { :status => (score < @min_score ? :low_confidence : :no_match), :score => score } if tags.empty?
+
+    { :status => :identified, :score => score, :tags => tags }
+  rescue StandardError => e
+    report_error(e, 'AcoustID identify failed')
+    { :status => :no_match }
   end
 
   # Run fpcalc and return { duration:, fingerprint: } (or nil when unavailable).
@@ -73,7 +117,7 @@ class AcoustidApi
     return {} unless payload.is_a?(Hash) && payload['status'].to_s == 'ok'
 
     result = Array(payload['results'])
-             .select { |entry| entry.is_a?(Hash) && entry['score'].to_f >= MIN_SCORE }
+             .select { |entry| entry.is_a?(Hash) && entry['score'].to_f >= @min_score }
              .max_by { |entry| entry['score'].to_f }
     recording = Array(result && result['recordings']).find { |rec| rec.is_a?(Hash) }
     return {} unless recording
@@ -124,12 +168,36 @@ class AcoustidApi
       meta: 'recordings+releasegroups+compress',
       format: 'json'
     }
-    log_debug("AcoustID request (duration #{duration})")
-    response = @http_client.get(BASE_URL, query: params, timeout: @timeout)
-    status = response.respond_to?(:code) ? response.code.to_i : nil
-    raise StandardError, "AcoustID request failed with status #{status || 'unknown'}" unless status && status.between?(200, 299)
+    with_retries do
+      throttle
+      log_debug("AcoustID request (duration #{duration})")
+      response = @http_client.get(BASE_URL, query: params, timeout: @timeout)
+      status = response.respond_to?(:code) ? response.code.to_i : nil
+      if status == 429 || status == 503
+        raise RateLimitedError.new("AcoustID #{status}", retry_after: retry_after_seconds(response))
+      end
+      raise StandardError, "AcoustID request failed with status #{status || 'unknown'}" unless status && status.between?(200, 299)
 
-    JSON.parse(response.body.to_s)
+      JSON.parse(response.body.to_s)
+    end
+  end
+
+  def retry_after_seconds(response)
+    header = response.respond_to?(:headers) ? response.headers['retry-after'] : nil
+    value = header.to_s[/\d+/]
+    value && value.to_i.clamp(1, 30)
+  end
+
+  # Enforce the AcoustID rate limit (~3 req/s) across instances.
+  def throttle
+    self.class.mutex.synchronize do
+      last = self.class.last_request_at
+      if last
+        wait = MIN_INTERVAL - (Time.now - last)
+        sleep(wait) if wait.positive?
+      end
+      self.class.last_request_at = Time.now
+    end
   end
 
   def year_from(recording)

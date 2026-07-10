@@ -36,6 +36,7 @@ music:
   musicbrainz_contact: '' # Optional email/URL added to the MusicBrainz User-Agent (recommended by MusicBrainz)
   acoustid_key: '' # AcoustID application API key; when set, unidentified tracks are matched by acoustic fingerprint (requires the fpcalc/chromaprint binary)
   acoustid: true # Enable AcoustID fingerprint lookups (only used when acoustid_key is set)
+  acoustid_min_score: 0.85 # Confidence floor for AcoustID matches; results scoring below are discarded (never written into files) to avoid polluting a clean library with false positives
   cache_ttl_days: 180 # How long MusicBrainz/AcoustID lookups are cached on disk (under ~/.medialibrarian/cache/metadata)
   min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
   organize_trash: '' # Optional: folder where `music organize --apply` moves exact duplicates (reversible). Defaults to a `.trash-organize` sibling of the library. Organize is dry-run unless --apply=1 and only ever removes byte-identical duplicates.
