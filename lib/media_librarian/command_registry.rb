@@ -36,6 +36,7 @@ module MediaLibrarian
         'torrent check_orphaned_torrent_folders' => 'Report orphaned torrent folders',
         'torrent prevent_delete' => 'Protect a torrent from automatic deletion',
         'music' => 'Music search and library organization',
+        'music identify' => 'Identify files with no artist/title tag via AcoustID fingerprinting and report identified/low-confidence/unidentified (dry-run by default; --apply=1 writes the recovered tags into the files and organizes them; matches under music.acoustid_min_score are never written)',
         'music import_csv' => 'Search and queue one music query per CSV line',
         'music organize' => 'Organize downloaded music into Artist/Album (dry-run by default; pass --apply=1 to move exact duplicates to the trash folder; --musicbrainz=auto|never|always controls tag completion, auto skips the lookup for already-tagged files)',
         'music upgrade' => 'Upgrade lossy tracks to FLAC via Soulseek from a CSV (dry-run by default; --apply=1 to reversibly replace once a lossless copy is confirmed)',
@@ -85,6 +86,7 @@ module MediaLibrarian
           search: ['TorrentSearch', 'search_from_torrents']
         },
         music: {
+          identify: ['MusicLibrary', 'identify_untagged'],
           import_csv: ['MusicSearch', 'import_csv'],
           organize: ['MusicLibrary', 'organize'],
           upgrade: ['MusicSearch', 'upgrade'],
