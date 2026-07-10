@@ -34,6 +34,7 @@ class MusicLibrary
 
     dry_run = !flag_true?(apply)
     write_tags = flag_true?(write_tags)
+    @album_artist_memo = {} # per-run: one ALBUMARTIST lookup per album folder
     mb_mode = resolve_musicbrainz_mode(musicbrainz)
     files = audio_files(source)
     # A folder whose tracks share one album but carry several artists is a
@@ -117,25 +118,16 @@ class MusicLibrary
     # formats (e.g. m4a with no tagger installed) are a silent no-op.
     if write_tags
       wt = tags.dup
-      # ALBUMARTIST is what Navidrome groups an album by, yet it is the most
-      # commonly missing field. Derive it (no network) when the file has none:
-      #   - a compilation track  -> "Various Artists"
-      #   - otherwise            -> the (album) artist, correct for the single-
-      #                             artist albums that dominate the library.
-      # only_missing keeps any existing ALBUMARTIST untouched.
+      # ALBUMARTIST is the key Navidrome groups an album by. What matters is that
+      # EVERY track of one album carries the SAME value, so the album shows up as
+      # one -- the exact string ("Various Artists" or a single name) is
+      # irrelevant. We therefore source it from MusicBrainz and, crucially,
+      # resolve it ONCE PER ALBUM FOLDER (memoized), reusing that one value for
+      # every track of the album -- otherwise a compilation, whose tracks each
+      # carry a different track-artist, could get different MB answers and split
+      # in Navidrome. only_missing keeps any existing ALBUMARTIST untouched.
       unless present(wt[:albumartist])
-        # A compilation ALWAYS gets Various Artists (never a single-artist value
-        # from a MusicBrainz score/soundtrack match, which would break Navidrome
-        # grouping). For non-compilations, ask MusicBrainz for the album artist
-        # (release lookup, cached per album), and fall back to the track artist
-        # when MB is unavailable or has no match.
-        wt[:albumartist] =
-          if compilation
-            compilation_artist
-          else
-            mb_aa = (album_artist_from_mb(wt[:artist], wt[:album]) if resolve_musicbrainz_mode != 'never')
-            present(mb_aa) ? mb_aa : wt[:artist]
-          end
+        wt[:albumartist] = album_artist_for(File.dirname(path), wt[:artist], wt[:album])
       end
       TagWriter.write_tags(path, wt, only_missing: true, current: original_tags,
                            dry_run: dry_run, speaker: (app.speaker if app.respond_to?(:speaker)))
@@ -902,6 +894,20 @@ class MusicLibrary
     @metadata_clients[1]
   rescue
     nil
+  end
+
+  # Album artist resolved ONCE per album folder and cached for the whole run, so
+  # every track of an album gets an identical ALBUMARTIST (the thing that makes
+  # Navidrome show it as a single album). First track of a folder triggers the
+  # MusicBrainz lookup; siblings reuse the memoized value. Falls back to the
+  # (first track's) artist when MB has no match, and that fallback is memoized
+  # too so it stays consistent across the album.
+  def self.album_artist_for(album_dir, artist_hint, album)
+    @album_artist_memo ||= {}
+    return @album_artist_memo[album_dir] if @album_artist_memo.key?(album_dir)
+
+    mb_aa = (album_artist_from_mb(artist_hint, album) if resolve_musicbrainz_mode != 'never')
+    @album_artist_memo[album_dir] = present(mb_aa) ? mb_aa : artist_hint.to_s
   end
 
   # Album artist per MusicBrainz for a given (artist, album): a release lookup
