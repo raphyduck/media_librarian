@@ -30,6 +30,23 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
+  class SearchableProvider
+    attr_reader :source
+
+    def initialize(entries, source:)
+      @entries = entries
+      @source = source
+    end
+
+    def upcoming(date_range:, limit:)
+      []
+    end
+
+    def search(title:, year: nil, type: nil)
+      @entries
+    end
+  end
+
   def setup
     @tmp_dir = Dir.mktmpdir('calendar-feed')
     @db_path = File.join(@tmp_dir, 'librarian.db')
@@ -1417,6 +1434,28 @@ class CalendarFeedServiceTest < Minitest::Test
       results.map { |entry| entry[:ids] }
     )
     assert_equal [22, 33], results.map { |entry| entry[:imdb_votes] }
+  end
+
+  def test_search_prefers_tmdb_entries_when_providers_return_the_same_film
+    imdb_id = 'tt32792395'
+    # Provider order mirrors the default config (omdb first): without the
+    # tmdb-first sort, OMDb's (often translated) title would win the dedup.
+    omdb = SearchableProvider.new([
+      base_entry.merge(source: 'omdb', external_id: imdb_id, imdb_id: imdb_id,
+                       ids: { 'imdb' => imdb_id }, title: 'The Residence')
+    ], source: 'omdb')
+    tmdb = SearchableProvider.new([
+      base_entry.merge(source: 'tmdb', external_id: 'movie-1315702', imdb_id: imdb_id,
+                       ids: { 'imdb' => imdb_id, 'tmdb' => 1_315_702 }, title: 'Dalloway')
+    ], source: 'tmdb')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [omdb, tmdb])
+
+    results = service.search(title: 'Dalloway', persist: false, include_existing: true)
+
+    assert_equal 1, results.length, 'the same film from two providers is de-duplicated'
+    assert_equal 'Dalloway', results.first[:title], 'the TMDB (original-language) title wins the dedup'
+    assert_equal 'tmdb', results.first[:source]
   end
 
   def test_tmdb_search_prefers_original_language_title
