@@ -1458,6 +1458,57 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'tmdb', results.first[:source]
   end
 
+  def test_tmdb_search_caps_detail_fetches_per_kind
+    client = Module.new do
+      api_mod = Module.new do
+        def self.key(*); nil; end
+
+        def self.language(*); nil; end
+
+        def self.config
+          @config ||= {}
+        end
+
+        def self.request(_path, _params = {})
+          results = (1..20).map { |i| { 'id' => i, 'release_date' => '2024-02-14' } }
+          { 'results' => results, 'total_pages' => 1 }
+        end
+      end
+
+      movie_mod = Module.new do
+        class << self
+          attr_accessor :detail_calls
+        end
+
+        def self.detail(id, **_opts)
+          self.detail_calls ||= []
+          self.detail_calls << id
+          {
+            'id' => id,
+            'title' => "Movie #{id}",
+            'genres' => [], 'languages' => [], 'spoken_languages' => [],
+            'origin_country' => [], 'production_countries' => [],
+            'vote_count' => 1,
+            'imdb_id' => format('tt%07d', id)
+          }
+        end
+      end
+
+      const_set(:Api, api_mod)
+      const_set(:Movie, movie_mod)
+    end
+
+    provider = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider.new(
+      api_key: '123', language: 'en', region: 'US', speaker: @speaker, client: client
+    )
+
+    results = provider.search(title: 'Mine', type: 'movie')
+
+    limit = MediaLibrarian::Services::CalendarFeedService::TmdbCalendarProvider::SEARCH_DETAIL_LIMIT
+    assert_equal limit, client::Movie.detail_calls.length, 'one detail fetch per retained result, capped'
+    assert_equal limit, results.length
+  end
+
   def test_tmdb_search_prefers_original_language_title
     client = Module.new do
       api_mod = Module.new do

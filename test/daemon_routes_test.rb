@@ -86,7 +86,7 @@ class DaemonRoutesTest < Minitest::Test
     local_entry = { imdb_id: 'tt1', title: "L'Âme idéale", type: 'movie', year: 2025, in_interest_list: true }
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: [local_entry] } }
-    fake_repo.define_singleton_method(:find_by_imdb_id) { |_id| nil }
+    fake_repo.define_singleton_method(:load_entries) { [local_entry] }
     provider_entries = [
       { imdb_id: 'tt1', title: "L'Ame ideale", source: 'tmdb' },
       { imdb_id: 'tt2', title: 'Autre film', source: 'tmdb' }
@@ -110,7 +110,7 @@ class DaemonRoutesTest < Minitest::Test
     known = { imdb_id: 'tt3', title: 'You Found Me', type: 'movie', downloaded: true }
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
-    fake_repo.define_singleton_method(:find_by_imdb_id) { |id| id == 'tt3' ? known : nil }
+    fake_repo.define_singleton_method(:load_entries) { [known] }
     provider_entries = [{ imdb_id: 'tt3', title: "L'Âme idéale", source: 'tmdb' }]
 
     with_fake_calendar_repository(fake_repo) do
@@ -128,7 +128,7 @@ class DaemonRoutesTest < Minitest::Test
     known = { imdb_id: 'tt4', title: 'Titre local', type: 'movie' }
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
-    fake_repo.define_singleton_method(:find_by_imdb_id) { |id| id == 'tt4' ? known : nil }
+    fake_repo.define_singleton_method(:load_entries) { [known] }
     provider_entries = [{ imdb_id: 'tt4', title: 'English Title', source: 'omdb' }]
 
     with_fake_calendar_repository(fake_repo) do
@@ -145,7 +145,7 @@ class DaemonRoutesTest < Minitest::Test
     ]
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: entries } }
-    fake_repo.define_singleton_method(:find_by_imdb_id) { |_id| nil }
+    fake_repo.define_singleton_method(:load_entries) { entries }
 
     with_fake_calendar_repository(fake_repo) do
       merged = Daemon.send(:merge_calendar_search_results, [], 'remake', 2025, nil)

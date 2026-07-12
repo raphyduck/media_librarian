@@ -1238,11 +1238,18 @@ module MediaLibrarian
           results
         end
 
+        # Each search hit costs one extra HTTP round-trip (the detail fetch is
+        # what carries the imdb_id, without which the entry is dropped). A
+        # common word can fill a whole TMDB page for movies AND tv, i.e. ~40
+        # sequential requests — past the UI's 30s budget. TMDB sorts by
+        # relevance, so capping per kind keeps every plausible match.
+        SEARCH_DETAIL_LIMIT = 8
+
         def search_titles(kind, title, year)
           payload = fetch_page("/search/#{kind == :tv ? 'tv' : 'movie'}", kind, 1, search_params(kind, title, year))
           return [] unless payload
 
-          results = Array(payload['results']).filter_map do |item|
+          results = Array(payload['results']).first(SEARCH_DETAIL_LIMIT).filter_map do |item|
             release_date = release_from(item, kind)
             details = fetch_details(kind, value_from(item, :id))
             build_entry(details, kind, release_date) if details
