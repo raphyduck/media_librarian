@@ -72,4 +72,67 @@ class DaemonRoutesTest < Minitest::Test
 
     assert_equal Encoding::ASCII_8BIT, req.query['q'].encoding
   end
+
+  def with_fake_calendar_repository(fake)
+    sc = Daemon.singleton_class
+    saved = sc.instance_method(:calendar_repository)
+    Daemon.define_singleton_method(:calendar_repository) { fake }
+    yield
+  ensure
+    sc.send(:define_method, :calendar_repository, saved)
+  end
+
+  def test_calendar_search_lists_local_matches_and_deduplicates_provider_results
+    local_entry = { imdb_id: 'tt1', title: "L'Âme idéale", type: 'movie', year: 2025, in_interest_list: true }
+    fake_repo = Object.new
+    fake_repo.define_singleton_method(:entries) { |_filters| { entries: [local_entry] } }
+    fake_repo.define_singleton_method(:find_by_imdb_id) { |_id| nil }
+    provider_entries = [
+      { imdb_id: 'tt1', title: "L'Ame ideale", source: 'tmdb' },
+      { imdb_id: 'tt2', title: 'Autre film', source: 'tmdb' }
+    ]
+
+    with_fake_calendar_repository(fake_repo) do
+      merged = Daemon.send(:merge_calendar_search_results, provider_entries, "l'âme idéale", nil, nil)
+
+      assert_equal %w[tt1 tt2], merged.map { |entry| entry[:imdb_id] }
+      assert merged.first[:in_calendar], 'a locally-tracked entry is flagged in_calendar'
+      assert merged.first[:in_interest_list], 'local flags survive the merge'
+      refute merged.last[:in_calendar], 'an unknown provider result stays importable'
+    end
+  end
+
+  def test_calendar_search_folds_known_provider_results_into_their_local_entry
+    # The calendar tracks the film under its local title; the provider found it
+    # under another title. The local entry (with its flags) must win, flagged.
+    known = { imdb_id: 'tt3', title: 'Titre local', type: 'movie', downloaded: true }
+    fake_repo = Object.new
+    fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
+    fake_repo.define_singleton_method(:find_by_imdb_id) { |id| id == 'tt3' ? known : nil }
+    provider_entries = [{ imdb_id: 'tt3', title: 'English Title', source: 'tmdb' }]
+
+    with_fake_calendar_repository(fake_repo) do
+      merged = Daemon.send(:merge_calendar_search_results, provider_entries, 'english title', nil, nil)
+
+      assert_equal ['Titre local'], merged.map { |entry| entry[:title] }
+      assert merged.first[:in_calendar]
+      assert merged.first[:downloaded]
+    end
+  end
+
+  def test_calendar_search_merge_filters_local_matches_by_year
+    entries = [
+      { imdb_id: 'tt1', title: 'Remake', type: 'movie', year: 2025 },
+      { imdb_id: 'tt2', title: 'Remake', type: 'movie', year: 1990 }
+    ]
+    fake_repo = Object.new
+    fake_repo.define_singleton_method(:entries) { |_filters| { entries: entries } }
+    fake_repo.define_singleton_method(:find_by_imdb_id) { |_id| nil }
+
+    with_fake_calendar_repository(fake_repo) do
+      merged = Daemon.send(:merge_calendar_search_results, [], 'remake', 2025, nil)
+
+      assert_equal ['tt1'], merged.map { |entry| entry[:imdb_id] }
+    end
+  end
 end

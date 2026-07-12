@@ -99,4 +99,20 @@ class CalendarEntriesRepositoryTest < Minitest::Test
 
     assert_equal ['Âme idéale'], results.map { |entry| entry[:title] }
   end
+
+  def test_title_matching_is_accent_and_apostrophe_insensitive
+    calendar_rows = [
+      { media_type: 'movie', title: "L'Âme idéale", imdb_id: 'tt35526093' },
+      { media_type: 'movie', title: 'Alpha', imdb_id: 'tt5678' }
+    ]
+    @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: [])
+    repository = CalendarEntriesRepository.new(app: @app)
+
+    # Accents dropped + typographic apostrophe, as typed on a phone keyboard.
+    results = repository.search(title: 'L’ame ideale')
+    assert_equal ["L'Âme idéale"], results.map { |entry| entry[:title] }
+
+    filtered = repository.entries({ title: 'ame ideale' })
+    assert_equal ["L'Âme idéale"], filtered[:entries].map { |entry| entry[:title] }
+  end
 end
