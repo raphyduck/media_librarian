@@ -103,20 +103,38 @@ class DaemonRoutesTest < Minitest::Test
   end
 
   def test_calendar_search_folds_known_provider_results_into_their_local_entry
-    # The calendar tracks the film under its local title; the provider found it
-    # under another title. The local entry (with its flags) must win, flagged.
-    known = { imdb_id: 'tt3', title: 'Titre local', type: 'movie', downloaded: true }
+    # The calendar tracks the film under a stale translated title; the TMDB
+    # provider found it and carries the original-language title (see the
+    # original-title preference in TmdbCalendarProvider#build_entry). The local
+    # entry (with its flags) is kept, but the displayed title is the original.
+    known = { imdb_id: 'tt3', title: 'You Found Me', type: 'movie', downloaded: true }
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
     fake_repo.define_singleton_method(:find_by_imdb_id) { |id| id == 'tt3' ? known : nil }
-    provider_entries = [{ imdb_id: 'tt3', title: 'English Title', source: 'tmdb' }]
+    provider_entries = [{ imdb_id: 'tt3', title: "L'Âme idéale", source: 'tmdb' }]
 
     with_fake_calendar_repository(fake_repo) do
-      merged = Daemon.send(:merge_calendar_search_results, provider_entries, 'english title', nil, nil)
+      merged = Daemon.send(:merge_calendar_search_results, provider_entries, "l'âme idéale", nil, nil)
+
+      assert_equal ["L'Âme idéale"], merged.map { |entry| entry[:title] }, 'the original-language title is displayed'
+      assert merged.first[:in_calendar]
+      assert merged.first[:downloaded], 'local flags survive the fold'
+    end
+  end
+
+  def test_calendar_search_fold_keeps_local_title_for_non_tmdb_providers
+    # OMDb titles are IMDb primary titles (often English), not original ones:
+    # they must never override the local title.
+    known = { imdb_id: 'tt4', title: 'Titre local', type: 'movie' }
+    fake_repo = Object.new
+    fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
+    fake_repo.define_singleton_method(:find_by_imdb_id) { |id| id == 'tt4' ? known : nil }
+    provider_entries = [{ imdb_id: 'tt4', title: 'English Title', source: 'omdb' }]
+
+    with_fake_calendar_repository(fake_repo) do
+      merged = Daemon.send(:merge_calendar_search_results, provider_entries, 'titre', nil, nil)
 
       assert_equal ['Titre local'], merged.map { |entry| entry[:title] }
-      assert merged.first[:in_calendar]
-      assert merged.first[:downloaded]
     end
   end
 
