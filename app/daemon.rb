@@ -1237,7 +1237,7 @@ class Daemon
         internal = payload['internal'] || 0
         queue = payload['queue']
         task = payload['task']
-        wait_for_capacity = truthy?(payload['wait_for_capacity'])
+        wait_for_capacity = payload.key?('wait_for_capacity') ? truthy?(payload['wait_for_capacity']) : true
 
         job = enqueue(
           args: args,
