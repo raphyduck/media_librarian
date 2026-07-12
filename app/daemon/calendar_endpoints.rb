@@ -87,11 +87,23 @@ class Daemon
         entry.merge(in_calendar: true)
       end
 
+      # One calendar load for the whole merge: find_by_imdb_id would re-read
+      # the entire table (plus the downloaded/interest indexes) per provider
+      # result, which alone could blow the UI's request budget.
+      known = begin
+        repository.load_entries.each_with_object({}) do |entry, memo|
+          key = entry[:imdb_id].to_s.strip.downcase
+          memo[key] ||= entry unless key.empty?
+        end
+      rescue StandardError
+        {}
+      end
+
       provider_entries.each do |entry|
         key = entry[:imdb_id].to_s.strip.downcase
         next if !key.empty? && seen[key]
 
-        existing = key.empty? ? nil : (repository.find_by_imdb_id(key) rescue nil)
+        existing = key.empty? ? nil : known[key]
         if existing
           folded = existing.merge(in_calendar: true)
           # Search results must show the ORIGINAL-language title. The TMDB
