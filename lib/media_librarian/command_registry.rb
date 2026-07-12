@@ -39,6 +39,7 @@ module MediaLibrarian
         'music identify' => 'Identify files with no artist/title tag via AcoustID fingerprinting and report identified/low-confidence/unidentified (dry-run by default; --apply=1 writes the recovered tags into the files and organizes them; matches under music.acoustid_min_score are never written)',
         'music import_csv' => 'Search and queue one music query per CSV line',
         'music organize' => 'Organize downloaded music into Artist/Album (dry-run by default; pass --apply=1 to move exact duplicates to the trash folder; --musicbrainz=auto|never|always controls tag completion, auto skips the lookup for already-tagged files)',
+        'music dedupe' => 'De-duplicate the whole library: keep the best-quality copy of each recording, move the rest to the reversible trash (dry-run by default; --apply=1 to act; --destination=<folder> to limit scope). Neutral suffixes (remaster/mono/radio edit) collapse; distinct versions (live/remix/acoustic/extended/...) are preserved; studio-vs-live ambiguities are skipped.',
         'music upgrade' => 'Upgrade lossy tracks to FLAC via Soulseek from a CSV (dry-run by default; --apply=1 to reversibly replace once a lossless copy is confirmed)',
         'music consolidate_compilations' => 'Re-file scattered various-artists compilations under a single Various Artists/<Album>/ folder (dry-run by default; --apply=1 to move; compilations verified against MusicBrainz)',
         'tracker' => 'Tracker authentication',
@@ -89,6 +90,7 @@ module MediaLibrarian
           identify: ['MusicLibrary', 'identify_untagged'],
           import_csv: ['MusicSearch', 'import_csv'],
           organize: ['MusicLibrary', 'organize'],
+          dedupe: ['MusicLibrary', 'dedupe'],
           upgrade: ['MusicSearch', 'upgrade'],
           consolidate_compilations: ['MusicLibrary', 'consolidate_compilations']
         },

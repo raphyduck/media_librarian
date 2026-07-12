@@ -1023,4 +1023,177 @@ class MusicLibrary
   rescue SystemCallError
     IO.copy_stream(source, dest)
   end
+
+  # --- Library-wide de-duplication (maintenance pass) -----------------------
+  #
+  # organize_file only ever removes a byte-identical copy in the SAME album
+  # folder, so the common case -- the same recording present in several
+  # editions/folders at different qualities (mp3 next to flac, 16-bit next to
+  # 24-bit, a single next to a box set) -- was never collapsed. This one-shot
+  # pass groups the WHOLE library by recording identity and keeps the single
+  # best-quality copy of each, moving the rest to the reversible trash. Dry-run
+  # by default; pass --apply=1 to act. Reuses the organize trash + name/stream
+  # quality scoring, so music.organize_trash config and reversibility apply.
+  #
+  # Identity key = (primary artist, base title, version signature). Neutral
+  # suffixes (remaster/mono/radio edit/...) are stripped so a remaster collapses
+  # with the original; distinct-version markers (live/remix/acoustic/extended/
+  # instrumental/...) are kept -- with their full qualifier (venue/date) -- so
+  # two different live takes never merge but two copies of one take do. Within a
+  # key, entries are clustered by duration (a 3:30 cut never merges with a 5:00
+  # version), and any nude-titled cluster mixing a live/session album with a
+  # studio album is skipped as too risky to auto-resolve.
+  def self.dedupe(destination: nil, apply: false)
+    root = fs_utf8(File.expand_path((destination.to_s.strip.empty? ? MusicSearch.music_destination : destination.to_s)))
+    dry_run = !flag_true?(apply)
+    return { 'groups' => 0, 'trashed' => 0, 'destination' => root, 'dry_run' => dry_run } unless File.directory?(root)
+
+    files = audio_files(root)
+    app.speaker.speak_up("music dedupe: scanning #{files.size} file(s) under '#{root}'#{' [DRY-RUN: no deletions, pass --apply=1 to act]' if dry_run}", 0) if app.respond_to?(:speaker)
+
+    index = Hash.new { |h, k| h[k] = [] }
+    files.each do |f|
+      meta = dedupe_scan(f)
+      tags = meta[:tags]
+      artist = dedupe_primary_artist(tags)
+      base = dedupe_base_title(tags[:title])
+      next if artist.empty? || base.empty? # untagged files are never grouped
+      sig = dedupe_version_sig(tags[:title])
+      index[[artist, base, sig]] << { :path => f, :tags => tags, :score => meta[:score].to_i, :dur => meta[:duration].to_i, :sig => sig }
+    end
+
+    groups = 0
+    trashed = 0
+    index.each_value do |entries|
+      next if entries.size < 2
+      dedupe_duration_clusters(entries).each do |cluster|
+        next if cluster.size < 2
+        next if dedupe_risky_live?(cluster)
+        survivor = cluster.max_by { |e| [e[:score], (lossless?(e[:path]) ? 1 : 0), (e[:tags][:year].to_s[/\d{4}/] || '0').to_i, (File.size(e[:path]) rescue 0)] }
+        losers = cluster.reject { |e| e.equal?(survivor) }
+        # Never trash a lossless copy in favour of a lossy survivor.
+        losers = losers.reject { |e| lossless?(e[:path]) && !lossless?(survivor[:path]) }
+        next if losers.empty?
+        groups += 1
+        losers.each do |e|
+          r = remove_or_log(e[:path], root, dry_run: dry_run, reason: "dedupe: superseded by #{File.basename(survivor[:path])}")
+          next unless r
+          trashed += 1
+          prune_empty_dirs(File.dirname(e[:path]), root) unless dry_run || r == :dry_run
+        end
+      end
+    end
+
+    app.speaker.speak_up("music dedupe: #{groups} duplicate group(s), #{trashed} file(s) #{dry_run ? 'to trash' : 'trashed'} (destination #{root})#{' [DRY-RUN]' if dry_run}", 0) if app.respond_to?(:speaker)
+    { 'groups' => groups, 'trashed' => trashed, 'destination' => root, 'dry_run' => dry_run }
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    { 'groups' => 0, 'trashed' => 0, 'destination' => root, 'dry_run' => !flag_true?(apply) }
+  end
+
+  # One MediaInfo pass per file -> { tags:, score:, duration: (seconds) },
+  # cached by size:mtime under a dedicated key so re-runs skip the rescan.
+  def self.dedupe_scan(path)
+    cache = scan_cache
+    sig = begin
+      st = File.stat(path)
+      "#{st.size}:#{st.mtime.to_i}"
+    rescue StandardError
+      nil
+    end
+    if cache && sig
+      cached = cache.get("dedupe:#{path}")
+      if cached.is_a?(Hash) && cached['sig'] == sig
+        return { :tags => symbolize_tags(cached['tags'] || {}), :score => cached['score'].to_i, :duration => cached['dur'].to_i }
+      end
+    end
+    fi = FileInfo.new(path)
+    tags = (fi.audio_tags rescue {})
+    tags = {} unless tags.is_a?(Hash)
+    score = ((fi.audio_quality_score rescue nil) || name_quality_score(path)).to_i
+    dur = 0
+    begin
+      raw = fi.media_info && fi.media_info.audio && fi.media_info.audio.duration
+      dur = (raw.to_f / 1000.0).round if raw
+    rescue StandardError
+      dur = 0
+    end
+    (cache.set("dedupe:#{path}", 'sig' => sig, 'tags' => stringify_tags(tags), 'score' => score, 'dur' => dur) if cache && sig) rescue nil
+    { :tags => tags, :score => score, :duration => dur }
+  end
+
+  DEDUPE_DISTINCT = /\b(remix(?:es)?|live|acoustic|unplugged|extended|instrumental|dub|demo|reprise|sessions?|karaoke|acappella|bootleg|rework|mashup|tracking mix|backing track|rough|vip|flip)\b|12"|7"|re-?edit/i
+  DEDUPE_NEUTRAL = /\b(remaster(?:ed)?|digital remaster(?:ed)?|mono|stereo|radio edit|single version|album version|original version|original mix|original|explicit|clean|bonus track|deluxe|expanded|anniversary|edition|version|mix)\b/i
+  DEDUPE_LIVE_ALBUM = /\b(live|unplugged|concert|en public|en concert|acoustic|sessions?|bbc|peel|on stage|in concert|au caveau|tour)\b/i
+  DEDUPE_YEAR = /\b(?:19|20)\d{2}\b/
+
+  def self.dedupe_ascii(str)
+    str.to_s.unicode_normalize(:nfkd).chars.reject { |c| c =~ /\p{Mn}/ }.join
+  rescue StandardError
+    str.to_s
+  end
+
+  def self.dedupe_norm(str)
+    dedupe_ascii(str.to_s.downcase).gsub(/[^a-z0-9]+/, ' ').strip.gsub(/\s+/, ' ')
+  end
+
+  def self.dedupe_primary_artist(tags)
+    a = tags[:artist].to_s
+    a = tags[:albumartist].to_s if a.strip.empty?
+    part = a.split(/[,;\/&]|\bfeat\.?|\bft\.?|\bfeaturing\b|\bwith\b|\bvs\.?/i).first
+    dedupe_norm(part)
+  end
+
+  def self.dedupe_base_title(title)
+    t = dedupe_ascii(title.to_s.downcase)
+    t = t.gsub(/\([^)]*\)|\[[^\]]*\]/, ' ')
+    t = t.sub(/\s-\s.*\z/, ' ')
+    t = t.gsub(DEDUPE_NEUTRAL, ' ').gsub(DEDUPE_YEAR, ' ')
+    t.gsub(/[^a-z0-9]+/, ' ').strip.gsub(/\s+/, ' ')
+  end
+
+  def self.dedupe_version_sig(title)
+    t = dedupe_ascii(title.to_s.downcase)
+    return '' unless t =~ DEDUPE_DISTINCT
+    quals = t.scan(/\(([^)]*)\)|\[([^\]]*)\]/).flatten.compact.join(' ')
+    tail = (t[/\s-\s(.*)\z/, 1] || '')
+    src = "#{quals} #{tail}".strip
+    src = t if src.empty?
+    src = src.gsub(DEDUPE_NEUTRAL, ' ').gsub(DEDUPE_YEAR, ' ')
+    src.gsub(/[^a-z0-9]+/, ' ').strip.gsub(/\s+/, ' ')
+  end
+
+  # Single-linkage clustering on duration (seconds), anchored on the cluster
+  # minimum so a long tail of growing durations cannot chain-merge. Files with
+  # unknown duration (0) are each left in their own singleton (never merged).
+  def self.dedupe_duration_clusters(entries)
+    timed = entries.select { |e| e[:dur].to_i > 0 }.sort_by { |e| e[:dur] }
+    clusters = []
+    cur = []
+    timed.each do |e|
+      if cur.empty?
+        cur = [e]
+        next
+      end
+      d0 = cur.first[:dur]
+      tol = [[0.02 * [e[:dur], d0].max, 1.5].max, 4.0].min
+      if (e[:dur] - d0) <= tol
+        cur << e
+      else
+        clusters << cur
+        cur = [e]
+      end
+    end
+    clusters << cur unless cur.empty?
+    entries.select { |e| e[:dur].to_i <= 0 }.each { |e| clusters << [e] }
+    clusters
+  end
+
+  # A nude-titled cluster mixing a live/session-named album with a studio album
+  # is ambiguous (the "studio vs live" trap) -- skip it, never auto-trash.
+  def self.dedupe_risky_live?(cluster)
+    return false unless cluster.first[:sig].to_s.empty?
+    albums = cluster.map { |e| e[:tags][:album].to_s }
+    albums.any? { |a| a =~ DEDUPE_LIVE_ALBUM } && albums.any? { |a| a !~ DEDUPE_LIVE_ALBUM }
+  end
 end
