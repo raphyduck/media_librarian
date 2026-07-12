@@ -40,6 +40,7 @@ music:
   cache_ttl_days: 180 # How long MusicBrainz/AcoustID lookups are cached on disk (under ~/.medialibrarian/cache/metadata)
   min_seeders: 3 # Minimum seeders a release must have to be auto-queued by the CSV import (interactive search is unaffected; defaults to 3)
   organize_trash: '' # Optional: folder where `music organize --apply` moves exact duplicates (reversible). Defaults to a `.trash-organize` sibling of the library. Organize is dry-run unless --apply=1 and only ever removes byte-identical duplicates.
+  dedupe_on_import: true # When a completed music download is filed, reconcile the new track against the library (cross-album) and reversibly trash lower-quality duplicates. Set to false to disable.
   compilation_artist: Various Artists # Album-artist written on various-artists compilations (same album, multiple track artists), which are filed under a single <compilation_artist>/<Album>/ folder. Requires metaflac (FLAC) / mid3v2 (MP3) to write ALBUMARTIST+COMPILATION; --apply only.
   compilation_min_artists: 3 # `music consolidate_compilations`: minimum distinct artists sharing one album (across >=2 folders) for it to be treated as a scattered compilation. Floor of 2; higher is safer against coincidental shared titles. Overridable per-run with --min_artists=N.
   compilation_blocklist: [] # `music consolidate_compilations`: extra album titles never treated as compilations even when shared by several artists (each artist may legitimately own one). Generic titles like "Greatest Hits"/"Live" are always excluded.

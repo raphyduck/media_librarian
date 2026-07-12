@@ -1196,4 +1196,66 @@ class MusicLibrary
     albums = cluster.map { |e| e[:tags][:album].to_s }
     albums.any? { |a| a =~ DEDUPE_LIVE_ALBUM } && albums.any? { |a| a !~ DEDUPE_LIVE_ALBUM }
   end
+
+  # Import-time hook: after a freshly downloaded track is filed into the library
+  # by organize_file, reconcile it against same-recording copies already present
+  # (cross-album, same artist) and keep only the best-quality one, moving the
+  # rest to the reversible trash. This mirrors the duplicate removal the video
+  # path performs on completed downloads, but for music. Scoped to the imported
+  # track's artist folder so it stays cheap enough to run on every download.
+  # Reversible; can be disabled with `music.dedupe_on_import: false`.
+  def self.dedupe_imported(file: nil, apply: true)
+    return nil unless file
+    cfg = (app.config['music'] rescue nil)
+    return nil if cfg.is_a?(Hash) && cfg.key?('dedupe_on_import') && !flag_true?(cfg['dedupe_on_import'])
+
+    root = fs_utf8(File.expand_path(MusicSearch.music_destination))
+    path = fs_utf8(File.expand_path(file.to_s))
+    return nil unless File.file?(path) && inside_library?(path, root)
+    dry_run = !flag_true?(apply)
+
+    rel = path.sub(root + '/', '')
+    return nil if rel == path # not under the library root
+    artist_dir = File.join(root, rel.split('/').first.to_s)
+    return nil unless File.directory?(artist_dir)
+
+    candidates = audio_files(artist_dir)
+    # A pathologically broad scope (e.g. a big Various Artists folder) is left to
+    # the periodic `music dedupe` pass rather than scanned on every import.
+    return nil if candidates.size > 800
+
+    imeta = dedupe_scan(path)
+    ikey = [dedupe_primary_artist(imeta[:tags]), dedupe_base_title(imeta[:tags][:title]), dedupe_version_sig(imeta[:tags][:title])]
+    return nil if ikey[0].empty? || ikey[1].empty?
+
+    entries = candidates.filter_map do |f|
+      m = dedupe_scan(f)
+      k = [dedupe_primary_artist(m[:tags]), dedupe_base_title(m[:tags][:title]), dedupe_version_sig(m[:tags][:title])]
+      next unless k == ikey
+      { :path => fs_utf8(File.expand_path(f)), :tags => m[:tags], :score => m[:score].to_i, :dur => m[:duration].to_i, :sig => ikey[2] }
+    end
+    return nil if entries.size < 2
+
+    cluster = dedupe_duration_clusters(entries).find { |cl| cl.any? { |e| e[:path] == path } }
+    return nil unless cluster && cluster.size >= 2
+    return nil if dedupe_risky_live?(cluster)
+
+    survivor = cluster.max_by { |e| [e[:score], (lossless?(e[:path]) ? 1 : 0), (e[:tags][:year].to_s[/\d{4}/] || '0').to_i, (File.size(e[:path]) rescue 0)] }
+    losers = cluster.reject { |e| e.equal?(survivor) }
+    losers = losers.reject { |e| lossless?(e[:path]) && !lossless?(survivor[:path]) } # never drop lossless for lossy
+    return { :survivor => survivor[:path], :trashed => [] } if losers.empty?
+
+    trashed = []
+    losers.each do |e|
+      r = remove_or_log(e[:path], root, dry_run: dry_run, reason: "dedupe(import): superseded by #{File.basename(survivor[:path])}")
+      next unless r
+      trashed << e[:path]
+      prune_empty_dirs(File.dirname(e[:path]), root) unless dry_run || r == :dry_run
+    end
+    app.speaker.speak_up("music dedupe(import): '#{ikey[1]}' -> kept '#{File.basename(survivor[:path])}', #{dry_run ? 'would trash' : 'trashed'} #{trashed.size} lower-quality copy(ies)", 0) if !trashed.empty? && app.respond_to?(:speaker)
+    { :survivor => survivor[:path], :trashed => trashed }
+  rescue StandardError => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding)) rescue nil
+    nil
+  end
 end

@@ -178,7 +178,13 @@ class Library
     elsif EXTENSIONS_TYPE[:audio].include?(FileUtils.get_extension(torrent_name).to_s.downcase)
       app.speaker.speak_up "Organizing downloaded music file '#{full_p}'" if Env.debug?
       dest = MusicLibrary.organize_file(full_p, MusicSearch.music_destination, folder_name: File.basename(torrent_path))
-      handled = 1 if dest
+      if dest
+        handled = 1
+        # Mirror the video path's duplicate removal for music: reconcile the
+        # freshly imported track against the rest of the library (cross-album,
+        # best-quality wins) and reversibly trash the inferior copies.
+        MusicLibrary.dedupe_imported(file: dest)
+      end
     elsif full_p.match(Regexp.new('.*\.(' + handled_files.join('|') + '$)').to_s)
       app.speaker.speak_up "Handling downloaded file '#{full_p}', ensuring qualities '#{ensure_qualities}'" if Env.debug?
       FileUtils.touch(full_p)
