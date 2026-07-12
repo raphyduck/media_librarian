@@ -2727,15 +2727,28 @@ function buildCalendarSearchCard(entry) {
 
   const actions = document.createElement('div');
   actions.className = 'calendar-search-actions';
-  const importButton = document.createElement('button');
-  importButton.type = 'button';
-  importButton.textContent = 'Importer dans le calendrier';
-  importButton.addEventListener('click', () => importCalendarEntry(entry, importButton));
-  const watchlistButton = document.createElement('button');
-  watchlistButton.type = 'button';
-  watchlistButton.textContent = "Ajouter à la liste d’intérêt";
-  watchlistButton.addEventListener('click', () => addToWatchlist(entry, watchlistButton));
-  actions.append(importButton, watchlistButton);
+  const inCalendar = Boolean(pickEntryValue(entry, ['in_calendar']));
+  if (inCalendar) {
+    actions.appendChild(makeCalendarBadge('Déjà au calendrier'));
+  } else {
+    const importButton = document.createElement('button');
+    importButton.type = 'button';
+    importButton.textContent = 'Importer dans le calendrier';
+    importButton.addEventListener('click', () => importCalendarEntry(entry, importButton));
+    actions.appendChild(importButton);
+  }
+  if (isDownloaded(entry)) {
+    actions.appendChild(makeCalendarBadge('Téléchargé'));
+  }
+  if (isInWatchlist(entry)) {
+    actions.appendChild(makeCalendarBadge("Dans la liste d’intérêt"));
+  } else {
+    const watchlistButton = document.createElement('button');
+    watchlistButton.type = 'button';
+    watchlistButton.textContent = "Ajouter à la liste d’intérêt";
+    watchlistButton.addEventListener('click', () => addToWatchlist(entry, watchlistButton));
+    actions.appendChild(watchlistButton);
+  }
   body.appendChild(actions);
 
   item.appendChild(body);

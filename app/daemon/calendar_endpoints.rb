@@ -54,13 +54,52 @@ class Daemon
       limit = clamp_positive_integer(req.query['limit'], default: 50, max: 50)
 
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app)
-      entries = service.search(title: title, year: year, type: type, persist: false)
+      entries = service.search(title: title, year: year, type: type, persist: false, include_existing: true)
       entries = entries.select { |entry| sources.include?(entry[:source].to_s.downcase) } if sources.any?
+      entries = merge_calendar_search_results(entries, title, year, type)
       entries = entries.first(limit)
 
       json_response(res, body: { 'entries' => entries })
     rescue StandardError => e
       error_response(res, status: 500, message: e.message)
+    end
+
+    # A search must also surface what the calendar already tracks: provider
+    # results used to be dropped when their imdb_id was already in
+    # calendar_entries, so searching an already-imported title showed "no
+    # result". Local matches come first, carrying their downloaded/interest
+    # flags; provider results the calendar already knows are folded into their
+    # local entry; every known entry is flagged :in_calendar so the UI can
+    # offer "add to watchlist" instead of a pointless import.
+    def merge_calendar_search_results(provider_entries, title, year, type)
+      repository = calendar_repository
+      local = begin
+        Array(repository.entries({ title: title, type: type, per_page: 200 })[:entries])
+      rescue StandardError
+        []
+      end
+      local = local.select { |entry| entry[:year].to_i == year.to_i } if year
+
+      seen = {}
+      merged = local.map do |entry|
+        key = entry[:imdb_id].to_s.strip.downcase
+        seen[key] = true unless key.empty?
+        entry.merge(in_calendar: true)
+      end
+
+      provider_entries.each do |entry|
+        key = entry[:imdb_id].to_s.strip.downcase
+        next if !key.empty? && seen[key]
+
+        existing = key.empty? ? nil : (repository.find_by_imdb_id(key) rescue nil)
+        if existing
+          merged << existing.merge(in_calendar: true)
+          seen[key] = true
+        else
+          merged << entry
+        end
+      end
+      merged
     end
 
     def handle_calendar_import_request(req, res)
