@@ -69,7 +69,15 @@ module MediaLibrarian
         return [] if title.to_s.strip.empty?
 
         date_range = year ? Date.new(year.to_i, 1, 1)..Date.new(year.to_i, 12, 31) : nil
-        normalized = normalize_entries(provider_search(title: title, year: year, type: type), date_range)
+        collected = provider_search(title: title, year: year, type: type)
+        # normalize_entries de-duplicates by imdb_id keeping the FIRST entry, so
+        # provider order decides which title wins. Put TMDB first: it is the
+        # only provider that reliably carries the ORIGINAL-language title (and
+        # the richest metadata); OMDb/Trakt often return the translated one.
+        collected = collected.sort_by.with_index do |entry, index|
+          [(entry[:source] || entry['source']).to_s.strip.downcase == 'tmdb' ? 0 : 1, index]
+        end
+        normalized = normalize_entries(collected, date_range)
         normalized = filter_existing_entries(normalized) unless include_existing
         persist_entries(normalized) if persist
         normalized

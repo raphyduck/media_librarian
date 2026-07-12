@@ -902,6 +902,10 @@ class Daemon
           if req.path == '/' || req.path == '/index.html'
             if File.exist?(index_path)
               res['Content-Type'] = 'text/html; charset=utf-8'
+              # index.html carries the cache-busting app.js?v= stamp; if the
+              # browser caches index.html itself, users keep running stale JS
+              # after a deploy. Force revalidation on every load.
+              res['Cache-Control'] = 'no-cache'
               res.body = File.read(index_path)
                              .gsub('app.js?v=__APP_VERSION__', "app.js?v=#{@web_asset_version}")
             else
