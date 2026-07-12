@@ -921,6 +921,7 @@ class Daemon
         @control_server.mount_proc(path) do |req, res|
           next unless require_authorization(req, res)
 
+          normalize_query_encoding(req)
           handler.call(req, res)
         end
       end
@@ -1308,6 +1309,36 @@ class Daemon
       return {} if req.body.nil? || req.body.empty?
 
       JSON.parse(req.body)
+    end
+
+    # WEBrick hands query-string values over as ASCII-8BIT byte strings; the
+    # first comparison with the UTF-8 strings the app manipulates (DB titles,
+    # source literals) then raises Encoding::CompatibilityError as soon as the
+    # value carries an accent (e.g. a calendar search for "Ame idéale"). Re-tag
+    # every value as UTF-8 at the HTTP boundary, scrubbing invalid bytes, so
+    # handlers never see binary strings. GET/HEAD only: on other verbs WEBrick
+    # may parse the request BODY to build the query (form/multipart posts),
+    # which would silently consume it before parse_payload can read it.
+    def normalize_query_encoding(req)
+      return unless %w[GET HEAD].include?(req.request_method)
+
+      req.query.each_value do |value|
+        if value.respond_to?(:each_data)
+          value.each_data { |data| force_utf8!(data) }
+        end
+        force_utf8!(value)
+      end
+    rescue StandardError
+      nil
+    end
+
+    def force_utf8!(value)
+      return value unless value.is_a?(String) && !value.frozen?
+      return value if value.encoding == Encoding::UTF_8 && value.valid_encoding?
+
+      value.force_encoding(Encoding::UTF_8)
+      value.replace(value.scrub) unless value.valid_encoding?
+      value
     end
 
     def handle_status_request(res)

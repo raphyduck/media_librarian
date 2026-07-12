@@ -70,4 +70,33 @@ class CalendarEntriesRepositoryTest < Minitest::Test
 
     refute entries.first[:downloaded]
   end
+
+  def test_title_filter_accepts_binary_encoded_accented_needle
+    calendar_rows = [
+      { media_type: 'movie', title: 'Âme idéale', imdb_id: 'tt1234' },
+      { media_type: 'movie', title: 'Alpha', imdb_id: 'tt5678' }
+    ]
+    @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: [])
+    repository = CalendarEntriesRepository.new(app: @app)
+
+    # WEBrick delivers query params as ASCII-8BIT bytes; the filter must not
+    # raise Encoding::CompatibilityError and must still match the UTF-8 title.
+    binary_needle = 'idéale'.dup.force_encoding(Encoding::ASCII_8BIT)
+    result = repository.entries({ title: binary_needle })
+
+    assert_equal ['Âme idéale'], result[:entries].map { |entry| entry[:title] }
+  end
+
+  def test_search_accepts_binary_encoded_accented_title
+    calendar_rows = [
+      { media_type: 'movie', title: 'Âme idéale', imdb_id: 'tt1234' }
+    ]
+    @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: [])
+    repository = CalendarEntriesRepository.new(app: @app)
+
+    binary_title = 'Âme idéale'.dup.force_encoding(Encoding::ASCII_8BIT)
+    results = repository.search(title: binary_title)
+
+    assert_equal ['Âme idéale'], results.map { |entry| entry[:title] }
+  end
 end
