@@ -93,8 +93,16 @@ class CalendarEntriesRepository
     normalize_text(value).include?(needle)
   end
 
+  # Comparisons run against UTF-8 titles from the DB, so a needle arriving as
+  # ASCII-8BIT bytes (e.g. an HTTP query param) must be re-tagged first or
+  # include?/== raise Encoding::CompatibilityError on any accented character.
   def normalize_text(value)
-    value.to_s.strip.downcase
+    text = value.to_s
+    unless text.encoding == Encoding::UTF_8 && text.valid_encoding?
+      text = text.dup.force_encoding(Encoding::UTF_8)
+      text = text.scrub unless text.valid_encoding?
+    end
+    text.strip.downcase
   end
 
   def genres_match?(entry, genres_filter)

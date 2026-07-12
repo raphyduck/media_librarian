@@ -35,4 +35,41 @@ class DaemonRoutesTest < Minitest::Test
     refute_includes routes.keys, '/session'
     refute_includes routes.keys, '/'
   end
+
+  FakeRequest = Struct.new(:request_method, :query)
+
+  def test_normalize_query_encoding_retags_binary_query_values_as_utf8
+    binary_form = WEBrick::HTTPUtils::FormData.new('Âme idéale'.dup.force_encoding(Encoding::ASCII_8BIT))
+    binary_plain = 'été'.dup.force_encoding(Encoding::ASCII_8BIT)
+    req = FakeRequest.new('GET', { 'title' => binary_form, 'plain' => binary_plain })
+
+    Daemon.send(:normalize_query_encoding, req)
+
+    assert_equal Encoding::UTF_8, req.query['title'].encoding
+    assert_equal 'Âme idéale', req.query['title'].to_s
+    assert req.query['title'].valid_encoding?
+    assert_equal Encoding::UTF_8, req.query['plain'].encoding
+    assert_equal 'été', req.query['plain']
+  end
+
+  def test_normalize_query_encoding_scrubs_invalid_bytes
+    invalid = "bad\xFFbytes".dup.force_encoding(Encoding::ASCII_8BIT)
+    req = FakeRequest.new('GET', { 'q' => invalid })
+
+    Daemon.send(:normalize_query_encoding, req)
+
+    assert_equal Encoding::UTF_8, req.query['q'].encoding
+    assert req.query['q'].valid_encoding?
+  end
+
+  def test_normalize_query_encoding_leaves_non_get_requests_alone
+    # On POST/PUT WEBrick may build the query by consuming the request body
+    # (form/multipart), which would break parse_payload; those verbs are skipped.
+    binary = 'été'.dup.force_encoding(Encoding::ASCII_8BIT)
+    req = FakeRequest.new('POST', { 'q' => binary })
+
+    Daemon.send(:normalize_query_encoding, req)
+
+    assert_equal Encoding::ASCII_8BIT, req.query['q'].encoding
+  end
 end
