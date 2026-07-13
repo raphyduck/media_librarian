@@ -188,16 +188,21 @@ class Movie
     full_save = movie
     case type
     when 'movie_get'
-      if movie.nil? && ids['tmdb'].to_s != ''
-        tmdb_id = ids['tmdb']
+      if movie.nil? && (ids['tmdb'].to_s != '' || ids['imdb'].to_s != '')
+        # TMDB movie endpoints accept IMDb ids in place of TMDB ids; querying
+        # TMDB first keeps the original title (Trakt only carries the English
+        # one), which torrent searches rely on.
+        tmdb_id = ids['tmdb'].to_s != '' ? ids['tmdb'] : ids['imdb']
         tmdb_movie = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(tmdb_id) }
-        if tmdb_movie
-          movie = Cache.object_pack(tmdb_movie, 1)
+        tmdb_movie = tmdb_movie && Cache.object_pack(tmdb_movie, 1)
+        if tmdb_movie && tmdb_movie['title'].to_s != ''
+          movie = tmdb_movie
           src = 'tmdb'
-          imdb_id = tmdb_movie['imdb_id']
+          imdb_id = movie['imdb_id']
           ids['imdb'] = imdb_id if ids['imdb'].to_s == '' && imdb_id.to_s != ''
+          ids['tmdb'] = movie['id'] if ids['tmdb'].to_s == '' && movie['id'].to_s != ''
         elsif Env.debug?
-          app.speaker.speak_up("tmdb detail lookup returned nil for id=#{ids['tmdb']}, source=tmdb")
+          app.speaker.speak_up("tmdb detail lookup returned nil for id=#{tmdb_id}, source=tmdb")
         end
       end
       if (movie.nil? || movie['title'].nil?)

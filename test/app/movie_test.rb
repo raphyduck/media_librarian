@@ -148,6 +148,54 @@ class MovieTest < Minitest::Test
                     'Movie.extract_value missing title, no fallback available: {"release_date"=>"2019-12-12"}'
   end
 
+  def test_movie_get_resolves_original_title_via_tmdb_when_only_imdb_id_is_known
+    ensure_tmdb_stubs
+
+    tmdb_payload = {
+      'id' => 99,
+      'imdb_id' => 'tt1234567',
+      'title' => 'The Ideal Soul',
+      'original_title' => "L'Âme idéale",
+      'original_language' => 'fr',
+      'release_date' => '2024-03-01'
+    }
+    trakt_guard = ->(*) { flunk 'Trakt must not be queried when TMDB resolves the IMDb id' }
+
+    without_cache do
+      Tmdb::Movie.stub(:detail, ->(id, *) { id == 'tt1234567' ? tmdb_payload : nil }) do
+        TraktAgent.stub(:movie__summary, trakt_guard) do
+          title, movie = Movie.movie_get({ 'imdb' => 'tt1234567' }, app: @environment.application)
+
+          assert_equal "L'Âme idéale (2024)", title, 'the search title must be the original title'
+          assert_includes movie.alt_titles, "L'Âme idéale (2024)"
+          assert_includes movie.alt_titles, 'The Ideal Soul (2024)'
+        end
+      end
+    end
+  end
+
+  def test_movie_get_falls_back_to_trakt_when_tmdb_does_not_know_the_imdb_id
+    ensure_tmdb_stubs
+
+    trakt_payload = {
+      'title' => 'English Only',
+      'year' => 2023,
+      'released' => '2023-06-01',
+      'ids' => { 'imdb' => 'tt7654321', 'trakt' => 42 }
+    }
+
+    without_cache do
+      Tmdb::Movie.stub(:detail, ->(*) { { 'status_code' => 34, 'status_message' => 'not found' } }) do
+        TraktAgent.stub(:movie__summary, ->(*) { trakt_payload }) do
+          title, movie = Movie.movie_get({ 'imdb' => 'tt7654321' }, app: @environment.application)
+
+          assert_equal 'English Only (2023)', title
+          refute_nil movie
+        end
+      end
+    end
+  end
+
   def test_movie_get_discards_empty_trakt_response
     ensure_tmdb_stubs
 
