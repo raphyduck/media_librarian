@@ -33,40 +33,16 @@ module WatchlistStore
     calendar_rows = MediaLibrarian.app.db.get_rows('calendar_entries', imdb_id: imdb_ids)
     calendar_index = build_calendar_index(calendar_rows)
 
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + ORIGINAL_TITLE_BUDGET_SECONDS
     rows.filter_map do |row|
       imdb_id = normalize_imdb(row[:imdb_id] || row['imdb_id'])
       calendar_row = calendar_index[imdb_id]
       next unless calendar_row
 
-      with_original_title(merge_calendar_data(row, calendar_row), deadline)
+      merge_calendar_data(row, calendar_row)
     end
   rescue StandardError => e
     MediaLibrarian.app.speaker.tell_error(e, 'WatchlistStore.fetch_with_details') rescue nil
     rows
-  end
-
-  # Calendar entries sourced from Trakt/OMDb carry the English title; tracker
-  # searches (the UI's "Ouvrir" link) must run on the original title, which
-  # Movie.movie_get resolves TMDB-first and caches.
-  ORIGINAL_TITLE_BUDGET_SECONDS = 10
-
-  def with_original_title(entry, deadline)
-    return entry unless entry[:type].to_s == 'movies'
-
-    ids = entry[:ids]
-    return entry unless ids.is_a?(Hash) && !ids.empty?
-    return entry unless defined?(::Movie) && ::Movie.respond_to?(:movie_get)
-    return entry if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-    name, movie = ::Movie.movie_get(ids)
-    return entry unless movie
-
-    original = name.to_s.sub(/\s*\(\d{4}\)\s*\z/, '').strip
-    entry[:title] = original unless original.empty?
-    entry
-  rescue StandardError
-    entry
   end
 
   def delete(imdb_id: nil, type: nil)
@@ -205,6 +181,5 @@ module WatchlistStore
   private_class_method :normalize_entries, :normalize_metadata, :imdb_id_for,
                        :normalize_type, :normalize_imdb, :build_calendar_index,
                        :merge_calendar_data, :normalize_ids, :extract_year,
-                       :filter_rows_with_calendar_entries, :calendar_table?,
-                       :with_original_title
+                       :filter_rows_with_calendar_entries, :calendar_table?
 end

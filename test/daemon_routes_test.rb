@@ -103,20 +103,19 @@ class DaemonRoutesTest < Minitest::Test
   end
 
   def test_calendar_search_folds_known_provider_results_into_their_local_entry
-    # The calendar tracks the film under a stale translated title; the TMDB
-    # provider found it and carries the original-language title (see the
-    # original-title preference in TmdbCalendarProvider#build_entry). The local
-    # entry (with its flags) is kept, but the displayed title is the original.
-    known = { imdb_id: 'tt3', title: 'You Found Me', type: 'movie', downloaded: true }
+    # Calendar entries are stored under their original title (resolved at
+    # persist time, backfilled by scripts/fix_calendar_entry_original_titles.rb),
+    # so a fold keeps the local entry — title and flags — untouched.
+    known = { imdb_id: 'tt3', title: "L'Âme idéale", type: 'movie', downloaded: true }
     fake_repo = Object.new
     fake_repo.define_singleton_method(:entries) { |_filters| { entries: [] } }
     fake_repo.define_singleton_method(:load_entries) { [known] }
-    provider_entries = [{ imdb_id: 'tt3', title: "L'Âme idéale", source: 'tmdb' }]
+    provider_entries = [{ imdb_id: 'tt3', title: 'You Found Me', source: 'tmdb' }]
 
     with_fake_calendar_repository(fake_repo) do
       merged = Daemon.send(:merge_calendar_search_results, provider_entries, "l'âme idéale", nil, nil)
 
-      assert_equal ["L'Âme idéale"], merged.map { |entry| entry[:title] }, 'the original-language title is displayed'
+      assert_equal ["L'Âme idéale"], merged.map { |entry| entry[:title] }, 'the local (original) title is displayed'
       assert merged.first[:in_calendar]
       assert merged.first[:downloaded], 'local flags survive the fold'
     end
