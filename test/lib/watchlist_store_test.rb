@@ -48,6 +48,55 @@ class WatchlistStoreTest < Minitest::Test
     refute_includes row.keys, :metadata
   end
 
+  def test_fetch_with_details_prefers_original_movie_title
+    @app.db.insert_row(
+      'calendar_entries',
+      source: 'trakt', external_id: '77', title: 'You Found Me', media_type: 'movie', imdb_id: 'tt0077',
+      release_date: '2025-06-01', ids: { imdb: 'tt0077', tmdb: 1166170 }
+    )
+
+    WatchlistStore.upsert([
+      { imdb_id: 'tt0077', type: 'movies', title: 'You Found Me' }
+    ])
+
+    with_movie_stub(["L'Âme idéale (2025)", :movie]) do
+      row = WatchlistStore.fetch_with_details.first
+      assert_equal "L'Âme idéale", row[:title], 'the original title must replace the English calendar title'
+    end
+  end
+
+  def test_fetch_with_details_keeps_calendar_title_when_movie_is_unresolved
+    @app.db.insert_row(
+      'calendar_entries',
+      source: 'trakt', external_id: '78', title: 'English Title', media_type: 'movie', imdb_id: 'tt0078',
+      release_date: '2025-06-01', ids: { imdb: 'tt0078' }
+    )
+
+    WatchlistStore.upsert([
+      { imdb_id: 'tt0078', type: 'movies', title: 'English Title' }
+    ])
+
+    with_movie_stub(['', nil]) do
+      row = WatchlistStore.fetch_with_details.first
+      assert_equal 'English Title', row[:title]
+    end
+  end
+
+  def with_movie_stub(result)
+    if defined?(::Movie) && ::Movie.respond_to?(:movie_get)
+      ::Movie.stub(:movie_get, ->(*) { result }) { yield }
+    else
+      stub = Class.new
+      stub.define_singleton_method(:movie_get) { |*| result }
+      Object.const_set(:Movie, stub)
+      begin
+        yield
+      ensure
+        Object.send(:remove_const, :Movie)
+      end
+    end
+  end
+
   def test_fetch_with_details_enriches_rows
     @app.db.insert_row(
       'calendar_entries',
