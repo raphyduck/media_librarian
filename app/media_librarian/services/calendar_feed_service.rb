@@ -271,6 +271,8 @@ module MediaLibrarian
         prepared = entries.filter_map { |entry| ensure_imdb_id(entry) }
         return [] if prepared.empty?
 
+        prepared.each { |entry| resolve_original_movie_title(entry) }
+
         speaker&.speak_up('[debug] calendar: loading existing entries', 0, Thread.current, 1)
         existing_index = load_existing_by_imdb_id
         speaker&.speak_up("[debug] calendar: existing_index loaded (#{existing_index.size} rows)", 0, Thread.current, 1)
@@ -292,6 +294,39 @@ module MediaLibrarian
         db.insert_rows(:calendar_entries, to_insert, true) unless to_insert.empty?
         speaker&.speak_up('[debug] calendar: persist_entries done', 0, Thread.current, 1)
         prepared
+      end
+
+      # Trakt/OMDb only carry the English title, while torrent searches and the
+      # interests tab expect the original one. TMDB movie endpoints accept IMDb
+      # ids in place of TMDB ids, so any movie entry with an id can be resolved
+      # before it lands in calendar_entries; TMDB-sourced entries already carry
+      # the original title (see TmdbCalendarProvider#build_entry).
+      def resolve_original_movie_title(entry)
+        return entry unless entry[:media_type].to_s == 'movie'
+        return entry if entry[:source].to_s.downcase == 'tmdb'
+        return entry unless tmdb_lookup_available?
+
+        ids = entry[:ids].is_a?(Hash) ? entry[:ids] : {}
+        lookup_id = ids['tmdb'] || ids[:tmdb]
+        lookup_id = entry[:imdb_id] if lookup_id.to_s.strip.empty?
+        return entry if lookup_id.to_s.strip.empty?
+
+        @original_title_cache ||= {}
+        unless @original_title_cache.key?(lookup_id)
+          details = Tmdb::Movie.detail(lookup_id)
+          @original_title_cache[lookup_id] = details.is_a?(Hash) ? details['original_title'].to_s.strip : ''
+        end
+        original = @original_title_cache[lookup_id]
+        entry[:title] = original unless original.empty?
+        entry
+      rescue StandardError => e
+        speaker&.tell_error(e, "Calendar original title lookup failed for #{entry[:title] || entry[:imdb_id]}")
+        entry
+      end
+
+      def tmdb_lookup_available?
+        defined?(Tmdb::Movie) &&
+          (!defined?(Tmdb::Api) || !Tmdb::Api.respond_to?(:config) || Tmdb::Api.config[:api_key].to_s != '')
       end
 
       def load_existing_by_imdb_id

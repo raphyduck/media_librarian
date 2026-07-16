@@ -119,6 +119,71 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal 'First', rows.first[:title]
   end
 
+  def test_persist_resolves_original_movie_title_for_non_tmdb_sources
+    imdb_id = 'tt7100001'
+    provider = FakeProvider.new([
+      base_entry.merge(source: 'trakt', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'You Found Me')
+    ], source: 'trakt')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    with_tmdb_detail_stub(->(id, *) { id == imdb_id ? { 'original_title' => "L'Âme idéale" } : nil }) do
+      service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+    end
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal "L'Âme idéale", row[:title], 'the original title must be persisted instead of the English one'
+  end
+
+  def test_persist_keeps_title_when_original_title_lookup_fails
+    imdb_id = 'tt7100002'
+    provider = FakeProvider.new([
+      base_entry.merge(source: 'trakt', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'English Title')
+    ], source: 'trakt')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    with_tmdb_detail_stub(->(*) { raise StandardError, 'tmdb down' }) do
+      service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+    end
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal 'English Title', row[:title]
+  end
+
+  def with_tmdb_detail_stub(detail)
+    with_tmdb_api_key do
+      if defined?(::Tmdb::Movie) && ::Tmdb::Movie.respond_to?(:detail)
+        ::Tmdb::Movie.stub(:detail, detail) { yield }
+      else
+        tmdb = defined?(::Tmdb) ? ::Tmdb : Object.const_set(:Tmdb, Module.new)
+        created_movie = !tmdb.const_defined?(:Movie)
+        movie = created_movie ? tmdb.const_set(:Movie, Class.new) : tmdb.const_get(:Movie)
+        movie.define_singleton_method(:detail) { |*args| detail.call(*args) }
+        begin
+          yield
+        ensure
+          movie.singleton_class.send(:remove_method, :detail)
+          tmdb.send(:remove_const, :Movie) if created_movie
+        end
+      end
+    end
+  end
+
+  def with_tmdb_api_key
+    unless defined?(::Tmdb::Api) && ::Tmdb::Api.respond_to?(:config)
+      return yield
+    end
+
+    previous = ::Tmdb::Api.config[:api_key]
+    ::Tmdb::Api.config[:api_key] = 'test-key'
+    yield
+  ensure
+    if defined?(::Tmdb::Api) && ::Tmdb::Api.respond_to?(:config)
+      previous.nil? ? ::Tmdb::Api.config.delete(:api_key) : ::Tmdb::Api.config[:api_key] = previous
+    end
+  end
+
   def test_refresh_updates_existing_entry_when_votes_change
     imdb_id = 'tt8000001'
     entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, imdb_votes: 100)

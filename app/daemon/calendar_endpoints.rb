@@ -105,14 +105,10 @@ class Daemon
 
         existing = key.empty? ? nil : known[key]
         if existing
-          folded = existing.merge(in_calendar: true)
-          # Search results must show the ORIGINAL-language title. The TMDB
-          # provider now returns it, but an entry imported before that fix can
-          # still carry its translated title in the DB until the next feed
-          # refresh rewrites it — prefer the provider's title meanwhile.
-          provider_title = entry[:title].to_s.strip
-          folded[:title] = provider_title if entry[:source].to_s.downcase == 'tmdb' && !provider_title.empty?
-          merged << folded
+          # Calendar entries are stored under their original title (resolved at
+          # persist time, backfilled by scripts/fix_calendar_entry_original_titles.rb),
+          # so the local entry wins as-is.
+          merged << existing.merge(in_calendar: true)
           seen[key] = true
         else
           merged << entry
