@@ -247,12 +247,17 @@ class Metadata
     !media_get(files, identifiers, f_type).empty?
   end
 
+  # Identifiers are built from titles whose capitalization depends on the
+  # metadata source that resolved them (e.g. Trakt title-cases 'Chasse
+  # Gardée' while TMDB stores 'Chasse gardée'), so the comparison must be
+  # case-insensitive or the same movie fails to match itself.
   def self.media_get(files, identifiers, f_type = nil)
     eps = {}
     identifiers = [identifiers.to_s] unless identifiers.is_a?(Array)
     identifiers.each do |i|
+      needle = i.to_s.downcase
       eps.merge!(files.select do |id, f|
-        id.to_s.include?(i) && (f_type.to_s == '' || f[:f_type].to_s == '' || f_type.to_s == f[:f_type].to_s)
+        id.to_s.downcase.include?(needle) && (f_type.to_s == '' || f[:f_type].to_s == '' || f_type.to_s == f[:f_type].to_s)
       end)
     end
     eps

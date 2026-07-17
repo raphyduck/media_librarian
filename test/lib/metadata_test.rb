@@ -5,6 +5,16 @@ require_relative '../test_helper'
 require_relative '../../lib/metadata'
 
 class MetadataTest < Minitest::Test
+  def test_media_get_matches_identifiers_case_insensitively
+    files = {
+      'movieChasse gardée (2023)2023' => { :name => 'Chasse.Gardee.2023.FRENCH.1080p' }
+    }
+
+    found = Metadata.media_get(files, ['movieChasse Gardée (2023)2023'])
+
+    assert_equal 1, found.size, 'a Trakt-cased identifier must match the TMDB-cased one'
+  end
+
   def test_media_add_deep_duplicates_nested_attributes
     attrs = {
       metadata: {
