@@ -123,17 +123,26 @@ class OmdbApi
 
     JSON.parse(text)
   rescue JSON::ParserError => e
-    fallback = tighten_json(text)
-    if fallback && fallback != text
+    # OMDb sometimes returns raw control characters (e.g. a literal newline
+    # inside a plot string), which strict JSON parsing rejects; scrubbing
+    # them to spaces is always safe since valid JSON never requires them.
+    scrubbed = scrub_control_characters(text)
+    [tighten_json(text), scrubbed, tighten_json(scrubbed)].each do |fallback|
+      next if fallback.nil? || fallback == text
+
       begin
         return JSON.parse(fallback)
       rescue JSON::ParserError
-        # fallback also failed
+        next
       end
     end
 
     report_error(e, "OMDb #{op} response was invalid JSON (status #{status || 'unknown'}): #{e.message}")
     nil
+  end
+
+  def scrub_control_characters(text)
+    text.gsub(/[\x00-\x1f]/, ' ')
   end
 
   def verify_response!(status, operation)
@@ -282,8 +291,11 @@ class OmdbApi
     closing = body.rindex(/[}\]]/)
     return nil unless closing
 
+    # The second pass targets keys that lost their opening quote: the quote
+    # kept in \1 must be a CLOSING one (not preceded by ,{[:) or it would
+    # rewrite every well-formed '"key":' into '","key":'.
     body[0..closing]
       .gsub(/([\]\}"0-9])\s*"(?=[A-Za-z0-9_]+":)/, '\\1,"')
-      .gsub(/([\]\}"0-9])\s*([A-Za-z0-9_]+":)/, '\\1,"\\2')
+      .gsub(/([\]\}0-9]|(?<![,\{\[:\s])")\s*([A-Za-z0-9_]+":)/, '\\1,"\\2')
   end
 end
