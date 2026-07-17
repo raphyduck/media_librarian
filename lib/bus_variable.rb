@@ -46,10 +46,6 @@ class BusVariable
     MediaLibrarian.app.speaker.speak_up DataUtils.dump_variable(BusVariable.new(variable_name).value, max_depth.to_i)
   end
 
-  def self.list_bus_variables
-    LibraryBus.bus_get(Thread.current, 1)[:bus_vars] || []
-  end
-
   def self.remove_bus_variables(vname, thread)
     LibraryBus.bus_get(thread, 1)[:bus_vars].delete(vname) if LibraryBus.bus_get(thread, 1)[:bus_vars].is_a?(Array)
   end

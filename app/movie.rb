@@ -64,13 +64,16 @@ class Movie
       result = opts['genre']
     when 'id'
       result = opts['imdb_id']
-      if result.to_s.empty? && opts['ids']
-        result = opts['ids']['imdb']
-        result = opts['ids']['trakt'] if result.to_s.empty?
-        result = opts['ids']['tmdb'] if result.to_s.empty?
-        result = opts['ids']['slug'] if result.to_s.empty?
-      else
-        result = opts['imdbnumber']
+      if result.to_s.empty?
+        if opts['ids']
+          result = opts['ids']['imdb']
+          result = opts['ids']['trakt'] if result.to_s.empty?
+          result = opts['ids']['tmdb'] if result.to_s.empty?
+          result = opts['ids']['slug'] if result.to_s.empty?
+        else
+          # Kodi payloads carry imdbnumber instead of imdb_id/ids.
+          result = opts['imdbnumber']
+        end
       end
     when 'ids'
       result = { 'imdb' => (opts['imdb_id'] || opts['imdbnumber']) }

@@ -22,8 +22,11 @@ class Metadata
       title = name.gsub(/[#{SPACE_SUBSTITUTE}][Ss](eason|aison)[#{SPACE_SUBSTITUTE}](\d{1,4})[#{SPACE_SUBSTITUTE}]/) { " S#{'%02d' % $2} " }
       ids = File.basename(title).scan(Regexp.new(BASIC_EP_MATCH)).uniq
       unless ids.empty?
-        metadata = title.gsub(/#{ids.first[0]}(.*)/, '\1')
-        title.gsub!(/#{ids.first[0]}.*/, ' ')
+        # ids.first[0] is raw matched text that can contain regex metacharacters
+        # (e.g. a leading '[' from a '[3x04]' tag), which would raise RegexpError.
+        ep_token = Regexp.escape(ids.first[0])
+        metadata = title.gsub(/#{ep_token}(.*)/, '\1')
+        title.gsub!(/#{ep_token}.*/, ' ')
       end
       ids = ids.map { |i| i[0] if i[0] }.join
       title.gsub!(/^(\[[^\]]+\])?(.*)/, '\2')
@@ -112,7 +115,7 @@ class Metadata
         end
         title, item = TvSeries.tv_show_search(t_folder, no_prompt, original_filename, ids)
       else
-        title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.{\w{2,4}$/, '')
+        title = File.basename(filename).downcase.gsub(REGEX_QUALITIES, '').gsub(/\.\w{2,4}$/, '')
       end
       break if t_folder == r_folder || jk > 0
     end
@@ -144,12 +147,12 @@ class Metadata
     tt = normalize_special_chars(tt)
     regex_match = t.match(
       Regexp.new(
-        "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
+        "^(\\[.{1,2}\\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(tt) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
         Regexp::IGNORECASE)
     )
     reverse_regex_match = !regex_match && tt.match(
       Regexp.new(
-        "^(\[.{1,2}\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(t) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
+        "^(\\[.{1,2}\\])?([#{SPACE_SUBSTITUTE}&]|and|et){0,2}" + StringUtils.regexify(t) + "([#{SPACE_SUBSTITUTE}&\!\?]){0,3}$",
         Regexp::IGNORECASE)
     )
     containment = !regex_match && !reverse_regex_match && title_contained?(t, tt)

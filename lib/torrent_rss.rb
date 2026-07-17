@@ -13,7 +13,8 @@ class TorrentRss
     desc = link.summary
     raw_size = desc.match(/Size: (\d+(\.\d+)? ?\w{2})/i)[1] rescue "0"
     size = raw_size.match(/[\d\.]+/).to_s.to_d
-    s_unit = raw_size.match(/\w{2}/).to_s
+    # \w matches digits, so "700 MB" would yield "70"; take alphabetic chars only.
+    s_unit = raw_size.match(/[[:alpha:]]{2}/).to_s
     size = size_unit_convert(size, s_unit)
     download_source = link.image || link.url
     tlink = detect_link(download_source)

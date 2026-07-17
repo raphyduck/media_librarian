@@ -28,7 +28,7 @@ class MoviesSet
       v = []
       opts['parts'].each do |m|
         _, movie = Movie.movie_get({'tmdb' => m['id']}, app: app)
-        v << movie if movie.name.to_s != ''
+        v << movie if movie&.name.to_s != ''
       end
     end
     v
@@ -45,7 +45,7 @@ class MoviesSet
       collections << collec_title
       collection.movies.each do |m|
           app.speaker.speak_up "Checking movie '#{m.name}', released '#{m.release_date}', in collection" if Env.debug?
-          next if (m.release_date.to_s == '' && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
+          next if m.release_date.nil? || (m.release_date.to_s == '' && m.year > Time.now.year.to_i) || m.release_date > Time.now - delta.to_i.days
           next if Metadata.media_exist?(qualifying_files, Movie.identifier(m.name, m.year))
           full_name, identifiers, info = Metadata.parse_media_filename(m.name, 'movies', m, m.name, no_prompt)
           info.merge!({:files => Metadata.media_get(

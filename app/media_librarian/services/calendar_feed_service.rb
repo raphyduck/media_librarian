@@ -459,14 +459,6 @@ module MediaLibrarian
         end
       end
 
-      def fallback_provider(name, excluded)
-        return nil unless name
-
-        providers.find do |provider|
-          provider.source == name && !excluded.include?(provider)
-        end
-      end
-
       def log_provider_results(stats)
         return unless speaker
 
