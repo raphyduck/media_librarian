@@ -52,6 +52,12 @@ module MediaLibrarian
         return [] unless calendar_table_available?
 
         @omdb_enrichment_failed = nil
+        # The service is memoized for the daemon's lifetime, so a per-refresh
+        # cache must be cleared here or every later refresh reuses the first
+        # run's OMDb details — ratings/votes would never update, and the cache
+        # would grow without bound. It only needs to dedupe lookups WITHIN a
+        # single refresh (same imdb_id from several providers).
+        @omdb_detail_cache = {}
         normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
         speaker.speak_up('[debug] calendar: collect_entries done', 0, Thread.current, 1)
         normalized = enrich_with_omdb(normalized)
@@ -631,7 +637,7 @@ module MediaLibrarian
       def omdb_details(api, imdb_id)
         return nil if @omdb_enrichment_failed
 
-        @omdb_detail_cache ||= {}
+        @omdb_detail_cache ||= {} # reset each refresh (see #refresh)
         return @omdb_detail_cache[imdb_id] if @omdb_detail_cache.key?(imdb_id)
 
         @omdb_detail_cache[imdb_id] = api.title(imdb_id)

@@ -184,6 +184,19 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
+  def test_refresh_resets_omdb_detail_cache_so_ratings_are_not_frozen
+    # The service is memoized for the daemon's lifetime; a stale per-refresh
+    # OMDb cache would freeze ratings/votes forever. Each refresh must clear it.
+    provider = FakeProvider.new([base_entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.instance_variable_set(:@omdb_detail_cache, { 'tt0000001' => { title: 'stale' } })
+
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    assert_empty service.instance_variable_get(:@omdb_detail_cache),
+                 'the OMDb detail cache must be cleared at the start of each refresh'
+  end
+
   def test_refresh_updates_existing_entry_when_votes_change
     imdb_id = 'tt8000001'
     entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, imdb_votes: 100)
