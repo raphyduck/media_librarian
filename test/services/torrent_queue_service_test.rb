@@ -7,6 +7,13 @@ require_relative '../../app/media_librarian/services'
 require_relative '../../app/media_librarian/services/base_service'
 require_relative '../../app/media_librarian/services/torrent_queue_service'
 
+class Cache; end unless defined?(Cache)
+%i[queue_state_get queue_state_shift queue_state_select queue_state_remove].each do |method_name|
+  next if Cache.respond_to?(method_name)
+
+  Cache.define_singleton_method(method_name) { |*_, &_blk| method_name == :queue_state_shift ? nil : {} }
+end
+
 unless defined?(TorrentSearch)
   class TorrentSearch
     class << self
@@ -61,6 +68,28 @@ class TorrentQueueServiceTest < Minitest::Test
       speaker: @speaker,
       client: FakeClient.new
     )
+  end
+
+  def test_process_added_torrents_survives_torrent_gone_from_client
+    added = ['tid-gone']
+    t_client = Object.new
+    t_client.define_singleton_method(:get_torrent_status) { |*_| {} }
+    closeness = Object.new
+    closeness.define_singleton_method(:getDistance) { |*_| raise 'fuzzy matching must not run without a torrent name' }
+    @app.define_singleton_method(:t_client) { t_client }
+    @app.define_singleton_method(:str_closeness) { closeness }
+
+    options_queue = { 'Some.Torrent.Name' => { info_hash: 'other-hash' } }
+    Cache.stub(:queue_state_get, ->(queue) { queue == 'deluge_torrents_added' ? added : options_queue }) do
+      Cache.stub(:queue_state_shift, ->(_) { added.shift }) do
+        Cache.stub(:queue_state_select, ->(_q, *_, &blk) { options_queue.select { |k, v| blk.call(k, v) } }) do
+          @service.process_added_torrents
+        end
+      end
+    end
+
+    errors = @speaker.messages.select { |m| m.is_a?(Array) && m.first == :error }
+    assert_empty errors, "no error expected when the torrent is gone: #{errors.inspect}"
   end
 
   def test_process_download_request_updates_database_when_no_download

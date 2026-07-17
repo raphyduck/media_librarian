@@ -91,9 +91,13 @@ module MediaLibrarian
           tries = 10
           begin
             status = app.t_client.get_torrent_status(tid, ['name', 'files', 'total_size', 'progress'])
+            # The torrent can be gone from the client by the time the queue is
+            # processed, leaving status without a name: the fuzzy-name fallback
+            # must not crash on nil[0..30].
+            status_name = status.is_a?(Hash) ? status['name'].to_s : ''
             opts = Cache.queue_state_select('deluge_options') { |_, v| v && v[:info_hash] == tid }
-            opts = Cache.queue_state_select('deluge_options') { |torrent_name, _| torrent_name == status['name'] } if opts.nil? || opts.empty?
-            opts = Cache.queue_state_select('deluge_options') { |torrent_name, _| app.str_closeness.getDistance(torrent_name[0..30], status['name'][0..30]) > 0.9 } if opts.nil? || opts.empty?
+            opts = Cache.queue_state_select('deluge_options') { |torrent_name, _| torrent_name == status_name } if opts.nil? || opts.empty?
+            opts = Cache.queue_state_select('deluge_options') { |torrent_name, _| status_name != '' && app.str_closeness.getDistance(torrent_name.to_s[0..30], status_name[0..30]) > 0.9 } if opts.nil? || opts.empty?
             speaker.speak_up("Processing added torrent #{status['name']} (tid '#{tid})'") unless (opts || {}).empty?
             (opts || {}).each do |torrent_name, option|
               torrent_cache = app.db.get_rows('torrents', { name: torrent_name }).first
@@ -101,7 +105,7 @@ module MediaLibrarian
               set_options = {}
               main_file = client.find_main_file(status, option[:whitelisted_extensions] || [])
               if main_file.empty? && option[:expect_main_file].to_i > 0
-                speaker.speak_up "Torrent '#{torrent_cache[:name]}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
+                speaker.speak_up "Torrent '#{torrent_name}' (tid #{tid}) does not contain an archive or an acceptable file, removing" if Env.debug?
                 client.delete_torrent(torrent_name, tid)
                 next
               end
