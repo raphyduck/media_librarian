@@ -79,8 +79,10 @@ module MediaLibrarian
               break
             end
             speaker.speak_up "Download of torrent '#{torrent_row[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl.zero?
-            FileUtils.rm(app.temp_dir + "/#{tdid}.torrent") rescue nil
           end
+          # Remove the downloaded .torrent only after the retry loop: deleting it
+          # between attempts made every retry read a missing file and fail.
+          FileUtils.rm(app.temp_dir + "/#{tdid}.torrent") rescue nil
           client.delete_torrent(torrent_row[:name], 0, 1) unless success
         end
       end

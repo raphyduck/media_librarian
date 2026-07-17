@@ -100,53 +100,6 @@ class Utils
     return nil, [[:error, "error fetching arguments from cname='#{cname}', mname='#{mname}'"]]
   end
 
-  def self.get_pid(process)
-    return '' if process.to_s.empty?
-
-    output, = Open3.capture2('ps', 'ax')
-    output.each_line do |line|
-      next if line.include?('grep')
-      return line.strip.split.first if line.include?(process.to_s)
-    end
-    ''
-  rescue StandardError
-    ''
-  end
-
-  def self.get_traffic(network_card)
-    return nil, nil if network_card.to_s.empty?
-
-    in_t, out_t, in_s, out_s = nil, nil, 0, 0
-    2.times do |i|
-      prev_in, prev_out = in_t, out_t
-      in_t, out_t = parse_net_dev(network_card)
-      if i == 1
-        in_s = in_t - prev_in if in_t && prev_in
-        out_s = out_t - prev_out if out_t && prev_out
-      else
-        sleep 1
-      end
-    end
-    return (in_s / 1024 if in_s), (out_s / 1024 if out_s)
-  rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    return nil, nil
-  end
-
-  def self.parse_net_dev(network_card)
-    return nil, nil unless File.exist?('/proc/net/dev')
-
-    File.readlines('/proc/net/dev').each do |line|
-      next unless line.include?(network_card.to_s)
-      parts = line.split(':')
-      next unless parts.length >= 2
-      stats = parts[1].strip.split
-      return stats[0].to_i, stats[8].to_i if stats.length >= 9
-    end
-    [nil, nil]
-  end
-  private_class_method :parse_net_dev
-
   def self.list_db(table:, entry: '')
     return [] unless MediaLibrarian.app.db.table_exists?(table)
     column = MediaLibrarian.app.db.get_main_column(table)
@@ -174,10 +127,16 @@ class Utils
         Thread.current[lock_name] = 1
         Thread.current[:locked_by] = nil
         Thread.current[:nonex_lock] = nil
-        r = block.call
-        Thread.current[lock_name] = nil
-        Thread.current[:locked_by] = process_name
-        Thread.current[:nonex_lock] = nonex
+        begin
+          r = block.call
+        ensure
+          # Must reset even if the block raises: otherwise the reentrancy flag
+          # stays 1 and every later lock_block on this thread silently skips
+          # the mutex (see the fast path above).
+          Thread.current[lock_name] = nil
+          Thread.current[:locked_by] = process_name
+          Thread.current[:nonex_lock] = nonex
+        end
       end
       Thread.current[:locked_by] = nil
       Thread.current[:nonex_lock] = nil
@@ -239,15 +198,6 @@ class Utils
       h.map { |v| recursive_typify_keys(v, symbolize) }
     else
       h
-    end
-  end
-
-  def self.recursive_stringify_values(h)
-    case h
-    when Hash
-      Hash[h.map { |k, v| [k, recursive_stringify_values(v)] }]
-    else
-      h.to_s
     end
   end
 

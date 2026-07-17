@@ -40,7 +40,10 @@ class TorrentClient
   end
 
   def delete_torrent(tname, tid = '', remove_opts = 0, delete_status = -1)
-    app.t_client.remove_torrent(tid, true) if tid.to_i != 0 rescue nil
+    # torrent_id is a hex info-hash, so tid.to_i is 0 for any hash starting
+    # with a letter — guard on presence, not numeric value, or the client-side
+    # removal is skipped for ~half of all torrents.
+    app.t_client.remove_torrent(tid, true) if tid.to_s.strip != '' rescue nil
     app.db.update_rows('torrents', { :status => delete_status }, { :name => tname })
     Cache.queue_state_remove('deluge_options', tname) if remove_opts.to_i > 0
   end
@@ -231,7 +234,9 @@ class TorrentClient
   end
 
   def skip_operation?(name)
-    Env.pretend? && !['get_torrent_status'].include?(name)
+    # method_missing passes a Symbol; the whitelist holds Strings, so compare
+    # as strings or the whitelisted read is wrongly skipped in pretend mode.
+    Env.pretend? && !['get_torrent_status'].include?(name.to_s)
   end
 
   def safely_execute_deluge_operation(name, args, debug_message, tries_remaining)

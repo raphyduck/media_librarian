@@ -1176,7 +1176,10 @@ class Daemon
           data: job ? job.to_h : { id: job_id, status: 'not_found' }
         }
         socket.write(websocket_text_frame(payload.to_json))
-        break if job && FINISHED_STATUSES.include?(job.status.to_s)
+        # Stop once the job is finished — or if it does not exist / was pruned,
+        # otherwise this streams "not_found" every 2s forever for that client.
+        break unless job
+        break if FINISHED_STATUSES.include?(job.status.to_s)
 
         sleep 2
       end
@@ -2024,6 +2027,13 @@ class Daemon
 
     def [](key)
       headers[key]
+    end
+
+    # The socket transport carries no cookies; session auth falls back to the
+    # api_token path. Without this, session_cookie_payload raised NoMethodError
+    # and killed the connection whenever an api_token was configured.
+    def cookies
+      []
     end
   end
 

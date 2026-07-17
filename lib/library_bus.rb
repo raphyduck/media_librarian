@@ -58,10 +58,4 @@ class LibraryBus
     @buses[bus_id(thread)] << value
   end
 
-  def self.thread_burn(thread, variable)
-    thread_burn = thread[variable].dup
-    thread[variable] = nil
-    thread_burn
-  end
-
 end
