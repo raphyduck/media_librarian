@@ -107,10 +107,7 @@ class TorrentSearch
     if results.nil?
       processed_search_keyword = BusVariable.new('processed_search_keyword', Vash)
       results, ks = {}, {}
-      (f[:titles] || [f[:full_name]]).each do |fn|
-        ks[f_type] = [] unless ks[f_type]
-        ks[f_type] << {:s => Metadata.detect_real_title(fn, f[:type], 0, 0)}
-      end
+      ks[f_type] = (ks[f_type] || []) + search_keywords_for(f[:titles] || [f[:full_name]], f[:type])
       if f[:type] == 'shows' && f[:f_type] == 'episode'
         ks['season'] = [{:s => Metadata.detect_real_title(TvSeries.ep_name_to_season(f[:full_name]), f[:type], 1, 0), :extra_files => f[:existing_season_eps]},
                         {:s => Metadata.detect_real_title(TvSeries.ep_name_to_season(f[:full_name]), f[:type], 1, 1), :extra_files => f[:existing_season_eps]}]
@@ -199,6 +196,20 @@ class TorrentSearch
     end
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
+  end
+
+  # Trackers match release names literally, and most releases strip accents
+  # ('Chasse.Gardee.2023' never matches a 'Chasse Gardée' query), so each
+  # accented title is also searched ASCII-folded. Result attribution stays
+  # correct: Metadata.match_titles already compares through
+  # StringUtils.clean_search/accents_clear.
+  def self.search_keywords_for(titles, type)
+    titles.each_with_object([]) do |fn, keywords|
+      title = Metadata.detect_real_title(fn, type, 0, 0)
+      keywords << {:s => title}
+      folded = StringUtils.accents_clear(title).tr('’‘', "''")
+      keywords << {:s => folded} if folded != title
+    end
   end
 
   def self.processing_results(filter:, sources: {}, results: nil, existing_files: {}, no_prompt: 0, qualities: {}, limit: 50, download_criteria: {}, no_waiting: 0, grab_all: 0, search_category: nil)
