@@ -33,6 +33,12 @@ class LibraryBus
     @buses[bus_id(thread)] = Queue.new unless @buses[bus_id(thread)]
   end
 
+  # Drop a job's queue once the job is gone. Without this, initialize_queue
+  # leaks one Queue per job id for the daemon's lifetime.
+  def self.remove_queue(jid)
+    @buses.delete(jid) unless jid.to_s.empty?
+  end
+
   def self.merge_queue(thread = Thread.current)
     return nil unless @buses[bus_id(thread)]
     result = nil

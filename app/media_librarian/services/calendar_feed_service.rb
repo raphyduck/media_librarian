@@ -697,7 +697,15 @@ module MediaLibrarian
         clean_entry = normalized_title(entry[:title])
         clean_details = normalized_title(details[:title])
         return true if clean_entry.empty? || clean_details.empty?
-        return true if clean_entry.start_with?(clean_details) || clean_details.start_with?(clean_entry)
+        if clean_entry.start_with?(clean_details) || clean_details.start_with?(clean_entry)
+          # A shared prefix alone is not enough — "Alien" is a prefix of
+          # "Alien: Romulus" yet they are different films. Trust the prefix only
+          # when the years agree (or one is unknown); otherwise fall through to
+          # the stricter title+year match.
+          entry_year = entry[:release_date]&.year
+          detail_year = details[:release_date]&.year
+          return true if entry_year.nil? || detail_year.nil? || entry_year == detail_year
+        end
 
         Metadata.match_titles(
           entry[:title].to_s,

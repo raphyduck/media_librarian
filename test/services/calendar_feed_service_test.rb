@@ -367,6 +367,28 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_empty @db.get_rows(:calendar_entries, { source: 'tmdb' })
   end
 
+  def test_omdb_titles_match_rejects_shared_prefix_with_different_year
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [])
+    entry = { imdb_id: 'tt28714040', ids: { 'imdb' => 'tt28714040' }, title: 'Alien: Romulus',
+              release_date: Date.new(2024, 8, 16), media_type: 'movie' }
+    details = { title: 'Alien', release_date: Date.new(1979, 5, 25), ids: { 'imdb' => 'tt0078748' } }
+
+    Metadata.stub(:match_titles, false) do
+      refute service.send(:omdb_titles_match?, entry, details),
+             'a shared prefix with a different year must not be treated as a match'
+    end
+  end
+
+  def test_omdb_titles_match_accepts_shared_prefix_with_same_year
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [])
+    entry = { imdb_id: 'tt9619824', ids: { 'imdb' => 'tt9619824' }, title: 'Destination jeu. 25 déc.',
+              release_date: Date.new(2026, 12, 25), media_type: 'movie' }
+    details = { title: 'Destination', release_date: Date.new(2026, 12, 25), ids: { 'imdb' => 'tt1234567' } }
+
+    assert service.send(:omdb_titles_match?, entry, details),
+           'a shared prefix with the same year is a legitimate (truncated) match'
+  end
+
   def test_omdb_enrichment_verifies_titles_before_applying_details
     entry = base_entry.merge(
       title: 'Destination jeu. 25 déc.',
