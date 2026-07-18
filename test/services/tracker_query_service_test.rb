@@ -330,6 +330,120 @@ class TrackerQueryServiceTest < Minitest::Test
     environment&.cleanup
   end
 
+  def test_torznab_tracker_retries_without_category_when_filtered_search_is_empty
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '2000')]
+    )
+
+    populated_xml = <<~XML
+      <rss>
+        <channel>
+          <item>
+            <title>Backrooms 2026 1080p</title>
+            <size>3000000000</size>
+            <link>https://tracker.example/details/1</link>
+            <guid>https://tracker.example/download/1</guid>
+            <attr name="seeders" value="42" />
+            <attr name="leechers" value="3" />
+          </item>
+        </channel>
+      </rss>
+    XML
+
+    empty_xml = "<rss><channel></channel></rss>"
+
+    # Mimics an indexer that returns nothing when a category filter is present
+    # but returns matching torrents once the filter is dropped. Also records the
+    # queries so we can assert the retry actually happened.
+    fake_client = Struct.new(:caps, :populated, :empty, :calls) do
+      def get(params)
+        calls << params.dup
+        params['cat'].to_s.empty? ? populated : empty
+      end
+    end.new(caps, populated_xml, empty_xml, [])
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
+      results = tracker.search('movies', 'Backrooms')
+
+      assert_equal 1, results.length
+      assert_equal 'Backrooms 2026 1080p', results.first[:name]
+      assert_equal 2, fake_client.calls.length, 'expected a category-filtered attempt then an uncategorised retry'
+      refute_empty fake_client.calls.first['cat'], 'first attempt should carry the category filter'
+      assert_equal '', fake_client.calls.last['cat'].to_s, 'retry should drop the category filter'
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
+
+  def test_torznab_tracker_does_not_retry_when_filtered_search_has_results
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '2000')]
+    )
+
+    xml = <<~XML
+      <rss>
+        <channel>
+          <item>
+            <title>Example</title>
+            <size>123</size>
+            <link>https://tracker.example/details/1</link>
+            <guid>https://tracker.example/download/1</guid>
+            <attr name="seeders" value="10" />
+            <attr name="leechers" value="2" />
+          </item>
+        </channel>
+      </rss>
+    XML
+
+    fake_client = Struct.new(:caps, :xml, :calls) do
+      def get(params)
+        calls << params.dup
+        xml
+      end
+    end.new(caps, xml, [])
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
+      results = tracker.search('movies', 'query')
+
+      assert_equal 1, results.length
+      assert_equal 1, fake_client.calls.length, 'a successful filtered search must not trigger a retry'
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
+
   def test_get_results_strips_special_characters_from_keyword
     searched_keywords = []
     fake_tracker = Object.new

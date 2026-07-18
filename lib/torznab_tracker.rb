@@ -13,8 +13,7 @@ class TorznabTracker
   end
 
   def search(type, query)
-    result = []
-    return result unless @tracker.caps.search_modes.search.available
+    return [] unless @tracker.caps.search_modes.search.available
     t, cat = 'search', []
     if type.to_s == 'movies' && @tracker.caps.search_modes.movie_search.available
       t = 'movie'
@@ -27,6 +26,26 @@ class TorznabTracker
       t = 'music' if music_mode && music_mode.available
       cat = @tracker.caps.categories.select { |c| c.name.downcase.match?(/audio|music|flac|mp3/) || c.id.to_i.between?(3000, 3999) }.map { |c| c.id }
     end
+    result = fetch_results(t, cat, query, type)
+    # Some indexers (observed on c411 via Jackett) return an empty feed whenever
+    # a category filter is supplied, even though matching torrents exist and are
+    # tagged with the requested categories. Retry without the category filter so
+    # those results are not silently lost; downstream title/quality matching
+    # still discards anything irrelevant.
+    result = fetch_results(t, [], query, type) if result.empty? && !cat.empty?
+    result
+  rescue Torznab::Errors::HttpError, SocketError, Timeout::Error, Errno::ECONNREFUSED, Errno::ECONNRESET => e
+    MediaLibrarian.app.speaker.speak_up "Tracker '#{name}' network issue: #{e.message}"
+    []
+  rescue => e
+    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    []
+  end
+
+  private
+
+  def fetch_results(t, cat, query, type)
+    result = []
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
     response = Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit})) || {}
     items = response.dig(:rss, :channel, :item)
@@ -70,15 +89,7 @@ class TorznabTracker
       }
     end
     result
-  rescue Torznab::Errors::HttpError, SocketError, Timeout::Error, Errno::ECONNREFUSED, Errno::ECONNRESET => e
-    MediaLibrarian.app.speaker.speak_up "Tracker '#{name}' network issue: #{e.message}"
-    []
-  rescue => e
-    MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
-    []
   end
-
-  private
 
   # Torznab indexers expose the audio search capability under different names
   # depending on the implementation. Probe the known accessors defensively so a

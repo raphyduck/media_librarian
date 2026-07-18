@@ -329,6 +329,17 @@ class TorrentSearch
       app.db.insert_row('torrents', attributes.merge(:name => torrent[:name]))
     end
     if torrent[:download_now] == 2
+      # Once a release is committed to download, its still-pending siblings for
+      # the same media (status < 2: freshly-seen or waiting on a timeframe) are
+      # moot and must not linger in the DB — otherwise obsolete waiting rows
+      # accumulate forever and may later be grabbed as redundant duplicates.
+      if torrent[:identifier].to_s != ''
+        app.db.get_rows('torrents', {:identifier => torrent[:identifier]}).each do |sib|
+          next if sib[:name].to_s == torrent[:name].to_s || sib[:status].to_i >= 2
+          app.speaker.speak_up "Removing pending torrent '#{sib[:name]}' superseded by '#{torrent[:name]}'" if Env.debug?
+          app.db.delete_rows('torrents', {:name => sib[:name]})
+        end
+      end
       remove_others.each do |tname|
         t = app.db.get_rows('torrents', {:name => tname}).first
         next if t.nil? || t[:status].to_i > 3
