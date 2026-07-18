@@ -790,7 +790,10 @@ class Daemon
       @template_cache = nil
       @queue_limits = Concurrent::Hash.new
       @jobs = Concurrent::Hash.new
-      @job_children = Concurrent::Hash.new { |h, k| h[k] = Concurrent::Array.new }
+      # No default proc: reading a missing key must NOT materialize an entry,
+      # or every /status read (serialize_job) permanently grows the hash. The
+      # single writer creates the array explicitly; all readers tolerate nil.
+      @job_children = Concurrent::Hash.new
       # Retain queue_slots for configuration compatibility; the queue is now unbounded.
       @executor = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,

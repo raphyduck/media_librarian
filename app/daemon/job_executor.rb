@@ -17,7 +17,9 @@ class Daemon
       return unless parent_jid
 
       job.parent_job_id = parent_jid
-      job_children[parent_jid] << job.id
+      # Create the array on write now that @job_children has no default proc
+      # (so reads elsewhere no longer materialize entries — see Daemon setup).
+      (job_children[parent_jid] ||= Concurrent::Array.new) << job.id
     end
 
     def start_job(job, wait_for_capacity:)
@@ -146,6 +148,11 @@ class Daemon
     end
 
     def execute_job(job)
+      # A job cancelled while still queued was already finalized by cancel_job;
+      # the underlying future has no working cancel, so without this guard it
+      # would run anyway (re-setting status to :running and doing the work).
+      return if job.finished_at || job.status == :cancelled
+
       thread = Thread.current
       job.worker_thread = thread
       captured_output = nil
@@ -251,7 +258,7 @@ class Daemon
           entries.each do |job|
             next if job_within_retention_period?(job)
 
-            @jobs.delete(job_attribute(job, :id))
+            discard_job(job)
           end
         end
         return
@@ -266,9 +273,18 @@ class Daemon
                .each do |job|
           next if job_within_retention_period?(job)
 
-          @jobs.delete(job_attribute(job, :id))
+          discard_job(job)
         end
       end
+    end
+
+    # Drop a job record and everything keyed by its id, or the per-job
+    # library bus queue and children map leak for the daemon's lifetime.
+    def discard_job(job)
+      id = job_attribute(job, :id)
+      @jobs.delete(id)
+      job_children.delete(id) if job_children.respond_to?(:delete)
+      LibraryBus.remove_queue(id) if defined?(LibraryBus)
     end
 
     def job_within_retention_period?(job)

@@ -184,6 +184,19 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
+  def test_refresh_resets_omdb_detail_cache_so_ratings_are_not_frozen
+    # The service is memoized for the daemon's lifetime; a stale per-refresh
+    # OMDb cache would freeze ratings/votes forever. Each refresh must clear it.
+    provider = FakeProvider.new([base_entry])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.instance_variable_set(:@omdb_detail_cache, { 'tt0000001' => { title: 'stale' } })
+
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    assert_empty service.instance_variable_get(:@omdb_detail_cache),
+                 'the OMDb detail cache must be cleared at the start of each refresh'
+  end
+
   def test_refresh_updates_existing_entry_when_votes_change
     imdb_id = 'tt8000001'
     entry = base_entry.merge(imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, imdb_votes: 100)
@@ -352,6 +365,28 @@ class CalendarFeedServiceTest < Minitest::Test
 
     assert_empty omdb_client.calls
     assert_empty @db.get_rows(:calendar_entries, { source: 'tmdb' })
+  end
+
+  def test_omdb_titles_match_rejects_shared_prefix_with_different_year
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [])
+    entry = { imdb_id: 'tt28714040', ids: { 'imdb' => 'tt28714040' }, title: 'Alien: Romulus',
+              release_date: Date.new(2024, 8, 16), media_type: 'movie' }
+    details = { title: 'Alien', release_date: Date.new(1979, 5, 25), ids: { 'imdb' => 'tt0078748' } }
+
+    Metadata.stub(:match_titles, false) do
+      refute service.send(:omdb_titles_match?, entry, details),
+             'a shared prefix with a different year must not be treated as a match'
+    end
+  end
+
+  def test_omdb_titles_match_accepts_shared_prefix_with_same_year
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [])
+    entry = { imdb_id: 'tt9619824', ids: { 'imdb' => 'tt9619824' }, title: 'Destination jeu. 25 déc.',
+              release_date: Date.new(2026, 12, 25), media_type: 'movie' }
+    details = { title: 'Destination', release_date: Date.new(2026, 12, 25), ids: { 'imdb' => 'tt1234567' } }
+
+    assert service.send(:omdb_titles_match?, entry, details),
+           'a shared prefix with the same year is a legitimate (truncated) match'
   end
 
   def test_omdb_enrichment_verifies_titles_before_applying_details

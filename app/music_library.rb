@@ -51,26 +51,20 @@ class MusicLibrary
       Daemon.send(:update_job_progress, jid, progress.dup)
     end
     update_progress.call(true)
-    # A dry-run reuses the existing Env.pretend? mode: every filesystem write
-    # (mv, mkdir, cp, ln, rmdir) is already gated on it, so setting it for the
-    # duration makes the run strictly read-only with no parallel dry_run plumbing.
-    # Reads (tag scan, quality score) are intentionally NOT gated on pretend, so
-    # the plan is still computed. dry_run stays threaded through only to drive the
-    # "would trash / would ..." wording in the log.
-    prev_pretend = Thread.current[:pretend]
-    Thread.current[:pretend] = 1 if dry_run
-    begin
-      files.each do |file|
-        progress['processed'] += 1
-        progress['current_file'] = File.basename(file)
-        dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
-                                                dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
-                                                musicbrainz_mode: mb_mode, write_tags: write_tags)
-        progress[dest ? 'organized' : 'skipped'] += 1
-        update_progress.call
-      end
-    ensure
-      Thread.current[:pretend] = prev_pretend if dry_run
+    # dry_run gates only the DESTRUCTIVE part (trashing duplicates, staging
+    # cleanup, tag stamping) — each of those already respects the dry_run flag
+    # inside organize_file. Filing a track into place is non-destructive, so it
+    # must run even on a dry-run (see docstring); it used to be suppressed
+    # because the whole loop ran under Env.pretend?, which left the Soulseek /
+    # import / HTTP callers (that never pass apply) filing nothing.
+    files.each do |file|
+      progress['processed'] += 1
+      progress['current_file'] = File.basename(file)
+      dest = organize_file(file, destination, folder_name: File.basename(File.dirname(file)),
+                                              dry_run: dry_run, compilation: compilation_dirs.include?(File.dirname(file)),
+                                              musicbrainz_mode: mb_mode, write_tags: write_tags)
+      progress[dest ? 'organized' : 'skipped'] += 1
+      update_progress.call
     end
     update_progress.call(true)
     app.speaker.speak_up("music organize: #{progress['organized']} file(s) organized, #{progress['skipped']} already in place (destination #{destination})#{' [DRY-RUN]' if dry_run}", 0) if app.respond_to?(:speaker)

@@ -52,6 +52,12 @@ module MediaLibrarian
         return [] unless calendar_table_available?
 
         @omdb_enrichment_failed = nil
+        # The service is memoized for the daemon's lifetime, so a per-refresh
+        # cache must be cleared here or every later refresh reuses the first
+        # run's OMDb details — ratings/votes would never update, and the cache
+        # would grow without bound. It only needs to dedupe lookups WITHIN a
+        # single refresh (same imdb_id from several providers).
+        @omdb_detail_cache = {}
         normalized, stats = collect_entries(date_range, limit, normalize_sources(sources))
         speaker.speak_up('[debug] calendar: collect_entries done', 0, Thread.current, 1)
         normalized = enrich_with_omdb(normalized)
@@ -631,7 +637,7 @@ module MediaLibrarian
       def omdb_details(api, imdb_id)
         return nil if @omdb_enrichment_failed
 
-        @omdb_detail_cache ||= {}
+        @omdb_detail_cache ||= {} # reset each refresh (see #refresh)
         return @omdb_detail_cache[imdb_id] if @omdb_detail_cache.key?(imdb_id)
 
         @omdb_detail_cache[imdb_id] = api.title(imdb_id)
@@ -691,7 +697,15 @@ module MediaLibrarian
         clean_entry = normalized_title(entry[:title])
         clean_details = normalized_title(details[:title])
         return true if clean_entry.empty? || clean_details.empty?
-        return true if clean_entry.start_with?(clean_details) || clean_details.start_with?(clean_entry)
+        if clean_entry.start_with?(clean_details) || clean_details.start_with?(clean_entry)
+          # A shared prefix alone is not enough — "Alien" is a prefix of
+          # "Alien: Romulus" yet they are different films. Trust the prefix only
+          # when the years agree (or one is unknown); otherwise fall through to
+          # the stricter title+year match.
+          entry_year = entry[:release_date]&.year
+          detail_year = details[:release_date]&.year
+          return true if entry_year.nil? || detail_year.nil? || entry_year == detail_year
+        end
 
         Metadata.match_titles(
           entry[:title].to_s,
