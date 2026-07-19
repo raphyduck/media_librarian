@@ -55,7 +55,17 @@ class TorrentSearch
     all_rows.select { |r| r[:status].to_i.between?(0, 1) }
             .group_by { |r| r[:identifier].to_s }
             .each do |identifier, group|
-      next if identifier.empty? || active_ids.include?(identifier)
+      next if identifier.empty?
+      # A media already queued/downloading/completed, or already present in the
+      # local library, must not keep pending torrents around: they would either
+      # linger forever or trigger a redundant duplicate download later.
+      if active_ids.include?(identifier) || media_in_library?(identifier)
+        group.each do |r|
+          app.speaker.speak_up("Removing pending torrent '#{r[:name]}': media already downloaded", 0)
+          app.db.delete_rows('torrents', {:name => r[:name]})
+        end
+        next
+      end
       ranked = group.map do |r|
         ta = Cache.object_unpack(r[:tattributes]) rescue nil
         next nil unless ta.is_a?(Hash)
@@ -396,6 +406,28 @@ class TorrentSearch
     end
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding, 2))
+  end
+
+  # Movie identifiers embed the exact calendar title and year
+  # ("movie<Title> (<year>)<year>"), so a media that was obtained outside the
+  # torrents table (manual import, other tool) is detected by resolving that
+  # title/year through calendar_entries to an imdb id present in local_media.
+  def self.media_in_library?(identifier)
+    m = identifier.to_s.match(/\Amovie(.+) \((\d{4})\)\2\z/)
+    return false unless m
+    title, year = m[1], m[2].to_i
+    rows = app.db.get_rows('calendar_entries', {}, { 'title like' => title }) || []
+    rows.any? do |c|
+      next false unless c[:title].to_s.casecmp?(title)
+      calendar_year = c[:release_date].to_s[0, 4].to_i
+      next false unless calendar_year.zero? || (calendar_year - year).abs <= 1
+      imdb_id = c[:imdb_id].to_s.strip
+      next false if imdb_id.empty?
+      !(app.db.get_rows(:local_media, { imdb_id: imdb_id }) || []).empty?
+    end
+  rescue => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
+    false
   end
 
   def self.waiting_time_set(torrent)
