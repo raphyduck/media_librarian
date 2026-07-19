@@ -54,6 +54,50 @@ class DaemonWatchlistApiTest < Minitest::Test
     assert_empty WatchlistStore.fetch
   end
 
+  def test_get_decorates_entries_with_sorted_pending_torrents_and_orphans
+    app = @environment.application
+    app.db.insert_row('calendar_entries', {
+      source: 'tmdb', external_id: '42', imdb_id: 'tt0042',
+      title: 'Backrooms', media_type: 'movies', release_date: '2026-02-01'
+    })
+    WatchlistStore.upsert([{ imdb_id: 'tt0042', title: 'Backrooms', type: 'movies' }])
+
+    ident = 'movieBackrooms (2026)2026'
+    app.db.insert_row('torrents', {
+      name: 'Backrooms.2026.1080p.WEBRip', identifier: ident, status: 1,
+      tattributes: { tracker: 'c411', size: 3 * 1024**3,
+                     timeframe_quality: 600, timeframe_tracker: 0, timeframe_size: 0 }
+    })
+    app.db.insert_row('torrents', {
+      name: 'Backrooms.2026.2160p.WEB', identifier: ident, status: 2,
+      tattributes: { tracker: 'c411', size: 10 * 1024**3,
+                     timeframe_quality: 0, timeframe_tracker: 0, timeframe_size: 0 }
+    })
+    app.db.insert_row('torrents', {
+      name: 'Some.Show.S01E01.1080p', identifier: 'showSome Show1x1', status: 1,
+      tattributes: { tracker: 'torr9', size: 2 * 1024**3,
+                     timeframe_quality: 0, timeframe_tracker: 0, timeframe_size: 0 }
+    })
+
+    response = FakeResponse.new
+    request = OpenStruct.new(request_method: 'GET', query: {}, path: '/watchlist')
+    Daemon.send(:handle_watchlist_request, request, response)
+
+    assert_equal 200, response.status
+    payload = JSON.parse(response.body)
+    entries = payload['entries']
+    assert_equal 1, entries.length
+    torrents = entries.first['torrents']
+    assert_equal %w[Backrooms.2026.2160p.WEB Backrooms.2026.1080p.WEBRip], torrents.map { |t| t['name'] },
+                 'torrents must be ranked best quality (smallest timeframe) first'
+    assert_equal [2, 1], torrents.map { |t| t['status'] }
+
+    orphans = payload['orphans']
+    assert_equal 1, orphans.length
+    assert_equal 'showSome Show1x1', orphans.first['identifier']
+    assert_equal ['Some.Show.S01E01.1080p'], orphans.first['torrents'].map { |t| t['name'] }
+  end
+
   def test_rejects_external_id_instead_of_imdb
     response = FakeResponse.new
     request = OpenStruct.new(
