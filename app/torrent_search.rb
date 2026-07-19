@@ -39,20 +39,44 @@ class TorrentSearch
   # Torrents held on a timeframe (status 1) are otherwise only re-evaluated when
   # their exact release is re-found during a fresh search. A release whose source
   # tracker is no longer queried (or that aged out of the feed) would therefore
-  # wait forever even once its timeframe elapsed. Promote any status-1 row whose
-  # timeframe has expired straight to the download queue (status 2) so it gets
-  # grabbed. Rows stale for more than max_age_days are left untouched for the
-  # existing pruning (Cache.torrent_get) to remove.
+  # wait forever even once its timeframe elapsed.
+  #
+  # For each media, promote a single best release (smallest timeframe, then
+  # largest size) to the download queue (status 2) once its timeframe has
+  # expired, and drop that media's other still-pending rows so only one torrent
+  # per film is ever grabbed. Media that already have an active/queued/completed
+  # download are left alone, and rows stale for more than max_age_days are left
+  # for the existing pruning (Cache.torrent_get) to remove.
   def self.promote_ready_downloads(max_age_days: 180)
     now = Time.now
     oldest = now - (max_age_days * 86_400)
-    app.db.get_rows('torrents', {:status => 1}).each do |d|
-      ta = Cache.object_unpack(d[:tattributes]) rescue nil
-      next unless ta.is_a?(Hash)
-      waiting_until = (waiting_time_set(ta) rescue nil)
-      next if waiting_until.nil? || waiting_until > now || waiting_until < oldest
-      app.speaker.speak_up("Timeframe expired for '#{d[:name]}', promoting it to the download queue", 0)
-      app.db.update_rows('torrents', {:status => 2, :waiting_until => waiting_until.to_s}, {:name => d[:name]})
+    all_rows = app.db.get_rows('torrents', {}) || []
+    active_ids = all_rows.select { |r| r[:status].to_i >= 2 }.map { |r| r[:identifier].to_s }.uniq
+    all_rows.select { |r| r[:status].to_i.between?(0, 1) }
+            .group_by { |r| r[:identifier].to_s }
+            .each do |identifier, group|
+      next if identifier.empty? || active_ids.include?(identifier)
+      ranked = group.map do |r|
+        ta = Cache.object_unpack(r[:tattributes]) rescue nil
+        next nil unless ta.is_a?(Hash)
+        wu = (waiting_time_set(ta) rescue nil)
+        next nil if wu.nil?
+        { :row => r, :wu => wu,
+          :total_tf => ta[:timeframe_quality].to_i + ta[:timeframe_tracker].to_i + ta[:timeframe_size].to_i,
+          :size => ta[:size].to_f }
+      end.compact
+      next if ranked.empty?
+      best = ranked.min_by { |c| [c[:total_tf], -c[:size]] }
+      # Only act on the media's preferred release; if it is still within its
+      # timeframe we keep waiting, and if it is long stale we leave it to pruning.
+      next if best[:wu] > now || best[:wu] < oldest
+      app.speaker.speak_up("Timeframe expired for '#{best[:row][:name]}', promoting it to the download queue", 0)
+      app.db.update_rows('torrents', {:status => 2, :waiting_until => best[:wu].to_s}, {:name => best[:row][:name]})
+      group.each do |r|
+        next if r[:name].to_s == best[:row][:name].to_s
+        app.speaker.speak_up("Removing pending torrent '#{r[:name]}' superseded by '#{best[:row][:name]}'", 0) if Env.debug?
+        app.db.delete_rows('torrents', {:name => r[:name]})
+      end
     end
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding))

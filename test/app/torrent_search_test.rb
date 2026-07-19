@@ -123,4 +123,31 @@ class TorrentSearchTest < Minitest::Test
     assert_equal 1, status.('Still.Waiting'), 'future timeframe must stay pending'
     assert_equal 1, status.('Ancient.Stale'), 'stale row must be left for pruning, not promoted'
   end
+
+  def test_promote_ready_downloads_grabs_a_single_release_per_media
+    iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
+    now = Time.now
+    tf0 = ->(size) { { :added => iso.(now - 3 * 86_400), :timeframe_quality => 0,
+                       :timeframe_tracker => 0, :timeframe_size => 0, :size => size } }
+    db = FakeTorrentsDb.new([
+      # same media, two expired releases -> only the best (largest) is promoted
+      { :name => 'Film.2160p', :identifier => 'movieX2025', :status => 1, :tattributes => tf0.(20 * 1024**3) },
+      { :name => 'Film.1080p', :identifier => 'movieX2025', :status => 1, :tattributes => tf0.(5 * 1024**3) },
+      # different media already downloading -> must not get a second torrent queued
+      { :name => 'Other.1080p', :identifier => 'movieY2025', :status => 1, :tattributes => tf0.(4 * 1024**3) },
+      { :name => 'Other.Active', :identifier => 'movieY2025', :status => 3 }
+    ])
+    @environment.application.db = db
+
+    Cache.stub(:object_unpack, ->(v) { v }) do
+      TorrentSearch.promote_ready_downloads
+    end
+
+    names = db.rows.map { |r| r[:name] }
+    assert_includes names, 'Film.2160p'
+    refute_includes names, 'Film.1080p', 'the other pending version of the same film must be removed'
+    assert_equal 2, db.rows.find { |r| r[:name] == 'Film.2160p' }[:status], 'only the best release is queued'
+    assert_equal 1, db.rows.find { |r| r[:name] == 'Other.1080p' }[:status],
+                 'a film already downloading must not get a second torrent queued'
+  end
 end
