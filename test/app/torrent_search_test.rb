@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'test_helper'
+require 'time'
 require_relative '../../lib/string_utils'
 require_relative '../../lib/metadata'
 require_relative '../../app/torrent_search'
@@ -9,9 +10,13 @@ class TorrentSearchTest < Minitest::Test
   def setup
     @environment = build_stubbed_environment
     MediaLibrarian.application = @environment.application
+    # TorrentSearch memoizes its app at the class level, so pin it to this test's
+    # environment (otherwise the first test's app leaks into later ones).
+    TorrentSearch.configure(app: @environment.application)
   end
 
   def teardown
+    remove_app_reference(TorrentSearch)
     MediaLibrarian.application = nil
     @environment.cleanup if @environment
   end
@@ -88,5 +93,34 @@ class TorrentSearchTest < Minitest::Test
     chosen_row = db.rows.find { |r| r[:name] == 'Movie.2025.1080p.BluRay' }
     assert chosen_row, 'chosen torrent should be persisted'
     assert_equal 2, chosen_row[:status], 'chosen torrent should be queued for download'
+  end
+
+  def test_promote_ready_downloads_promotes_only_recently_expired_timeframes
+    iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
+    now = Time.now
+    db = FakeTorrentsDb.new([
+      # timeframe elapsed yesterday -> should be promoted
+      { :name => 'Ready.Expired', :identifier => 'movieA2025', :status => 1,
+        :tattributes => { :added => iso.(now - 2 * 86_400), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 86_400 } },
+      # timeframe still in the future -> left waiting
+      { :name => 'Still.Waiting', :identifier => 'movieB2025', :status => 1,
+        :tattributes => { :added => iso.(now), :timeframe_quality => 30 * 86_400,
+                          :timeframe_tracker => 0, :timeframe_size => 0 } },
+      # expired long ago (> max age) -> left for pruning, not promoted
+      { :name => 'Ancient.Stale', :identifier => 'movieC2025', :status => 1,
+        :tattributes => { :added => iso.(now - 400 * 86_400), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 0 } }
+    ])
+    @environment.application.db = db
+
+    Cache.stub(:object_unpack, ->(v) { v }) do
+      TorrentSearch.promote_ready_downloads
+    end
+
+    status = ->(name) { db.rows.find { |r| r[:name] == name }[:status] }
+    assert_equal 2, status.('Ready.Expired'), 'expired timeframe should be promoted to the download queue'
+    assert_equal 1, status.('Still.Waiting'), 'future timeframe must stay pending'
+    assert_equal 1, status.('Ancient.Stale'), 'stale row must be left for pruning, not promoted'
   end
 end
