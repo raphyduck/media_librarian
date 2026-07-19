@@ -135,6 +135,47 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_equal "L'Âme idéale", row[:title], 'the original title must be persisted instead of the English one'
   end
 
+  def test_persist_rejects_original_title_from_a_different_movie
+    imdb_id = 'tt7100003'
+    provider = FakeProvider.new([
+      base_entry.merge(source: 'trakt', imdb_id: imdb_id, ids: { 'imdb' => imdb_id }, title: 'Woody and Friends')
+    ], source: 'trakt')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    # TMDB answers with a movie whose imdb id does not match the entry's: its
+    # title must never overwrite the entry's title.
+    with_tmdb_detail_stub(->(*) { { 'original_title' => 'Shaktishadi Maa Siddheshwari', 'imdb_id' => 'tt9999999' } }) do
+      service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+    end
+
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal 'Woody and Friends', row[:title], 'a mismatched TMDB movie must not rename the entry'
+  end
+
+  def test_persist_prefers_imdb_lookup_over_a_stray_tmdb_id
+    imdb_id = 'tt7100004'
+    provider = FakeProvider.new([
+      base_entry.merge(source: 'trakt', imdb_id: imdb_id,
+                       ids: { 'imdb' => imdb_id, 'tmdb' => '123456' }, title: 'English Title')
+    ], source: 'trakt')
+
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+
+    looked_up = []
+    stub = lambda do |id, *|
+      looked_up << id.to_s
+      id.to_s == imdb_id ? { 'original_title' => 'Titre Original', 'imdb_id' => imdb_id } : { 'original_title' => 'Wrong Movie', 'imdb_id' => 'tt0000001' }
+    end
+    with_tmdb_detail_stub(stub) do
+      service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+    end
+
+    assert_equal [imdb_id], looked_up.uniq, 'the lookup must use the unambiguous imdb id, not the stored tmdb id'
+    row = @db.get_rows(:calendar_entries).first
+    assert_equal 'Titre Original', row[:title]
+  end
+
   def test_persist_keeps_title_when_original_title_lookup_fails
     imdb_id = 'tt7100002'
     provider = FakeProvider.new([

@@ -45,8 +45,11 @@ failed = 0
 
 rows.each do |row|
   ids = row[:ids].is_a?(Hash) ? row[:ids] : {}
-  lookup_id = ids['tmdb'] || ids[:tmdb]
-  lookup_id = row[:imdb_id] if lookup_id.to_s.strip.empty?
+  # IMDb ids are unambiguous on TMDB; a stray non-TMDB numeric id stored under
+  # the tmdb key would resolve to an unrelated movie, so prefer the imdb id.
+  imdb_id = row[:imdb_id].to_s.strip
+  imdb_id = (ids['imdb'] || ids[:imdb]).to_s.strip if imdb_id.empty?
+  lookup_id = imdb_id.empty? ? (ids['tmdb'] || ids[:tmdb]) : imdb_id
   if lookup_id.to_s.strip.empty?
     puts "Skipping ##{row[:id]} #{row[:title].inspect}: no tmdb/imdb id" if options[:verbose]
     skipped += 1
@@ -61,7 +64,15 @@ rows.each do |row|
     next
   end
 
-  original = details.is_a?(Hash) ? details['original_title'].to_s.strip : ''
+  details = nil unless details.is_a?(Hash)
+  detail_imdb = details ? (details['imdb_id'] || details.dig('external_ids', 'imdb_id')).to_s.strip : ''
+  if details && !imdb_id.empty? && !detail_imdb.empty? && detail_imdb != imdb_id
+    puts "Identity mismatch for ##{row[:id]} #{row[:title].inspect}: TMDB #{lookup_id} belongs to #{detail_imdb}, expected #{imdb_id}"
+    failed += 1
+    next
+  end
+
+  original = details ? details['original_title'].to_s.strip : ''
   if original.empty?
     puts "No TMDB match for ##{row[:id]} #{row[:title].inspect} (#{lookup_id})" if options[:verbose]
     failed += 1

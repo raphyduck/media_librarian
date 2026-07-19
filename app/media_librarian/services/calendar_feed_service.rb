@@ -307,20 +307,32 @@ module MediaLibrarian
       # ids in place of TMDB ids, so any movie entry with an id can be resolved
       # before it lands in calendar_entries; TMDB-sourced entries already carry
       # the original title (see TmdbCalendarProvider#build_entry).
+      #
+      # IMDb ids are unambiguous on TMDB whereas a stray non-TMDB numeric id
+      # stored under the tmdb key resolves to an unrelated movie, so the lookup
+      # prefers the imdb id and the returned movie's identity is verified
+      # before its title is adopted.
       def resolve_original_movie_title(entry)
         return entry unless entry[:media_type].to_s == 'movie'
         return entry if entry[:source].to_s.downcase == 'tmdb'
         return entry unless tmdb_lookup_available?
 
         ids = entry[:ids].is_a?(Hash) ? entry[:ids] : {}
-        lookup_id = ids['tmdb'] || ids[:tmdb]
-        lookup_id = entry[:imdb_id] if lookup_id.to_s.strip.empty?
+        imdb_id = entry[:imdb_id].to_s.strip
+        imdb_id = (ids['imdb'] || ids[:imdb]).to_s.strip if imdb_id.empty?
+        lookup_id = imdb_id.empty? ? (ids['tmdb'] || ids[:tmdb]) : imdb_id
         return entry if lookup_id.to_s.strip.empty?
 
         @original_title_cache ||= {}
         unless @original_title_cache.key?(lookup_id)
           details = Tmdb::Movie.detail(lookup_id)
-          @original_title_cache[lookup_id] = details.is_a?(Hash) ? details['original_title'].to_s.strip : ''
+          details = nil unless details.is_a?(Hash)
+          detail_imdb = details && (details['imdb_id'] || details.dig('external_ids', 'imdb_id')).to_s.strip
+          if details && !imdb_id.empty? && !detail_imdb.empty? && detail_imdb != imdb_id
+            speaker&.speak_up("Calendar original title mismatch for #{entry[:title]}: TMDB #{lookup_id} belongs to #{detail_imdb}, expected #{imdb_id}", 0)
+            details = nil
+          end
+          @original_title_cache[lookup_id] = details ? details['original_title'].to_s.strip : ''
         end
         original = @original_title_cache[lookup_id]
         entry[:title] = original unless original.empty?
