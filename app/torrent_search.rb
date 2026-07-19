@@ -30,9 +30,32 @@ class TorrentSearch
   end
 
   def self.check_all_download(timeout: 10)
+    promote_ready_downloads
     app.db.get_rows('torrents', {:status => 3}).each do |d|
       check_status(d[:identifiers], timeout, d)
     end
+  end
+
+  # Torrents held on a timeframe (status 1) are otherwise only re-evaluated when
+  # their exact release is re-found during a fresh search. A release whose source
+  # tracker is no longer queried (or that aged out of the feed) would therefore
+  # wait forever even once its timeframe elapsed. Promote any status-1 row whose
+  # timeframe has expired straight to the download queue (status 2) so it gets
+  # grabbed. Rows stale for more than max_age_days are left untouched for the
+  # existing pruning (Cache.torrent_get) to remove.
+  def self.promote_ready_downloads(max_age_days: 180)
+    now = Time.now
+    oldest = now - (max_age_days * 86_400)
+    app.db.get_rows('torrents', {:status => 1}).each do |d|
+      ta = Cache.object_unpack(d[:tattributes]) rescue nil
+      next unless ta.is_a?(Hash)
+      waiting_until = (waiting_time_set(ta) rescue nil)
+      next if waiting_until.nil? || waiting_until > now || waiting_until < oldest
+      app.speaker.speak_up("Timeframe expired for '#{d[:name]}', promoting it to the download queue", 0)
+      app.db.update_rows('torrents', {:status => 2, :waiting_until => waiting_until.to_s}, {:name => d[:name]})
+    end
+  rescue => e
+    app.speaker.tell_error(e, Utils.arguments_dump(binding))
   end
 
   def self.download_now?(waiting_until)
