@@ -51,20 +51,31 @@ class TorrentSearchTest < Minitest::Test
     end
   end
 
-  # Minimal in-memory stand-in for Storage::Db covering the calls torrent_download makes.
+  # Minimal in-memory stand-in for Storage::Db covering the calls
+  # torrent_download and promote_ready_downloads make. Accepts either an array
+  # (torrents rows) or a hash of table name => rows.
   class FakeTorrentsDb
-    attr_reader :rows
-    def initialize(rows); @rows = rows; end
-    def get_rows(_table, selector = {}, _extra = {})
-      @rows.select { |r| selector.all? { |k, v| r[k].to_s == v.to_s } }
+    def initialize(rows)
+      @tables = rows.is_a?(Hash) ? rows.transform_keys(&:to_s) : { 'torrents' => rows }
+      @tables.default_proc = proc { |hash, key| hash[key] = [] }
     end
-    def insert_row(_table, row); @rows << row; end
-    def update_rows(_table, attrs, selector)
-      get_rows(_table, selector).each { |r| r.merge!(attrs) }
+    def rows(table = 'torrents'); @tables[table.to_s]; end
+    def get_rows(table, selector = {}, extra = {})
+      @tables[table.to_s].select do |r|
+        selector.all? { |k, v| r[k].to_s == v.to_s } &&
+          extra.all? do |k, v|
+            key, op = k.to_s.split(' ', 2)
+            op == 'like' ? r[key.to_sym].to_s.downcase.include?(v.to_s.downcase.delete('%')) : true
+          end
+      end
     end
-    def delete_rows(_table, selector)
-      doomed = get_rows(_table, selector)
-      @rows.reject! { |r| doomed.include?(r) }
+    def insert_row(table, row); @tables[table.to_s] << row; end
+    def update_rows(table, attrs, selector)
+      get_rows(table, selector).each { |r| r.merge!(attrs) }
+    end
+    def delete_rows(table, selector)
+      doomed = get_rows(table, selector)
+      @tables[table.to_s].reject! { |r| doomed.include?(r) }
       doomed.size
     end
     def touch_rows(*); end
@@ -147,7 +158,37 @@ class TorrentSearchTest < Minitest::Test
     assert_includes names, 'Film.2160p'
     refute_includes names, 'Film.1080p', 'the other pending version of the same film must be removed'
     assert_equal 2, db.rows.find { |r| r[:name] == 'Film.2160p' }[:status], 'only the best release is queued'
-    assert_equal 1, db.rows.find { |r| r[:name] == 'Other.1080p' }[:status],
-                 'a film already downloading must not get a second torrent queued'
+    refute_includes names, 'Other.1080p',
+                    'a pending torrent for a film already downloading must be removed'
+    assert_includes names, 'Other.Active', 'the active download itself is untouched'
+  end
+
+  def test_promote_ready_downloads_purges_pending_for_media_already_in_library
+    iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
+    now = Time.now
+    ta = { :added => iso.(now), :timeframe_quality => 90 * 86_400,
+           :timeframe_tracker => 0, :timeframe_size => 0 }
+    db = FakeTorrentsDb.new(
+      'torrents' => [
+        { :name => 'InLibrary.2025.1080p', :identifier => 'movieConnemara (2025)2025', :status => 1, :tattributes => ta.dup },
+        { :name => 'NotInLibrary.2025.1080p', :identifier => 'movieUnknown Film (2025)2025', :status => 1, :tattributes => ta.dup }
+      ],
+      'calendar_entries' => [
+        { :title => 'Connemara', :release_date => '2025-02-01', :imdb_id => 'tt0042' }
+      ],
+      'local_media' => [
+        { :imdb_id => 'tt0042', :media_type => 'movie', :local_path => '/library/Connemara (2025)/x.mkv' }
+      ]
+    )
+    @environment.application.db = db
+
+    Cache.stub(:object_unpack, ->(v) { v }) do
+      TorrentSearch.promote_ready_downloads
+    end
+
+    names = db.rows.map { |r| r[:name] }
+    refute_includes names, 'InLibrary.2025.1080p', 'pending torrent for a film already in the library must be removed'
+    assert_includes names, 'NotInLibrary.2025.1080p', 'a film absent from the library keeps waiting normally'
+    assert_equal 1, db.rows.find { |r| r[:name] == 'NotInLibrary.2025.1080p' }[:status]
   end
 end
