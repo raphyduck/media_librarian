@@ -1709,7 +1709,8 @@ class Daemon
       case req.request_method
       when 'GET'
         entries = WatchlistStore.fetch_with_details(type: req.query['type'])
-        json_response(res, body: { 'entries' => entries })
+        entries, orphans = decorate_watchlist_entries(entries)
+        json_response(res, body: { 'entries' => entries, 'orphans' => orphans })
       when 'POST'
         payload = parse_payload(req)
         imdb_id = payload['imdb_id'].to_s.strip

@@ -525,78 +525,9 @@
           aria-labelledby="tab-downloads"
           hidden
         >
-          <section class="panel" id="pending-torrents-panel">
-            <div class="panel-header">
-              <h2>Torrents en attente</h2>
-              <div class="panel-tools">
-                <div class="actions">
-                  <button id="refresh-pending-torrents" type="button">Rafraîchir</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="download-list-table">
-              <div class="table-wrapper">
-                <table class="pending-torrents-table">
-                  <colgroup>
-                    <col style="width: 28%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Nom</th>
-                      <th>Tracker</th>
-                      <th>Catégorie</th>
-                      <th>Ajouté</th>
-                      <th>Disponible le</th>
-                      <th>Identifiant</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="pending-validation-rows"></tbody>
-                </table>
-              </div>
-              <p class="hint" id="pending-validation-empty">Aucun torrent en attente de validation.</p>
-            </div>
-
-            <div class="download-list-table">
-              <div class="table-wrapper">
-                <table class="pending-torrents-table">
-                  <colgroup>
-                    <col style="width: 28%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                    <col style="width: 12%;">
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Nom</th>
-                      <th>Tracker</th>
-                      <th>Catégorie</th>
-                      <th>Ajouté</th>
-                      <th>Disponible le</th>
-                      <th>Identifiant</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="pending-download-rows"></tbody>
-                </table>
-              </div>
-              <p class="hint" id="pending-download-empty">Aucun torrent en attente de téléchargement.</p>
-            </div>
-          </section>
-
           <section class="panel" id="watchlist-panel">
             <div class="panel-header">
-              <h2>Liste d'intérêt</h2>
+              <h2>Liste d'intérêts</h2>
               <div class="panel-tools">
                 <div class="actions">
                   <input id="watchlist-import-file" type="file" accept=".csv,text/csv" />
@@ -613,16 +544,19 @@
               <div id="watchlist-import-skipped"></div>
             </div>
 
-            <div class="download-list-table">
+            <div class="download-list-table watchlist-table">
               <div class="table-wrapper">
                 <table>
+                  <colgroup>
+                    <col style="width: 26%;">
+                    <col style="width: 46%;">
+                    <col style="width: 17%;">
+                    <col style="width: 11%;">
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Titre</th>
-                      <th>Type</th>
-                      <th>Année</th>
-                      <th>IMDB</th>
-                      <th>URL</th>
+                      <th>Média</th>
+                      <th>Torrents en attente</th>
                       <th>Recherche tracker</th>
                       <th>Actions</th>
                     </tr>

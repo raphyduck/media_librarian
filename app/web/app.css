@@ -449,6 +449,140 @@ main {
   margin: 0;
 }
 
+/* Liste d'intérêts fusionnée: cellule média + torrents en attente par item. */
+.watchlist-table td {
+  vertical-align: top;
+}
+
+.media-cell {
+  min-width: 0;
+}
+
+.media-title {
+  display: block;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.media-title--muted {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.media-meta {
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.media-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  color: #dbeafe;
+  font-size: 0.75rem;
+}
+
+.torrents-cell {
+  min-width: 0;
+}
+
+.torrents-none {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.torrent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.torrent-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.7rem;
+  background: rgba(15, 23, 42, 0.55);
+  min-width: 0;
+}
+
+.torrent-chip-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.torrent-chip-name {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.torrent-chip-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.torrent-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.torrent-status--waiting {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
+.torrent-status--ready {
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #bbf7d0;
+}
+
+.torrent-chip-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.torrent-chip-actions button {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.watchlist-group-row td {
+  padding-top: 1.1rem;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
 select {
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
@@ -1235,5 +1369,69 @@ button:disabled {
 
   .download-list-table .actions-cell {
     justify-content: flex-end;
+  }
+
+  /* Liste d'intérêts: neutralise la mise en page table+colgroup pour que les
+     cartes occupent toute la largeur. */
+  .watchlist-table table {
+    display: block;
+  }
+
+  .watchlist-table colgroup {
+    display: none;
+  }
+
+  /* Liste d'intérêts: en mode carte, média, torrents et recherche s'empilent
+     pleine largeur au lieu du duo label/valeur côte à côte. */
+  .watchlist-table .media-cell,
+  .watchlist-table .torrents-cell,
+  .watchlist-table .tracker-cell {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .watchlist-table .media-cell::before,
+  .watchlist-table .torrents-cell::before,
+  .watchlist-table .tracker-cell::before {
+    margin-bottom: 0.15rem;
+  }
+
+  .watchlist-table .tracker-cell select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .watchlist-table .tracker-cell a {
+    word-break: normal;
+    padding-top: 0.25rem;
+  }
+
+  .torrent-chip {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+  }
+
+  /* Le nom occupe sa propre ligne; badge et actions passent en dessous. */
+  .torrent-chip-main {
+    flex: 1 1 100%;
+  }
+
+  .torrent-chip-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .torrent-chip-actions {
+    margin-left: auto;
+  }
+
+  .watchlist-table .watchlist-group-row {
+    border-style: dashed;
+    background: transparent;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .watchlist-table .watchlist-group-row td::before {
+    display: none;
   }
 }

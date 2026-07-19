@@ -80,6 +80,70 @@ class Daemon
       }.compact
     end
 
+    # Attach each watchlist entry's pending torrents (status 1/2), ranked the
+    # same way promote_ready_downloads picks a release: smallest total
+    # timeframe (closest to the target quality) first, then largest size.
+    # Pending torrents that belong to no watchlist entry (e.g. TV episodes)
+    # are returned separately, grouped by identifier, so the UI can still
+    # surface them in the merged view.
+    def decorate_watchlist_entries(entries)
+      rows = app.db.get_rows('torrents', { status: [1, 2] }) || []
+      formatted = rows.filter_map { |row| format_watchlist_torrent(row) }
+      claimed = []
+      decorated = Array(entries).map do |entry|
+        torrents = formatted.select { |torrent| torrent_matches_watchlist_entry?(torrent, entry) }
+        claimed.concat(torrents)
+        entry.merge(torrents: sort_watchlist_torrents(torrents))
+      end
+      orphans = (formatted - claimed).group_by { |torrent| torrent[:identifier].to_s }.map do |identifier, group|
+        {
+          identifier: identifier,
+          category: group.first[:category],
+          torrents: sort_watchlist_torrents(group),
+        }
+      end
+      [decorated, orphans]
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'decorate_watchlist_entries') rescue nil
+      [Array(entries).map { |entry| entry.merge(torrents: []) }, []]
+    end
+
+    def format_watchlist_torrent(row)
+      attributes = row[:tattributes]
+      attributes = Cache.object_unpack(attributes) unless attributes.is_a?(Hash)
+      attributes = {} unless attributes.is_a?(Hash)
+
+      {
+        name: row[:name].to_s,
+        tracker: attributes[:tracker],
+        category: attributes[:category],
+        size: attributes[:size].to_f,
+        timeframe_total: attributes[:timeframe_quality].to_i + attributes[:timeframe_tracker].to_i + attributes[:timeframe_size].to_i,
+        waiting_until: row[:waiting_until],
+        created_at: row[:created_at],
+        identifier: row[:identifier].to_s,
+        status: row[:status].to_i,
+      }
+    end
+
+    # Movie identifiers are "movie<OriginalTitle> (<year>)<year>" and watchlist
+    # entries carry that same calendar title, so a case-insensitive title
+    # inclusion plus a year check reliably pairs them.
+    def torrent_matches_watchlist_entry?(torrent, entry)
+      identifier = torrent[:identifier].to_s.downcase
+      return false if identifier.empty?
+
+      title = (entry[:title] || entry['title']).to_s.strip.downcase
+      return false if title.empty? || !identifier.include?(title)
+
+      year = (entry[:year] || entry['year']).to_i
+      year.zero? || identifier.include?(year.to_s)
+    end
+
+    def sort_watchlist_torrents(torrents)
+      torrents.sort_by { |torrent| [torrent[:timeframe_total], -torrent[:size]] }
+    end
+
     def extract_torrent_identifier(payload)
       return nil unless payload.is_a?(Hash)
 

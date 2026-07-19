@@ -3493,17 +3493,17 @@ async function validateTorrent(entry) {
     await fetchJson('/torrents/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier }),
+      body: JSON.stringify({ identifier: entry?.name || identifier }),
     });
     showNotification('Torrent validé.');
-    loadPendingTorrents();
+    loadWatchlist();
   } catch (error) {
     showNotification(error?.message || 'Impossible de valider le torrent.', 'error');
   }
 }
 
 async function deleteTorrent(entry) {
-  const identifier = entry?.identifier || entry?.name;
+  const identifier = entry?.name || entry?.identifier;
   if (!identifier) {
     showNotification('Identifiant de torrent introuvable.', 'error');
     return;
@@ -3518,98 +3518,206 @@ async function deleteTorrent(entry) {
       body: JSON.stringify({ identifier }),
     });
     showNotification('Torrent supprimé.');
-    loadPendingTorrents();
+    loadWatchlist();
   } catch (error) {
     showNotification(error?.message || 'Impossible de supprimer le torrent.', 'error');
   }
 }
 
-function renderPendingTorrentList(rowsId, emptyId, entries = []) {
-  const tbody = document.getElementById(rowsId);
-  const emptyHint = document.getElementById(emptyId);
-  if (!tbody || !emptyHint) {
-    return;
-  }
+// A pending torrent inside the merged watchlist table: release name, tracker,
+// availability, humanized status (1 = validation, 2 = téléchargement) and its
+// validate/delete actions. Torrents arrive pre-sorted by quality/timeframe.
+function buildTorrentChip(torrent) {
+  const status = Number(torrent?.status);
+  const chip = document.createElement('div');
+  chip.className = 'torrent-chip';
 
-  tbody.innerHTML = '';
-  const normalized = Array.isArray(entries) ? entries : [];
+  const main = document.createElement('div');
+  main.className = 'torrent-chip-main';
+
+  const name = document.createElement('span');
+  name.className = 'torrent-chip-name';
+  name.textContent = torrent?.name || '—';
+  name.title = torrent?.name || '';
+  main.appendChild(name);
+
+  const metaParts = [];
+  if (torrent?.tracker) {
+    metaParts.push(torrent.tracker);
+  }
+  metaParts.push(`Dispo: ${formatAvailability(torrent?.waiting_until)}`);
+  const meta = document.createElement('span');
+  meta.className = 'torrent-chip-meta';
+  meta.textContent = metaParts.join(' · ');
+  main.appendChild(meta);
+  chip.appendChild(main);
+
+  const badge = document.createElement('span');
+  badge.className = `torrent-status ${status === 2 ? 'torrent-status--ready' : 'torrent-status--waiting'}`;
+  badge.textContent = status === 2 ? 'En attente de téléchargement' : 'En attente de validation';
+  chip.appendChild(badge);
+
+  const actions = document.createElement('div');
+  actions.className = 'torrent-chip-actions';
+  if (status === 1) {
+    const validateButton = document.createElement('button');
+    validateButton.type = 'button';
+    validateButton.textContent = 'Valider';
+    validateButton.addEventListener('click', () => validateTorrent(torrent));
+    actions.appendChild(validateButton);
+  }
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'danger';
+  deleteButton.textContent = 'Supprimer';
+  deleteButton.addEventListener('click', () => deleteTorrent(torrent));
+  actions.appendChild(deleteButton);
+  chip.appendChild(actions);
+
+  return chip;
+}
+
+function buildTorrentListCell(torrents) {
+  const cell = document.createElement('td');
+  cell.className = 'torrents-cell';
+  cell.dataset.label = 'Torrents en attente';
+  const normalized = Array.isArray(torrents) ? torrents : [];
   if (!normalized.length) {
-    emptyHint.classList.remove('hidden');
-    return;
+    const none = document.createElement('span');
+    none.className = 'torrents-none';
+    none.textContent = 'Aucun torrent en attente';
+    cell.appendChild(none);
+    return cell;
   }
-  emptyHint.classList.add('hidden');
+  const list = document.createElement('div');
+  list.className = 'torrent-list';
+  normalized.forEach((torrent) => list.appendChild(buildTorrentChip(torrent)));
+  cell.appendChild(list);
+  return cell;
+}
 
-  const labels = ['Nom', 'Tracker', 'Catégorie', 'Ajouté', 'Disponible le', 'Identifiant'];
-  normalized.forEach((entry) => {
-    const row = document.createElement('tr');
-    const status = Number(entry?.status);
-    const cells = [
-      entry?.name || '—',
-      entry?.tracker || '—',
-      entry?.category || '—',
-      formatDateTime(entry?.created_at),
-      formatAvailability(entry?.waiting_until),
-      entry?.identifier || '—',
-    ];
+// Consolidated "Média" cell: title on top, then a muted meta line with the
+// type/year badges and IMDB/source links.
+function buildWatchlistMediaCell(entry) {
+  const cell = document.createElement('td');
+  cell.className = 'media-cell';
+  cell.dataset.label = 'Média';
 
-    cells.forEach((value, index) => {
-      const cell = document.createElement('td');
-      cell.dataset.label = labels[index];
-      cell.textContent = value || '—';
-      row.appendChild(cell);
-    });
+  const ids = entry && typeof entry.ids === 'object' ? entry.ids : {};
+  const title = entry.title || '';
+  const type = entry.type || '';
+  const releaseDateYear = entry.release_date ? new Date(entry.release_date).getFullYear() : '';
+  const year = entry.year || entry.release_year || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
+  const imdb = entry.imdb_id || ids.imdb || '';
+  const url = entry.url || '';
 
-    const cell = document.createElement('td');
-    cell.className = 'actions-cell';
-    cell.dataset.label = 'Actions';
-    if (status === 2) {
-      const pendingLabel = document.createElement('span');
-      pendingLabel.className = 'calendar-badge';
-      pendingLabel.textContent = 'En attente de téléchargement';
-      cell.appendChild(pendingLabel);
-    }
-    if (status === 1) {
-      const validateButton = document.createElement('button');
-      validateButton.type = 'button';
-      validateButton.textContent = 'Valider';
-      validateButton.addEventListener('click', () => validateTorrent(entry));
-      cell.appendChild(validateButton);
-    }
-    if (status === 1 || status === 2) {
-      const deleteButton = document.createElement('button');
-      deleteButton.type = 'button';
-      deleteButton.textContent = 'Supprimer';
-      deleteButton.addEventListener('click', () => deleteTorrent(entry));
-      cell.appendChild(deleteButton);
-    }
-    if (!cell.childNodes.length) {
-      cell.textContent = '—';
-    }
-    row.appendChild(cell);
+  const titleEl = document.createElement('span');
+  titleEl.className = 'media-title';
+  titleEl.textContent = title || imdb || '—';
+  cell.appendChild(titleEl);
 
-    tbody.appendChild(row);
+  const meta = document.createElement('div');
+  meta.className = 'media-meta';
+  if (type) {
+    const typeBadge = document.createElement('span');
+    typeBadge.className = 'media-badge';
+    typeBadge.textContent = type === 'movies' ? 'Film' : type === 'shows' ? 'Série' : type;
+    meta.appendChild(typeBadge);
+  }
+  if (year) {
+    const yearEl = document.createElement('span');
+    yearEl.textContent = year;
+    meta.appendChild(yearEl);
+  }
+  if (imdb) {
+    const imdbLink = document.createElement('a');
+    imdbLink.href = `https://www.imdb.com/title/${imdb}`;
+    imdbLink.target = '_blank';
+    imdbLink.rel = 'noreferrer noopener';
+    imdbLink.textContent = 'IMDB';
+    meta.appendChild(imdbLink);
+  }
+  if (url) {
+    const sourceLink = document.createElement('a');
+    sourceLink.href = url;
+    sourceLink.target = '_blank';
+    sourceLink.rel = 'noreferrer noopener';
+    sourceLink.textContent = 'Fiche';
+    meta.appendChild(sourceLink);
+  }
+  if (meta.childNodes.length) {
+    cell.appendChild(meta);
+  }
+  return cell;
+}
+
+function buildWatchlistTrackerCell(entry, trackers, hasTrackers) {
+  const trackerCell = document.createElement('td');
+  trackerCell.className = 'tracker-cell';
+  trackerCell.dataset.label = 'Recherche tracker';
+
+  const ids = entry && typeof entry.ids === 'object' ? entry.ids : {};
+  const title = entry.title || '';
+  const releaseDateYear = entry.release_date ? new Date(entry.release_date).getFullYear() : '';
+  const year = entry.year || entry.release_year || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
+  const imdb = entry.imdb_id || ids.imdb || '';
+  const externalId = imdb || entry.id || ids.slug || '';
+
+  if (!hasTrackers) {
+    trackerCell.textContent = 'Aucun tracker configuré';
+    return trackerCell;
+  }
+
+  const selectionKey = externalId || imdb || title;
+  const select = document.createElement('select');
+  trackers.forEach(({ name }) => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
   });
-}
 
-function renderPendingTorrents(data = {}) {
-  const validation = Array.isArray(data.validation) ? data.validation : [];
-  const downloads = Array.isArray(data.downloads) ? data.downloads : [];
-  renderPendingTorrentList('pending-validation-rows', 'pending-validation-empty', validation);
-  renderPendingTorrentList('pending-download-rows', 'pending-download-empty', downloads);
-}
-
-async function loadPendingTorrents() {
-  try {
-    const data = await fetchJson('/torrents/pending');
-    renderPendingTorrents(data || {});
-  } catch (error) {
-    renderPendingTorrents();
-    const message = error?.message || 'Impossible de charger les torrents en attente.';
-    showNotification(message, 'error');
+  const stored = state.trackers.selections.get(selectionKey);
+  const availableNames = trackers.map((tracker) => tracker.name);
+  const defaultSelection = availableNames.includes(stored) ? stored : trackers[0]?.name;
+  if (defaultSelection) {
+    select.value = defaultSelection;
   }
+
+  const link = document.createElement('a');
+  link.target = '_blank';
+  link.rel = 'noreferrer noopener';
+  link.textContent = 'Lien';
+
+  const refreshTrackerLink = () => {
+    const trackerName = select.value;
+    const generatedUrl = generateTrackerUrl(trackerName, { title, year, imdb });
+    if (generatedUrl) {
+      link.href = generatedUrl;
+      link.textContent = 'Ouvrir';
+      link.removeAttribute('aria-disabled');
+      link.tabIndex = 0;
+    } else {
+      link.removeAttribute('href');
+      link.textContent = 'Lien indisponible';
+      link.setAttribute('aria-disabled', 'true');
+      link.tabIndex = -1;
+    }
+  };
+
+  select.addEventListener('change', () => {
+    state.trackers.selections.set(selectionKey, select.value);
+    refreshTrackerLink();
+  });
+
+  refreshTrackerLink();
+  trackerCell.appendChild(select);
+  trackerCell.appendChild(document.createTextNode(' '));
+  trackerCell.appendChild(link);
+  return trackerCell;
 }
 
-function renderWatchlist(entries = [], { message } = {}) {
+function renderWatchlist(entries = [], orphans = [], { message } = {}) {
   const tbody = document.getElementById('watchlist-rows');
   const emptyHint = document.getElementById('watchlist-empty');
   const trackerHint = document.getElementById('watchlist-trackers-hint');
@@ -3619,6 +3727,7 @@ function renderWatchlist(entries = [], { message } = {}) {
 
   tbody.innerHTML = '';
   const normalized = Array.isArray(entries) ? entries : [];
+  const normalizedOrphans = Array.isArray(orphans) ? orphans : [];
   const defaultMessage = emptyHint.dataset.defaultText || emptyHint.textContent || '';
   emptyHint.dataset.defaultText = defaultMessage;
   emptyHint.textContent = message || defaultMessage;
@@ -3630,105 +3739,21 @@ function renderWatchlist(entries = [], { message } = {}) {
       : 'Aucun tracker configuré. Ajoutez un `url_template` dans config/trackers/*.yml pour générer les liens.';
     trackerHint.classList.toggle('hidden', hasTrackers || (!trackerHint.textContent && normalized.length));
   }
-  if (!normalized.length) {
+  if (!normalized.length && !normalizedOrphans.length) {
     emptyHint.classList.remove('hidden');
     return;
   }
   emptyHint.classList.add('hidden');
 
-  const labels = ['Titre', 'Type', 'Année', 'IMDB', 'URL'];
-  const trackerLabel = 'Recherche tracker';
-
   normalized.forEach((entry) => {
     const row = document.createElement('tr');
     const ids = entry && typeof entry.ids === 'object' ? entry.ids : {};
-    const title = entry.title || '';
-    const type = entry.type || '';
-    const releaseDateYear = entry.release_date ? new Date(entry.release_date).getFullYear() : '';
-    const year = entry.year || entry.release_year || (Number.isFinite(releaseDateYear) ? releaseDateYear : '');
     const imdb = entry.imdb_id || ids.imdb || '';
     const externalId = imdb || entry.id || ids.slug || '';
-    const url = entry.url || '';
-    const imdbUrl = imdb ? `https://www.imdb.com/title/${imdb}` : '';
-    const metadata = { ids, title, type, year, release_date: entry.release_date, imdb, url };
 
-    const cells = [
-      { text: title || '—' },
-      { text: type || '—' },
-      { text: year || '—' },
-      imdbUrl ? { link: imdbUrl, linkText: imdb, text: imdb } : { text: imdb || externalId || '—' },
-      url ? { link: url } : { text: '—' },
-    ];
-
-    cells.forEach((value, index) => {
-      const cell = document.createElement('td');
-      cell.dataset.label = labels[index];
-      if (value.link) {
-        const link = document.createElement('a');
-        link.href = value.link;
-        link.target = '_blank';
-        link.rel = 'noreferrer noopener';
-        link.textContent = value.linkText || 'Lien';
-        cell.appendChild(link);
-      } else {
-        cell.textContent = value.text || '—';
-      }
-      row.appendChild(cell);
-    });
-
-    const trackerCell = document.createElement('td');
-    trackerCell.dataset.label = trackerLabel;
-    if (!hasTrackers) {
-      trackerCell.textContent = 'Aucun tracker configuré';
-    } else {
-      const selectionKey = externalId || imdb || title;
-      const select = document.createElement('select');
-      trackers.forEach(({ name }) => {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        select.appendChild(option);
-      });
-
-      const stored = state.trackers.selections.get(selectionKey);
-      const availableNames = trackers.map((tracker) => tracker.name);
-      const defaultSelection = availableNames.includes(stored) ? stored : trackers[0]?.name;
-      if (defaultSelection) {
-        select.value = defaultSelection;
-      }
-
-      const link = document.createElement('a');
-      link.target = '_blank';
-      link.rel = 'noreferrer noopener';
-      link.textContent = 'Lien';
-
-      const refreshTrackerLink = () => {
-        const trackerName = select.value;
-        const generatedUrl = generateTrackerUrl(trackerName, { title, year, imdb });
-        if (generatedUrl) {
-          link.href = generatedUrl;
-          link.textContent = 'Ouvrir';
-          link.removeAttribute('aria-disabled');
-          link.tabIndex = 0;
-        } else {
-          link.removeAttribute('href');
-          link.textContent = 'Lien indisponible';
-          link.setAttribute('aria-disabled', 'true');
-          link.tabIndex = -1;
-        }
-      };
-
-      select.addEventListener('change', () => {
-        state.trackers.selections.set(selectionKey, select.value);
-        refreshTrackerLink();
-      });
-
-      refreshTrackerLink();
-      trackerCell.appendChild(select);
-      trackerCell.appendChild(document.createTextNode(' '));
-      trackerCell.appendChild(link);
-    }
-    row.appendChild(trackerCell);
+    row.appendChild(buildWatchlistMediaCell(entry));
+    row.appendChild(buildTorrentListCell(entry.torrents));
+    row.appendChild(buildWatchlistTrackerCell(entry, trackers, hasTrackers));
 
     const actionsCell = document.createElement('td');
     actionsCell.className = 'actions-cell';
@@ -3736,12 +3761,64 @@ function renderWatchlist(entries = [], { message } = {}) {
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.textContent = 'Supprimer';
-    removeButton.addEventListener('click', () => removeWatchlistEntry(externalId, type, title));
+    removeButton.addEventListener('click', () => removeWatchlistEntry(externalId, entry.type || '', entry.title || ''));
     actionsCell.appendChild(removeButton);
     row.appendChild(actionsCell);
 
     tbody.appendChild(row);
   });
+
+  // Pending torrents that match no watchlist entry (TV episodes, media removed
+  // from the list…) stay visible at the bottom of the same table.
+  if (normalizedOrphans.length) {
+    const groupRow = document.createElement('tr');
+    groupRow.className = 'watchlist-group-row';
+    const groupCell = document.createElement('td');
+    groupCell.colSpan = 4;
+    groupCell.dataset.label = '';
+    groupCell.textContent = "Torrents hors liste d'intérêts";
+    groupRow.appendChild(groupCell);
+    tbody.appendChild(groupRow);
+
+    normalizedOrphans.forEach((orphan) => {
+      const row = document.createElement('tr');
+      row.className = 'watchlist-orphan-row';
+
+      const mediaCell = document.createElement('td');
+      mediaCell.className = 'media-cell';
+      mediaCell.dataset.label = 'Média';
+      const titleEl = document.createElement('span');
+      titleEl.className = 'media-title media-title--muted';
+      titleEl.textContent = orphan.identifier || '—';
+      mediaCell.appendChild(titleEl);
+      if (orphan.category) {
+        const meta = document.createElement('div');
+        meta.className = 'media-meta';
+        const badge = document.createElement('span');
+        badge.className = 'media-badge';
+        badge.textContent = orphan.category;
+        meta.appendChild(badge);
+        mediaCell.appendChild(meta);
+      }
+      row.appendChild(mediaCell);
+
+      row.appendChild(buildTorrentListCell(orphan.torrents));
+
+      const trackerCell = document.createElement('td');
+      trackerCell.className = 'tracker-cell';
+      trackerCell.dataset.label = 'Recherche tracker';
+      trackerCell.textContent = '—';
+      row.appendChild(trackerCell);
+
+      const actionsCell = document.createElement('td');
+      actionsCell.className = 'actions-cell';
+      actionsCell.dataset.label = 'Actions';
+      actionsCell.textContent = '—';
+      row.appendChild(actionsCell);
+
+      tbody.appendChild(row);
+    });
+  }
 }
 
 function renderWatchlistImportResult(result = {}) {
@@ -3947,10 +4024,10 @@ function startWatchlistImportStream(jobId) {
 async function loadWatchlist() {
   try {
     const data = await fetchJson('/watchlist');
-    renderWatchlist(data?.entries || []);
+    renderWatchlist(data?.entries || [], data?.orphans || []);
   } catch (error) {
     const message = error?.message || 'Impossible de charger la liste.';
-    renderWatchlist([], { message });
+    renderWatchlist([], [], { message });
     showNotification(message, 'error');
   }
 }
@@ -4426,7 +4503,7 @@ async function loadTrackersInfo() {
 
 async function loadDownloadsTab() {
   await loadTrackersInfo();
-  await Promise.all([loadPendingTorrents(), loadWatchlist()]);
+  await loadWatchlist();
 }
 
 async function controlDaemon({ path, buttonId, message }) {
@@ -5230,7 +5307,7 @@ function setupEventListeners() {
   if (watchlistImportBack) {
     watchlistImportBack.addEventListener('click', closeWatchlistImportView);
   }
-  ['refresh-watchlist', 'refresh-pending-torrents']
+  ['refresh-watchlist']
     .map((id) => document.getElementById(id))
     .filter(Boolean)
     .forEach((button) => button.addEventListener('click', loadDownloadsTab));
