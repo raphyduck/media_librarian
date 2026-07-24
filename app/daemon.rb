@@ -739,17 +739,55 @@ class Daemon
     end
 
     def refresh_trakt_token
+      adopt_stored_trakt_token
+      return if @trakt_refresh_disabled
+
       token = normalize_trakt_token(app.trakt&.token)
       return unless trakt_refresh_due?(token)
 
       previous = token.dup
-      app.trakt.account&.access_token
+      account = app.trakt&.account
+      if account.respond_to?(:refresh_access_token)
+        _refreshed, status = account.refresh_access_token
+        if %i[invalid_grant no_refresh_token].include?(status)
+          @trakt_refresh_disabled = true
+          app.speaker.speak_up('Trakt token refresh is no longer possible (re-authorization required); disabling automatic refresh until a new authorization is stored in the trakt_auth table.', 0)
+          return
+        end
+      else
+        # Legacy gem without a refresh-only entry point: calling access_token
+        # on a fully expired token would start an interactive device flow,
+        # which a background timer must never do.
+        expiry = trakt_expiry_time(previous)
+        return if expiry.nil? || expiry <= Time.now
+
+        account&.access_token
+      end
+
       updated = normalize_trakt_token(app.trakt&.token)
       return unless updated && updated != previous
 
       persist_trakt_token(updated)
     rescue StandardError => e
       app.speaker.tell_error(e, 'Trakt token refresh failed')
+    end
+
+    def adopt_stored_trakt_token
+      return unless app.db.respond_to?(:get_rows)
+
+      current = normalize_trakt_token(app.trakt&.token)
+      rows = app.db.get_rows('trakt_auth', { account: app.trakt_account })
+      return if rows.nil? || rows.empty?
+
+      stored = normalize_trakt_token(Utils.recursive_typify_keys(rows.first.reject { |k, _| k.to_s == 'account' }, 0))
+      return unless stored && !stored['access_token'].to_s.empty? && !stored['refresh_token'].to_s.empty?
+      return if current && stored['created_at'].to_i <= current['created_at'].to_i
+
+      app.trakt.token = stored
+      @trakt_refresh_disabled = false
+      app.speaker.speak_up('Adopted newer Trakt token found in database.', 0)
+    rescue StandardError => e
+      app.speaker.tell_error(e, 'Trakt stored token adoption failed')
     end
 
     def trakt_refresh_due?(token)
@@ -784,6 +822,7 @@ class Daemon
 
     def boot_framework_state
       @running = Concurrent::AtomicBoolean.new(true)
+      @trakt_refresh_disabled = false
       @stop_event = Concurrent::Event.new
       @last_execution = {}
       @last_email_report = {}
