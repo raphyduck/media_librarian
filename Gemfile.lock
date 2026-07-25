@@ -36,9 +36,9 @@ GIT
 
 GIT
   remote: https://github.com/raphyduck/trakt.git
-  revision: 1eb6d7aae6bec754489a9cb844b2df47a03b0c8d
+  revision: 1e63b9e4ec5fc02556acd2446b3c8d33b9a3d9a1
   specs:
-    trakt (0.1.9.7)
+    trakt (0.1.9.8)
       httparty
 
 GIT
