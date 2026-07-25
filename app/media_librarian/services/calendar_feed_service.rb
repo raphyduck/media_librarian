@@ -876,7 +876,8 @@ module MediaLibrarian
             client_secret: client_secret,
             account_id: account_id,
             token: ensure_trakt_token!(token),
-            speaker: speaker
+            speaker: speaker,
+            interactive: false
           )
         end
       end
