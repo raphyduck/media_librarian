@@ -33,15 +33,16 @@ unless ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
                               client_secret: client_secret,
                               account_id: app.trakt_account,
                               speaker: app.speaker,
+                              interactive: false,
                               token: token_row
                             })
 
-      begin
-        app.trakt.account.access_token
-        token = app.trakt.token
-        app.db.insert_row('trakt_auth', token.merge({ account: app.trakt_account }), 1) if token && !app.db.readonly?
-      rescue StandardError => e
-        app.speaker.tell_error(e, 'Trakt token initialization')
+      # No token validation here: fetching or refreshing the token can hit the
+      # network (or historically start a blocking device flow) and must not
+      # delay boot. The daemon's refresh timer handles token maintenance and
+      # persistence; other consumers refresh lazily on first API call.
+      if token_row.nil?
+        app.speaker.speak_up('No stored Trakt token found; Trakt features will stay disabled until an authorization is stored in the trakt_auth table.', 0)
       end
     end
   else
