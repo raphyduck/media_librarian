@@ -487,6 +487,48 @@ class TrackerQueryServiceTest < Minitest::Test
            "Expected keyword without ! and ?, got: #{searched_keywords.inspect}"
   end
 
+  def test_sanitize_keyword_turns_elided_article_apostrophe_into_space
+    # Release names separate the elided article ("L.Ame.Ideale.2025"), so the
+    # glued form "LAme Ideale" matches nothing on the trackers.
+    sanitize = MediaLibrarian::Services::TrackerQueryService.method(:sanitize_keyword)
+
+    assert_equal 'L Ame Ideale', sanitize.call("L'Ame Ideale")
+    assert_equal 'L Âme Idéale', sanitize.call('L’Âme Idéale')
+    assert_equal 'D Artagnan', sanitize.call("D'Artagnan")
+    # Contractions and multi-letter elisions stay concatenated ("Dont.Look.Up",
+    # "Quest.Ce.Quon"), matching scene naming conventions.
+    assert_equal 'Dont Look Up', sanitize.call("Don't Look Up")
+    assert_equal 'Boys Life', sanitize.call("Boy's Life")
+    assert_equal 'Quest-ce quon a fait au Bon Dieu', sanitize.call("Qu'est-ce qu'on a fait au Bon Dieu")
+  end
+
+  def test_sanitize_keyword_does_not_mutate_its_input
+    keyword = "L'Ame Ideale"
+    MediaLibrarian::Services::TrackerQueryService.sanitize_keyword(keyword)
+
+    assert_equal "L'Ame Ideale", keyword
+  end
+
+  def test_get_results_searches_elided_titles_with_a_space
+    searched_keywords = []
+    fake_tracker = Object.new
+    fake_tracker.define_singleton_method(:search) do |_category, keyword|
+      searched_keywords << keyword
+      []
+    end
+    @app.trackers = { 'test_tracker' => fake_tracker }
+
+    request = MediaLibrarian::Services::TrackerSearchRequest.new(
+      sources: 'test_tracker',
+      keyword: "L'Ame Ideale",
+      category: 'movies'
+    )
+    @service.get_results(request)
+
+    assert_includes searched_keywords, 'L Ame Ideale'
+    refute_includes searched_keywords, 'LAme Ideale'
+  end
+
   def test_get_torrent_file_uses_tracker_session_when_metadata_exists
     environment = build_service_environment
     app_defined = MediaLibrarian.instance_variable_defined?(:@application)

@@ -35,13 +35,22 @@ module MediaLibrarian
     class TrackerQueryService < BaseService
       LoginRequiredError = Class.new(StandardError)
 
+      # Elided single-letter articles are dot-separated in release names
+      # ("L'Ame Ideale" -> L.Ame.Ideale), so their apostrophe must become a
+      # space; contractions ("Don't" -> Dont) just lose the apostrophe.
+      def self.sanitize_keyword(keyword)
+        keyword = keyword.dup
+        keyword.gsub!(/(?<!\p{L})(\p{L})[\'’‘](?=\p{L})/, '\1 ')
+        keyword.gsub!(/[\(\)\:\'\"!\?\;\,’‘]/, '')
+        keyword
+      end
+
       def get_results(request)
         tries ||= 3
         results = []
         r = {}
         search_category = request.search_category.to_s == '' ? request.category : request.search_category
-        keyword = request.keyword.dup
-        keyword.gsub!(/[\(\)\:\'\"!\?\;\,’‘]/, '')
+        keyword = self.class.sanitize_keyword(request.keyword)
         trackers = get_trackers(request.sources)
         timeframe_trackers = parse_tracker_timeframes(request.sources || {})
         trackers.each do |tracker|
