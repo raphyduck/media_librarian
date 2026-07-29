@@ -487,6 +487,96 @@ class TrackerQueryServiceTest < Minitest::Test
            "Expected keyword without ! and ?, got: #{searched_keywords.inspect}"
   end
 
+  def test_torznab_tracker_spaces_out_queries_when_query_delay_is_set
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '2000')]
+    )
+    xml = <<~XML
+      <rss>
+        <channel>
+          <item>
+            <title>Example</title>
+            <size>123</size>
+            <link>https://tracker.example/details/1</link>
+            <guid>https://tracker.example/download/1</guid>
+            <attr name="seeders" value="10" />
+          </item>
+        </channel>
+      </rss>
+    XML
+    fake_client = Struct.new(:caps, :xml) do
+      def get(_params)
+        xml
+      end
+    end.new(caps, xml)
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key', 'query_delay' => 0.2 }, 'test')
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      tracker.search('movies', 'query one')
+      tracker.search('movies', 'query two')
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+      assert_operator elapsed, :>=, 0.2, 'consecutive searches must be spaced by query_delay'
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
+
+  def test_torznab_tracker_does_not_sleep_without_query_delay
+    caps = OpenStruct.new(
+      search_modes: OpenStruct.new(
+        search: OpenStruct.new(available: true),
+        movie_search: OpenStruct.new(available: true),
+        tv_search: OpenStruct.new(available: true)
+      ),
+      categories: [OpenStruct.new(name: 'Movies', id: '2000')]
+    )
+    xml = '<rss><channel></channel></rss>'
+    fake_client = Struct.new(:caps, :xml) do
+      def get(_params)
+        xml
+      end
+    end.new(caps, xml)
+
+    environment = build_service_environment
+    app_defined = MediaLibrarian.instance_variable_defined?(:@application)
+    old_application = MediaLibrarian.instance_variable_get(:@application) if app_defined
+    MediaLibrarian.application = environment.application
+
+    Torznab::Client.stub(:new, ->(*) { fake_client }) do
+      tracker = TorznabTracker.new({ 'api_url' => 'api', 'api_key' => 'key' }, 'test')
+      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      tracker.search('movies', 'query one')
+      tracker.search('movies', 'query two')
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+      assert_operator elapsed, :<, 0.2, 'no delay configured means no throttling sleep'
+    end
+  ensure
+    if app_defined
+      MediaLibrarian.application = old_application
+    elsif MediaLibrarian.instance_variable_defined?(:@application)
+      MediaLibrarian.remove_instance_variable(:@application)
+    end
+    environment&.cleanup
+  end
+
   def test_sanitize_keyword_turns_elided_article_apostrophe_into_space
     # Release names separate the elided article ("L.Ame.Ideale.2025"), so the
     # glued form "LAme Ideale" matches nothing on the trackers.
