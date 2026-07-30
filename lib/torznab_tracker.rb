@@ -10,6 +10,11 @@ class TorznabTracker
     @config = opts
     @name = name
     @limit = (opts['limit'] || 50).to_i
+    # Some indexers (c411) start erroring out and silently return empty feeds
+    # when queried in rapid bursts, so trackers can set query_delay (seconds)
+    # to space out requests.
+    @query_delay = opts['query_delay'].to_f
+    @throttle_mutex = Mutex.new
   end
 
   def search(type, query)
@@ -44,8 +49,19 @@ class TorznabTracker
 
   private
 
+  def throttle_query
+    return if @query_delay <= 0
+    @throttle_mutex.synchronize do
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      wait = @last_query_at ? @query_delay - (now - @last_query_at) : 0
+      sleep(wait) if wait > 0
+      @last_query_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
+  end
+
   def fetch_results(t, cat, query, type)
     result = []
+    throttle_query
     MediaLibrarian.app.speaker.speak_up "Running search on tracker '#{name}' for query '#{query}' for category '#{type}' (#{cat.join(',')})" if Env.debug?
     response = Hash.from_xml(@tracker.get({'t' => t, 'cat' => cat.join(','), 'q' => query, 'limit' => limit})) || {}
     items = response.dig(:rss, :channel, :item)
