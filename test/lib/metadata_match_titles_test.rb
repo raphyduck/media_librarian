@@ -14,6 +14,14 @@ require_relative '../../lib/metadata'
 end
 
 class MetadataMatchTitlesTest < Minitest::Test
+  def test_matches_typographic_apostrophe_titles_against_release_derived_titles
+    # TMDB stores "L’Âme Idéale" with a typographic apostrophe while release
+    # names parse to "L Ame Ideale 2025"; the ’ must normalize like ' or the
+    # provider match silently fails and the torrent is never identified.
+    assert Metadata.match_titles('L’Âme Idéale (2025)', 'L Ame Ideale 2025', 2025, 2025, 'movies')
+    assert Metadata.match_titles('L Ame Ideale 2025', 'L’Âme Idéale (2025)', 2025, 2025, 'movies')
+  end
+
   def test_ignores_optional_numeric_tokens_when_titles_match
     title = '20th Century Boys: Beginning of the End (2008)'
     target = '20th Century Boys 1 Beginning of the End (2008)'
