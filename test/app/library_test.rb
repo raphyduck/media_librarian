@@ -79,6 +79,63 @@ class LibraryTest < Minitest::Test
     MediaLibrarian.application = old_application
   end
 
+  def test_handle_completed_download_forwards_set_original_audio_default
+    speaker = TestSupport::Fakes::Speaker.new
+    env = build_stubbed_environment(speaker: speaker)
+    old_application = MediaLibrarian.application
+    MediaLibrarian.application = env.application
+    Librarian.configure(app: env.application)
+    Library.configure(app: env.application)
+
+    Dir.mktmpdir do |dir|
+      completed = File.join(dir, 'completed')
+      film_dir = File.join(completed, 'movies', 'Wonderland.2024.MULTi.1080p')
+      FileUtils.mkdir_p(film_dir)
+      mkv = File.join(film_dir, 'Wonderland.2024.MULTi.1080p.mkv')
+      File.write(mkv, 'payload')
+      destination_root = File.join(dir, 'library')
+      FileUtils.mkdir_p(destination_root)
+
+      captured = []
+      rename_stub = lambda do |*args|
+        captured << args
+        File.join(destination_root, 'Wonderland (2024).mkv')
+      end
+      search_stub = lambda do |folder, _opts|
+        folder == File.join(completed, 'movies') ? [[film_dir]] : [[mkv]]
+      end
+
+      with_const(:FOLDER_HIERARCHY, { 'movies' => 0, 'shows' => 1 }) do
+        with_const(:EXTENSIONS_TYPE, { audio: [], video: ['mkv'] }) do
+          handled = nil
+          Library.stub(:rename_media_file, rename_stub) do
+            FileUtils.stub(:search_folder, search_stub) do
+              Quality.stub(:qualities_merge, ->(*_) { '' }) do
+                handled, _list, error = Library.handle_completed_download(
+                  torrent_path: completed,
+                  torrent_name: 'movies',
+                  completed_folder: completed,
+                  destination_folder: destination_root,
+                  handling: { 'file_types' => ['mkv'], 'movies' => { 'move_to' => destination_root } },
+                  root_process: 0,
+                  set_original_audio_default: 2
+                )
+                assert_equal 0, error
+              end
+            end
+          end
+          assert_equal 1, handled
+        end
+      end
+
+      assert_equal 1, captured.length
+      assert_equal 2, captured.first.last, 'set_original_audio_default must be forwarded through recursive calls'
+    end
+  ensure
+    env&.cleanup
+    MediaLibrarian.application = old_application
+  end
+
   private
 
   def with_const(name, value)

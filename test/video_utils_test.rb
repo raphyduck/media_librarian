@@ -2,6 +2,7 @@
 
 require_relative 'test_helper'
 require_relative '../lib/video_utils'
+require_relative '../init/languages_translation' unless defined?(LANG_ADJUST)
 
 class VideoUtilsTest < Minitest::Test
   def setup
@@ -80,7 +81,122 @@ class VideoUtilsTest < Minitest::Test
     end
   end
 
+  def test_set_default_original_audio_remuxes_to_original_language
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Wonderland.2024.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      pre_tracks = [
+        { id: 1, audio_index: 1, lang: 'fre', name: '', commentary: nil, default: true },
+        { id: 2, audio_index: 2, lang: 'kor', name: '', commentary: nil, default: false }
+      ]
+      post_tracks = [
+        { id: 1, audio_index: 1, lang: 'fre', name: '', commentary: nil, default: false },
+        { id: 2, audio_index: 2, lang: 'kor', name: '', commentary: nil, default: true }
+      ]
+      track_maps = [pre_tracks, post_tracks]
+      captured_args = nil
+
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { track_maps.shift }) do
+          VideoUtils.stub(:check_space_for_operation, ->(**_) { { success: true, message: '' } }) do
+            VideoUtils.stub(:process_mkv, lambda { |_path, tool:, args:, **_|
+              captured_args = [tool, args]
+              { success: true, stdout: '', stderr: '', backup_path: nil }
+            }) do
+              VideoUtils.set_default_original_audio!(path: path, target_lang: 'ko')
+            end
+          end
+        end
+      end
+
+      assert result
+      assert_equal 'mkvmerge', captured_args[0]
+      assert_equal ['--default-track', '1:no', '--default-track', '2:yes', path], captured_args[1]
+    end
+  end
+
+  def test_set_default_original_audio_noop_when_default_already_original
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Wonderland.2024.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      tracks = [
+        { id: 1, audio_index: 1, lang: 'kor', name: '', commentary: nil, default: true },
+        { id: 2, audio_index: 2, lang: 'fre', name: '', commentary: nil, default: false }
+      ]
+
+      remuxed = false
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { tracks }) do
+          VideoUtils.stub(:process_mkv, lambda { |*_, **_| remuxed = true; { success: true } }) do
+            VideoUtils.set_default_original_audio!(path: path, target_lang: 'ko')
+          end
+        end
+      end
+
+      assert result
+      refute remuxed
+    end
+  end
+
+  def test_set_default_original_audio_reports_missing_original_language_track
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Wonderland.2024.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      tracks = [
+        { id: 1, audio_index: 1, lang: 'fre', name: '', commentary: nil, default: true },
+        { id: 2, audio_index: 2, lang: 'und', name: '', commentary: nil, default: false }
+      ]
+
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { tracks }) do
+          VideoUtils.stub(:check_space_for_operation, ->(**_) { { success: true, message: '' } }) do
+            VideoUtils.set_default_original_audio!(path: path, target_lang: 'ko')
+          end
+        end
+      end
+
+      refute result
+      messages = @speaker.messages.grep(String).join("\n")
+      assert_includes messages, "No audio track matching original language 'ko'"
+      assert_includes messages, 'fre, und'
+    end
+  end
+
+  def test_set_default_original_audio_reports_unknown_target_language
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Wonderland.2024.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      tracks = [
+        { id: 1, audio_index: 1, lang: 'fre', name: '', commentary: nil, default: true }
+      ]
+
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { tracks }) do
+          VideoUtils.set_default_original_audio!(path: path, target_lang: nil)
+        end
+      end
+
+      refute result
+      messages = @speaker.messages.grep(String).join("\n")
+      assert_includes messages, 'Unknown original language'
+    end
+  end
+
   private
+
+  def ensure_temp_dir(dir)
+    app = @environment.application
+    app.singleton_class.attr_accessor :temp_dir unless app.respond_to?(:temp_dir)
+    app.temp_dir = dir
+  end
 
   def with_env(key, value)
     old_value = ENV.fetch(key, nil)

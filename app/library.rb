@@ -168,7 +168,8 @@ class Library
           root_process: 0,
           ensure_qualities: ensure_qualities,
           move_completed_torrent: move_completed_torrent,
-          exclude_path: exclude_path
+          exclude_path: exclude_path,
+          set_original_audio_default: set_original_audio_default
         )
         handled += hcd[0]
         error += hcd[2]
@@ -210,7 +211,8 @@ class Library
           root_process: 0,
           ensure_qualities: ensure_qualities,
           move_completed_torrent: move_completed_torrent,
-          exclude_path: exclude_path - ['extfls']
+          exclude_path: exclude_path - ['extfls'],
+          set_original_audio_default: set_original_audio_default
         )
         handled += hcd[0]
         error += hcd[2]
@@ -252,7 +254,8 @@ class Library
               root_process: 0,
               ensure_qualities: ensure_qualities,
               move_completed_torrent: move_completed_torrent,
-              exclude_path: exclude_path
+              exclude_path: exclude_path,
+              set_original_audio_default: set_original_audio_default
             )
             handled += hcd[0]
             error += hcd[2]
