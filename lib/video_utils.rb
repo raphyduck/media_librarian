@@ -46,9 +46,16 @@ class VideoUtils
       source_dir = File.dirname(path)
 
       track_map = mkv_audio_track_map(path)
-      return false if track_map.empty?
+      if track_map.empty?
+        MediaLibrarian.app.speaker.speak_up("No audio track found in #{path}, cannot set default original audio.")
+        return false
+      end
+      original_target_lang = target_lang
       target_lang = Languages.get_code(target_lang.to_s.split('-').first)
-      return false if target_lang.to_s == ''
+      if target_lang.to_s == ''
+        MediaLibrarian.app.speaker.speak_up("Unknown original language '#{original_target_lang}' for #{path}, cannot set default original audio.")
+        return false
+      end
       if Env.debug?
         track_langs = track_map.map { |track| track[:lang].to_s.strip.downcase }.reject(&:empty?)
         MediaLibrarian.app.speaker.speak_up("Audio tracks for #{path}: #{track_langs.join(', ')}", 0)
@@ -108,7 +115,11 @@ class VideoUtils
         end
       end
 
-      return false unless selected_track_index
+      unless selected_track_index
+        track_langs = track_map.map { |track| l = track[:lang].to_s.strip.downcase; l == '' ? 'und' : l }
+        MediaLibrarian.app.speaker.speak_up("No audio track matching original language '#{target_lang}' in #{path} (tracks: #{track_langs.join(', ')}), cannot set default original audio.")
+        return false
+      end
 
       args = []
       track_map.each do |track|
