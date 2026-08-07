@@ -40,11 +40,21 @@ class Report
 
   def self.sent_out(email_subject, t = Thread.current, content = '')
     email_content = content.to_s.empty? ? (t || Thread.current)[:email_msg].to_s : content.to_s
-    if app.email && !email_content.empty? && (t.nil? || t[:send_email].to_i > 0)
+    if app.email && !email_content.empty? && (t.nil? || email_wanted?(t))
       Librarian.route_cmd(['Report', 'push_email', email_subject, email_content], 1, 'email', 1, 'priority')
       Librarian.reset_notifications(t) if t
       Thread.current[:parent] = nil
     end
+  end
+
+  # With email_notif_level 0 any message flagged for email is enough; with
+  # level 1 (errors/actions only) the job must additionally have logged an
+  # error or a notable event, so routine runs of scheduled jobs stay silent.
+  def self.email_wanted?(t)
+    return false unless t[:send_email].to_i > 0
+    return true if Env.email_notif_level(t).to_i < 1
+
+    t[:email_notable].to_i > 0
   end
 
   private

@@ -253,6 +253,7 @@ class Librarian
             snapshot[:email_msg].force_encoding('UTF-8') if snapshot[:email_msg].encoding == Encoding::ASCII_8BIT
             snapshot[:email_msg] << thread[:email_msg].to_s.force_encoding('UTF-8')
             snapshot[:send_email] = thread[:send_email] if thread[:send_email].to_i.positive?
+            snapshot[:email_notable] = thread[:email_notable] if thread[:email_notable].to_i.positive?
           end
         end
       end
@@ -261,6 +262,7 @@ class Librarian
     def reset_notifications(thread)
       thread[:email_msg] = String.new
       thread[:send_email] = 0
+      thread[:email_notable] = 0
     end
 
     def run_command(cmd, direct = 0, object = '', &block)

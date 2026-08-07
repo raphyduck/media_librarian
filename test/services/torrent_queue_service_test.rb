@@ -214,6 +214,84 @@ class TorrentQueueServiceTest < Minitest::Test
     end
   end
 
+  def build_stuck_row_db(torrent_row)
+    db = FakeDB.new
+    def db.get_rows(table, conditions = nil)
+      return [@row] if table == 'torrents' && conditions == { status: 2 }
+
+      []
+    end
+    db.instance_variable_set(:@row, torrent_row)
+    db
+  end
+
+  def run_parse_with_unfetchable_torrent(db)
+    torrent_attributes = {
+      link: 'https://tracker.example/expired-link',
+      tracker: 'torr9',
+      magnet_link: '',
+      files: [],
+      move_completed: '',
+      rename_main: '',
+      queue: '',
+      assume_quality: nil,
+      category: nil
+    }
+
+    Dir.mktmpdir do |tmp_dir|
+      app = FakeApp.new(db: db, temp_dir: tmp_dir)
+      service = MediaLibrarian::Services::TorrentQueueService.new(
+        app: app,
+        speaker: @speaker,
+        client: FakeClient.new
+      )
+
+      Cache.stub(:object_unpack, ->(_value) { torrent_attributes }) do
+        Cache.stub(:queue_state_add_or_update, nil) do
+          TorrentSearch.stub(:get_tracker_config, ->(*_) { { 'no_download' => '0' } }) do
+            TorrentSearch.stub(:get_torrent_file, ->(*_, **) { nil }) do
+              service.stub(:process_download_request, ->(_r) { flunk('a torrent without a file must not reach the client') }) do
+                service.parse_pending_downloads
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  # An expired/unfetchable download link used to leave the row at status 2
+  # forever, retried on every run. The attempt counter is the guard.
+  def test_parse_pending_downloads_counts_attempts_when_torrent_file_unavailable
+    row = { name: 'Stuck Torrent', status: 2, tattributes: 'packed',
+            identifiers: ['id'], identifier: 'legacy-id', download_attempts: 3 }
+    db = build_stuck_row_db(row)
+
+    run_parse_with_unfetchable_torrent(db)
+
+    assert_equal 1, db.updated_rows.length
+    table, values, conditions = db.updated_rows.first
+    assert_equal 'torrents', table
+    assert_equal({ name: 'Stuck Torrent' }, conditions)
+    assert_equal 4, values[:download_attempts]
+    refute values.key?(:status), 'status must not change before the attempts are exhausted'
+  end
+
+  def test_parse_pending_downloads_marks_failed_after_max_attempts
+    max = MediaLibrarian::Services::TorrentQueueService::MAX_DOWNLOAD_ATTEMPTS
+    row = { name: 'Stuck Torrent', status: 2, tattributes: 'packed',
+            identifiers: ['id'], identifier: 'legacy-id', download_attempts: max - 1 }
+    db = build_stuck_row_db(row)
+
+    run_parse_with_unfetchable_torrent(db)
+
+    assert_equal 1, db.updated_rows.length
+    _, values, conditions = db.updated_rows.first
+    assert_equal({ name: 'Stuck Torrent' }, conditions)
+    assert_equal MediaLibrarian::Services::TorrentQueueService::FAILED_STATUS, values[:status]
+    assert_equal max, values[:download_attempts]
+  end
+
   def test_parse_pending_downloads_limits_items
     torrent_attributes = {
       link: '',

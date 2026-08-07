@@ -75,6 +75,24 @@ class ReportTest < Minitest::Test
     assert_equal [1, 2, 4], sleep_args
   end
 
+  def test_email_wanted_requires_send_email_flag
+    refute Report.email_wanted?({ send_email: 0, email_notable: 1 })
+  end
+
+  def test_email_wanted_default_level_sends_on_any_flagged_message
+    assert Report.email_wanted?({ send_email: 1 })
+  end
+
+  def test_email_wanted_errors_only_level_blocks_routine_messages
+    t = { send_email: 1, email_notif_level: 1 }
+    refute Report.email_wanted?(t)
+  end
+
+  def test_email_wanted_errors_only_level_sends_on_notable_events
+    t = { send_email: 2, email_notif_level: 1, email_notable: 1 }
+    assert Report.email_wanted?(t)
+  end
+
   private
 
   def assert_sends_email(subject:, body:)

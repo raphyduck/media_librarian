@@ -137,6 +137,7 @@ _None_
 | waiting_until | timestamp | YES |  |  |
 | torrent_id | TEXT | YES |  |  |
 | status | INTEGER | YES |  |  |
+| download_attempts | INTEGER | YES | 0 |  |
 
 ### Indexes
 

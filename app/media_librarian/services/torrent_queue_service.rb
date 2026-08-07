@@ -23,6 +23,7 @@ module MediaLibrarian
 
     class TorrentQueueService < BaseService
       FAILED_STATUS = 6
+      MAX_DOWNLOAD_ATTEMPTS = 10
 
       def initialize(app: self.class.app, speaker: nil, file_system: nil, client:)
         super(app: app, speaker: speaker, file_system: file_system)
@@ -43,7 +44,7 @@ module MediaLibrarian
           success = false
           tries = 5
           nodl = TorrentSearch.get_tracker_config(torrent[:tracker], app: app)['no_download'].to_i
-          speaker.speak_up("Will download torrent '#{torrent_row[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}")
+          speaker.speak_up("Will download torrent '#{torrent_row[:name]}' on #{torrent[:tracker]}#{' (url = ' + url.to_s + ')' if url.to_s != ''}", 2)
           if nodl.zero?
             if magnet.to_s != ''
               path = magnet
@@ -62,7 +63,10 @@ module MediaLibrarian
             path = 'nodl'
           end
           path = app.temp_dir + "/#{torrent_row[:name]}.torrent" if path.to_s == '' && File.exist?(app.temp_dir + "/#{torrent_row[:name]}.torrent")
-          next if path.nil?
+          if path.nil?
+            register_download_failure(torrent_row, "could not fetch the torrent file from '#{url}'")
+            next
+          end
           while (tries -= 1) >= 0 && !success
             request = TorrentDownloadRequest.new(
               torrent_name: torrent_row[:name],
@@ -75,7 +79,7 @@ module MediaLibrarian
             )
             success = process_download_request(request)
             if !success && failed_torrent?(torrent_row[:name])
-              speaker.speak_up "Marking torrent '#{torrent_row[:name]}' as failed, skipping retries"
+              speaker.speak_up "Marking torrent '#{torrent_row[:name]}' as failed, skipping retries", 2
               break
             end
             speaker.speak_up "Download of torrent '#{torrent_row[:name]}' #{success ? 'succeeded' : 'failed'}" if (Env.debug? || !success) && nodl.zero?
@@ -210,11 +214,11 @@ module MediaLibrarian
             app.db.update_rows('torrents', { status: 3, torrent_id: meta_id }, { name: request.torrent_name })
             return true
           end
-          speaker.speak_up "Adding #{download[:type_str]} torrent #{request.torrent_name}"
+          speaker.speak_up "Adding #{download[:type_str]} torrent #{request.torrent_name}", 2
           client.download_file(download, request.options.deep_dup, meta_id)
           Cache.queue_state_add_or_update('deluge_torrents_added', meta_id) if meta_id.to_s != '' && request.torrent_type == 1
         end
-        app.db.update_rows('torrents', { status: 3, torrent_id: meta_id }, { name: request.torrent_name })
+        app.db.update_rows('torrents', { status: 3, torrent_id: meta_id, download_attempts: 0 }, { name: request.torrent_name })
         Cache.queue_state_add_or_update('file_handling', request.queue_file_handling, 1, 1) unless request.queue_file_handling.empty?
         true
       rescue StandardError => e
@@ -238,6 +242,22 @@ module MediaLibrarian
         speaker.speak_up "#{LINE_SEPARATOR}\nTorrent attributes:"
         torrent.merge(torrent_row.select { |key, _| [:name, :identifiers].include?(key) }).each do |key, value|
           speaker.speak_up "#{key} = #{value}"
+        end
+      end
+
+      # A pending (status 2) row whose download could not even start — e.g. the
+      # tracker link expired and get_torrent_file returned nil — used to stay at
+      # status 2 forever and be retried on every run. Count the attempts and,
+      # once exhausted, park the row in the failed status so it is reported once
+      # and never picked up again.
+      def register_download_failure(torrent_row, reason)
+        attempts = torrent_row[:download_attempts].to_i + 1
+        if attempts >= MAX_DOWNLOAD_ATTEMPTS
+          speaker.speak_up("Giving up on torrent '#{torrent_row[:name]}' after #{attempts} failed download attempts (#{reason}), marking as failed", 2)
+          app.db.update_rows('torrents', { status: FAILED_STATUS, download_attempts: attempts }, { name: torrent_row[:name] })
+        else
+          speaker.speak_up("Download attempt #{attempts}/#{MAX_DOWNLOAD_ATTEMPTS} failed for torrent '#{torrent_row[:name]}': #{reason}", 0)
+          app.db.update_rows('torrents', { download_attempts: attempts }, { name: torrent_row[:name] })
         end
       end
 

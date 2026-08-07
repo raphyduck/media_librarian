@@ -151,6 +151,10 @@ unless defined?(Env)
         false
       end
 
+      def email_notif_level(thread = Thread.current)
+        thread[:email_notif_level].to_i
+      end
+
       def debug?(*_args)
         false
       end
