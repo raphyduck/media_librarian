@@ -8,7 +8,9 @@ module SimpleSpeaker
   # (e.g. a Jackett API key in a download link) never leave the process in
   # clear text.
   SENSITIVE_KEY_PATTERN = /[\w-]*(?:api_?key|pass_?key|rss_?key|token|secret|passwd|password|auth_?key)[\w-]*/i unless defined?(SENSITIVE_KEY_PATTERN)
-  SENSITIVE_VALUE_PATTERN = /(#{SENSITIVE_KEY_PATTERN.source}['"]?\s*(?:=>|[=:])\s*['"]?)([^&\s'"]+)/i unless defined?(SENSITIVE_VALUE_PATTERN)
+  # %3D covers URL-encoded links (e.g. "jackett_apikey%3Dsecret" inside an
+  # encoded query string), where the value runs until the encoded separator %26.
+  SENSITIVE_VALUE_PATTERN = /(#{SENSITIVE_KEY_PATTERN.source}['"]?\s*(?:=>|%3D|[=:])\s*['"]?)((?:(?!%26)[^&\s'"])+)/i unless defined?(SENSITIVE_VALUE_PATTERN)
 
   def self.redact_secrets(str)
     text = str.to_s
