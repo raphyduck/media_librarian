@@ -4,6 +4,15 @@ periodic:
     execution: 3600
     every: 1 minutes
     args:
+  # For chatty routine jobs, set email_notif_level to 1 (here or in the
+  # command's template yml) so a run only emails when it logs an error or a
+  # notable event (e.g. an actual download); nominal runs stay silent.
+  # flush_torrent_queues:
+  #   command: flush_queues
+  #   every: 1 hours
+  #   args:
+  #     template_name: flush_queues
+  #     email_notif_level: 1
   calendar_feed_refresh:
     command: calendar.refresh_feed
     every: 12 hours # Overridden by conf.yml calendar.refresh_every

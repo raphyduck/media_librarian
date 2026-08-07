@@ -201,6 +201,9 @@ class Daemon
               if thread[:send_email].to_i.positive?
                 thread[:parent][:send_email] = thread[:send_email].to_i
               end
+              if thread[:email_notable].to_i.positive?
+                thread[:parent][:email_notable] = thread[:email_notable].to_i
+              end
             elsif inline_child
               preserved_email = false
               if thread[:email_msg]
@@ -211,6 +214,9 @@ class Daemon
               end
               if preserved_email && thread[:send_email].to_i.positive?
                 snapshot[:send_email] = thread[:send_email].to_i
+              end
+              if preserved_email && thread[:email_notable].to_i.positive?
+                snapshot[:email_notable] = thread[:email_notable].to_i
               end
             elsif thread[:log_msg]
               parent_daemon = thread[:parent_daemon]

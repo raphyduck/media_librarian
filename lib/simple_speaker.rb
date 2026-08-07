@@ -3,6 +3,20 @@
 require 'logger'
 
 module SimpleSpeaker
+  # Everything a Speaker emits (terminal, log files, notification emails) goes
+  # through redact_secrets, so credentials embedded in URLs or key/value dumps
+  # (e.g. a Jackett API key in a download link) never leave the process in
+  # clear text.
+  SENSITIVE_KEY_PATTERN = /[\w-]*(?:api_?key|pass_?key|rss_?key|token|secret|passwd|password|auth_?key)[\w-]*/i unless defined?(SENSITIVE_KEY_PATTERN)
+  SENSITIVE_VALUE_PATTERN = /(#{SENSITIVE_KEY_PATTERN.source}['"]?\s*(?:=>|[=:])\s*['"]?)([^&\s'"]+)/i unless defined?(SENSITIVE_VALUE_PATTERN)
+
+  def self.redact_secrets(str)
+    text = str.to_s
+    return text unless text.match?(SENSITIVE_KEY_PATTERN)
+
+    text.gsub(SENSITIVE_VALUE_PATTERN) { "#{Regexp.last_match(1)}***" }
+  end
+
   class Speaker
     def initialize(logger_path = nil, logger_error_path = nil)
       @logger = Logger.new(logger_path) unless logger_path.nil?
@@ -34,7 +48,7 @@ module SimpleSpeaker
     end
 
     def daemon_send(str, thread: Thread.current, stdout: $stdout, stderr: $stderr, daemon: nil)
-      line = str.to_s
+      line = SimpleSpeaker.redact_secrets(str)
       payload = line.end_with?("\n") ? line : "#{line}\n"
       target = daemon || Thread.current[:current_daemon]
       if target
@@ -52,7 +66,7 @@ module SimpleSpeaker
       end
     end
 
-    def email_msg_add(str, in_mail, thread)
+    def email_msg_add(str, in_mail, thread, error = 0)
       str = "[*] #{str}" if in_mail.to_i > 0
       buffer = thread[:email_msg]
       if buffer.nil?
@@ -63,10 +77,17 @@ module SimpleSpeaker
       buffer = buffer.dup if buffer.frozen?
       thread[:email_msg] = buffer
       buffer << str.to_s.dup.force_encoding('UTF-8') + @new_line
-      thread[:send_email] = in_mail.to_i if in_mail.to_i > 0
+      if in_mail.to_i > 0
+        thread[:send_email] = in_mail.to_i
+        # Errors and messages flagged in_mail >= 2 are "notable": they justify a
+        # notification even when the job runs with email_notif_level 1
+        # (errors/actions only).
+        thread[:email_notable] = 1 if error.to_i > 0 || in_mail.to_i > 1
+      end
     end
 
     def speak_up(str, in_mail = 1, thread = Thread.current, immediate = 0, error = 0)
+      str = SimpleSpeaker.redact_secrets(str)
       if thread[:log_msg] && immediate.to_i <= 0
         thread[:log_msg].force_encoding('UTF-8') if thread[:log_msg].encoding == Encoding::ASCII_8BIT
         thread[:log_msg] << str.to_s.dup.force_encoding('UTF-8') + @new_line
@@ -77,7 +98,7 @@ module SimpleSpeaker
           log("#{'[' + thread[:object].to_s + ']' if thread[:object].to_s != ''}#{l}", error)
         end
       end
-      email_msg_add(str, in_mail, thread)
+      email_msg_add(str, in_mail, thread, error)
       str
     end
 

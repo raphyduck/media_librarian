@@ -28,7 +28,7 @@ class Daemon
       torrent = find_pending_torrent(identifier)
       return error_response(res, status: 404, message: 'Torrent introuvable ou déjà validé') unless torrent
 
-      updated = app.db.update_rows('torrents', { status: 2 }, { status: 1, name: torrent[:name] })
+      updated = app.db.update_rows('torrents', { status: 2, download_attempts: 0 }, { status: 1, name: torrent[:name] })
       return error_response(res, status: 500, message: 'Impossible de valider le torrent') unless updated.to_i.positive?
 
       json_response(res, body: { 'status' => 'validated', 'identifier' => torrent[:identifier] || torrent[:name] })

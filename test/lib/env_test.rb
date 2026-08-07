@@ -15,6 +15,7 @@ class EnvTest < Minitest::Test
 
   def teardown
     Thread.current[:no_email_notif] = nil
+    Thread.current[:email_notif_level] = nil
     @app&.loader&.unload
     MediaLibrarian.application = nil
     FileUtils.remove_entry(@home_dir) if @home_dir && Dir.exist?(@home_dir)
@@ -37,6 +38,25 @@ class EnvTest < Minitest::Test
     refute env_class.email_notif?, 'Email notifications should be disabled when flag is set'
   ensure
     Thread.current[:no_email_notif] = nil
+  end
+
+  def test_email_notif_level_defaults_to_verbose
+    prepare_application
+
+    assert_equal 0, env_class.email_notif_level
+  end
+
+  def test_email_notif_level_reads_template_flag
+    prepare_application
+
+    MediaLibrarian.application.args_dispatch.set_env_variables(
+      MediaLibrarian.application.env_flags,
+      'email_notif_level' => '1'
+    )
+
+    assert_equal 1, env_class.email_notif_level
+  ensure
+    Thread.current[:email_notif_level] = nil
   end
 
   def test_env_constant_available_after_requiring_librarian
