@@ -53,6 +53,15 @@ class SimpleSpeakerTest < Minitest::Test
     assert_equal 'rsskey=***', SimpleSpeaker.redact_secrets('rsskey=00ff00ff')
   end
 
+  def test_redact_secrets_masks_url_encoded_links
+    encoded = 'Link: http%3A%2F%2F127.0.0.1%3A9117%2Fdl%2Ftorr9%2F%3Fjackett_apikey%3Dsecret123%26path%3Dabc'
+    redacted = SimpleSpeaker.redact_secrets(encoded)
+
+    refute_includes redacted, 'secret123'
+    assert_includes redacted, 'jackett_apikey%3D***'
+    assert_includes redacted, '%26path%3Dabc', 'params after the encoded separator must stay readable'
+  end
+
   def test_redact_secrets_leaves_plain_text_alone
     text = 'Torrent has been seeding for 3 hours, tracker torr9, size = 9057182720'
     assert_equal text, SimpleSpeaker.redact_secrets(text)
