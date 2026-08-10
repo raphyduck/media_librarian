@@ -541,6 +541,89 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_includes omdb_client.calls, [:find_by_title, entry[:title], entry[:release_date].year, 'series']
   end
 
+  def test_omdb_enrichment_corrects_media_type_from_omdb_details
+    entry = base_entry.merge(media_type: 'movie', title: 'Another Self')
+    imdb_id = entry[:imdb_id]
+    provider = FakeProvider.new([entry])
+
+    omdb_client = Class.new do
+      def initialize(imdb_id)
+        @imdb_id = imdb_id
+      end
+
+      def title(_id)
+        { title: 'Another Self', media_type: 'show', rating: 7.2, imdb_votes: 22_200,
+          ids: { 'imdb' => @imdb_id } }
+      end
+
+      def find_by_title(title:, year: nil, type: nil)
+        nil
+      end
+    end.new(imdb_id)
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    assert_equal 'show', row[:media_type], 'OMDb Type=series must correct a wrongly movie-tagged entry'
+    assert @speaker.messages.any? { |msg| msg.to_s.include?('Calendar media type corrected for Another Self: movie -> show') }
+  end
+
+  def test_omdb_enrichment_ignores_unknown_media_types
+    entry = base_entry.merge(media_type: 'movie')
+    imdb_id = entry[:imdb_id]
+    provider = FakeProvider.new([entry])
+
+    omdb_client = Class.new do
+      def initialize(imdb_id)
+        @imdb_id = imdb_id
+      end
+
+      def title(_id)
+        { title: 'Base', media_type: 'game', rating: 6.0, ids: { 'imdb' => @imdb_id } }
+      end
+
+      def find_by_title(title:, year: nil, type: nil)
+        nil
+      end
+    end.new(imdb_id)
+
+    OmdbApi.stub :new, ->(**_) { omdb_client } do
+      config = { 'omdb' => { 'api_key' => 'omdb-key' } }
+      app = Struct.new(:config, :db).new(config, @db)
+      service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker, db: @db, providers: [provider])
+
+      service.refresh(date_range: Date.today..(Date.today + 2), limit: 5)
+    end
+
+    row = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    assert_equal 'movie', row[:media_type]
+  end
+
+  def test_refresh_updates_media_type_of_existing_entries
+    imdb_id = 'tt9100001'
+    wrong = base_entry.merge(external_id: imdb_id, imdb_id: imdb_id, ids: { 'imdb' => imdb_id },
+                             title: 'Another Self', media_type: 'movie')
+    provider = FakeProvider.new([wrong])
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider])
+    service.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    assert_equal 'movie', @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }[:media_type]
+
+    corrected = wrong.merge(media_type: 'show')
+    provider2 = FakeProvider.new([corrected])
+    service2 = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker, db: @db, providers: [provider2])
+    service2.refresh(date_range: Date.today..(Date.today + 5), limit: 10)
+
+    row = @db.get_rows(:calendar_entries).find { |r| r[:imdb_id] == imdb_id }
+    assert_equal 'show', row[:media_type], 'a persisted media_type must be correctable by a later refresh'
+  end
+
   def test_skips_enrichment_when_omdb_disabled
     entry = base_entry.merge(source: 'tmdb', ids: { 'imdb' => 'tt7654321' }, rating: nil, imdb_votes: nil)
     provider = FakeProvider.new([entry])
