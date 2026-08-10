@@ -268,7 +268,7 @@ module MediaLibrarian
         ids.merge('imdb' => imdb_id)
       end
 
-      UPDATEABLE_FIELDS = %i[title rating imdb_votes poster_url backdrop_url synopsis release_date genres languages countries ids].freeze
+      UPDATEABLE_FIELDS = %i[title media_type rating imdb_votes poster_url backdrop_url synopsis release_date genres languages countries ids].freeze
 
       def persist_entries(entries)
         return [] if entries.empty?
@@ -604,6 +604,7 @@ module MediaLibrarian
           entry[:ids] ||= {}
           entry[:ids]['imdb'] = details[:ids]&.[]('imdb') if details[:ids]
           entry[:title] = details[:title] if entry[:title].to_s.match?(/\Att\d+\z/i) && !details[:title].to_s.strip.empty?
+          apply_omdb_media_type(entry, details)
           entry[:rating] = details[:rating] unless details[:rating].nil?
           entry[:imdb_votes] = details[:imdb_votes] unless details[:imdb_votes].nil?
           entry[:poster_url] ||= details[:poster_url]
@@ -624,6 +625,19 @@ module MediaLibrarian
           omdb_enrichment_debug("OMDb enrichment removing #{entry[:title] || entry[:external_id]}: missing IMDb match") unless keep
           keep
         end
+      end
+
+      # OMDb's Type field is authoritative for the record the entry is now bound
+      # to (its imdb id, rating and votes all come from the same details), so a
+      # disagreeing media_type — e.g. a series that reached the calendar tagged
+      # as a movie — is corrected here rather than kept forever.
+      def apply_omdb_media_type(entry, details)
+        detail_type = details[:media_type].to_s
+        return unless %w[movie show].include?(detail_type)
+        return if entry[:media_type] == detail_type
+
+        speaker&.speak_up("Calendar media type corrected for #{entry[:title] || entry[:external_id]}: #{entry[:media_type]} -> #{detail_type}")
+        entry[:media_type] = detail_type
       end
 
       def recompute_stats(stats, entries)
