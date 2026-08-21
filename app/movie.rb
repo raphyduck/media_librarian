@@ -38,7 +38,20 @@ class Movie
     opts = normalize_opts(opts)
     SHOW_MAPPING.each do |source, destination|
       value = opts[source.to_s] || extract_value(source.to_s, opts)
+      value = self.class.drop_blank_ids(value) if destination == :ids
       send("#{destination}=", value)
+    end
+  end
+
+  # TMDB answers with an empty imdb_id far more often than a null one, and a
+  # blank string is truthy in Ruby: kept verbatim it satisfies every
+  # `ids['imdb'] || fallback` chain downstream, so the title travels as if it
+  # had an IMDb id and lands in the library unmatched. Blank means absent.
+  def self.drop_blank_ids(ids)
+    return ids unless ids.is_a?(Hash)
+
+    ids.each_with_object({}) do |(key, value), memo|
+      memo[key] = value.to_s.strip.empty? ? nil : value
     end
   end
   def normalize_opts(opts)
@@ -76,7 +89,8 @@ class Movie
         end
       end
     when 'ids'
-      result = { 'imdb' => (opts['imdb_id'] || opts['imdbnumber']) }
+      imdb_id = [opts['imdb_id'], opts['imdbnumber']].map { |value| value.to_s.strip }.find { |value| !value.empty? }
+      result = { 'imdb' => imdb_id }
       if opts['data_source'].to_s != '' && result[opts['data_source']].to_s.empty?
         result[opts['data_source']] = opts['id']
       end
@@ -208,12 +222,25 @@ class Movie
           app.speaker.speak_up("tmdb detail lookup returned nil for id=#{tmdb_id}, source=tmdb")
         end
       end
-      if (movie.nil? || movie['title'].nil?)
-        if ids['imdb'].to_s == '' && ids['tmdb'].to_s != ''
-          tmdb_ids = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(ids['tmdb'], append_to_response: 'external_ids') }
-          imdb_id = tmdb_ids && (tmdb_ids['imdb_id'] || tmdb_ids.dig('external_ids', 'imdb_id'))
-          ids['imdb'] = imdb_id if imdb_id.to_s != ''
-        end
+      # This backfill used to be gated on the movie having failed to resolve,
+      # so it never ran for the case that actually loses the id: TMDB answering
+      # with a perfectly good movie whose imdb_id is blank. The tmdb id is
+      # authoritative for the record already chosen, so asking TMDB for its
+      # external_ids adds the missing id without changing which film was
+      # picked — and leaves the id absent when TMDB genuinely knows of none.
+      if ids['imdb'].to_s.strip.empty? && ids['tmdb'].to_s != ''
+        tmdb_ids = lookup_with_timeout(app, 'tmdb') { Tmdb::Movie.detail(ids['tmdb'], append_to_response: 'external_ids') }
+        # The top-level imdb_id is the blank that sent us here, so it must not
+        # shadow the external_ids block that actually carries the answer.
+        imdb_id = tmdb_ids && [tmdb_ids['imdb_id'], tmdb_ids.dig('external_ids', 'imdb_id')]
+                              .map { |value| value.to_s.strip }.find { |value| !value.empty? }
+        ids['imdb'] = imdb_id if imdb_id.to_s.strip != ''
+      end
+
+      # Movie.new rebuilds its ids from the payload, so a backfilled id has to
+      # be written back onto it or the object comes out blank all the same.
+      if movie.is_a?(Hash) && movie['imdb_id'].to_s.strip.empty? && ids['imdb'].to_s.strip != ''
+        movie = movie.merge('imdb_id' => ids['imdb'])
       end
       if (movie.nil? || movie['title'].nil?) && (ids['trakt'].to_s != '' || ids['imdb'].to_s != '' || ids['slug'].to_s != '')
         trakt_movie = lookup_with_timeout(app, 'trakt') do

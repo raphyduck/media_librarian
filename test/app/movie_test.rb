@@ -174,6 +174,65 @@ class MovieTest < Minitest::Test
     end
   end
 
+  # TMDB answers with imdb_id: "" far more often than with null, and a blank
+  # string satisfies every `ids['imdb'] || fallback` chain downstream: the film
+  # then reaches local_media with no id, unmatched in the collection and absent
+  # from the calendar's downloaded index.
+  def test_movie_get_backfills_a_blank_tmdb_imdb_id_from_external_ids
+    ensure_tmdb_stubs
+
+    detail_payload = {
+      'id' => 954_220,
+      'imdb_id' => '',
+      'title' => 'Moving On',
+      'release_date' => '2022-11-02'
+    }
+    external_payload = detail_payload.merge('external_ids' => { 'imdb_id' => 'tt13444070' })
+
+    without_cache do
+      Tmdb::Movie.stub(:detail, lambda { |_id, **opts|
+        opts[:append_to_response] == 'external_ids' ? external_payload : detail_payload
+      }) do
+        TraktAgent.stub(:movie__summary, ->(*) { nil }) do
+          _title, movie = Movie.movie_get({ 'tmdb' => 954_220 }, app: @environment.application)
+
+          assert_equal 'tt13444070', movie.ids['imdb']
+        end
+      end
+    end
+  end
+
+  def test_movie_get_leaves_the_imdb_id_absent_when_tmdb_knows_of_none
+    ensure_tmdb_stubs
+
+    payload = {
+      'id' => 954_220,
+      'imdb_id' => '',
+      'title' => 'Le Mieux Du Mieux',
+      'release_date' => '2007-01-01'
+    }
+
+    without_cache do
+      Tmdb::Movie.stub(:detail, ->(*) { payload }) do
+        TraktAgent.stub(:movie__summary, ->(*) { nil }) do
+          _title, movie = Movie.movie_get({ 'tmdb' => 954_220 }, app: @environment.application)
+
+          # Absent, never blank: a blank would keep shadowing the fallbacks.
+          assert_nil movie.ids['imdb']
+        end
+      end
+    end
+  end
+
+  def test_movie_keeps_a_blank_imdb_id_out_of_its_ids
+    movie = Movie.new({ 'title' => 'Blank', 'release_date' => '2020-01-01',
+                        'ids' => { 'imdb' => '', 'tmdb' => '4242' } },
+                      app: @environment.application)
+
+    assert_nil movie.ids['imdb']
+    assert_equal '4242', movie.ids['tmdb']
+  end
+
   def test_movie_get_falls_back_to_trakt_when_tmdb_does_not_know_the_imdb_id
     ensure_tmdb_stubs
 

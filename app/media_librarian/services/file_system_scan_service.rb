@@ -81,12 +81,17 @@ module MediaLibrarian
         results
       end
 
+      # A blank 'imdb' is truthy in Ruby, so it used to satisfy the || chain and
+      # shadow the remaining candidates, storing the file with no id at all.
       def extract_imdb_id(subject)
         ids = subject.respond_to?(:ids) ? subject.ids || {} : {}
         ids = ids.is_a?(Hash) ? ids : {}
-        imdb_id = ids['imdb'] || ids[:imdb]
-        imdb_id ||= subject.respond_to?(:imdb_id) ? subject.imdb_id : nil
-        imdb_id.to_s
+
+        [
+          ids['imdb'],
+          ids[:imdb],
+          subject.respond_to?(:imdb_id) ? subject.imdb_id : nil
+        ].map { |value| value.to_s.strip }.find { |value| !value.empty? }.to_s
       end
 
       def extract_watchlist_id(entry, subject)
