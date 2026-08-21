@@ -60,6 +60,23 @@ class CalendarEntriesRepositoryTest < Minitest::Test
     assert entries.first[:downloaded]
   end
 
+  # Trakt-sourced entries commonly persist an empty 'imdb' inside their ids
+  # hash. An empty string is truthy in Ruby, so it used to win over the row's
+  # own imdb_id column and the title stayed flagged as missing from the library.
+  def test_marks_entries_downloaded_when_ids_hash_carries_a_blank_imdb
+    calendar_rows = [
+      { media_type: 'movie', title: 'Alpha', imdb_id: 'tt1234', ids: { 'imdb' => '', 'tmdb' => '42' } }
+    ]
+    local_rows = [
+      { media_type: 'movie', imdb_id: 'tt1234', local_path: '/tmp/a' }
+    ]
+    @app.db = FakeDb.new(calendar_rows: calendar_rows, local_rows: local_rows)
+
+    entries = CalendarEntriesRepository.new(app: @app).load_entries
+
+    assert entries.first[:downloaded]
+  end
+
   def test_skips_download_flag_when_local_media_table_missing
     calendar_rows = [
       { media_type: 'show', title: 'Bravo', ids: { 'tmdb' => '42' } }

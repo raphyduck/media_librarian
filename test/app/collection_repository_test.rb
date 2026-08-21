@@ -118,6 +118,22 @@ class CollectionRepositoryTest < Minitest::Test
     assert_equal [1, 2], result[:entries].first[:seasons].first[:episodes].map { |episode| episode[:episode] }
   end
 
+  def test_lists_every_file_of_a_movie_once
+    insert_media([
+      { imdb_id: 'ttparts', local_path: '/tmp/media/part1.mkv', created_at: '2024-01-01T00:00:00Z' },
+      { imdb_id: 'ttparts', local_path: '/tmp/media/part2.mkv', created_at: '2024-01-01T00:00:00Z' }
+    ])
+    insert_calendar_entry(imdb_id: 'ttparts', title: 'Split Feature')
+    insert_calendar_entry(imdb_id: 'ttparts', title: 'Split Feature', external_id: 'movie-2')
+
+    result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10)
+
+    assert_equal 1, result[:total]
+    entry = result[:entries].first
+    assert_equal 'Split Feature', entry[:title]
+    assert_equal ['/tmp/media/part1.mkv', '/tmp/media/part2.mkv'], entry[:files].sort
+  end
+
   def test_enriches_entries_with_calendar_metadata_when_available
     insert_media([{ imdb_id: 'ttmeta', local_path: '/tmp/media/meta.mkv', created_at: '2023-02-01T00:00:00Z' }])
     insert_calendar_entry(
@@ -150,13 +166,13 @@ class CollectionRepositoryTest < Minitest::Test
 
   def test_search_matches_titles_from_media_and_calendar_entries
     insert_media([
-      { imdb_id: 'ttlocal', title: 'Unique Title', local_path: '/tmp/media/local.mkv' },
+      { imdb_id: 'ttlocal', local_path: '/tmp/media/Unique Title.mkv' },
       { imdb_id: 'ttcalendar', local_path: '/tmp/media/calendar.mkv' }
     ])
     insert_calendar_entry(imdb_id: 'ttcalendar', title: 'Calendar Highlight')
 
     local_result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, search: 'unique')
-    assert_equal ['Unique Title'], local_result[:entries].map { |entry| entry[:title] }
+    assert_equal ['Unique Title.mkv'], local_result[:entries].map { |entry| entry[:title] }
 
     calendar_result = @repository.paginated_entries(sort: 'title', page: 1, per_page: 10, search: ' highlight ')
     assert_equal ['Calendar Highlight'], calendar_result[:entries].map { |entry| entry[:title] }

@@ -153,7 +153,7 @@ class CollectionRepository
       external_id: fetch(primary, :external_id),
       local_path: fetch(primary, :local_path),
       created_at: fetch(primary, :created_at),
-      files: rows.map { |row| fetch(row, :local_path) }.compact
+      files: rows.map { |row| fetch(row, :local_path) }.compact.uniq
     }.compact
 
     if entry[:media_type] == 'show'
