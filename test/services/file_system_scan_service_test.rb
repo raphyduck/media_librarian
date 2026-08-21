@@ -12,28 +12,45 @@ require_relative '../../app/media_librarian/services/file_system_scan_service'
 
 class FileSystemScanServiceTest < Minitest::Test
   class RecordingDb
-    attr_reader :rows, :deleted_rows
+    attr_reader :rows, :deleted_rows, :updated_rows
 
     def initialize
       @rows = []
       @deleted_rows = []
+      @updated_rows = []
+      @next_id = 0
     end
 
     def insert_row(table, values, or_replace = 0)
-      rows << values.merge(table: table.to_sym, replace: or_replace)
+      @next_id += 1
+      rows << values.merge(table: table.to_sym, replace: or_replace, id: @next_id)
     end
 
-    def get_rows(table, *_)
-      rows.select { |row| row[:table] == table.to_sym }
+    def get_rows(table, conditions = {}, _additionals = {})
+      rows.select { |row| row[:table] == table.to_sym && matches?(row, conditions) }
+    end
+
+    def update_rows(table, values, conditions, _additionals = {})
+      matched = get_rows(table, conditions)
+      updated_rows << values.merge(table: table.to_sym)
+      matched.each { |row| row.merge!(values) }
+      matched.length
     end
 
     def delete_rows(table, conditions, *_)
       deleted_rows << conditions.merge(table: table.to_sym)
+      rows.reject! { |row| row[:table] == table.to_sym && matches?(row, conditions) }
       1
     end
 
     def table_exists?(table)
       %i[calendar_entries local_media watchlist].include?(table.to_sym)
+    end
+
+    private
+
+    def matches?(row, conditions)
+      conditions.all? { |column, value| row[column.to_sym].to_s == value.to_s }
     end
   end
 
@@ -183,5 +200,140 @@ class FileSystemScanServiceTest < Minitest::Test
     calendar_rows = @db.rows.select { |r| r[:table] == :calendar_entries }
     last_calendar = calendar_rows.last
     assert_equal 'Déjà Vu', last_calendar[:title]
+  end
+  def test_keeps_every_file_of_a_title
+    second_path = File.join(@tmp_dir, 'Example (2021).part2.mkv')
+    File.write(second_path, '')
+    movie = Struct.new(:ids, :name, :year).new({ 'imdb' => 'tt1234567' }, 'Example (2021)', 2021)
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        name: 'Example',
+        movie: movie,
+        files: [{ name: @file_path }, { name: second_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    local_media = @db.get_rows(:local_media)
+    assert_equal [@file_path, second_path].sort, local_media.map { |row| row[:local_path] }.sort
+    assert_equal ['tt1234567'], local_media.map { |row| row[:imdb_id] }.uniq
+  end
+
+  def test_recovers_imdb_id_from_entry_when_subject_carries_none
+    movie = Struct.new(:ids, :name).new({ 'tmdb' => 4242 }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        external_id: 'tt5551212',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    local_media = @db.get_rows(:local_media).first
+    assert_equal 'tt5551212', local_media[:imdb_id]
+  end
+
+  def test_ignores_non_imdb_fallback_identifiers
+    movie = Struct.new(:ids, :name).new({ 'tmdb' => 4242 }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        external_id: 'example-slug',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    local_media = @db.get_rows(:local_media).first
+    assert_nil local_media[:imdb_id]
+  end
+
+  def test_seeds_calendar_entry_with_the_resolved_name
+    movie = Struct.new(:ids, :name, :release_date).new({ 'imdb' => 'tt9999999' }, 'Enola Holmes 3 (2026)', '2026-07-01')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieEnolaHolmes32026' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    calendar = @db.get_rows(:calendar_entries).first
+    assert_equal 'Enola Holmes 3', calendar[:title]
+    assert_equal '2026-07-01', calendar[:release_date]
+  end
+
+  def test_seeds_show_calendar_entry_with_its_first_aired_date
+    show = Struct.new(:ids, :name, :first_aired).new({ 'imdb' => 'tt7654321' }, 'Example Show (2019)', '2019-03-04')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'shows')
+
+    library = {
+      'showExample' => {
+        type: 'shows',
+        show: show,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    calendar = @db.get_rows(:calendar_entries).first
+    assert_equal 'Example Show', calendar[:title]
+    assert_equal '2019-03-04', calendar[:release_date]
+  end
+
+  def test_updates_existing_row_when_imdb_id_becomes_resolvable
+    @db.insert_row(:local_media, {
+      media_type: 'movie',
+      imdb_id: nil,
+      local_path: @file_path,
+      created_at: File.stat(@file_path).mtime
+    })
+
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    local_media = @db.get_rows(:local_media)
+    assert_equal 1, local_media.length
+    assert_equal 'tt1234567', local_media.first[:imdb_id]
   end
 end

@@ -176,6 +176,36 @@ class StorageDbTest < Minitest::Test
     end
   end
 
+  # A title owns one local_media row per file on disk (movie parts and
+  # qualities, every episode of a show). The schema used to make
+  # (media_type, imdb_id) unique, so the INSERT OR REPLACE the scanner issues
+  # evicted the previously stored file of the same title.
+  def test_local_media_keeps_every_file_of_a_title
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+
+      indexes = db.database.indexes(:local_media)
+      assert_equal [:media_type, :local_path], indexes[:idx_local_media_type_local_path][:columns]
+      assert indexes[:idx_local_media_type_local_path][:unique]
+      refute indexes[:idx_local_media_type_imdb_id_lookup][:unique]
+
+      %w[/tv/show.s01e01.mkv /tv/show.s01e02.mkv /tv/show.s02e01.mkv].each do |path|
+        db.insert_row('local_media', { media_type: 'show', imdb_id: 'tt7654321', local_path: path }, 1)
+      end
+      db.insert_row('local_media', { media_type: 'movie', imdb_id: 'tt1234567', local_path: '/movies/a.cd1.mkv' }, 1)
+      db.insert_row('local_media', { media_type: 'movie', imdb_id: 'tt1234567', local_path: '/movies/a.cd2.mkv' }, 1)
+
+      assert_equal 3, db.get_rows(:local_media, { media_type: 'show' }).length
+      assert_equal 2, db.get_rows(:local_media, { media_type: 'movie' }).length
+
+      # The same file scanned twice still updates in place rather than piling up.
+      db.insert_row('local_media', { media_type: 'movie', imdb_id: 'tt1234567', local_path: '/movies/a.cd2.mkv' }, 1)
+      assert_equal 2, db.get_rows(:local_media, { media_type: 'movie' }).length
+
+      db.database.disconnect
+    end
+  end
+
   private
 
   def with_stubbed_app(&block)

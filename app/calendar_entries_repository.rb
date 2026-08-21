@@ -254,8 +254,14 @@ class CalendarEntriesRepository
     downloaded_index[type]&.include?(imdb_id)
   end
 
+  # A blank 'imdb' entry inside the stored ids hash is truthy in Ruby, so it used
+  # to shadow the row's own imdb_id column and leave the title looking absent
+  # from the library even when local_media held it.
   def extract_imdb_id(ids, row)
-    (ids['imdb'] || ids[:imdb] || row[:imdb_id] || row['imdb_id']).to_s.strip
+    [ids['imdb'], ids[:imdb], row[:imdb_id], row['imdb_id']]
+      .map { |value| value.to_s.strip }
+      .find { |value| !value.empty? }
+      .to_s
   end
 
   def build_downloaded_index

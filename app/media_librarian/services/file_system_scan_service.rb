@@ -42,7 +42,16 @@ module MediaLibrarian
           subject = entry[:movie] || entry[:show]
           imdb_id = normalize_imdb_id(extract_imdb_id(subject))
           watchlist_id = imdb_id
-          watchlist_id = normalize_imdb_id(extract_watchlist_id(entry, subject)) if watchlist_id.empty?
+          if watchlist_id.empty?
+            watchlist_id = normalize_imdb_id(extract_watchlist_id(entry, subject))
+            # A title resolved through TMDB or Trakt does not always carry an
+            # 'imdb' key, and dropping the id here left the row unable to join
+            # calendar_entries: the file showed up in the collection as a bare
+            # filename and the calendar never flagged it as downloaded. The
+            # fallback chain also yields tmdb ids and slugs, so only a canonical
+            # tt-id may stand in.
+            imdb_id = watchlist_id if MediaLibrarian::ImdbIdentifier.imdb_identifier?(watchlist_id)
+          end
           imdb_id = nil if imdb_id.empty?
 
           cached_calendar[imdb_id] = ensure_calendar_entry(imdb_id, normalized_type, entry, existing_calendar_ids) if imdb_id && !cached_calendar.key?(imdb_id)
@@ -123,8 +132,8 @@ module MediaLibrarian
 
       def calendar_seed(imdb_id, media_type, entry)
         subject = entry[:movie] || entry[:show]
-        title = subject.respond_to?(:title) ? subject.title.to_s : (entry[:title] || entry['title']).to_s
-        release_date = subject.respond_to?(:release_date) ? subject.release_date : (entry[:release_date] || entry['release_date'])
+        title = seed_title(subject, entry)
+        release_date = seed_release_date(subject, entry)
 
         {
           source: 'local',
@@ -135,6 +144,41 @@ module MediaLibrarian
           release_date: release_date,
           ids: { 'imdb' => imdb_id }
         }
+      end
+
+      # Movie and TvSeries both expose their resolved title as #name; neither
+      # responds to #title, so seeding from #title alone always fell through and
+      # every locally scanned title entered the calendar named after its imdb id,
+      # waiting on an OMDb round-trip that may never succeed. Both carry the
+      # release year in the name ("Enola Holmes 3 (2026)"), which the calendar
+      # keeps out of its titles.
+      def seed_title(subject, entry)
+        candidates = [
+          (subject.name if subject.respond_to?(:name)),
+          (subject.title if subject.respond_to?(:title)),
+          entry[:title],
+          entry['title'],
+          entry[:name],
+          entry['name']
+        ]
+
+        candidates.filter_map { |value| strip_year_suffix(value) }.first.to_s
+      end
+
+      def strip_year_suffix(value)
+        title = value.to_s.strip.sub(/\s*\(\d{4}\)\z/, '').strip
+        title.empty? ? nil : title
+      end
+
+      def seed_release_date(subject, entry)
+        candidates = [
+          (subject.release_date if subject.respond_to?(:release_date)),
+          (subject.first_aired if subject.respond_to?(:first_aired)),
+          entry[:release_date],
+          entry['release_date']
+        ]
+
+        candidates.find { |value| !value.nil? && value.to_s.strip != '' }
       end
 
       def upsert_calendar_entry(entry)
@@ -170,10 +214,13 @@ module MediaLibrarian
 
         if existing
           log_scan("Scan update: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{existing[:created_at]} -> #{metadata[:created_at]}")
+          # Updating the known row rather than replacing it keeps the sibling
+          # files of the same title in place; a replace used to evict them.
+          app.db.update_rows('local_media', metadata, { id: existing[:id] })
         else
           log_scan("Scan insert: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{metadata[:created_at]}")
+          app.db.insert_row('local_media', metadata, 1)
         end
-        app.db.insert_row('local_media', metadata, 1)
       end
 
       def file_created_at(path)
@@ -183,23 +230,23 @@ module MediaLibrarian
         stat.mtime
       end
 
+      # The file path identifies a local_media row: a title owns as many rows as
+      # it has files on disk (movie parts and qualities, every episode of a
+      # show). Looking the row up by imdb id instead used to fold all of them
+      # onto a single record.
       def existing_local_media(metadata)
         return unless app&.db
         return if metadata[:media_type].to_s.empty?
 
-        imdb_id = metadata[:imdb_id].to_s
-        if imdb_id.empty?
-          local_path = metadata[:local_path].to_s
-          return if local_path.empty?
+        local_path = metadata[:local_path].to_s
+        return if local_path.empty?
 
-          return app.db.get_rows(:local_media, { media_type: metadata[:media_type], local_path: local_path }).first
-        end
-
-        app.db.get_rows(:local_media, { media_type: metadata[:media_type], imdb_id: metadata[:imdb_id] }).first
+        app.db.get_rows(:local_media, { media_type: metadata[:media_type], local_path: local_path }).first
       end
 
       def same_local_media?(existing, metadata)
         existing[:local_path].to_s == metadata[:local_path].to_s &&
+          existing[:imdb_id].to_s == metadata[:imdb_id].to_s &&
           normalize_timestamp(existing[:created_at]) == normalize_timestamp(metadata[:created_at])
       end
 

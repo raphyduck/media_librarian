@@ -59,7 +59,8 @@ _None_
 
 | Name | Columns | Unique |
 | --- | --- | --- |
-| idx_local_media_type_imdb_id | media_type, imdb_id | YES |
+| idx_local_media_type_imdb_id_lookup | media_type, imdb_id | NO |
+| idx_local_media_type_local_path | media_type, local_path | YES |
 
 ### Foreign keys (database)
 _None_
