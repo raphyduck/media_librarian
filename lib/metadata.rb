@@ -270,21 +270,26 @@ class Metadata
     item = nil
     unless (items || []).empty?
       year = identify_release_year(title)
+      if no_prompt.to_i > 0
+        # Unattended selection scores the candidates in the provider's own
+        # order — no year pre-sort: match_titles already rejects anything
+        # outside the ±1 tolerance, and within it the year gap is TMDB-vs-IMDb
+        # dating noise, not a signal worth overriding popularity for.
+        expanded = expand_alt_title_rows(items, keys)
+        title, item = media_chose_best(title, expanded, keys, category, year)
+        return title, item
+      end
       if keys['year']
         # Providers rank their results by relevance (popularity, for TMDB), and
         # Ruby's sort is not stable: ordering on year distance alone shuffled
-        # equally distant candidates, letting a same-year homonym leapfrog the
-        # popular hit. The index keeps the provider's ranking as tiebreaker.
+        # equally distant candidates. The index keeps the provider's ranking as
+        # tiebreaker so the interactive list stays deterministic.
         items = items.each_with_index.sort_by do |i, index|
           iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3)
           [((year.to_i > 0 ? year : iyear) - iyear).abs, index]
         end.map(&:first)
       end
       items.map! { |i| titles = Array(i[keys['titles']]).compact; titles.empty? ? [i] : titles.map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
-      if no_prompt.to_i > 0
-        title, item = media_chose_best(title, items, keys, category, year)
-        return title, item
-      end
       results = items.map { |m| { :title => m[keys['name']], :info => m[keys['url']] } }
       results += [{ :title => 'Edit title manually', :info => '' }]
       (0..results.count - 2).each do |i|
@@ -333,16 +338,28 @@ class Metadata
       candidate_year = candidate[keys['year']].to_i
       next unless match_titles(candidate[keys['name']], title, candidate_year, year, category)
 
+      # No year term in the score: match_titles already enforced the ±1
+      # tolerance, and inside it the gap is dating noise between sources
+      # (IMDb premiere year vs TMDB release year), so the provider's
+      # popularity ranking must not lose to it.
       exactness = comparable_title(candidate[keys['name']], category) == target ? 0 : 1
-      year_distance = year.to_i > 0 && candidate_year > 0 ? (year - candidate_year).abs : 2
-      score = [exactness, year_distance, index]
+      score = [exactness, index]
       best, best_score = candidate, score if best_score.nil? || (score <=> best_score) == -1
-      break if exactness == 0 && year_distance == 0
+      break if exactness == 0
     end
 
     return title, nil unless best
 
     [best[keys['name']], best]
+  end
+
+  def self.expand_alt_title_rows(items, keys)
+    return items unless keys['titles'].to_s != ''
+
+    items.flat_map do |i|
+      titles = Array(i[keys['titles']]).compact
+      titles.empty? ? [i] : titles.map { |t| ni = i.dup; ni[keys['name']] = t; ni }
+    end
   end
 
   # The exact same normalization match_titles applies to both sides before its

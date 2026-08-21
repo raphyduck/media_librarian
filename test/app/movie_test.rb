@@ -289,8 +289,8 @@ class MovieTest < Minitest::Test
       self
     end
 
-    def primary_release_year(value)
-      @params[:primary_release_year] = value
+    def year(value)
+      @params[:year] = value
       self
     end
 
@@ -305,7 +305,7 @@ class MovieTest < Minitest::Test
     Tmdb::Movie.define_singleton_method(:find) { |_title| [] } unless Tmdb::Movie.respond_to?(:find)
   end
 
-  def test_tmdb_search_filters_by_primary_release_year
+  def test_tmdb_search_filters_by_release_year
     ensure_tmdb_search_stub
     FakeTmdbSearch.results = [{ 'id' => 7, 'title' => 'Influencer' }]
     plain_guard = ->(*) { flunk 'the year-filtered search succeeded, the plain search must not run' }
@@ -315,7 +315,7 @@ class MovieTest < Minitest::Test
         results = Movie.tmdb_search('Influencer', 2022)
 
         assert_equal [{ 'id' => 7, 'title' => 'Influencer' }], results
-        assert_equal({ query: 'Influencer', primary_release_year: 2022 }, FakeTmdbSearch.last.params)
+        assert_equal({ query: 'Influencer', year: 2022 }, FakeTmdbSearch.last.params)
       end
     end
   end

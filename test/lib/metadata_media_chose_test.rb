@@ -64,6 +64,22 @@ class MetadataMediaChoseTest < Minitest::Test
     assert_equal 'Influencer (2023)', title
   end
 
+  # The real "Intruders" case: TMDB dates the popular film a year before the
+  # folder's IMDb year, while the obscure homonym lands on the exact year.
+  # Inside match_titles' ±1 tolerance the year gap is dating noise between
+  # sources, so it must not override the provider's popularity ranking.
+  def test_popularity_beats_a_one_year_gap_between_exact_matches
+    items = [
+      candidate('Intruders (2015)', 2015),
+      candidate('Vill mark (2016)', 2016, alt_titles: ['Vill mark (2016)', 'Intruders (2016)'])
+    ]
+
+    title, item = Metadata.media_chose('Intruders (2016)', items, KEYS, 'movies', 1)
+
+    assert_equal 'Intruders (2015)', item['name'], 'the provider-ranked-first exact match must win despite the year gap'
+    assert_equal 'Intruders (2015)', title
+  end
+
   def test_returns_no_item_rather_than_a_wrong_year_candidate
     items = [candidate('Influencer (2010)', 2010)]
 
