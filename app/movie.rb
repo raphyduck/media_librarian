@@ -309,7 +309,20 @@ class Movie
     )
   end
 
-  def self.tmdb_search(title)
+  # Searching without a year forced media_chose to referee every homonym after
+  # the fact. TMDB filters on primary_release_year and ranks what is left by
+  # popularity — the same query media-center scanners rely on — so when the
+  # folder names a year the shortlist arrives pre-disambiguated. A miss (TMDB
+  # dating the release a year off, or a bogus year in the folder name) falls
+  # back to the plain search rather than returning nothing.
+  def self.tmdb_search(title, year = nil)
+    if year.to_i > 0
+      search = Tmdb::Search.new('/search/movie')
+      search.query(title)
+      search.primary_release_year(year.to_i)
+      results = Array(search.fetch).map { |result| Tmdb::Movie.new(result) }
+      return results unless results.empty?
+    end
     Tmdb::Movie.find(title)
   end
 end

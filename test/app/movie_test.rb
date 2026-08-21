@@ -272,6 +272,78 @@ class MovieTest < Minitest::Test
     end
   end
 
+  class FakeTmdbSearch
+    class << self
+      attr_accessor :last, :results
+    end
+
+    attr_reader :params
+
+    def initialize(_resource = nil)
+      @params = {}
+      self.class.last = self
+    end
+
+    def query(value)
+      @params[:query] = value
+      self
+    end
+
+    def primary_release_year(value)
+      @params[:primary_release_year] = value
+      self
+    end
+
+    def fetch
+      self.class.results
+    end
+  end
+
+  def ensure_tmdb_search_stub
+    ensure_tmdb_stubs
+    Tmdb.const_set(:Search, FakeTmdbSearch) unless defined?(Tmdb::Search)
+    Tmdb::Movie.define_singleton_method(:find) { |_title| [] } unless Tmdb::Movie.respond_to?(:find)
+  end
+
+  def test_tmdb_search_filters_by_primary_release_year
+    ensure_tmdb_search_stub
+    FakeTmdbSearch.results = [{ 'id' => 7, 'title' => 'Influencer' }]
+    plain_guard = ->(*) { flunk 'the year-filtered search succeeded, the plain search must not run' }
+
+    Tmdb::Movie.stub(:new, ->(result) { result }) do
+      Tmdb::Movie.stub(:find, plain_guard) do
+        results = Movie.tmdb_search('Influencer', 2022)
+
+        assert_equal [{ 'id' => 7, 'title' => 'Influencer' }], results
+        assert_equal({ query: 'Influencer', primary_release_year: 2022 }, FakeTmdbSearch.last.params)
+      end
+    end
+  end
+
+  def test_tmdb_search_falls_back_to_the_plain_search_when_the_year_misses
+    ensure_tmdb_search_stub
+    FakeTmdbSearch.results = []
+
+    Tmdb::Movie.stub(:find, ->(title) { [{ 'id' => 9, 'title' => title }] }) do
+      results = Movie.tmdb_search('Influencer', 2022)
+
+      assert_equal [{ 'id' => 9, 'title' => 'Influencer' }], results
+    end
+  end
+
+  def test_tmdb_search_without_a_year_uses_the_plain_search
+    ensure_tmdb_search_stub
+    FakeTmdbSearch.last = nil
+
+    Tmdb::Movie.stub(:find, ->(title) { [{ 'id' => 3, 'title' => title }] }) do
+      results = Movie.tmdb_search('Influencer')
+
+      assert_equal [{ 'id' => 3, 'title' => 'Influencer' }], results
+      assert_nil FakeTmdbSearch.last, 'no year means no filtered search call'
+    end
+  end
+
+
   private
 
   def ensure_tmdb_stubs

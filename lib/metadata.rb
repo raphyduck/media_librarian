@@ -270,8 +270,21 @@ class Metadata
     item = nil
     unless (items || []).empty?
       year = identify_release_year(title)
-      items.sort_by! { |i| iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3); ((year.to_i > 0 ? year : iyear) - iyear).abs } if keys['year']
+      if keys['year']
+        # Providers rank their results by relevance (popularity, for TMDB), and
+        # Ruby's sort is not stable: ordering on year distance alone shuffled
+        # equally distant candidates, letting a same-year homonym leapfrog the
+        # popular hit. The index keeps the provider's ranking as tiebreaker.
+        items = items.each_with_index.sort_by do |i, index|
+          iyear = (i[keys['year']].to_i > 0 ? i[keys['year']].to_i : Time.now.year + 3)
+          [((year.to_i > 0 ? year : iyear) - iyear).abs, index]
+        end.map(&:first)
+      end
       items.map! { |i| titles = Array(i[keys['titles']]).compact; titles.empty? ? [i] : titles.map { |t| ni = i.dup; ni[keys['name']] = t; ni } }.flatten! if keys['titles'].to_s != ''
+      if no_prompt.to_i > 0
+        title, item = media_chose_best(title, items, keys, category, year)
+        return title, item
+      end
       results = items.map { |m| { :title => m[keys['name']], :info => m[keys['url']] } }
       results += [{ :title => 'Edit title manually', :info => '' }]
       (0..results.count - 2).each do |i|
@@ -303,6 +316,41 @@ class Metadata
       end
     end
     return title, item
+  end
+
+  # Choosing unattended used to take the first candidate that satisfied
+  # match_titles, which let a fuzzy containment match or an arbitrarily ordered
+  # same-year homonym beat the obvious hit. Score every matching candidate the
+  # way media-center scanners do instead: an exact (normalized) title match
+  # beats a fuzzy one, a closer release year beats a farther one, and the
+  # provider's own ranking settles what remains. No match means no item —
+  # unresolved is recoverable, a wrong pick is not.
+  def self.media_chose_best(title, items, keys, category, year)
+    target = comparable_title(title, category)
+    best, best_score = nil, nil
+
+    items.each_with_index do |candidate, index|
+      candidate_year = candidate[keys['year']].to_i
+      next unless match_titles(candidate[keys['name']], title, candidate_year, year, category)
+
+      exactness = comparable_title(candidate[keys['name']], category) == target ? 0 : 1
+      year_distance = year.to_i > 0 && candidate_year > 0 ? (year - candidate_year).abs : 2
+      score = [exactness, year_distance, index]
+      best, best_score = candidate, score if best_score.nil? || (score <=> best_score) == -1
+      break if exactness == 0 && year_distance == 0
+    end
+
+    return title, nil unless best
+
+    [best[keys['name']], best]
+  end
+
+  # The exact same normalization match_titles applies to both sides before its
+  # regexes, so equality here means the regex would have matched with nothing
+  # to forgive.
+  def self.comparable_title(value, category)
+    cleaned = detect_real_title(value.to_s.strip, category, 0, 0)
+    normalize_special_chars(StringUtils.clean_search(cleaned)).downcase.gsub(/\s+/, ' ').strip
   end
 
   def self.media_type_get(type)
@@ -346,14 +394,22 @@ class Metadata
         begin
 
           title_norm = detect_real_title(title, type, 0, 0)
+          search_year = identify_release_year(title)
           provider_name = o.respond_to?(:name) ? o.name : o.class.name
           provider_call = "#{provider_name}##{m}"
-          debug_logs << "[#{provider_call}] -> '#{title_norm}'" if Env.debug?
+          debug_logs << "[#{provider_call}] -> '#{title_norm}'#{" (#{search_year})" if search_year.to_i > 0}" if Env.debug?
           items = nil
           Timeout.timeout(15) do
             meth = m.to_s.gsub(/_{2,}/, '_') # "search__movies" -> "search_movies"
             begin
-              items = o.public_send(meth, title_norm)
+              # detect_real_title strips the year from the query, so providers
+              # that can filter on it (TMDB's primary_release_year) must
+              # receive it separately or every homonym arrives interleaved.
+              items = if o.respond_to?(meth) && o.method(meth).parameters.length > 1
+                        o.public_send(meth, title_norm, search_year)
+                      else
+                        o.public_send(meth, title_norm)
+                      end
             rescue NameError, NoMethodError
               # dernier recours: déléguer à method_missing si le provider l'implémente
               items = o.send(:method_missing, m, title_norm)
