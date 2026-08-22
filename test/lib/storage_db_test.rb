@@ -202,6 +202,12 @@ class StorageDbTest < Minitest::Test
       db.insert_row('local_media', { media_type: 'movie', imdb_id: 'tt1234567', local_path: '/movies/a.cd2.mkv' }, 1)
       assert_equal 2, db.get_rows(:local_media, { media_type: 'movie' }).length
 
+      # The scanner retires opposite-type ghost rows by path with a != filter.
+      db.insert_row('local_media', { media_type: 'show', imdb_id: 'tt1234567', local_path: '/movies/a.cd1.mkv' }, 1)
+      db.delete_rows(:local_media, { local_path: '/movies/a.cd1.mkv' }, { 'media_type !=' => 'movie' })
+      rows = db.get_rows(:local_media, {}, { 'local_path' => '/movies/a.cd1.mkv' })
+      assert_equal ['movie'], rows.map { |row| row[:media_type] }
+
       db.database.disconnect
     end
   end

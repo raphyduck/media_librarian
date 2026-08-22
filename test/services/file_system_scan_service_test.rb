@@ -37,9 +37,9 @@ class FileSystemScanServiceTest < Minitest::Test
       matched.length
     end
 
-    def delete_rows(table, conditions, *_)
+    def delete_rows(table, conditions, additionals = {})
       deleted_rows << conditions.merge(table: table.to_sym)
-      rows.reject! { |row| row[:table] == table.to_sym && matches?(row, conditions) }
+      rows.reject! { |row| row[:table] == table.to_sym && matches?(row, conditions) && matches_additionals?(row, additionals) }
       1
     end
 
@@ -51,6 +51,16 @@ class FileSystemScanServiceTest < Minitest::Test
 
     def matches?(row, conditions)
       conditions.all? { |column, value| row[column.to_sym].to_s == value.to_s }
+    end
+
+    def matches_additionals?(row, additionals)
+      additionals.all? do |key, value|
+        if (match = key.to_s.match(/^(\w+)\s*!=$/))
+          row[match[1].to_sym].to_s != value.to_s
+        else
+          row[key.to_sym].to_s == value.to_s
+        end
+      end
     end
   end
 
@@ -363,5 +373,26 @@ class FileSystemScanServiceTest < Minitest::Test
     paths = @db.get_rows(:local_media).map { |row| row[:local_path] }
     assert_includes paths, unmatched_path, 'a file still on disk must keep its row even when unidentified this pass'
     refute_includes paths, gone_path, 'a file gone from disk must lose its row'
+  end
+  def test_identifying_a_movie_retires_the_show_row_for_the_same_file
+    @db.insert_row(:local_media, { media_type: 'show', imdb_id: 'tt1234567', local_path: @file_path })
+
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    rows = @db.get_rows(:local_media).select { |row| row[:local_path] == @file_path }
+    assert_equal ['movie'], rows.map { |row| row[:media_type] }, 'the ghost show row for the same file must be retired'
   end
 end

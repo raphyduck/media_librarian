@@ -226,6 +226,18 @@ module MediaLibrarian
           log_scan("Scan insert: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{metadata[:created_at]}")
           app.db.insert_row('local_media', metadata, 1)
         end
+        remove_cross_type_rows(metadata)
+      end
+
+      # One file is one work: a path identified as a movie cannot also stand as
+      # a show (or the reverse). Historical scans of the movie tree under
+      # type=shows left thousands of such ghost rows, which the collection then
+      # rendered as phantom series; each pass now retires the opposite-type row
+      # for every path it identifies, so the pollution heals and cannot return.
+      def remove_cross_type_rows(metadata)
+        app.db.delete_rows(:local_media,
+                           { local_path: metadata[:local_path] },
+                           { 'media_type !=' => metadata[:media_type] })
       end
 
       def file_created_at(path)
