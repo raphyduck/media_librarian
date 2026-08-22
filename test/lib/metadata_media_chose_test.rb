@@ -127,6 +127,13 @@ class MetadataMediaLookupYearTest < Minitest::Test
       @calls << [title]
       []
     end
+
+    # TVMaze-shaped signature: the second parameter is an options hash, not a
+    # year — handing it the year broke every show lookup.
+    def search_with_options(title, params = {})
+      @calls << [title, params]
+      []
+    end
   end
 
   def test_media_lookup_passes_the_release_year_to_providers_accepting_it
@@ -137,6 +144,16 @@ class MetadataMediaLookupYearTest < Minitest::Test
                           fetcher, [[provider, :search_with_year]], 1, '')
 
     assert_equal [['Influencer', 2022]], provider.calls
+  end
+
+  def test_media_lookup_does_not_mistake_an_options_hash_for_a_year_slot
+    provider = RecordingProvider.new
+    fetcher = ->(_ids) { ['', nil] }
+
+    Metadata.media_lookup('shows', 'Chernobyl (2019)', 'tv_show_search', MetadataMediaChoseTest::KEYS,
+                          fetcher, [[provider, :search_with_options]], 1, '')
+
+    assert_equal [['Chernobyl', {}]], provider.calls
   end
 
   def test_media_lookup_keeps_single_argument_providers_untouched

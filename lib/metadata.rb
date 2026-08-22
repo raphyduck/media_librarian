@@ -420,9 +420,12 @@ class Metadata
             meth = m.to_s.gsub(/_{2,}/, '_') # "search__movies" -> "search_movies"
             begin
               # detect_real_title strips the year from the query, so providers
-              # that can filter on it (TMDB's primary_release_year) must
-              # receive it separately or every homonym arrives interleaved.
-              items = if o.respond_to?(meth) && o.method(meth).parameters.length > 1
+              # that can filter on it must receive it separately or every
+              # homonym arrives interleaved. Only a parameter actually named
+              # `year` qualifies: matching on arity alone handed the year to
+              # TVMaze's options-hash parameter and broke every show lookup.
+              accepts_year = o.respond_to?(meth) && o.method(meth).parameters[1]&.last == :year
+              items = if accepts_year
                         o.public_send(meth, title_norm, search_year)
                       else
                         o.public_send(meth, title_norm)
