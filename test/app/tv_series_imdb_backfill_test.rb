@@ -1,0 +1,96 @@
+# frozen_string_literal: true
+
+require_relative '../test_helper'
+require_relative '../../app/languages'
+require_relative '../../lib/string_utils'
+require_relative '../../lib/metadata'
+require_relative '../../app/tv_series'
+
+{
+  SPACE_SUBSTITUTE: '\\. _\\-',
+  VALID_VIDEO_EXT: '(.*)\\.(mkv)$',
+  BASIC_EP_MATCH: '((s|S)\\d{1,3}[exEX]\\d{1,4})'
+}.each do |const, value|
+  Object.const_set(const, value) unless Object.const_defined?(const)
+end
+
+class TvSeriesImdbBackfillTest < Minitest::Test
+  def setup
+    @environment = build_stubbed_environment
+    MediaLibrarian.application = @environment.application
+    TvSeries.configure(app: @environment.application)
+    ensure_tvmaze_stub
+  end
+
+  def teardown
+    MediaLibrarian.application = nil
+    @environment.cleanup if @environment
+  end
+
+  def ensure_tvmaze_stub
+    Object.const_set(:TVMaze, Module.new) unless defined?(TVMaze)
+    TVMaze.const_set(:Show, Class.new) unless defined?(TVMaze::Show)
+    TVMaze::Show.define_singleton_method(:lookup) { |_params| nil } unless TVMaze::Show.respond_to?(:lookup)
+  end
+
+  def build_show(ids)
+    TvSeries.new({ 'ids' => ids, 'name' => 'Example Show', 'premiered' => '2019-03-04' },
+                 app: @environment.application)
+  end
+
+  # TVDB records routinely carry IMDB_ID as an empty string; a blank is truthy
+  # in Ruby and used to shadow every fallback, landing the show in the library
+  # with no id at all.
+  def test_blank_ids_are_dropped_at_construction
+    show = TvSeries.new({ 'seriesid' => '4242', 'IMDB_ID' => '', 'name' => 'Example Show',
+                          'premiered' => '2019-03-04' }, app: @environment.application)
+
+    assert_nil show.ids['imdb']
+    assert_equal '4242', show.ids['thetvdb']
+  end
+
+  def test_backfills_the_imdb_id_from_tvmaze_via_the_tvdb_id
+    show = build_show({ 'thetvdb' => '4242' })
+    external = Struct.new(:ids).new({ 'imdb' => 'tt7654321', 'thetvdb' => 4242 })
+
+    TVMaze::Show.stub(:lookup, lambda { |params|
+      assert_equal({ 'thetvdb' => '4242' }, params)
+      external
+    }) do
+      TvSeries.backfill_imdb_id(show)
+    end
+
+    assert_equal 'tt7654321', show.ids['imdb']
+  end
+
+  def test_backfill_leaves_the_id_absent_when_tvmaze_knows_of_none
+    show = build_show({ 'thetvdb' => '4242' })
+
+    TVMaze::Show.stub(:lookup, ->(_params) { Struct.new(:ids).new({ 'thetvdb' => 4242 }) }) do
+      TvSeries.backfill_imdb_id(show)
+    end
+
+    assert_nil show.ids['imdb']
+  end
+
+  def test_backfill_does_not_touch_a_show_that_already_has_an_id
+    show = build_show({ 'thetvdb' => '4242', 'imdb' => 'tt1111111' })
+    guard = ->(_params) { flunk 'TVMaze must not be queried when the id is already known' }
+
+    TVMaze::Show.stub(:lookup, guard) do
+      TvSeries.backfill_imdb_id(show)
+    end
+
+    assert_equal 'tt1111111', show.ids['imdb']
+  end
+
+  def test_backfill_survives_a_tvmaze_failure
+    show = build_show({ 'thetvdb' => '4242' })
+
+    TVMaze::Show.stub(:lookup, ->(_params) { raise StandardError, 'tvmaze down' }) do
+      TvSeries.backfill_imdb_id(show)
+    end
+
+    assert_nil show.ids['imdb']
+  end
+end

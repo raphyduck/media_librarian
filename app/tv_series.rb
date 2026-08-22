@@ -9,7 +9,11 @@ class TvSeries
   def initialize(options = {}, app: self.class.app)
     self.class.configure(app: app)
     @app = app
+    # TVDB records routinely carry IMDB_ID as an empty string, and a blank is
+    # truthy in Ruby: kept verbatim it satisfies every `ids['imdb'] || fallback`
+    # chain downstream and the show lands in the library with no id at all.
     @ids = TvSeries.formate_ids(options['ids'] || {'thetvdb' => options['seriesid'], 'imdb' => options["imdb_id"] || options['IMDB_ID']})
+              .reject { |_, value| value.to_s.strip.empty? }
     @ids[options['data_source']] = options['id'] if options['data_source'].to_s != '' && @ids[options['data_source']].to_s == ''
     @id = @ids['thetvdb'] #@id is used to fetch episodes
     @language = Languages.get_code(options['language'].to_s != '' ? options['language'].to_s : options['country'])
@@ -197,6 +201,7 @@ class TvSeries
     show, src = Cache.object_pack((TVMaze::Show.lookup(ids) rescue nil), 1), 'tvmaze' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '') || (show["first_aired"].to_s == '' && show['FirstAired'].to_s == '' && show['premiered'].to_s == '')) && !ids.empty?
     show, src = Cache.object_pack(app.tvdb.get_series_by_id(ids['thetvdb']), 1), 'thetvdb' if (show.to_s == '' || (show['title'].to_s == '' && show['SeriesName'].to_s == '' && show['name'].to_s == '')) && ids['thetvdb'].to_s != ''
     show = show && (show['title'].to_s != '' || show['SeriesName'].to_s != '' || show['name'].to_s != '') ? TvSeries.new(show.merge({'data_source' => src}), app: app) : nil
+    backfill_imdb_id(show)
     title = if show
               ids['force_title'].to_s != '' ? ids['force_title'] : show.name #We need to bypass name given by some providers which doesn't match the real name of the show...
             else
@@ -209,6 +214,25 @@ class TvSeries
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     Cache.cache_add('tv_show_get', cache_name, ['', nil], nil)
     return '', nil
+  end
+
+  # A show resolved through TVDB carries no IMDb id (TVDB's IMDB_ID field is
+  # blank more often than not), so its library rows could never join the
+  # calendar or count as downloaded. TVMaze's lookup endpoint takes the TVDB id
+  # and answers with its externals — the IMDb id included — for free and
+  # without auth, so a missing id is recovered from the identifiers the show
+  # already has instead of being stored as NULL forever.
+  def self.backfill_imdb_id(show)
+    return unless show
+    return if show.ids['imdb'].to_s.strip != ''
+
+    tvdb_id = show.ids['thetvdb'].to_s.strip
+    return if tvdb_id.empty?
+
+    external = TVMaze::Show.lookup({ 'thetvdb' => tvdb_id }) rescue nil
+    ids = external.respond_to?(:ids) ? external.ids : nil
+    imdb_id = ids.is_a?(Hash) ? (ids['imdb'] || ids[:imdb]).to_s.strip : ''
+    show.ids['imdb'] = imdb_id unless imdb_id.empty?
   end
 
   def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app, force_refresh: 0)
