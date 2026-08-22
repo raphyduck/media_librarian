@@ -336,4 +336,32 @@ class FileSystemScanServiceTest < Minitest::Test
     assert_equal 1, local_media.length
     assert_equal 'tt1234567', local_media.first[:imdb_id]
   end
+  def test_cleanup_keeps_rows_whose_file_still_exists
+    unmatched_path = File.join(@tmp_dir, 'Transient Failure (2020).mkv')
+    File.write(unmatched_path, '')
+    gone_path = File.join(@tmp_dir, 'Deleted Movie (2019).mkv')
+    @db.insert_row(:local_media, { media_type: 'movie', imdb_id: 'ttkept', local_path: unmatched_path })
+    @db.insert_row(:local_media, { media_type: 'movie', imdb_id: 'ttgone', local_path: gone_path })
+
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    # The library hash only carries the identified file: the transient-failure
+    # one is on disk but absent, the deleted one is gone from disk.
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    paths = @db.get_rows(:local_media).map { |row| row[:local_path] }
+    assert_includes paths, unmatched_path, 'a file still on disk must keep its row even when unidentified this pass'
+    refute_includes paths, gone_path, 'a file gone from disk must lose its row'
+  end
 end

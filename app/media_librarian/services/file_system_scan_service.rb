@@ -294,6 +294,11 @@ module MediaLibrarian
         app&.db&.respond_to?(:table_exists?) && app.db.table_exists?(:watchlist)
       end
 
+      # A scan pass is not an inventory of the disk: a title whose provider
+      # lookup failed transiently never enters found_paths, and over a
+      # multi-hour library pass a few percent always do. Deleting on that
+      # signal silently shed hundreds of correctly matched rows per pass, so
+      # only a file actually gone from disk may take its row with it.
       def cleanup_missing_local_media(media_type, root, found_paths)
         return unless app&.db
 
@@ -304,6 +309,7 @@ module MediaLibrarian
           next if local_path.to_s.empty?
           next if !root.empty? && !local_path.start_with?(root)
           next if found_paths.include?(local_path)
+          next if File.exist?(local_path)
 
           app.db.delete_rows(:local_media, { media_type: media_type, local_path: local_path })
         end
