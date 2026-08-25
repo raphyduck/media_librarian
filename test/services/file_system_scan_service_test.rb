@@ -395,4 +395,49 @@ class FileSystemScanServiceTest < Minitest::Test
     rows = @db.get_rows(:local_media).select { |row| row[:local_path] == @file_path }
     assert_equal ['movie'], rows.map { |row| row[:media_type] }, 'the ghost show row for the same file must be retired'
   end
+  def test_a_failed_lookup_does_not_erase_an_acquired_imdb_id
+    @db.insert_row(:local_media, { media_type: 'show', imdb_id: 'tt7366338', local_path: @file_path,
+                                   created_at: '2019-06-07T08:44:21+02:00' })
+
+    show = Struct.new(:ids, :name).new({ 'thetvdb' => '360893' }, 'Chernobyl (2019)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'shows')
+
+    library = {
+      'showChernobyl' => {
+        type: 'shows',
+        show: show,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    row = @db.get_rows(:local_media, { media_type: 'show', local_path: @file_path }).first
+    assert_equal 'tt7366338', row[:imdb_id], 'a pass without an id must not erase the stored one'
+  end
+
+  def test_a_new_id_still_replaces_the_stored_one
+    @db.insert_row(:local_media, { media_type: 'show', imdb_id: 'ttwrong', local_path: @file_path,
+                                   created_at: '2019-06-07T08:44:21+02:00' })
+
+    show = Struct.new(:ids, :name).new({ 'imdb' => 'tt7366338' }, 'Chernobyl (2019)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'shows')
+
+    library = {
+      'showChernobyl' => {
+        type: 'shows',
+        show: show,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    row = @db.get_rows(:local_media, { media_type: 'show', local_path: @file_path }).first
+    assert_equal 'tt7366338', row[:imdb_id]
+  end
 end

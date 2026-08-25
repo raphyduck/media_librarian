@@ -218,6 +218,13 @@ module MediaLibrarian
         end
 
         if existing
+          # An id, once acquired, may only be replaced by another id: a pass
+          # where the provider lookup failed transiently (rate limiting during
+          # a full sweep, most often) still identifies the file but carries no
+          # id, and writing that absence over the stored id erased knowledge a
+          # later pass had to re-earn.
+          existing_imdb = (existing[:imdb_id] || existing['imdb_id']).to_s
+          metadata = metadata.merge(imdb_id: existing_imdb) if metadata[:imdb_id].to_s.empty? && !existing_imdb.empty?
           log_scan("Scan update: #{metadata[:imdb_id]} #{metadata[:local_path]} created_at=#{existing[:created_at]} -> #{metadata[:created_at]}")
           # Updating the known row rather than replacing it keeps the sibling
           # files of the same title in place; a replace used to evict them.
