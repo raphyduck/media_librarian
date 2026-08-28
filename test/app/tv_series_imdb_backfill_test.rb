@@ -112,4 +112,48 @@ class TvSeriesImdbBackfillTest < Minitest::Test
 
     assert_nil show.ids['imdb']
   end
+  class FakeTmdbTvSearch
+    class << self
+      attr_accessor :results, :params
+    end
+
+    def initialize(_resource = nil)
+      self.class.params = {}
+    end
+
+    def query(value)
+      self.class.params[:query] = value
+      self
+    end
+
+    def filter(conditions)
+      self.class.params.merge!(conditions)
+      self
+    end
+
+    def fetch
+      self.class.results
+    end
+  end
+
+  def test_tmdb_search_builds_candidates_carrying_their_external_ids
+    Object.const_set(:Tmdb, Module.new) unless defined?(::Tmdb)
+    Tmdb.const_set(:Search, FakeTmdbTvSearch) unless defined?(Tmdb::Search)
+    Tmdb.const_set(:TV, Class.new) unless defined?(Tmdb::TV)
+    Tmdb::TV.define_singleton_method(:detail) { |*| nil } unless Tmdb::TV.respond_to?(:detail)
+
+    FakeTmdbTvSearch.results = [
+      { 'id' => 87108, 'name' => 'Chernobyl', 'first_air_date' => '2019-05-06', 'original_language' => 'en' }
+    ]
+    detail = { 'external_ids' => { 'imdb_id' => 'tt7366338', 'tvdb_id' => 360_893 } }
+
+    Tmdb::TV.stub(:detail, ->(_id, **_opts) { detail }) do
+      candidates = TvSeries.tmdb_search('Chernobyl', 2019)
+
+      assert_equal 1, candidates.length
+      assert_equal 'Chernobyl', candidates.first['name']
+      assert_equal({ 'tmdb' => '87108', 'imdb' => 'tt7366338', 'thetvdb' => '360893' }, candidates.first['ids'])
+      assert_equal 2019, FakeTmdbTvSearch.params[:first_air_date_year]
+    end
+  end
 end

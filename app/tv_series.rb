@@ -251,9 +251,45 @@ class TvSeries
     ''
   end
 
+  # Third search engine: TVMaze throttles hard after a full-library sweep and
+  # TVDB's search regularly answers empty, which left show identification with
+  # no candidates at all. TMDB's TV search runs under the same generous quota
+  # the movie pipeline relies on; each candidate is resolved through
+  # external_ids so the chosen show arrives carrying its IMDb and TVDB ids.
+  def self.tmdb_search(title, year = nil)
+    search = Tmdb::Search.new('/search/tv')
+    search.query(title)
+    search.filter(first_air_date_year: year.to_i) if year.to_i > 0
+    results = Array(search.fetch)
+    if results.empty? && year.to_i > 0
+      results = Array(Tmdb::Search.new('/search/tv').query(title).fetch)
+    end
+
+    results.first(5).map do |result|
+      detail = Tmdb::TV.detail(result['id'], append_to_response: 'external_ids') rescue nil
+      external = detail.is_a?(Hash) ? detail['external_ids'] : {}
+      external = {} unless external.is_a?(Hash)
+      ids = {
+        'tmdb' => result['id'].to_s,
+        'imdb' => external['imdb_id'].to_s,
+        'thetvdb' => external['tvdb_id'].to_s
+      }.reject { |_, value| value.strip.empty? }
+
+      {
+        'name' => result['name'],
+        'title' => result['name'],
+        'premiered' => result['first_air_date'],
+        'language' => result['original_language'],
+        'overview' => result['overview'],
+        'url' => "https://www.themoviedb.org/tv/#{result['id']}",
+        'ids' => ids
+      }
+    end
+  end
+
   def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app, force_refresh: 0)
     Metadata.media_lookup('shows', title, 'tv_show_search', {'name' => 'name', 'url' => 'url', 'year' => 'year'},
                           ->(search_ids) { tv_show_get(search_ids, app: app) },
-                          [[TVMaze::Show, 'search'], [app.tvdb, 'search']], no_prompt, original_filename, TvSeries.formate_ids(ids), force_refresh: force_refresh)
+                          [[TVMaze::Show, 'search'], [app.tvdb, 'search'], [TvSeries, 'tmdb_search']], no_prompt, original_filename, TvSeries.formate_ids(ids), force_refresh: force_refresh)
   end
 end
