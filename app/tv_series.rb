@@ -232,7 +232,23 @@ class TvSeries
     external = TVMaze::Show.lookup({ 'thetvdb' => tvdb_id }) rescue nil
     ids = external.respond_to?(:ids) ? external.ids : nil
     imdb_id = ids.is_a?(Hash) ? (ids['imdb'] || ids[:imdb]).to_s.strip : ''
+    imdb_id = tmdb_imdb_id_from_tvdb(tvdb_id) if imdb_id.empty?
     show.ids['imdb'] = imdb_id unless imdb_id.empty?
+  end
+
+  # Second recovery source: TVMaze throttles hard once a full-library sweep
+  # has hammered it, and its ban outlives the sweep. TMDB's find endpoint
+  # resolves a TVDB id to its TV record, whose external_ids carry the IMDb id,
+  # under the same generous quota the movie pipeline already relies on.
+  def self.tmdb_imdb_id_from_tvdb(tvdb_id)
+    found = Tmdb::Search.new("/find/#{tvdb_id}").fetch_response(external_source: 'tvdb_id')
+    tv_id = found.is_a?(Hash) ? Array(found['tv_results']).first&.[]('id') : nil
+    return '' if tv_id.to_s.empty?
+
+    detail = Tmdb::TV.detail(tv_id, append_to_response: 'external_ids')
+    detail.is_a?(Hash) ? detail.dig('external_ids', 'imdb_id').to_s.strip : ''
+  rescue StandardError
+    ''
   end
 
   def self.tv_show_search(title, no_prompt = 0, original_filename = '', ids = {}, app: self.app, force_refresh: 0)

@@ -440,4 +440,39 @@ class FileSystemScanServiceTest < Minitest::Test
     row = @db.get_rows(:local_media, { media_type: 'show', local_path: @file_path }).first
     assert_equal 'tt7366338', row[:imdb_id]
   end
+  def test_entries_leaked_from_a_concurrent_scan_are_not_persisted
+    foreign_dir = Dir.mktmpdir('scan-foreign')
+    foreign_path = File.join(foreign_dir, 'Show.S01E01.mkv')
+    File.write(foreign_path, '')
+    @db.insert_row(:local_media, { media_type: 'show', imdb_id: 'tt7654321', local_path: foreign_path })
+
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Example (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'movies')
+
+    # The daemon's result bus is shared: a shows scan running alongside can
+    # leak its entries into this movies scan's library hash.
+    library = {
+      'movieExample2021' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      },
+      'tvLeaked' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: foreign_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    foreign_rows = @db.get_rows(:local_media).select { |row| row[:local_path] == foreign_path }
+    assert_equal ['show'], foreign_rows.map { |row| row[:media_type] },
+                 'a file outside the scan root must neither gain a row of this type nor lose its own'
+    assert_equal 'tt7654321', foreign_rows.first[:imdb_id]
+  ensure
+    FileUtils.remove_entry(foreign_dir) if foreign_dir && Dir.exist?(foreign_dir)
+  end
 end

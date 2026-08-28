@@ -63,14 +63,31 @@ class TvSeriesImdbBackfillTest < Minitest::Test
     assert_equal 'tt7654321', show.ids['imdb']
   end
 
-  def test_backfill_leaves_the_id_absent_when_tvmaze_knows_of_none
+  def test_backfill_leaves_the_id_absent_when_no_source_knows_of_it
     show = build_show({ 'thetvdb' => '4242' })
 
     TVMaze::Show.stub(:lookup, ->(_params) { Struct.new(:ids).new({ 'thetvdb' => 4242 }) }) do
-      TvSeries.backfill_imdb_id(show)
+      TvSeries.stub(:tmdb_imdb_id_from_tvdb, ->(_id) { '' }) do
+        TvSeries.backfill_imdb_id(show)
+      end
     end
 
     assert_nil show.ids['imdb']
+  end
+
+  def test_backfill_falls_back_to_tmdb_when_tvmaze_is_throttled
+    show = build_show({ 'thetvdb' => '4242' })
+
+    TVMaze::Show.stub(:lookup, ->(_params) { raise StandardError, '429' }) do
+      TvSeries.stub(:tmdb_imdb_id_from_tvdb, lambda { |tvdb_id|
+        assert_equal '4242', tvdb_id
+        'tt7366338'
+      }) do
+        TvSeries.backfill_imdb_id(show)
+      end
+    end
+
+    assert_equal 'tt7366338', show.ids['imdb']
   end
 
   def test_backfill_does_not_touch_a_show_that_already_has_an_id
@@ -88,7 +105,9 @@ class TvSeriesImdbBackfillTest < Minitest::Test
     show = build_show({ 'thetvdb' => '4242' })
 
     TVMaze::Show.stub(:lookup, ->(_params) { raise StandardError, 'tvmaze down' }) do
-      TvSeries.backfill_imdb_id(show)
+      TvSeries.stub(:tmdb_imdb_id_from_tvdb, ->(_id) { '' }) do
+        TvSeries.backfill_imdb_id(show)
+      end
     end
 
     assert_nil show.ids['imdb']

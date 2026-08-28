@@ -35,6 +35,8 @@ module MediaLibrarian
         cleaned_watchlist = Set.new
         found_paths = Set.new
 
+        root_prefix = root.to_s.empty? ? nil : File.join(File.expand_path(root.to_s), '')
+
         results = library.each_with_object([]) do |(id, entry), memo|
           next if id.is_a?(Symbol)
           next unless entry.is_a?(Hash)
@@ -61,6 +63,14 @@ module MediaLibrarian
           Array(entry[:files]).each do |file|
             local_path = file[:name]
             next unless local_path && File.file?(local_path)
+            # Concurrent scans share the daemon's result bus, and a shows scan
+            # running alongside a movies scan can leak its entries into this
+            # one's library hash. Persisting them here typed them with THIS
+            # scan's media_type — the very source of the thousands of
+            # cross-typed ghost rows — and, worse, retired their legitimate
+            # rows through the cross-type cleanup. A scan may only ever write
+            # inside its own root.
+            next if root_prefix && !File.expand_path(local_path).start_with?(root_prefix)
 
             files_found = true
             found_paths << local_path
