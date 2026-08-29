@@ -44,10 +44,20 @@ module MediaLibrarian
         found_paths = Set.new
 
         root_prefix = root.to_s.empty? ? nil : File.join(File.expand_path(root.to_s), '')
+        sampled = 0
 
         results = library.each_with_object([]) do |(id, entry), memo|
           next if id.is_a?(Symbol)
           next unless entry.is_a?(Hash)
+
+          # Three-entry structural sample per sweep: persistence has now failed
+          # silently through three distinct root causes, and each one was only
+          # provable by seeing the real shape of what the daemon's bus
+          # delivers here.
+          if sampled < 3
+            sampled += 1
+            speaker&.speak_up("Scan entry sample: id=#{id.to_s[0, 50]} keys=#{entry.keys.map(&:to_s).first(12).inspect} show=#{entry[:show].class} movie=#{entry[:movie].class} files=#{Array(entry[:files]).length}", 0)
+          end
 
           # An entry built by the other pipeline carries the wrong subject key
           # (or none): whatever the bus delivered, only entries of this scan's
