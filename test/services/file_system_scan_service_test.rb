@@ -10,6 +10,16 @@ require_relative '../../app/media_librarian/services/base_service'
 require_relative '../../app/media_librarian/services/calendar_feed_service'
 require_relative '../../app/media_librarian/services/file_system_scan_service'
 
+{
+  SPACE_SUBSTITUTE: '\\. _\\-',
+  VALID_VIDEO_EXT: '(.*)\\.(mkv)$',
+  BASIC_EP_MATCH: '((s|S)\\d{1,3}[exEX]\\d{1,4})',
+  DEFAULT_FILTER_PROCESSFOLDER: { 'movies' => {}, 'shows' => {} },
+  FOLDER_HIERARCHY: { 'movies' => 0, 'shows' => 3 }
+}.each do |const, value|
+  Object.const_set(const, value) unless Object.const_defined?(const)
+end
+
 class FileSystemScanServiceTest < Minitest::Test
   class RecordingDb
     attr_reader :rows, :deleted_rows, :updated_rows
@@ -506,13 +516,17 @@ class FileSystemScanServiceTest < Minitest::Test
       path.include?('Unknown') ? ['Unknown (1999)', nil] : ['Example (2021)', movie]
     end
 
-    Metadata.stub(:identify_title, identify) do
-      library = @service.send(:build_library, 'movies', @tmp_dir)
+    listing = [[@file_path, ''], [second, ''], [stranger, '']]
 
-      assert_equal 1, library.length, 'unidentified files must not create entries'
-      entry = library.values.first
-      assert_equal movie, entry[:movie]
-      assert_equal [@file_path, second].sort, entry[:files].map { |f| f[:name] }.sort
+    @service.send(:file_system).stub(:search_folder, ->(_root, _criteria) { listing }) do
+      Metadata.stub(:identify_title, identify) do
+        library = @service.send(:build_library, 'movies', @tmp_dir)
+
+        assert_equal 1, library.length, 'unidentified files must not create entries'
+        entry = library.values.first
+        assert_equal movie, entry[:movie]
+        assert_equal [@file_path, second].sort, entry[:files].map { |f| f[:name] }.sort
+      end
     end
   end
 end
