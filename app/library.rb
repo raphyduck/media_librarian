@@ -539,6 +539,7 @@ class Library
     files, raw_filtered, cache_name, media_list = nil, [], "#{folder}#{type}#{max_results ? "|max_results=#{max_results}" : ''}", {}
     file_criteria = { 'regex' => '.*' + item_name.to_s.gsub(/(\w*)\(\d+\)/, '\1').strip.gsub(/ /, '.') + '.*' }
     raw_filtered += FileUtils.search_folder(folder, filter_criteria.merge(file_criteria)) if filter_criteria && !filter_criteria.empty?
+    computed = nil
     Utils.lock_block(__method__.to_s + cache_name) {
       media_list = BusVariable.new('media_list', Vash)
       sample_names = []
@@ -558,21 +559,29 @@ class Library
           count += 1
           break if limit && limit > 0 && count >= limit
         end
-        media_list[cache_name, cache_expiration.to_i] = Daemon.consolidate_children
-        media_list[cache_name, cache_expiration.to_i] = handle_duplicates(media_list[cache_name] || {}, remove_duplicates, no_prompt)
+        # The result must live in a local, not be read back from the Vash: a
+        # 1-second cache_expiration (the callers' "do not reuse" convention)
+        # expires DURING handle_duplicates on a large library, and the reread
+        # at the end then returned nil — an entire sweep parsed, nothing
+        # returned, nothing persisted.
+        computed = handle_duplicates(Daemon.consolidate_children || {}, remove_duplicates, no_prompt)
+        media_list[cache_name, cache_expiration.to_i] = computed
+      else
+        computed = media_list[cache_name]
       end
       if Env.debug?
-        cache = media_list[cache_name] || {}
+        cache = computed || {}
         sample = sample_names.empty? ? cache.keys.reject { |k| k.is_a?(Symbol) }[0, 5] : sample_names
         app.speaker.speak_up("process_folder cache #{cache_hit ? 'hit' : 'recomputed'} [#{cache_name}] size=#{cache.size} sample=#{sample}", 0)
       end
     }
-    if filter_criteria && !filter_criteria.empty? && !media_list[cache_name].empty?
-      files = media_list[cache_name].dup
+    computed ||= {}
+    if filter_criteria && !filter_criteria.empty? && !computed.empty?
+      files = computed.dup
       files.keep_if { |k, f| !k.is_a?(Symbol) && !(f[:files].map { |x| x[:name] } & raw_filtered.flatten).empty? }
     end
     app.speaker.speak_up("Finished processing folder #{folder}.")
-    return files || media_list[cache_name]
+    return files || computed
   rescue => e
     app.speaker.tell_error(e, Utils.arguments_dump(binding))
     media_list.delete(cache_name)
