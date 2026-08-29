@@ -156,4 +156,17 @@ class TvSeriesImdbBackfillTest < Minitest::Test
       assert_equal 2019, FakeTmdbTvSearch.params[:first_air_date_year]
     end
   end
+  # The storage layer parses cached JSON with symbolize_names: a TvSeries
+  # rebuilt from the metadata cache arrives with symbol keys, and every
+  # options['...'] read found nothing — shows came back from cache without
+  # ids or name for as long as the cache has existed.
+  def test_construction_accepts_symbol_keyed_options_from_the_cache
+    show = TvSeries.new({ ids: { thetvdb: '248835', imdb: 'tt1843230', tvmaze: '111' },
+                          name: 'Once Upon a Time (2011)', first_aired: '2011-10-23' },
+                        app: @environment.application)
+
+    assert_equal 'tt1843230', show.ids['imdb']
+    assert_equal '248835', show.ids['thetvdb']
+    assert_includes show.name, 'Once Upon a Time'
+  end
 end

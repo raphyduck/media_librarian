@@ -9,6 +9,12 @@ class TvSeries
   def initialize(options = {}, app: self.class.app)
     self.class.configure(app: app)
     @app = app
+    # The storage layer parses cached JSON with symbolize_names, so a TvSeries
+    # rebuilt from the metadata cache arrives with symbol keys — and every
+    # options['...'] read below then finds nothing: the show came back without
+    # ids or name, silently, for as long as the cache has existed. Movie
+    # normalizes its keys the same way and never had the problem.
+    options = TvSeries.stringify_keys(options)
     # TVDB records routinely carry IMDB_ID as an empty string, and a blank is
     # truthy in Ruby: kept verbatim it satisfies every `ids['imdb'] || fallback`
     # chain downstream and the show lands in the library with no id at all.
@@ -58,6 +64,12 @@ class TvSeries
 
   def self.ep_name_to_season(name)
     name.gsub(/(S\d{1,3})E\d{1,4}/, '\1')
+  end
+
+  def self.stringify_keys(value)
+    return value unless value.is_a?(Hash)
+
+    value.each_with_object({}) { |(k, v), memo| memo[k.to_s] = v.is_a?(Hash) ? stringify_keys(v) : v }
   end
 
   def self.formate_ids(ids)
