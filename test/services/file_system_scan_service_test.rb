@@ -475,4 +475,25 @@ class FileSystemScanServiceTest < Minitest::Test
   ensure
     FileUtils.remove_entry(foreign_dir) if foreign_dir && Dir.exist?(foreign_dir)
   end
+  def test_an_entry_built_by_the_other_pipeline_is_not_persisted
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Leaked (2021)')
+    request = MediaLibrarian::Services::FileSystemScanRequest.new(root_path: @tmp_dir, type: 'shows')
+
+    # A movies-built entry for a file under this scan's root: the path passes
+    # the root filter, only the subject key betrays its origin.
+    library = {
+      'movieLeaked2021' => {
+        type: 'movies',
+        movie: movie,
+        files: [{ name: @file_path }]
+      }
+    }
+
+    MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
+      Library.stub(:process_folder, library) { @service.scan(request) }
+    end
+
+    rows = @db.get_rows(:local_media).select { |row| row[:local_path] == @file_path }
+    assert_empty rows, 'a foreign-pipeline entry must not be persisted at all'
+  end
 end

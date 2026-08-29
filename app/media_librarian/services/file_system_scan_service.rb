@@ -16,8 +16,16 @@ module MediaLibrarian
         end
 
         folder_type = request.type.empty? ? 'movies' : request.type
-        library = Library.process_folder(type: folder_type, folder: root, no_prompt: 1, cache_expiration: 1)
-        persist_media_entries(library, folder_type, root)
+        # The movies and shows sweeps start together at boot and share the
+        # daemon's result bus; run concurrently they trade entries, and a
+        # movies-built entry for a TV file walks straight through the root
+        # filter (its path IS under the shows root) to be persisted id-less.
+        # One sweep at a time ends the cross-talk at its source.
+        Utils.lock_block('file_system_scan') do
+          library = Library.process_folder(type: folder_type, folder: root, no_prompt: 1, cache_expiration: 1)
+          return persist_media_entries(library, folder_type, root)
+        end
+        []
       rescue StandardError => e
         speaker.tell_error(e, Utils.arguments_dump(binding))
         []
@@ -41,7 +49,13 @@ module MediaLibrarian
           next if id.is_a?(Symbol)
           next unless entry.is_a?(Hash)
 
-          subject = entry[:movie] || entry[:show]
+          # An entry built by the other pipeline carries the wrong subject key
+          # (or none): whatever the bus delivered, only entries of this scan's
+          # own kind may be persisted, or a leaked one lands id-less under a
+          # perfectly valid path.
+          subject = normalized_type == 'show' ? entry[:show] : entry[:movie]
+          next unless subject
+
           imdb_id = normalize_imdb_id(extract_imdb_id(subject))
           watchlist_id = imdb_id
           if watchlist_id.empty?
