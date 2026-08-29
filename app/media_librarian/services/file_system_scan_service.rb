@@ -16,13 +16,10 @@ module MediaLibrarian
         end
 
         folder_type = request.type.empty? ? 'movies' : request.type
-        # The movies and shows sweeps start together at boot and share the
-        # daemon's result bus; run concurrently they trade entries, and a
-        # movies-built entry for a TV file walks straight through the root
-        # filter (its path IS under the shows root) to be persisted id-less.
-        # One sweep at a time ends the cross-talk at its source.
+        # One sweep at a time: concurrent sweeps used to trade entries over
+        # the daemon's bus, and serialized providers behave better too.
         Utils.lock_block('file_system_scan') do
-          library = Library.process_folder(type: folder_type, folder: root, no_prompt: 1, cache_expiration: 1)
+          library = build_library(folder_type, root)
           return persist_media_entries(library, folder_type, root)
         end
         []
@@ -32,6 +29,32 @@ module MediaLibrarian
       end
 
       private
+
+      # The scan used to reach its files through Library.process_folder, whose
+      # identification results funnel through the daemon's shared thread bus
+      # before consolidation. That machinery lost entries four distinct ways —
+      # cross-scan contamination, a one-second cache TTL racing the
+      # deduplication pass, and a consolidation that delivered 4 of 25,000
+      # results — and none of it is needed here: identifying each file
+      # directly runs the exact same pipeline (identify_title, with all its
+      # caches) without a single hand-off.
+      def build_library(type, root)
+        criteria = (DEFAULT_FILTER_PROCESSFOLDER[type] || {}).merge('regex' => VALID_VIDEO_EXT)
+        subject_key = Utils.canonical_media_type(type) == 'show' ? :show : :movie
+        video_ext = Regexp.new(VALID_VIDEO_EXT)
+        library = {}
+
+        file_system.search_folder(root, criteria).each do |path, _parent|
+          next unless path.to_s.match(video_ext)
+
+          title, item = Metadata.identify_title(path, type, 1, FOLDER_HIERARCHY[type] || 0, root)
+          next if item.nil?
+
+          entry = library["#{type}#{title}"] ||= { subject_key => item, :title => title, :files => [] }
+          entry[:files] << { :name => path }
+        end
+        library
+      end
 
       def persist_media_entries(library, type, root = nil)
         return [] unless library.is_a?(Hash)

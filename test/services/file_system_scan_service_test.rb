@@ -105,7 +105,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     assert_equal 2, @db.rows.length
@@ -139,7 +139,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     calendar = @db.rows.find { |row| row[:table] == :calendar_entries }
@@ -167,7 +167,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     deletion = @db.deleted_rows.find { |row| row[:table] == :watchlist }
@@ -204,7 +204,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }]
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(_entries, **) { enriched }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     calendar_rows = @db.rows.select { |r| r[:table] == :calendar_entries }
@@ -227,7 +227,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     local_media = @db.get_rows(:local_media)
@@ -249,7 +249,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     local_media = @db.get_rows(:local_media).first
@@ -270,7 +270,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     local_media = @db.get_rows(:local_media).first
@@ -290,7 +290,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     calendar = @db.get_rows(:calendar_entries).first
@@ -311,7 +311,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     calendar = @db.get_rows(:calendar_entries).first
@@ -339,7 +339,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     local_media = @db.get_rows(:local_media)
@@ -367,7 +367,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     paths = @db.get_rows(:local_media).map { |row| row[:local_path] }
@@ -389,7 +389,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     rows = @db.get_rows(:local_media).select { |row| row[:local_path] == @file_path }
@@ -411,7 +411,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     row = @db.get_rows(:local_media, { media_type: 'show', local_path: @file_path }).first
@@ -434,7 +434,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     row = @db.get_rows(:local_media, { media_type: 'show', local_path: @file_path }).first
@@ -465,7 +465,7 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     foreign_rows = @db.get_rows(:local_media).select { |row| row[:local_path] == foreign_path }
@@ -490,10 +490,29 @@ class FileSystemScanServiceTest < Minitest::Test
     }
 
     MediaLibrarian::Services::CalendarFeedService.stub(:enrich_entries, ->(entries, **) { entries }) do
-      Library.stub(:process_folder, library) { @service.scan(request) }
+      @service.stub(:build_library, ->(*_args) { library }) { @service.scan(request) }
     end
 
     rows = @db.get_rows(:local_media).select { |row| row[:local_path] == @file_path }
     assert_empty rows, 'a foreign-pipeline entry must not be persisted at all'
+  end
+  def test_build_library_identifies_files_directly_and_groups_by_title
+    second = File.join(@tmp_dir, 'Example (2021).part2.mkv')
+    stranger = File.join(@tmp_dir, 'Unknown (1999).mkv')
+    [second, stranger].each { |f| File.write(f, '') }
+    movie = Struct.new(:ids, :name).new({ 'imdb' => 'tt1234567' }, 'Example (2021)')
+
+    identify = lambda do |path, _type, _np, _lvl, _root|
+      path.include?('Unknown') ? ['Unknown (1999)', nil] : ['Example (2021)', movie]
+    end
+
+    Metadata.stub(:identify_title, identify) do
+      library = @service.send(:build_library, 'movies', @tmp_dir)
+
+      assert_equal 1, library.length, 'unidentified files must not create entries'
+      entry = library.values.first
+      assert_equal movie, entry[:movie]
+      assert_equal [@file_path, second].sort, entry[:files].map { |f| f[:name] }.sort
+    end
   end
 end
