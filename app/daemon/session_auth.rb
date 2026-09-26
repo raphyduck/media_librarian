@@ -93,12 +93,21 @@ class Daemon
       token = api_token
       return false if token.to_s.empty?
 
-      secure_compare(req['X-Control-Token'].to_s, token.to_s)
+      secure_compare(request_token(req).to_s, token.to_s)
+    end
+
+    # X-Control-Token, or a standard `Authorization: Bearer` header so MCP
+    # clients and reverse proxies (Caddy) can authenticate without a custom header.
+    def request_token(req)
+      header = req['X-Control-Token'].to_s
+      return header unless header.empty?
+
+      req['Authorization'].to_s[/\ABearer\s+(\S+)\s*\z/i, 1]
     end
 
     def api_token_provided_outside_header?(req)
       return false if api_token.to_s.empty?
-      return false if req['X-Control-Token'] && !req['X-Control-Token'].empty?
+      return false unless request_token(req).to_s.empty?
 
       (req.respond_to?(:query) && token_present?(req.query['token'])) || token_in_request_body?(req)
     end
