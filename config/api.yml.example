@@ -1,4 +1,5 @@
 ---
+# Derrière Caddy dans Docker : adresse de la passerelle du pont Docker (ex. 172.17.0.1), jamais 0.0.0.0 sans pare-feu.
 bind_address: 127.0.0.1
 listen_port: 8888
 auth:
@@ -13,5 +14,6 @@ ssl_private_key_path:
 ssl_ca_path:
 ssl_verify_mode: none
 ssl_client_verify_mode: none
+# Jeton des clients API et MCP (en-tête Authorization: Bearer ou X-Control-Token). Voir docs/api-mcp.md.
 api_token:
 control_token:

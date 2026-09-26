@@ -190,6 +190,12 @@ Les cookies de session expirent automatiquement après 24 heures. Un secret dé
 
 Pour la rétrocompatibilité (clients CLI, automatisations, etc.), il reste possible de définir un jeton d'API qui autorise les requêtes munies de l'en-tête `X-Control-Token`. Le jeton peut être fourni via les clés `api_token`/`control_token` du fichier `~/.medialibrarian/api.yml` ou, à défaut, les variables d'environnement `MEDIA_LIBRARIAN_API_TOKEN` / `MEDIA_LIBRARIAN_CONTROL_TOKEN`. Les requêtes qui envoient le jeton ailleurs (paramètres de requête, corps JSON, etc.) reçoivent désormais une erreur dédiée (`token_header_required`).
 
+Le jeton est aussi accepté sous la forme standard `Authorization: Bearer <jeton>`, ce qui permet de placer le démon derrière un reverse proxy (Caddy).
+
+### API MCP
+
+Le même port expose un serveur MCP (Model Context Protocol) sur `POST /mcp` : état du démon, journaux, lancement et suivi de n'importe quelle commande, redémarrage, calendrier, liste d'intérêts, collection, file des torrents, configuration. Un pont stdio (`scripts/mcp_stdio_bridge.rb`) couvre les hôtes MCP qui lancent un processus. Détail des outils et déploiement derrière Caddy : [docs/api-mcp.md](docs/api-mcp.md).
+
 ### Limites actuelles
 
 * Le serveur HTTP n'implémente pas d'authentification avancée et nécessite une configuration manuelle pour TLS (certificat auto-signé généré par défaut).

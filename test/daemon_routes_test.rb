@@ -11,7 +11,7 @@ class DaemonRoutesTest < Minitest::Test
     /config /config/reload /api-config /api-config/reload
     /templates /scheduler /scheduler/reload /trackers /trackers/info
     /watchlist /watchlist/import-csv
-    /music/search /music/download /music/import-csv /music/organize /ws
+    /music/search /music/download /music/import-csv /music/organize /mcp /ws
   ].freeze
 
   def routes

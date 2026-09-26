@@ -1013,6 +1013,7 @@ class Daemon
         '/music/download' => method(:handle_music_download_request),
         '/music/import-csv' => method(:handle_music_import_csv_request),
         '/music/organize' => method(:handle_music_organize_request),
+        '/mcp' => method(:handle_mcp_request),
         '/ws' => method(:handle_websocket_request)
       }
     end
@@ -1755,15 +1756,19 @@ class Daemon
         imdb_id = payload['imdb_id'].to_s.strip
         title = payload['title'].to_s.strip
         return error_response(res, status: 422, message: 'missing_id') if imdb_id.empty?
+
+        known = title.empty? || payload['type'].to_s.empty? ? calendar_repository.find_by_imdb_id(imdb_id) : nil
+        title = known[:title].to_s.strip if title.empty? && known
         return error_response(res, status: 422, message: 'missing_title') if title.empty?
 
         entry = {
           imdb_id: imdb_id,
           title: title,
-          type: Utils.regularise_media_type((payload['type'] || 'movies').to_s)
+          type: Utils.regularise_media_type((payload['type'] || calendar_watchlist_type(known) || 'movies').to_s)
         }
 
         WatchlistStore.upsert([entry])
+        Calendar.clear_cache
         json_response(res, body: { 'status' => 'ok' })
       when 'DELETE'
         payload = parse_payload(req)
@@ -1774,6 +1779,7 @@ class Daemon
           imdb_id: imdb_id,
           type: payload['type'] || req.query['type']
         )
+        Calendar.clear_cache
         json_response(res, body: { 'removed' => removed.to_i })
       else
         method_not_allowed(res, 'GET, POST, DELETE')
@@ -1782,6 +1788,12 @@ class Daemon
       error_response(res, status: 422, message: e.message)
     rescue StandardError => e
       error_response(res, status: 422, message: e.message)
+    end
+
+    def calendar_watchlist_type(calendar_entry)
+      return unless calendar_entry
+
+      calendar_entry[:type] == 'show' ? 'shows' : 'movies'
     end
 
     def handle_watchlist_import_csv_request(req, res)
@@ -2060,12 +2072,12 @@ class Daemon
   class SocketRequest
     attr_reader :request_method, :path, :body, :headers, :query
 
-    def initialize(method:, path:, headers:, body:)
+    def initialize(method:, path:, headers:, body:, query: {})
       @request_method = method.to_s.upcase
       @path = path.to_s
       @headers = headers || {}
       @body = body
-      @query = {}
+      @query = query || {}
     end
 
     def [](key)
@@ -2107,3 +2119,4 @@ require_relative 'daemon/scheduler'
 require_relative 'daemon/shutdown'
 require_relative 'daemon/job_metrics'
 require_relative 'daemon/command_catalog'
+require_relative 'daemon/mcp_endpoint'

@@ -183,6 +183,7 @@ module MediaLibrarian
       @loader.ignore(File.join(root, 'app', 'daemon', 'shutdown.rb'))
       @loader.ignore(File.join(root, 'app', 'daemon', 'job_metrics.rb'))
       @loader.ignore(File.join(root, 'app', 'daemon', 'command_catalog.rb'))
+      @loader.ignore(File.join(root, 'app', 'daemon', 'mcp_endpoint.rb'))
       register_loader_hooks
       @loader.setup
     end
