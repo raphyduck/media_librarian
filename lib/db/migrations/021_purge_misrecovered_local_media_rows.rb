@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # scripts/repair_db.sh rebuilds a damaged database with SQLite's `.recover`,
-# which reassigns orphaned b-tree pages to whatever table it can. After the
-# July 2026 repair, calendar_entries row 81359 (source, external_id, title,
+# which reassigns orphaned b-tree pages to whatever table it can. After a
+# repair (the row is already in the January 2026 dead copy), calendar_entries
+# row 81359 (source, external_id, title,
 # media_type) landed in local_media as (media_type='trakt',
 # local_path='fall-to-pieces-2025', created_at='Fall To Pieces',
 # imdb_id='movie'). The unparseable created_at made every SELECT of the table
