@@ -838,6 +838,7 @@ module MediaLibrarian
         payload = with_trakt_output_capture do
           TraktAgent.fetch_calendar_entries(type, start_date, days, fetcher: fetcher)
         end
+        raise StandardError, trakt_request_error(type, payload, start_date, days) if trakt_error_payload?(payload)
         return payload if payload
         return [] if trakt_no_content?(fetcher)
 
@@ -860,6 +861,23 @@ module MediaLibrarian
 
       def trakt_calendar_chunk_days
         30
+      end
+
+      # The trakt gem swallows HTTP/parse failures and returns {'error' => msg}.
+      # Array() turned that hash into a one-element array, logged as the
+      # misleading "Invalid Trakt payload format" once per chunk. Surface the
+      # real failure once and stop the chunk loop instead.
+      def trakt_error_payload?(payload)
+        payload.is_a?(Hash) && (payload.key?('error') || payload.key?(:error))
+      end
+
+      def trakt_request_error(type, payload, start_date, days)
+        detail = (payload['error'] || payload[:error]).to_s.strip
+        message = "Trakt #{type} calendar request failed for #{start_date}..#{start_date + days - 1}: #{detail}"
+        if detail.match?(/forbidden|unauthori[sz]ed|\b40[13]\b/i)
+          message += ' (HTTP 401/403: client_id rejected, Trakt app revoked or authorization expired; re-authorize Trakt)'
+        end
+        message
       end
 
       def trakt_no_content?(fetcher)
