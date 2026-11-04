@@ -535,7 +535,7 @@ module MediaLibrarian
           )
 
           unless fetcher
-            speaker&.speak_up('Skipping Trakt provider: missing account_id, client_id or client_secret')
+            speaker&.speak_up('Skipping Trakt provider: missing account_id or client_id')
           end
 
           providers << TraktCalendarProvider.new(
@@ -774,7 +774,7 @@ module MediaLibrarian
       end
 
       def build_trakt_fetcher(client_id, client_secret, token, account_id)
-        return nil if client_id.to_s.empty? || client_secret.to_s.empty? || account_id.to_s.empty?
+        return nil if client_id.to_s.empty? || account_id.to_s.empty?
 
         lambda do |date_range:, limit:|
           with_trakt_output_capture do
@@ -1742,7 +1742,7 @@ module MediaLibrarian
         end
 
         def available?
-          !@account_id.empty? && !@client_id.empty? && !@client_secret.empty?
+          !@account_id.empty? && !@client_id.empty?
         end
 
         def upcoming(date_range:, limit: 100)

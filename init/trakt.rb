@@ -15,7 +15,11 @@ unless ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
     client_id = trakt_config['client_id'].to_s.strip
     client_secret = trakt_config['client_secret'].to_s.strip
 
-    credentials = { account_id: account_id, client_id: client_id, client_secret: client_secret }
+    # Trakt no longer issues a client secret to new apps (PKCE apps, 2026):
+    # the device flow and token refresh accept the client_id alone, so the
+    # secret is optional. Only the account and client id are required.
+    client_secret = '' if client_secret == 'client_secret'
+    credentials = { account_id: account_id, client_id: client_id }
     missing_credentials = credentials.any? do |key, value|
       value.empty? || value == key.to_s
     end
