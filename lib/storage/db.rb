@@ -362,10 +362,30 @@ module Storage
     def connect_db
       @database = Sequel.connect(@db_options)
       if @database.database_type == :sqlite
+        tolerate_invalid_timestamps
         configure_sqlite
         verify_sqlite
       end
       run_migrations(@migrations_path) unless @readonly
+    end
+
+    # One malformed value (a title stored in local_media.created_at) made
+    # Sequel raise on every SELECT of the table: get_rows returned [], the
+    # collection came back empty and no calendar entry was flagged as
+    # downloaded. An unparseable date/timestamp is now handed back as the raw
+    # string; the next file system scan rewrites created_at from the file.
+    def tolerate_invalid_timestamps
+      procs = @database.conversion_procs
+      %w[timestamp datetime date].each do |type|
+        strict = procs[type]
+        next unless strict
+
+        procs[type] = lambda do |value|
+          strict.call(value)
+        rescue StandardError
+          value
+        end
+      end
     end
 
     def attempt_repair
