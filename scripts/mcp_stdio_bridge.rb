@@ -35,7 +35,7 @@ request_ids = lambda do |payload|
 end
 
 $stdin.each_line do |line|
-  line = line.strip
+  line = line.force_encoding(Encoding::UTF_8).strip
   next if line.empty?
 
   ids = begin
