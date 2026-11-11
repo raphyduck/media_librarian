@@ -53,6 +53,7 @@ Sequel.migration do
       String :scope, size: 200
       Integer :created_at
       Integer :expires_in
+      Integer :expires_at
     end
   end
 end

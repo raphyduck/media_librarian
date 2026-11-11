@@ -30,6 +30,11 @@ unless ENV['MEDIA_LIBRARIAN_CLIENT_MODE'] == '1'
       app.trakt_account = account_id
       token_rows = app.db.get_rows('trakt_auth', { account: app.trakt_account })
       token_row = token_rows.empty? ? nil : Utils.recursive_typify_keys(token_rows.first.reject { |k, _| k.to_s == :account.to_s }, 0)
+      # Une colonne ajoutée plus tard (expires_at) peut être NULL sur une ligne
+      # ancienne : elle ne doit pas faire jeter le jeton entier. Les champs
+      # obligatoires restent soumis à la règle « vide ou 0 = jeton invalide ».
+      required_token_keys = %w[access_token refresh_token created_at expires_in]
+      token_row = token_row.reject { |k, v| v.nil? && !required_token_keys.include?(k.to_s) } if token_row
       token_row = nil if token_row.nil? || token_row.values.any? { |v| v.to_s == '' || v.to_s == '0' }
 
       app.trakt = Trakt.new({
