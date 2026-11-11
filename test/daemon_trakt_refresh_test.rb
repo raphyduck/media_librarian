@@ -34,6 +34,22 @@ class DaemonTraktRefreshTest < Minitest::Test
     assert_equal 1, trakt.account.refresh_calls
   end
 
+  def test_persists_expires_at_when_present_in_token
+    token = build_token('old', expires_in: 120, created_at: Time.now.to_i - 4_000).merge('expires_at' => Time.now.to_i + 3_000)
+    refreshed = build_token('new', expires_in: 3_600, created_at: Time.now.to_i).merge('expires_at' => Time.now.to_i + 7_000)
+    trakt = build_trakt_stub(token, [refreshed, :ok])
+
+    app = @environment.application
+    app.trakt_account = 'account'
+    app.trakt = trakt
+    app.db = CaptureDb.new
+
+    Daemon.send(:refresh_trakt_token)
+
+    assert_equal refreshed['expires_at'], app.db.last_insert['expires_at']
+    assert_equal 1, trakt.account.refresh_calls
+  end
+
   def test_skips_refresh_when_token_not_due
     token = build_token('valid', expires_in: 10_000, created_at: Time.now.to_i)
     trakt = build_trakt_stub(token, [token, :ok])

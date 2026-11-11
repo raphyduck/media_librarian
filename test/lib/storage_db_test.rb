@@ -158,6 +158,39 @@ class StorageDbTest < Minitest::Test
     end
   end
 
+  def test_trakt_auth_has_expires_at_on_fresh_database
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path)
+      columns = db.database.schema(:trakt_auth).map(&:first)
+      assert_includes columns, :expires_at
+      db.database.disconnect
+    end
+  end
+
+  def test_trakt_auth_migration_adds_expires_at_to_existing_database
+    migration_dir = File.join(@tmp_dir, 'migrations')
+    FileUtils.mkdir_p(migration_dir)
+    FileUtils.cp(File.join(__dir__, '../../lib/db/migrations/001_initial_schema.rb'),
+                 File.join(migration_dir, '001_initial_schema.rb'))
+
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path, 0, migrations_path: migration_dir)
+      columns = db.database.schema(:trakt_auth).map(&:first)
+      refute_includes columns, :expires_at
+      db.database.disconnect
+    end
+
+    FileUtils.cp(File.join(__dir__, '../../lib/db/migrations/022_add_expires_at_to_trakt_auth.rb'),
+                 File.join(migration_dir, '022_add_expires_at_to_trakt_auth.rb'))
+
+    with_stubbed_app do
+      db = Storage::Db.new(@db_path, 0, migrations_path: migration_dir)
+      columns = db.database.schema(:trakt_auth).map(&:first)
+      assert_includes columns, :expires_at
+      db.database.disconnect
+    end
+  end
+
   def test_redact_sql_masks_secrets_in_sensitive_statements
     with_stubbed_app do
       db = Storage::Db.new(@db_path)
