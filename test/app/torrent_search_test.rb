@@ -81,6 +81,29 @@ class TorrentSearchTest < Minitest::Test
     def touch_rows(*); end
   end
 
+  def test_download_resets_attempts_when_replacing_failed_row
+    db = FakeTorrentsDb.new([
+      { :name => 'Movie.2025.2160p.WEB', :identifier => 'movieMovie2025',
+        :status => 6, :download_attempts => 10,
+        :tattributes => { :name => 'Movie.2025.2160p.WEB', :added => Time.now.utc.iso8601,
+                          :timeframe_quality => 0, :timeframe_size => 0, :timeframe_tracker => 0 } }
+    ])
+    @environment.application.db = db
+
+    chosen = {
+      :name => 'Movie.2025.2160p.WEB', :identifier => 'movieMovie2025',
+      :tracker => 'c411', :added => Time.now.utc.iso8601,
+      :timeframe_quality => 0, :timeframe_size => 0, :timeframe_tracker => 0
+    }
+
+    TorrentSearch.torrent_download(chosen, 1, 1, [], 'movies')
+
+    row = db.rows.find { |r| r[:name] == 'Movie.2025.2160p.WEB' }
+    assert row, 'failed row should be reanimated'
+    assert_equal 2, row[:status], 'reanimated row should be queued for download'
+    assert_equal 0, row[:download_attempts], 'download_attempts must be reset for the new release'
+  end
+
   def test_download_removes_pending_siblings_but_keeps_active_ones
     db = FakeTorrentsDb.new([
       { :name => 'Movie.2025.720p.WEBRip', :identifier => 'movieMovie2025', :status => 1 },

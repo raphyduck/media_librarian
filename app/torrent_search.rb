@@ -372,6 +372,12 @@ class TorrentSearch
     attributes[:identifiers] = torrent[:identifiers] unless torrent[:identifiers].nil?
     selector = {:name => torrent[:name]}
     existing = app.db.get_rows('torrents', selector).first
+    # A previously failed row (expired tracker link) is being replaced by a
+    # fresh release; reset its attempt counter so the new release gets the full
+    # retry budget instead of failing again on the first attempt.
+    if existing && existing[:status].to_i == Cache::TORRENT_FAILED_STATUS
+      attributes[:download_attempts] = 0
+    end
     # Never demote a torrent already handed to the download client (added /
     # downloading = 3, completed = 4) back to a pending status: re-queuing the
     # same name (e.g. a repeated import) must not reset the row and trigger a
