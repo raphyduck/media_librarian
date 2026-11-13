@@ -45,20 +45,23 @@ class TorrentSearch
   # largest size) to the download queue (status 2) once its timeframe has
   # expired, and drop that media's other still-pending rows so only one torrent
   # per film is ever grabbed. Media that already have an active/queued/completed
-  # download are left alone, and rows stale for more than max_age_days are left
-  # for the existing pruning (Cache.torrent_get) to remove.
+  # download are left alone; failed rows (status 6) are NOT considered active,
+  # so a fresh pending release can replace them. Rows stale for more than
+  # max_age_days are left for the existing pruning (Cache.torrent_get) to remove.
   def self.promote_ready_downloads(max_age_days: 180)
     now = Time.now
     oldest = now - (max_age_days * 86_400)
     all_rows = app.db.get_rows('torrents', {}) || []
-    active_ids = all_rows.select { |r| r[:status].to_i >= 2 }.map { |r| r[:identifier].to_s }.uniq
+    active_ids = all_rows.select { |r| r[:status].to_i >= 2 && r[:status].to_i != Cache::TORRENT_FAILED_STATUS }
+                          .map { |r| r[:identifier].to_s }.uniq
     all_rows.select { |r| r[:status].to_i.between?(0, 1) }
             .group_by { |r| r[:identifier].to_s }
             .each do |identifier, group|
       next if identifier.empty?
-      # A media already queued/downloading/completed, or already present in the
-      # local library, must not keep pending torrents around: they would either
-      # linger forever or trigger a redundant duplicate download later.
+      # A media already queued/downloading/completed (but not failed, which can
+      # be replaced by a fresh release), or already present in the local library,
+      # must not keep pending torrents around: they would either linger forever
+      # or trigger a redundant duplicate download later.
       if active_ids.include?(identifier) || media_in_library?(identifier)
         group.each do |r|
           app.speaker.speak_up("Removing pending torrent '#{r[:name]}': media already downloaded", 0)

@@ -158,6 +158,51 @@ class TorrentSearchTest < Minitest::Test
     assert_equal 1, status.('Ancient.Stale'), 'stale row must be left for pruning, not promoted'
   end
 
+  def test_promote_ready_downloads_does_not_treat_failed_rows_as_active
+    iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
+    now = Time.now
+    db = FakeTorrentsDb.new([
+      { :name => 'Old.Failed.1080p', :identifier => 'movieX2025', :status => 6, :download_attempts => 10,
+        :tattributes => { :added => iso.(now - 30 * 86_400), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 0 } },
+      { :name => 'New.Pending.2160p', :identifier => 'movieX2025', :status => 1,
+        :tattributes => { :added => iso.(now - 2 * 86_400), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 86_400 } }
+    ])
+    @environment.application.db = db
+
+    Cache.stub(:object_unpack, ->(v) { v }) do
+      TorrentSearch.promote_ready_downloads
+    end
+
+    names = db.rows.map { |r| r[:name] }
+    assert_includes names, 'Old.Failed.1080p', 'failed row must be kept'
+    assert_includes names, 'New.Pending.2160p', 'pending row must be promoted, not deleted because of the failed sibling'
+    assert_equal 2, db.rows.find { |r| r[:name] == 'New.Pending.2160p' }[:status]
+  end
+
+  def test_promote_ready_downloads_still_removes_pending_when_sibling_is_active
+    iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
+    now = Time.now
+    db = FakeTorrentsDb.new([
+      { :name => 'Active.1080p', :identifier => 'movieY2025', :status => 3,
+        :tattributes => { :added => iso.(now), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 0 } },
+      { :name => 'Pending.2160p', :identifier => 'movieY2025', :status => 1,
+        :tattributes => { :added => iso.(now - 2 * 86_400), :timeframe_quality => 0,
+                          :timeframe_tracker => 0, :timeframe_size => 86_400 } }
+    ])
+    @environment.application.db = db
+
+    Cache.stub(:object_unpack, ->(v) { v }) do
+      TorrentSearch.promote_ready_downloads
+    end
+
+    names = db.rows.map { |r| r[:name] }
+    assert_includes names, 'Active.1080p'
+    refute_includes names, 'Pending.2160p', 'pending row must be removed when a real active sibling exists'
+  end
+
   def test_promote_ready_downloads_grabs_a_single_release_per_media
     iso = ->(t) { t.strftime('%Y-%m-%dT%H:%M:%SZ') }
     now = Time.now
