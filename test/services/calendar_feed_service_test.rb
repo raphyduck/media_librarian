@@ -1540,7 +1540,7 @@ class CalendarFeedServiceTest < Minitest::Test
     future_epoch = Time.now.to_i + 86_400
 
     result = service.send(:ensure_trakt_token!, { access_token: 'tok', expires_at: future_epoch })
-    assert_equal({ access_token: 'tok' }, result)
+    assert_equal({ access_token: 'tok', expires_at: future_epoch }, result)
   end
 
   def test_trakt_provider_requires_account_id
