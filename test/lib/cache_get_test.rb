@@ -43,33 +43,34 @@ class CacheGetTtlTest < Minitest::Test
     @environment.cleanup if @environment
   end
 
-  def test_stale_metadata_cache_is_expired_in_seconds_not_days
-    # A row written two days ago must be treated as stale when the requested
-    # TTL is 120 seconds. The old code used `.days`, which kept it alive.
+  def test_metadata_cache_is_fresh_within_day_ttl
+    # movie_lookup uses 120 days: a 2-day-old row must still be valid.
     old_time = (Time.now - (2 * 86_400)).utc.iso8601
     db = FakeMetadataDb.new([
                               { type: 2, keywords: 'Vie privée|tt123|',
-                                created_at: old_time, result: '["wrong title",null]' }
-                            ])
-    @environment.application.db = db
-
-    result = Cache.cache_get('movie_lookup', 'Vie privée|tt123|', 120)
-
-    assert_nil result, 'a 2-day-old entry should be expired with a 120-second TTL'
-    refute_empty db.deleted, 'the stale row should have been purged'
-  end
-
-  def test_fresh_metadata_cache_is_returned
-    recent_time = (Time.now - 30).utc.iso8601
-    db = FakeMetadataDb.new([
-                              { type: 2, keywords: 'Vie privée|tt123|',
-                                created_at: recent_time, result: '["Vie privée",null]' }
+                                created_at: old_time, result: '["Vie privée",null]' }
                             ])
     @environment.application.db = db
 
     result = Cache.cache_get('movie_lookup', 'Vie privée|tt123|', 120)
 
     assert_equal ['Vie privée', nil], result
+    assert_empty db.deleted
+  end
+
+  def test_tv_episodes_cache_expires_after_one_day
+    # tv_episodes_search uses 1 day: a 2-day-old row must be purged.
+    old_time = (Time.now - (2 * 86_400)).utc.iso8601
+    db = FakeMetadataDb.new([
+                              { type: 4, keywords: 'Some Show',
+                                created_at: old_time, result: '["Some Show",[]]' }
+                            ])
+    @environment.application.db = db
+
+    result = Cache.cache_get('tv_episodes_search', 'Some Show', 1)
+
+    assert_nil result, 'a 2-day-old entry should be expired with a 1-day TTL'
+    refute_empty db.deleted, 'the stale row should have been purged'
   end
 
   def test_pretend_mode_bypasses_cache_entirely
