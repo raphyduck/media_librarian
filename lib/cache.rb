@@ -36,7 +36,10 @@ class Cache
     return @cache_metadata[type.to_s + keyword.to_s] if force_refresh.to_i == 0 && @cache_metadata[type.to_s + keyword.to_s]
     res = MediaLibrarian.app.db.get_rows('metadata_search', { :type => cache_get_enum(type), :keywords => keyword })
     res.each do |r|
-      if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days
+      # expiration is given in seconds; treating it as days kept stale metadata
+      # around for ~120 days instead of ~120 seconds, so watchlist movies resolved
+      # to the wrong identifier once a bad lookup had been cached.
+      if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).seconds
         cache_expire(r)
         next
       end
