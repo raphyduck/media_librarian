@@ -141,8 +141,12 @@ class Metadata
     end
     t = detect_real_title(title.strip, category, 0, 0)
     tt = detect_real_title(target_title.strip, category, 0, 0)
-    tt = StringUtils.clean_search(tt)
-    t = StringUtils.clean_search(t)
+    # Releases spell "C'était" as "C.etait": regularise_media_filename drops
+    # apostrophes without leaving a separator, so the candidate became one
+    # token ("cétait") while the search string had two ("c etait") and the
+    # right film was rejected. Fold apostrophes to a space before cleaning.
+    tt = StringUtils.clean_search(tt.gsub(/['’‘]/, ' '))
+    t = StringUtils.clean_search(t.gsub(/['’‘]/, ' '))
     t = normalize_special_chars(t)
     tt = normalize_special_chars(tt)
     regex_match = t.match(
@@ -367,6 +371,10 @@ class Metadata
   # to forgive.
   def self.comparable_title(value, category)
     cleaned = detect_real_title(value.to_s.strip, category, 0, 0)
+    # Keep title-token boundaries consistent with match_titles: an apostrophe
+    # in the title must not glue two words together when the release writes
+    # them as separate tokens ("L.Invitation" vs "L'Invitation").
+    cleaned = cleaned.gsub(/['’‘]/, ' ')
     normalize_special_chars(StringUtils.clean_search(cleaned)).downcase.gsub(/\s+/, ' ').strip
   end
 

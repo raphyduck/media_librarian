@@ -22,6 +22,29 @@ class MetadataMatchTitlesTest < Minitest::Test
     assert Metadata.match_titles('L Ame Ideale 2025', 'L’Âme Idéale (2025)', 2025, 2025, 'movies')
   end
 
+  def test_matches_apostrophe_title_when_release_splits_words_with_dots
+    # Real case: TMDB "C'était mieux demain (2025)" vs release "C.etait.mieux.demain".
+    # regularise_media_filename drops apostrophes without a separator, so the
+    # provider title became "cétait" while the release parsed to "c etait".
+    assert Metadata.match_titles("C'était mieux demain (2025)", 'C etait mieux demain 2025', 2025, 2025, 'movies')
+  end
+
+  def test_matches_linvitation_apostrophe_vs_dot_separator
+    assert Metadata.match_titles("L'Invitation (2022)", 'L.Invitation 2022', 2022, 2022, 'movies')
+  end
+
+  def test_rejects_apostrophe_title_for_unrelated_film_same_year
+    refute Metadata.match_titles("C'était mieux demain (2025)", 'Un autre film 2025', 2025, 2025, 'movies')
+  end
+
+  def test_comparable_title_treats_apostrophe_as_word_separator
+    # media_chose_best relies on comparable_title; keep it consistent with
+    # match_titles so apostrophe-joined words do not glue against dot-separated
+    # release tokens.
+    assert_equal Metadata.comparable_title("L'Invitation (2022)", 'movies'),
+                 Metadata.comparable_title('L.Invitation 2022', 'movies')
+  end
+
   def test_ignores_optional_numeric_tokens_when_titles_match
     title = '20th Century Boys: Beginning of the End (2008)'
     target = '20th Century Boys 1 Beginning of the End (2008)'
