@@ -398,7 +398,8 @@ class Metadata
     cached = Cache.cache_get(cache_category, cache_name, 120, force_refresh)
     if cached && cached[1] && force_refresh.to_i == 0
       cached_name = cached[1].respond_to?(:name) ? cached[1].name.to_s.strip : cached[0].to_s.strip
-      return cached unless cached_name == ''
+      return cached unless cached_name == '' || !cached_lookup_consistent?(type, cached[1], title, ids, keys)
+      MediaLibrarian.app.speaker.speak_up("Discarding inconsistent cached lookup for '#{cache_name}'", 0)
     end
     debug_logs = []
     Utils.lock_block("#{__method__}_#{type}_#{title}#{ids}") do
@@ -506,6 +507,32 @@ class Metadata
   rescue => e
     MediaLibrarian.app.speaker.tell_error(e, Utils.arguments_dump(binding))
     return title, nil
+  end
+
+  # A cached lookup used to be served blindly, so a wrong resolution (made
+  # before the resolver was fixed, or by a fuzzy match) shadowed the
+  # authoritative id fetch for the whole TTL and the movie never matched its
+  # releases. When the caller knows the ids, the cached item must carry them;
+  # otherwise its title must still match the searched one.
+  def self.cached_lookup_consistent?(type, item, title, ids, keys)
+    return true unless type.to_s == 'movies'
+    wanted = (ids || {}).to_h.transform_keys(&:to_s)
+                        .select { |k, v| %w[imdb tmdb].include?(k) && v.to_s.strip != '' }
+    item_ids = (item.respond_to?(:ids) ? item.ids : (item['ids'] rescue nil)).to_h.transform_keys(&:to_s)
+    unless wanted.empty?
+      shared = wanted.keys.select { |k| item_ids[k].to_s.strip != '' }
+      return false if shared.empty?
+      return shared.all? { |k| item_ids[k].to_s.strip == wanted[k].to_s.strip }
+    end
+    name = item.respond_to?(:name) ? item.name : item[keys['name']]
+    alts = item.respond_to?(:alt_titles) ? Array(item.alt_titles) : Array(item[keys['titles']])
+    year = item.respond_to?(:year) ? item.year.to_i : item[keys['year']].to_i
+    target_year = identify_release_year(title.to_s)
+    ([name] + alts).compact.map(&:to_s).reject(&:empty?).any? do |n|
+      match_titles(n, title.to_s, year, target_year, type)
+    end
+  rescue StandardError
+    false
   end
 
   def self.parse_media_filename(filename, type, item = nil, item_name = '', no_prompt = 0, folder_hierarchy = {}, base_folder = Dir.home, file = {})
