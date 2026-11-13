@@ -82,7 +82,7 @@ GEM
       minitest (>= 5.1)
       mutex_m
       securerandom (>= 0.3)
-      tzinfo (~> 2.0)
+      tzinfo (>= 2.0.5, ~> 2.0)
       uri (>= 0.13.1)
     addressable (2.8.8)
       public_suffix (>= 2.0.2, < 8.0)
