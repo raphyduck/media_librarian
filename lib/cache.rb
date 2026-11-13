@@ -30,13 +30,16 @@ class Cache
     MediaLibrarian.app.db.delete_rows('metadata_search', row.select { |k, _| k != :result })
   end
 
-  def self.cache_get(type, keyword, expiration = 120, force_refresh = 0)
+  # expiration_days is in DAYS (callers: tv_episodes_search 1, movie_lookup 120,
+  # movie_get/tv_show_get default). The in-memory layer uses CACHING_TTL
+  # (seconds); the metadata_search table is the long-lived layer.
+  def self.cache_get(type, keyword, expiration_days = 120, force_refresh = 0)
     return nil unless cache_get_enum(type)
     return nil if Env.pretend?
     return @cache_metadata[type.to_s + keyword.to_s] if force_refresh.to_i == 0 && @cache_metadata[type.to_s + keyword.to_s]
     res = MediaLibrarian.app.db.get_rows('metadata_search', { :type => cache_get_enum(type), :keywords => keyword })
     res.each do |r|
-      if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration || 120).days
+      if force_refresh.to_i > 0 || Time.parse(r[:created_at]) < Time.now - (expiration_days || 120).days
         cache_expire(r)
         next
       end
