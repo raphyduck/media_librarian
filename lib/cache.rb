@@ -7,6 +7,12 @@ class Cache
   @tqueues = {}
   @cache_metadata = BusVariable.new('cache_metadata', Vash)
   CONTAINER_INSTANCE_VARIABLES = %i[@app @application @container].freeze
+  # MediaLibrarian::Services::TorrentQueueService::FAILED_STATUS. Failed rows
+  # must not be treated as "already present": the tracker link expired, so the
+  # film should stay searchable and a fresh release must be allowed to take its
+  # place. Without this exclusion, the first (best-quality) result is skipped
+  # because it is "in_db", consuming the only candidate in no_prompt mode.
+  TORRENT_FAILED_STATUS = 6
 
   def self.cache_add(type, keyword, result, full_save = nil)
     if keyword.to_s == ''
@@ -238,6 +244,10 @@ class Cache
   def self.torrent_get(identifier, f_type = nil)
     torrents = []
     MediaLibrarian.app.db.get_rows('torrents', {}, { 'identifier like' => "%#{identifier}%" }).each do |d|
+      # Failed rows (expired tracker link, download_attempts exhausted) are not
+      # "present" media: they must not shadow fresh releases nor make
+      # torrent_deja_vu? skip the film. Let the next search pick a new release.
+      next if d[:status].to_i == TORRENT_FAILED_STATUS
       d[:tattributes] = Cache.object_unpack(d[:tattributes])
       d[:waiting_until] = TorrentSearch.waiting_time_set(d[:tattributes]).to_s
       next unless (f_type.nil? || d[:tattributes][:f_type].nil? || d[:tattributes][:f_type].to_s == f_type.to_s)
