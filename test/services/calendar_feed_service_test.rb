@@ -1492,6 +1492,57 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_includes error_message&.last.to_s, 'Calendar Trakt fetch failed'
   end
 
+  def test_trakt_token_expiry_parses_integer_epoch
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    future_epoch = Time.now.to_i + 86_400
+    assert_equal Time.at(future_epoch), service.send(:trakt_token_expiry, { expires_at: future_epoch })
+    assert_equal Time.at(future_epoch), service.send(:trakt_token_expiry, { 'expires_at' => future_epoch.to_s })
+  end
+
+  def test_trakt_token_expiry_parses_iso_string
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    assert_equal Time.parse('2026-11-19T21:02:01Z'), service.send(:trakt_token_expiry, { expires_at: '2026-11-19T21:02:01Z' })
+  end
+
+  def test_trakt_token_expiry_preserves_time_and_datetime
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    time = Time.now
+    assert_equal time, service.send(:trakt_token_expiry, { expires_at: time })
+
+    datetime = DateTime.now
+    assert_equal datetime.to_time, service.send(:trakt_token_expiry, { expires_at: datetime })
+  end
+
+  def test_trakt_token_expiry_returns_nil_for_empty_values
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+
+    assert_nil service.send(:trakt_token_expiry, {})
+    assert_nil service.send(:trakt_token_expiry, { expires_at: nil })
+    assert_nil service.send(:trakt_token_expiry, { expires_at: '' })
+    assert_nil service.send(:trakt_token_expiry, { expires_at: '   ' })
+  end
+
+  def test_ensure_trakt_token_raises_when_integer_epoch_is_in_the_past
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    past_epoch = Time.now.to_i - 1
+
+    error = assert_raises(MediaLibrarian::Services::CalendarFeedService::AuthenticationError) do
+      service.send(:ensure_trakt_token!, { access_token: 'tok', expires_at: past_epoch })
+    end
+    assert_includes error.message, 'Trakt access token has expired'
+  end
+
+  def test_ensure_trakt_token_accepts_integer_epoch_in_the_future
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    future_epoch = Time.now.to_i + 86_400
+
+    result = service.send(:ensure_trakt_token!, { access_token: 'tok', expires_at: future_epoch })
+    assert_equal({ access_token: 'tok' }, result)
+  end
+
   def test_trakt_provider_requires_account_id
     provider = MediaLibrarian::Services::CalendarFeedService::TraktCalendarProvider.new(
       account_id: '', client_id: 'id', client_secret: 'secret', speaker: @speaker,
