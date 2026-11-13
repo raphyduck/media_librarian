@@ -972,13 +972,22 @@ module MediaLibrarian
 
       def trakt_token_expiry(token)
         raw = token.is_a?(Hash) ? token[:expires_at] || token['expires_at'] : nil
+        return nil if raw.nil? || raw.to_s.strip.empty?
+
         case raw
         when Time
           raw
         when DateTime
           raw.to_time
+        when Numeric
+          Time.at(raw.to_i)
         else
-          Time.parse(raw.to_s)
+          value = raw.to_s.strip
+          if value.match?(/\A\d+\z/)
+            Time.at(value.to_i)
+          else
+            Time.parse(value)
+          end
         end
       rescue ArgumentError, TypeError
         nil
