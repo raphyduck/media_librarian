@@ -751,7 +751,7 @@ class Daemon
         _refreshed, status = account.refresh_access_token
         if %i[invalid_grant no_refresh_token].include?(status)
           @trakt_refresh_disabled = true
-          app.speaker.speak_up('Trakt token refresh is no longer possible (re-authorization required); disabling automatic refresh until a new authorization is stored in the trakt_auth table.', 0)
+          app.speaker.tell_error(StandardError.new("Trakt token refresh rejected (#{status}); re-authorization required, automatic refresh disabled until a new authorization is stored in the trakt_auth table"), 'Trakt token refresh failed')
           return
         end
       else
