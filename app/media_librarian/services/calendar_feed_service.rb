@@ -526,12 +526,14 @@ module MediaLibrarian
           account_id = trakt_config['account_id']
           client_id = trakt_config['client_id']
           client_secret = trakt_config['client_secret']
-          trakt_token = trakt_config['access_token'] || (app.respond_to?(:trakt) ? app.trakt&.token : nil)
+          config_token = trakt_config['access_token']
+          shared_client = config_token.nil? && app.respond_to?(:trakt) ? app.trakt : nil
           fetcher = build_trakt_fetcher(
             client_id,
             client_secret,
-            trakt_token,
-            account_id
+            config_token,
+            account_id,
+            shared_client: shared_client
           )
 
           unless fetcher
@@ -773,7 +775,7 @@ module MediaLibrarian
         nil
       end
 
-      def build_trakt_fetcher(client_id, client_secret, token, account_id)
+      def build_trakt_fetcher(client_id, client_secret, token, account_id, shared_client: nil)
         return nil if client_id.to_s.empty? || account_id.to_s.empty?
 
         lambda do |date_range:, limit:|
@@ -784,24 +786,34 @@ module MediaLibrarian
               client_id: client_id,
               client_secret: client_secret,
               account_id: account_id,
-              token: token
+              token: token,
+              shared_client: shared_client
             )
           end
         end
       end
 
-      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, account_id:, token: nil)
+      def fetch_trakt_entries(date_range:, limit:, client_id:, client_secret:, account_id:, token: nil, shared_client: nil)
         start_date = (date_range.first || Date.today)
         end_date = (date_range.last || start_date)
 
+        token = shared_client.token if shared_client
+        original_token = token.is_a?(Hash) ? token.dup : token
         validated_token = ensure_trakt_token!(token)
 
-        fetcher = trakt_calendar_client(
+        client = trakt_calendar_client(
           client_id: client_id,
           client_secret: client_secret,
           account_id: account_id,
-          token: validated_token
+          token: validated_token,
+          shared_client: shared_client
         )
+        if trakt_token_refresh_due?(client.respond_to?(:token) ? client.token : validated_token)
+          skipped = refresh_trakt_client_token(client)
+          return skipped if skipped
+        end
+
+        fetcher = client
 
         entries = []
         errors = []
@@ -832,6 +844,8 @@ module MediaLibrarian
       rescue StandardError => e
         speaker&.tell_error(e, 'Calendar Trakt fetch failed')
         { entries: [], errors: [e.message] }
+      ensure
+        persist_refreshed_trakt_token(client, original_token, account_id)
       end
 
       def trakt_calendar_payload(type, fetcher, start_date, days)
@@ -901,13 +915,15 @@ module MediaLibrarian
         parts.join(' | ')
       end
 
-      def trakt_calendar_client(client_id:, client_secret:, account_id:, token: nil)
+      def trakt_calendar_client(client_id:, client_secret:, account_id:, token: nil, shared_client: nil)
+        return shared_client if shared_client
+
         with_trakt_output_capture do
           Trakt.new(
             client_id: client_id,
             client_secret: client_secret,
             account_id: account_id,
-            token: ensure_trakt_token!(token),
+            token: token,
             speaker: speaker,
             interactive: false
           )
@@ -956,8 +972,7 @@ module MediaLibrarian
         token_value = trakt_access_token(normalized)
         raise AuthenticationError, 'Trakt access token is missing or invalid' if token_value.empty?
 
-        expires_at = trakt_token_expiry(normalized)
-        raise AuthenticationError, 'Trakt access token has expired' if expires_at && expires_at <= Time.now
+        speaker&.speak_up('Trakt access token expired, attempting refresh') if trakt_token_expired?(normalized)
 
         return normalized unless normalized.is_a?(Hash)
 
@@ -968,6 +983,87 @@ module MediaLibrarian
         return '' unless token.is_a?(Hash)
 
         (token[:access_token] || token['access_token']).to_s.strip
+      end
+
+      def trakt_token_expired?(token)
+        expires_at = trakt_token_expires_at(token)
+        !expires_at.nil? && expires_at <= Time.now
+      end
+
+      def trakt_token_expires_at(token)
+        trakt_token_expiry(token) || trakt_token_created_expiry(token)
+      end
+
+      def trakt_token_created_expiry(token)
+        return nil unless token.is_a?(Hash)
+
+        created_at = token[:created_at] || token['created_at']
+        expires_in = token[:expires_in] || token['expires_in']
+        return nil if created_at.nil? || expires_in.nil?
+
+        Time.at(created_at.to_i + expires_in.to_i)
+      end
+
+      def trakt_token_refresh_due?(token)
+        return false unless token.is_a?(Hash)
+        return false if trakt_refresh_token_value(token).empty?
+
+        expires_at = trakt_token_expires_at(token)
+        !expires_at.nil? && expires_at - 300 <= Time.now
+      end
+
+      def refresh_trakt_client_token(client)
+        return nil unless client.respond_to?(:account)
+
+        account = client.account
+        return nil unless account.respond_to?(:refresh_access_token)
+
+        refresh_token = trakt_refresh_token_value(client.token)
+        rejected = self.class.instance_variable_get(:@trakt_rejected_refresh_token)
+        if rejected && rejected == refresh_token
+          return { entries: [], errors: ['Trakt token refresh rejected (re-authorization required)'] }
+        end
+
+        _body, status = with_trakt_output_capture { account.refresh_access_token }
+        if %i[invalid_grant no_refresh_token].include?(status)
+          self.class.instance_variable_set(:@trakt_rejected_refresh_token, refresh_token)
+          speaker&.speak_up('Trakt token refresh rejected; re-authorization required, skipping Trakt calendar')
+          return { entries: [], errors: ['Trakt token refresh rejected (re-authorization required)'] }
+        end
+
+        self.class.instance_variable_set(:@trakt_rejected_refresh_token, nil) if status == :ok
+        nil
+      end
+
+      def persist_refreshed_trakt_token(client, original_token, account_id)
+        return if client.nil? || !client.respond_to?(:token)
+        return if account_id.to_s.empty?
+        return unless @db.respond_to?(:insert_row)
+
+        current = client.token
+        return unless current.is_a?(Hash)
+        return if trakt_token_identity(current) == trakt_token_identity(original_token)
+        return if trakt_access_token(current).empty? || trakt_refresh_token_value(current).empty?
+
+        row = current.transform_keys(&:to_s)
+        if row['expires_at'].nil? && row['created_at'] && row['expires_in']
+          row['expires_at'] = row['created_at'].to_i + row['expires_in'].to_i
+        end
+        @db.insert_row('trakt_auth', row.merge('account' => account_id.to_s), 1)
+      rescue StandardError => e
+        speaker&.tell_error(StandardError.new(e.class.name), 'Calendar Trakt token persistence failed')
+      end
+
+      def trakt_token_identity(token)
+        return [nil, nil] unless token.is_a?(Hash)
+
+        [(token[:access_token] || token['access_token']).to_s, trakt_refresh_token_value(token)]
+      end
+
+      def trakt_refresh_token_value(token)
+        return '' unless token.is_a?(Hash)
+
+        (token[:refresh_token] || token['refresh_token']).to_s
       end
 
       def trakt_token_expiry(token)

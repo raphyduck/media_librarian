@@ -47,15 +47,29 @@ class CalendarFeedServiceTest < Minitest::Test
     end
   end
 
+  FakeTraktAccount = Struct.new(:client, :result, :refresh_calls) do
+    def refresh_access_token(*)
+      self.refresh_calls += 1
+      body, status = result || [nil, :transient]
+      client.token = body if body
+      [body, status]
+    end
+  end
+
+  FakeTraktClient = Struct.new(:token, :calendar, :account)
+
   def setup
     @tmp_dir = Dir.mktmpdir('calendar-feed')
     @db_path = File.join(@tmp_dir, 'librarian.db')
     @db = Storage::Db.new(@db_path, migrations_path: nil)
     ensure_calendar_table
+    ensure_trakt_auth_table
     @speaker = TestSupport::Fakes::Speaker.new
+    reset_trakt_rejected_refresh_token
   end
 
   def teardown
+    reset_trakt_rejected_refresh_token
     FileUtils.remove_entry(@tmp_dir) if @tmp_dir && Dir.exist?(@tmp_dir)
   end
 
@@ -1265,23 +1279,9 @@ class CalendarFeedServiceTest < Minitest::Test
       end
     end.new
 
-    fetcher_instance = nil
-    fake_fetcher_class = Class.new do
-      attr_reader :token
-
-      def initialize(token, calendar)
-        @token = token
-        @calendar = calendar
-      end
-
-      def calendar
-        @calendar
-      end
-    end
-
-    Trakt.stub(:new, ->(opts) { fetcher_instance = fake_fetcher_class.new(opts[:token], calendar) }) do
+    trakt_client = fake_shared_trakt_client({ 'access_token' => 'stored-token', 'created_at' => Time.now.to_i, 'expires_in' => 3_600, 'refresh_token' => 'rt' }, calendar: calendar)
+    Trakt.stub(:new, ->(_opts) { raise 'Trakt.new must not be called when the shared client is available' }) do
       config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' } }
-      trakt_client = Struct.new(:token).new({ access_token: 'stored-token' })
       app = Struct.new(:config, :db, :trakt).new(config, @db, trakt_client)
       service = MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
 
@@ -1289,7 +1289,7 @@ class CalendarFeedServiceTest < Minitest::Test
     end
 
     assert_equal [[:movies, start_date, days], [:shows, start_date, days]], calendar.calls
-    assert_equal({ access_token: 'stored-token' }, fetcher_instance.token)
+    assert_equal 0, trakt_client.account.refresh_calls
   end
 
   def test_trakt_fetcher_aggregates_chunks
@@ -1525,14 +1525,22 @@ class CalendarFeedServiceTest < Minitest::Test
     assert_nil service.send(:trakt_token_expiry, { expires_at: '   ' })
   end
 
-  def test_ensure_trakt_token_raises_when_integer_epoch_is_in_the_past
+  def test_ensure_trakt_token_returns_expired_token_without_raising
     service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
     past_epoch = Time.now.to_i - 1
 
-    error = assert_raises(MediaLibrarian::Services::CalendarFeedService::AuthenticationError) do
-      service.send(:ensure_trakt_token!, { access_token: 'tok', expires_at: past_epoch })
-    end
-    assert_includes error.message, 'Trakt access token has expired'
+    result = service.send(:ensure_trakt_token!, { access_token: 'tok', expires_at: past_epoch })
+
+    assert_equal({ access_token: 'tok', expires_at: past_epoch }, result)
+    assert_includes @speaker.messages, 'Trakt access token expired, attempting refresh'
+  end
+
+  def test_trakt_token_expires_at_falls_back_to_created_at_plus_expires_in
+    service = MediaLibrarian::Services::CalendarFeedService.new(app: nil, speaker: @speaker)
+    created = Time.now.to_i - 100
+
+    assert_equal Time.at(created + 3_600), service.send(:trakt_token_expires_at, { 'created_at' => created, 'expires_in' => 3_600 })
+    assert_nil service.send(:trakt_token_expires_at, { 'access_token' => 'tok' })
   end
 
   def test_ensure_trakt_token_accepts_integer_epoch_in_the_future
@@ -1852,6 +1860,124 @@ class CalendarFeedServiceTest < Minitest::Test
       release_date: Date.today + 1,
       ids: { 'imdb' => imdb_id }
     }
+  end
+
+  def test_expired_shared_token_is_refreshed_and_persisted
+    ensure_trakt_auth_table
+    created = Time.now.to_i - (8 * 86_400)
+    old_token = { 'access_token' => 'old-access', 'refresh_token' => 'old-refresh', 'created_at' => created, 'expires_in' => 604_800 }
+    new_token = { 'access_token' => 'new-access', 'refresh_token' => 'rotated-refresh', 'created_at' => Time.now.to_i, 'expires_in' => 604_800 }
+    trakt_client = fake_shared_trakt_client(old_token, calendar: fake_trakt_calendar, refreshed: [new_token, :ok])
+
+    service = trakt_service_with_shared_client(trakt_client)
+    result = service.send(:fetch_trakt_entries, date_range: Date.today..Date.today, limit: 5, client_id: 'id', client_secret: 'secret', account_id: 'acc', token: nil, shared_client: trakt_client)
+
+    assert_empty result[:errors].grep(/authentication failed/)
+    assert_equal 1, trakt_client.account.refresh_calls
+    row = @db.get_rows(:trakt_auth, { account: 'acc' }).first
+    assert_equal 'new-access', row[:access_token]
+    assert_equal 'rotated-refresh', row[:refresh_token]
+    assert_equal new_token['created_at'] + 604_800, row[:expires_at].to_i
+  end
+
+  def test_rejected_refresh_skips_trakt_cleanly
+    calendar = fake_trakt_calendar
+    expired = { 'access_token' => 'old', 'refresh_token' => 'dead', 'created_at' => Time.now.to_i - (8 * 86_400), 'expires_in' => 604_800 }
+    trakt_client = fake_shared_trakt_client(expired, calendar: calendar, refreshed: [nil, :invalid_grant])
+    service = trakt_service_with_shared_client(trakt_client)
+
+    2.times do
+      result = service.send(:fetch_trakt_entries, date_range: Date.today..Date.today, limit: 5, client_id: 'id', client_secret: 'secret', account_id: 'acc', token: nil, shared_client: trakt_client)
+      assert_empty result[:entries]
+      assert(result[:errors].any? { |message| message.include?('re-authorization required') })
+    end
+
+    assert_equal 1, trakt_client.account.refresh_calls
+    assert_empty calendar.calls
+    assert_empty @db.get_rows(:trakt_auth, {})
+    rejected = @speaker.messages.select { |m| m.is_a?(String) && m.include?('rejected') }
+    assert_equal 1, rejected.size
+    refute(@speaker.messages.any? { |m| m.is_a?(Array) && m.last.to_s.include?('Calendar Trakt authentication failed') })
+  end
+
+  def test_missing_access_token_with_shared_client_still_fatal
+    trakt_client = fake_shared_trakt_client({ 'access_token' => '' }, calendar: fake_trakt_calendar)
+    service = trakt_service_with_shared_client(trakt_client)
+
+    result = service.send(:fetch_trakt_entries, date_range: Date.today..Date.today, limit: 5, client_id: 'id', client_secret: 'secret', account_id: 'acc', token: nil, shared_client: trakt_client)
+
+    assert(result[:errors].any? { |message| message.include?('Trakt access token is missing or invalid') })
+    assert_equal 0, trakt_client.account.refresh_calls
+  end
+
+  def test_lazy_refresh_during_fetch_is_persisted
+    ensure_trakt_auth_table
+    valid = { 'access_token' => 'valid', 'refresh_token' => 'rt', 'created_at' => Time.now.to_i, 'expires_in' => 604_800 }
+    lazily = { 'access_token' => 'lazy-new', 'refresh_token' => 'rt-2', 'created_at' => Time.now.to_i, 'expires_in' => 604_800 }
+    trakt_client = nil
+    calendar = fake_trakt_calendar(on_movies: -> { trakt_client.token = lazily })
+    trakt_client = fake_shared_trakt_client(valid, calendar: calendar)
+    service = trakt_service_with_shared_client(trakt_client)
+
+    service.send(:fetch_trakt_entries, date_range: Date.today..Date.today, limit: 5, client_id: 'id', client_secret: 'secret', account_id: 'acc', token: nil, shared_client: trakt_client)
+
+    assert_equal 0, trakt_client.account.refresh_calls
+    row = @db.get_rows(:trakt_auth, { account: 'acc' }).first
+    assert_equal 'lazy-new', row[:access_token]
+    assert_equal 'rt-2', row[:refresh_token]
+  end
+
+  def ensure_trakt_auth_table
+    return if @db.database.table_exists?(:trakt_auth)
+
+    @db.database.create_table :trakt_auth do
+      String :account, primary_key: true
+      String :access_token
+      String :token_type
+      String :refresh_token
+      String :scope
+      Integer :created_at
+      Integer :expires_in
+      Integer :expires_at
+    end
+  end
+
+  def reset_trakt_rejected_refresh_token
+    MediaLibrarian::Services::CalendarFeedService.instance_variable_set(:@trakt_rejected_refresh_token, nil)
+  end
+
+  def fake_trakt_calendar(on_movies: nil)
+    Class.new do
+      attr_reader :calls, :on_movies_hook
+
+      def initialize(on_movies)
+        @calls = []
+        @on_movies_hook = on_movies
+      end
+
+      def all_movies(start_date, days)
+        @calls << [:movies, start_date, days]
+        @on_movies_hook&.call
+        []
+      end
+
+      def all_shows(start_date, days)
+        @calls << [:shows, start_date, days]
+        []
+      end
+    end.new(on_movies)
+  end
+
+  def fake_shared_trakt_client(token, calendar:, refreshed: nil)
+    client = FakeTraktClient.new(token.dup, calendar, nil)
+    client.account = FakeTraktAccount.new(client, refreshed, 0)
+    client
+  end
+
+  def trakt_service_with_shared_client(trakt_client)
+    config = { 'trakt' => { 'account_id' => 'acc', 'client_id' => 'id', 'client_secret' => 'secret' } }
+    app = Struct.new(:config, :db, :trakt).new(config, @db, trakt_client)
+    MediaLibrarian::Services::CalendarFeedService.new(app: app, speaker: @speaker)
   end
 
   def ensure_calendar_table
