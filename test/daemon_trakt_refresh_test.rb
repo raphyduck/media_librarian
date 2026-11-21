@@ -80,8 +80,10 @@ class DaemonTraktRefreshTest < Minitest::Test
 
     assert_nil app.db.last_insert
     assert_equal 1, trakt.account.refresh_calls
-    warnings = app.speaker.messages.select { |m| m.is_a?(String) && m.include?('re-authorization required') }
-    assert_equal 1, warnings.size
+    errors = app.speaker.messages.select do |m|
+      m.is_a?(Array) && m[0] == :error && m[2] == 'Trakt token refresh failed' && m[1].message.include?('re-authorization required')
+    end
+    assert_equal 1, errors.size
   end
 
   def test_transient_refresh_failure_keeps_retrying
