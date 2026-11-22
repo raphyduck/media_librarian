@@ -73,6 +73,23 @@ class McpServerTest < Minitest::Test
     JSON.dump(tools)
   end
 
+  # Guards the declaration every tool owes the platform: a tool added without
+  # its connector would stay invisible to the scheduler's table.
+  def test_every_published_tool_declares_its_connector
+    tools = JSON.parse(JSON.dump(rpc('tools/list')['result']['tools']))
+
+    refute_empty tools
+    tools.each do |tool|
+      meta = tool['_meta']
+      assert_kind_of Hash, meta, tool['name']
+      assert meta.key?('hobbitton.at/connecteur'), tool['name']
+      connector = meta['hobbitton.at/connecteur']
+      assert connector.nil? || (connector.is_a?(String) && !connector.empty?), tool['name']
+      assert_includes [true, false], meta['hobbitton.at/agit'], tool['name']
+      assert meta['hobbitton.at/agit'], "#{tool['name']} is closed and must act" if connector.nil?
+    end
+  end
+
   def test_unknown_tool_is_a_protocol_error
     assert_equal(-32_602, rpc('tools/call', { 'name' => 'nope' })['error']['code'])
   end

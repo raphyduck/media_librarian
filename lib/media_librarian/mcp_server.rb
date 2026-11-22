@@ -19,6 +19,8 @@ module MediaLibrarian
     DEFAULT_OUTPUT_LINES = 200
     FORBIDDEN_API_PATHS = %w[/mcp /ws /session].freeze
     CONFIRMED_API_PATHS = %w[/stop /update-stop].freeze
+    META_CONNECTOR = 'hobbitton.at/connecteur'
+    META_ACTS = 'hobbitton.at/agit'
 
     PARSE_ERROR = -32_700
     INVALID_REQUEST = -32_600
@@ -48,10 +50,11 @@ module MediaLibrarian
       end
     end
 
-    Tool = Struct.new(:name, :title, :description, :input_schema, :annotations, :handler, keyword_init: true) do
+    Tool = Struct.new(:name, :title, :description, :input_schema, :annotations, :meta, :handler,
+                      keyword_init: true) do
       def to_h
         { 'name' => name, 'title' => title, 'description' => description,
-          'inputSchema' => input_schema, 'annotations' => annotations }.compact
+          'inputSchema' => input_schema, 'annotations' => annotations, '_meta' => meta }.compact
       end
     end
 
@@ -260,9 +263,14 @@ module MediaLibrarian
       base
     end
 
-    def tool(name, title, description, input_schema, annotations, &handler)
+    # Every tool declares, in `_meta`, the connector (family of rights) it belongs
+    # to and whether it acts (writes, sends, deletes): the platform's scheduler
+    # builds its table from what tools/list publishes. `connector: nil` keeps a
+    # tool closed (in no connector), with `acts: true`.
+    def tool(name, title, description, input_schema, annotations, connector:, acts:, &handler)
       Tool.new(name: name, title: title, description: description, input_schema: input_schema,
-               annotations: annotations.merge('title' => title), handler: handler)
+               annotations: annotations.merge('title' => title),
+               meta: { META_CONNECTOR => connector, META_ACTS => acts }, handler: handler)
     end
 
     MEDIA_TYPE = { 'type' => 'string', 'enum' => %w[movies shows],
@@ -279,7 +287,7 @@ module MediaLibrarian
         tool('etat', 'État du serveur',
              "État du démon : tâches en cours, en file et terminées récemment (avec leur progression), " \
              'files par queue, date de démarrage, uptime, CPU et mémoire.',
-             schema, read_only) { |_args| request('GET', '/status') },
+             schema, read_only, connector: 'medialib', acts: false) { |_args| request('GET', '/status') },
         tool('journaux', 'Journaux',
              'Dernières lignes des journaux du démon (medialibrarian.log et medialibrarian_errors.log), ' \
              'avec filtre optionnel insensible à la casse.',
@@ -290,7 +298,7 @@ module MediaLibrarian
                              'default' => DEFAULT_LOG_LINES },
                'filtre' => { 'type' => 'string', 'description' => 'ne garder que les lignes contenant ce texte' }
              ),
-             read_only) { |args| logs(args) }
+             read_only, connector: 'medialib', acts: false) { |args| logs(args) }
       ]
     end
 
@@ -310,7 +318,7 @@ module MediaLibrarian
         tool('commandes', 'Commandes disponibles',
              'Catalogue des commandes du démon (celles de la CLI `librarian`) avec leurs arguments, ' \
              'et les commandes préparées des modèles du planificateur.',
-             schema, read_only) do |_args|
+             schema, read_only, connector: 'medialib', acts: false) do |_args|
           { 'commands' => request('GET', '/commands')['commands'],
             'template_commands' => request('GET', '/template_commands')['commands'] }
         end,
@@ -331,7 +339,7 @@ module MediaLibrarian
                },
                ['commande']
              ),
-             mutating) { |args| launch_command(args) },
+             mutating, connector: 'medialib-ecriture', acts: true) { |args| launch_command(args) },
         tool('tache', 'Suivre une tâche',
              "Statut, progression, résultat, erreur et fin de sortie d'une tâche du démon.",
              schema(
@@ -339,14 +347,14 @@ module MediaLibrarian
                  'lignes_sortie' => { 'type' => 'integer', 'minimum' => 1, 'default' => DEFAULT_OUTPUT_LINES } },
                ['id']
              ),
-             read_only) do |args|
+             read_only, connector: 'medialib', acts: false) do |args|
           id = require_argument(args, 'id').to_s.strip
           job = request('GET', "/jobs/#{id}")
           trim_job_output(job, bounded_integer(args['lignes_sortie'], default: DEFAULT_OUTPUT_LINES, max: 5_000))
         end,
         tool('annuler_tache', 'Annuler une tâche', 'Annule une tâche en cours ou en file.',
              schema({ 'id' => { 'type' => 'string' } }, ['id']),
-             mutating(destructive: true, idempotent: true)) do |args|
+             mutating(destructive: true, idempotent: true), connector: 'medialib-ecriture', acts: true) do |args|
           request('DELETE', "/jobs/#{require_argument(args, 'id').to_s.strip}")
         end
       ]
@@ -367,11 +375,12 @@ module MediaLibrarian
         tool('redemarrer', 'Redémarrer le démon',
              'Redémarre le démon : attend la fin propre des tâches puis relance le processus depuis le disque. ' \
              "L'API ne répond plus pendant quelques secondes.",
-             schema, mutating(idempotent: true)) { |_args| request('POST', '/restart') },
+             schema, mutating(idempotent: true),
+             connector: 'medialib-administration', acts: true) { |_args| request('POST', '/restart') },
         tool('recharger', 'Recharger la configuration',
              'Recharge sans redémarrer : conf.yml (config), api.yml (api) ou le modèle du planificateur (planificateur).',
              schema({ 'cible' => { 'type' => 'string', 'enum' => %w[config api planificateur] } }, ['cible']),
-             mutating(idempotent: true)) do |args|
+             mutating(idempotent: true), connector: 'medialib-administration', acts: true) do |args|
           path = { 'config' => '/config/reload', 'api' => '/api-config/reload',
                    'planificateur' => '/scheduler/reload' }[args['cible']]
           raise ToolError, 'cible inconnue (config, api ou planificateur)' unless path
@@ -382,7 +391,7 @@ module MediaLibrarian
              "Arrête le démon. L'API disparaît avec lui : seul le superviseur (systemd) peut le relancer. " \
              "Exige confirmer=true, avec l'accord explicite de l'utilisateur.",
              schema({ 'confirmer' => CONFIRM }, ['confirmer']),
-             mutating(destructive: true)) do |args|
+             mutating(destructive: true), connector: 'medialib-administration', acts: true) do |args|
           require_confirmation(args, 'Arrêt du démon')
           request('POST', '/stop')
         end,
@@ -390,7 +399,7 @@ module MediaLibrarian
              'git pull du dépôt (update_root de api.yml) puis arrêt du démon pour que le superviseur le relance ' \
              "sur le nouveau code. Exige confirmer=true, avec l'accord explicite de l'utilisateur.",
              schema({ 'confirmer' => CONFIRM }, ['confirmer']),
-             mutating(destructive: true)) do |args|
+             mutating(destructive: true), connector: 'medialib-administration', acts: true) do |args|
           require_confirmation(args, 'Mise à jour du démon')
           request('POST', '/update-stop')
         end
@@ -422,7 +431,7 @@ module MediaLibrarian
                'page' => { 'type' => 'integer', 'minimum' => 1 },
                'par_page' => { 'type' => 'integer', 'minimum' => 1 }
              ),
-             read_only) { |args| request('GET', '/calendar', query: calendar_query(args)) },
+             read_only, connector: 'medialib', acts: false) { |args| request('GET', '/calendar', query: calendar_query(args)) },
         tool('calendrier_chercher', 'Chercher un titre',
              'Cherche un film ou une série chez les fournisseurs (TMDB, Trakt, OMDB) et dans le calendrier local. ' \
              'Les résultats in_calendar=true peuvent aller directement dans la liste d\'intérêts ; les autres ' \
@@ -437,7 +446,7 @@ module MediaLibrarian
                },
                ['titre']
              ),
-             read_only.merge('openWorldHint' => true)) do |args|
+             read_only.merge('openWorldHint' => true), connector: 'medialib', acts: false) do |args|
           request('GET', '/calendar/search',
                   query: { 'title' => require_argument(args, 'titre'), 'year' => args['annee'], 'type' => args['type'],
                            'sources' => args['sources'], 'limit' => args['limite'] })
@@ -453,7 +462,7 @@ module MediaLibrarian
                },
                ['entree']
              ),
-             mutating(idempotent: true)) do |args|
+             mutating(idempotent: true), connector: 'medialib-ecriture', acts: true) do |args|
           entry = args['entree']
           raise ToolError, 'entree doit être un objet' unless entry.is_a?(Hash)
 
@@ -467,7 +476,7 @@ module MediaLibrarian
                'limite' => { 'type' => 'integer', 'minimum' => 1 },
                'sources' => { 'type' => 'array', 'items' => { 'type' => 'string' } }
              ),
-             mutating) do |args|
+             mutating, connector: 'medialib-ecriture', acts: true) do |args|
           body = { 'days' => args['jours'], 'limit' => args['limite'], 'sources' => args['sources'] }.compact
           request('POST', '/calendar/refresh', body: body)
         end
@@ -493,7 +502,7 @@ module MediaLibrarian
         tool('liste_interets', "Liste d'intérêts",
              "Films et séries de la liste d'intérêts (watchlist), avec les torrents en attente qui leur " \
              'correspondent.',
-             schema('type' => MEDIA_TYPE), read_only) do |args|
+             schema('type' => MEDIA_TYPE), read_only, connector: 'medialib', acts: false) do |args|
           request('GET', '/watchlist', query: { 'type' => args['type'] })
         end,
         tool('liste_interets_ajouter', "Ajouter à la liste d'intérêts",
@@ -513,11 +522,11 @@ module MediaLibrarian
                },
                ['elements']
              ),
-             mutating(idempotent: true)) { |args| add_to_watchlist(args) },
+             mutating(idempotent: true), connector: 'medialib-ecriture', acts: true) { |args| add_to_watchlist(args) },
         tool('liste_interets_retirer', "Retirer de la liste d'intérêts",
              "Retire un titre de la liste d'intérêts.",
              schema({ 'imdb_id' => { 'type' => 'string' }, 'type' => MEDIA_TYPE }, ['imdb_id']),
-             mutating(destructive: true, idempotent: true)) do |args|
+             mutating(destructive: true, idempotent: true), connector: 'medialib-ecriture', acts: true) do |args|
           request('DELETE', '/watchlist', body: { 'imdb_id' => require_argument(args, 'imdb_id'), 'type' => args['type'] }.compact)
         end
       ]
@@ -557,32 +566,32 @@ module MediaLibrarian
                'page' => { 'type' => 'integer', 'minimum' => 1 },
                'par_page' => { 'type' => 'integer', 'minimum' => 1 }
              ),
-             read_only) do |args|
+             read_only, connector: 'medialib', acts: false) do |args|
           request('GET', '/collection',
                   query: { 'type' => args['type'], 'search' => args['recherche'], 'sort' => args['tri'],
                            'page' => args['page'], 'per_page' => args['par_page'] })
         end,
         tool('torrents_en_attente', 'Torrents en attente',
              'Torrents trouvés en attente de validation manuelle (validation) et en attente de téléchargement (downloads).',
-             schema, read_only) { |_args| request('GET', '/torrents/pending') },
+             schema, read_only, connector: 'medialib', acts: false) { |_args| request('GET', '/torrents/pending') },
         tool('torrent_valider', 'Valider un torrent',
              'Valide un torrent en attente de validation pour qu\'il parte au téléchargement.',
              schema({ 'identifiant' => { 'type' => 'string', 'description' => 'identifier ou name rendu par torrents_en_attente' } },
                     ['identifiant']),
-             mutating(idempotent: true)) do |args|
+             mutating(idempotent: true), connector: 'medialib-ecriture', acts: true) do |args|
           request('POST', '/torrents/validate', body: { 'identifier' => require_argument(args, 'identifiant') })
         end,
         tool('torrent_supprimer', 'Écarter un torrent',
              "Retire un torrent de la file d'attente (base de données seulement, aucun fichier n'est touché).",
              schema({ 'identifiant' => { 'type' => 'string' } }, ['identifiant']),
-             mutating(destructive: true, idempotent: true)) do |args|
+             mutating(destructive: true, idempotent: true), connector: 'medialib-ecriture', acts: true) do |args|
           request('POST', '/torrents/delete', body: { 'identifier' => require_argument(args, 'identifiant') })
         end,
         tool('configuration_lire', 'Lire la configuration',
              'Contenu de conf.yml (config), api.yml (api) ou du modèle du planificateur (planificateur). ' \
              'Les secrets sont masqués.',
              schema({ 'fichier' => { 'type' => 'string', 'enum' => %w[config api planificateur] } }, ['fichier']),
-             read_only) do |args|
+             read_only, connector: 'medialib', acts: false) do |args|
           path = { 'config' => '/config', 'api' => '/api-config', 'planificateur' => '/scheduler' }[args['fichier']]
           raise ToolError, 'fichier inconnu (config, api ou planificateur)' unless path
 
@@ -612,7 +621,8 @@ module MediaLibrarian
                },
                %w[methode chemin]
              ),
-             mutating(destructive: true).merge('openWorldHint' => true)) { |args| call_api(args) }
+             mutating(destructive: true).merge('openWorldHint' => true),
+             connector: 'medialib-administration', acts: true) { |args| call_api(args) }
       ]
     end
 
