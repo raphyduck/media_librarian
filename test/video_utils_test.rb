@@ -142,6 +142,67 @@ class VideoUtilsTest < Minitest::Test
     end
   end
 
+  def test_set_default_original_audio_handles_iso639_2_track_tag
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Kraken.2026.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      pre_tracks = [
+        { id: 1, audio_index: 1, lang: 'nor', name: 'VO', commentary: nil, default: false },
+        { id: 2, audio_index: 2, lang: 'fre', name: 'VF', commentary: nil, default: true }
+      ]
+      post_tracks = [
+        { id: 1, audio_index: 1, lang: 'nor', name: 'VO', commentary: nil, default: true },
+        { id: 2, audio_index: 2, lang: 'fre', name: 'VF', commentary: nil, default: false }
+      ]
+      track_maps = [pre_tracks, post_tracks]
+      captured_args = nil
+
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { track_maps.shift }) do
+          VideoUtils.stub(:check_space_for_operation, ->(**_) { { success: true, message: '' } }) do
+            VideoUtils.stub(:process_mkv, lambda { |_path, tool:, args:, **_|
+              captured_args = [tool, args]
+              { success: true, stdout: '', stderr: '', backup_path: nil }
+            }) do
+              VideoUtils.set_default_original_audio!(path: path, target_lang: 'no')
+            end
+          end
+        end
+      end
+
+      assert result
+      assert_equal 'mkvmerge', captured_args[0]
+      assert_equal ['--default-track', '1:yes', '--default-track', '2:no', path], captured_args[1]
+    end
+  end
+
+  def test_set_default_original_audio_noop_when_default_is_iso639_2_original
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'Wonderland.2024.mkv')
+      File.write(path, 'mkv-payload')
+      ensure_temp_dir(dir)
+
+      tracks = [
+        { id: 1, audio_index: 1, lang: 'swe', name: '', commentary: nil, default: true },
+        { id: 2, audio_index: 2, lang: 'fre', name: '', commentary: nil, default: false }
+      ]
+
+      remuxed = false
+      result = VideoUtils.stub(:command_available?, true) do
+        VideoUtils.stub(:mkv_audio_track_map, ->(*_) { tracks }) do
+          VideoUtils.stub(:process_mkv, lambda { |*_, **_| remuxed = true; { success: true } }) do
+            VideoUtils.set_default_original_audio!(path: path, target_lang: 'sv')
+          end
+        end
+      end
+
+      assert result
+      refute remuxed
+    end
+  end
+
   def test_set_default_original_audio_reports_missing_original_language_track
     Dir.mktmpdir do |dir|
       path = File.join(dir, 'Wonderland.2024.mkv')
