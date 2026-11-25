@@ -45,6 +45,41 @@ end
 MediaLibrarian::Application.prepend(TestSupport::SharedZeitwerkLoader)
 
 module TestSupport
+  module Watchdog
+    LIMIT = Integer(ENV.fetch('ML_TEST_STALL_SECONDS', '180'))
+    @current = nil
+    @started = nil
+    class << self
+      attr_accessor :current, :started
+    end
+
+    def run
+      Watchdog.current = "#{self.class}##{name}"
+      Watchdog.started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      super
+    ensure
+      Watchdog.current = nil
+    end
+  end
+end
+Minitest::Test.prepend(TestSupport::Watchdog)
+Thread.new do
+  loop do
+    sleep 5
+    started = TestSupport::Watchdog.started
+    next unless TestSupport::Watchdog.current && started
+    next if Process.clock_gettime(Process::CLOCK_MONOTONIC) - started < TestSupport::Watchdog::LIMIT
+
+    $stderr.puts "\n[watchdog] #{TestSupport::Watchdog.current} stalled > #{TestSupport::Watchdog::LIMIT}s"
+    Thread.list.each do |t|
+      $stderr.puts "[watchdog] thread #{t.name || t.object_id} #{t.status.inspect}\n  " + Array(t.backtrace).first(30).join("\n  ")
+    end
+    $stderr.flush
+    exit!(3)
+  end
+end
+
+module TestSupport
   module LibrarianState
     def reset_librarian_state!
       singleton = Librarian.singleton_class
