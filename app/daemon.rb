@@ -105,7 +105,7 @@ class Daemon
   # would swallow a timeout or a cancellation, letting the job run on.
   JobTimeout = Class.new(Exception) # rubocop:disable Lint/InheritException
   JobCancelled = Class.new(Exception) # rubocop:disable Lint/InheritException
-  DEFAULT_JOB_TIMEOUT_SECONDS = 3600
+  DEFAULT_JOB_TIMEOUT_SECONDS = 7200
   DEFAULT_SUPERVISOR_STALL_MINUTES = 15
   SUPERVISOR_INTERVAL_SECONDS = 60
   HARD_TIMEOUT_GRACE_SECONDS = 300

@@ -4,7 +4,7 @@ daemon:
   workers_pool_size: 4
   queue_slots: 4 # Deprecated; the worker queue is unbounded.
   finished_jobs_per_queue: 100 # Keep the last 100 finished/failed/cancelled jobs per queue in memory (0 disables history).
-  job_timeout_seconds: 3600 # Durée maximale d'un job (0 = sans limite) ; les tâches continuous en sont exemptées.
+  job_timeout_seconds: 7200 # Durée maximale d'un job (0 = sans limite) ; les tâches continuous en sont exemptées. calendar_refresh dure ~1 h 25 sur plex.
   supervisor_stall_minutes: 15 # Pool reconstruit si des jobs attendent, rien n'avance depuis ce délai et des slots sont perdus.
 deluge:
   host: host
