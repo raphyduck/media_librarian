@@ -344,7 +344,8 @@ class Daemon
     end
 
     # Never Thread#kill a pool thread: the pool is not told, and the slot is
-    # lost for good. Raise into the job instead; the worker returns to the pool.
+    # lost for good. Raise into the job instead: the pool sees the worker die
+    # and replaces it.
     def cancel_job(job)
       future = job.future
       future.cancel if future&.respond_to?(:cancel)
@@ -356,7 +357,7 @@ class Daemon
 
     def interrupt_worker(job, exception)
       thread = job.worker_thread
-      thread.raise(exception) if thread&.alive? && thread != Thread.current
+      thread.raise(exception) if thread&.alive? && thread != Thread.current && thread[:jid] == job.id
     rescue ThreadError
       nil
     end
