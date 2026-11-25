@@ -22,6 +22,14 @@ class Daemon
       job_registry.values.select { |job| job.queue == queue && job.running? }
     end
 
+    # Unlike queue_busy?, counts queued jobs too: a periodic tick must not stack
+    # a second copy behind one that has not started yet.
+    def scheduled_task_pending?(task, queue)
+      job_registry.values.any? do |job|
+        job.task == task && job.queue == queue && !job.finished? && %i[queued running].include?(job.status)
+      end
+    end
+
     def queue_limit(queue)
       return 1 if queue.to_s.empty?
 

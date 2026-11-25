@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'timeout'
+
 # Job lifecycle for the daemon control server: registration, executor
 # scheduling, inline child execution, capacity waits, run, finalize, prune and
 # cancel. Reopens Daemon's singleton class so these methods stay byte-for-byte
@@ -33,18 +35,20 @@ class Daemon
         return job
       end
 
-      job.future = future
-      job.future.on_fulfillment! do |value|
-        finalize_job(job, value, nil)
-      end
-      job.future.on_rejection! do |reason|
-        finalize_job(job, nil, reason)
-      end
-      job
+      attach_future(job, future)
     rescue Concurrent::RejectedExecutionError
       unregister_child(job)
       @jobs.delete(job.id)
       raise
+    end
+
+    # The guard keeps a future from an abandoned executor (see rebuild_executor)
+    # from finalizing a job that was re-posted on the new one.
+    def attach_future(job, future)
+      job.future = future
+      future.on_fulfillment! { |value| finalize_job(job, value, nil) if job.future.equal?(future) }
+      future.on_rejection! { |reason| finalize_job(job, nil, reason) if job.future.equal?(future) }
+      job
     end
 
     def obtain_future(job, wait_for_capacity:)
@@ -186,9 +190,18 @@ class Daemon
         app.args_dispatch.set_env_variables(app.env_flags, job.env_flags || {})
         job.status = :running
         job.started_at = Time.now
+        @last_job_progress_at = job.started_at
+        timeout = job_timeout_for(job, inline_child)
+        job.deadline = timeout && job.started_at + timeout
 
         begin
-          Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
+          if timeout
+            Timeout.timeout(timeout, JobTimeout, 'timeout') do
+              Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
+            end
+          else
+            Librarian.run_command(job.args.dup, job.internal, job.task, &job.block)
+          end
         ensure
           job.output = captured_output.dup if captured_output
           if job.child.to_i.positive?
@@ -235,11 +248,26 @@ class Daemon
       job.worker_thread = nil
     end
 
-    def finalize_job(job, value, error)
-      return if job.finished_at
+    # Inline children have no timeout of their own: their JobTimeout would
+    # unwind through execute_inline (which only rescues StandardError) and fail
+    # the parent. The parent's timeout covers them. Continuous jobs are
+    # long-lived loops by design.
+    def job_timeout_for(job, inline_child)
+      return nil if inline_child
+      return nil if Array(job.args).include?('--continuous=1')
 
+      seconds = job_timeout_seconds
+      seconds.positive? ? seconds : nil
+    end
+
+    def finalize_job(job, value, error)
+      FINALIZE_LOCK.synchronize do
+        return if job.finished_at
+
+        job.finished_at = Time.now
+      end
+      @last_job_progress_at = job.finished_at
       job.result = value
-      job.finished_at = Time.now
       future = job.future
       cancelled_future = future&.respond_to?(:cancelled?) && future.cancelled?
       if job.status == :cancelled || cancelled_future
@@ -253,6 +281,9 @@ class Daemon
         job[:error] = job.error || error
       end
       @jobs[job.id] = job
+      if error.is_a?(JobTimeout) || error.is_a?(String)
+        app.speaker.speak_up("Job #{job.id} (#{job.task}, queue #{job.queue}) failed: #{error}", 0, Thread.current, 1, 1)
+      end
       prune_finished_jobs(limit_per_queue: finished_jobs_limit_per_queue)
       unregister_child(job)
     end
@@ -312,14 +343,23 @@ class Daemon
       children.delete(job.id) if children
     end
 
+    # Never Thread#kill a pool thread: the pool is not told, and the slot is
+    # lost for good. Raise into the job instead: the pool sees the worker die
+    # and replaces it.
     def cancel_job(job)
       future = job.future
       future.cancel if future&.respond_to?(:cancel)
-      worker_thread = job.worker_thread
-      worker_thread.kill if worker_thread&.alive? && worker_thread != Thread.current
       job[:status] = :cancelled
       job[:error] = 'Cancelled'
       finalize_job(job, nil, nil)
+      interrupt_worker(job, JobCancelled.new('Cancelled'))
+    end
+
+    def interrupt_worker(job, exception)
+      thread = job.worker_thread
+      thread.raise(exception) if thread&.alive? && thread != Thread.current && thread[:jid] == job.id
+    rescue ThreadError
+      nil
     end
   end
 end

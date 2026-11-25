@@ -12,6 +12,7 @@ require 'concurrent-ruby'
 require 'bcrypt'
 require 'yaml'
 require 'fileutils'
+require 'timeout'
 require 'base64'
 require 'digest/sha1'
 require 'get_process_mem'
@@ -61,6 +62,7 @@ class Daemon
     :capture_output,
     :output,
     :progress,
+    :deadline,
     keyword_init: true
   ) do
     def running?
@@ -99,6 +101,15 @@ class Daemon
   SESSION_TTL = 86_400
   FINISHED_STATUSES = %w[finished failed cancelled].freeze
   CAPTURE_OUTPUT_RETENTION_SECONDS = 5
+  # Exceptions, not StandardError: the job code rescues StandardError freely and
+  # would swallow a timeout or a cancellation, letting the job run on.
+  JobTimeout = Class.new(Exception) # rubocop:disable Lint/InheritException
+  JobCancelled = Class.new(Exception) # rubocop:disable Lint/InheritException
+  DEFAULT_JOB_TIMEOUT_SECONDS = 7200
+  DEFAULT_SUPERVISOR_STALL_MINUTES = 15
+  SUPERVISOR_INTERVAL_SECONDS = 60
+  HARD_TIMEOUT_GRACE_SECONDS = 300
+  FINALIZE_LOCK = Mutex.new
   STATUS_STREAM_INTERVAL_SECONDS = 15
   STATUS_STREAM_HEARTBEAT_SECONDS = 5
   UUID_REGEX = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.freeze
@@ -133,6 +144,8 @@ class Daemon
             app.librarian.daemonize
             app.librarian.write_pid
             Logger.renew_logs(app.config_dir + '/log')
+            app.librarian.redirect_output(Logger.stderr_log_path(app.config_dir + '/log'))
+            Thread.report_on_exception = true
             daemonized = true
           end
 
@@ -144,6 +157,7 @@ class Daemon
 
             start_scheduler(scheduler) if scheduler
             start_quit_timer
+            start_supervisor
             start_control_server
             start_trakt_refresh_timer
             bootstrap_calendar_feed_if_needed
@@ -562,6 +576,21 @@ class Daemon
       env_flags
     end
 
+    def daemon_setting(key, default)
+      config = app.respond_to?(:config) ? app.config : nil
+      section = config.is_a?(Hash) ? config['daemon'] : nil
+      value = section.is_a?(Hash) ? section[key] : nil
+      value.nil? ? default : value
+    end
+
+    def job_timeout_seconds
+      daemon_setting('job_timeout_seconds', DEFAULT_JOB_TIMEOUT_SECONDS).to_i
+    end
+
+    def supervisor_stall_seconds
+      daemon_setting('supervisor_stall_minutes', DEFAULT_SUPERVISOR_STALL_MINUTES).to_f * 60
+    end
+
     def fetch_function_config(args, config = Librarian.command_registry.actions)
       args = args.dup
       config = config[args.shift.to_sym]
@@ -695,6 +724,10 @@ class Daemon
 
             queue_name = fetch_function_config(args)[1] || task
             queue_limits[queue_name] = limit
+            if scheduled_task_pending?(task, queue_name)
+              @last_execution[task] = Time.now
+              next
+            end
             enqueue(
               args: args,
               queue: queue_name,
@@ -706,7 +739,7 @@ class Daemon
             )
             @last_execution[task] = Time.now
           when 'continuous'
-            next if queue_busy?(task)
+            next if queue_busy?(task) || scheduled_task_pending?(task, task)
 
             enqueue(
               args: args + ['--continuous=1'],
@@ -834,7 +867,13 @@ class Daemon
       # single writer creates the array explicitly; all readers tolerate nil.
       @job_children = Concurrent::Hash.new
       # Retain queue_slots for configuration compatibility; the queue is now unbounded.
-      @executor = Concurrent::ThreadPoolExecutor.new(
+      @executor = build_executor
+      @last_job_progress_at = Time.now
+      @orphan_suspects = []
+    end
+
+    def build_executor
+      Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
         max_threads: [app.workers_pool_size.to_i, 1].max,
         fallback_policy: :abort
@@ -893,6 +932,11 @@ class Daemon
     rescue StandardError => e
       app.speaker.tell_error(e, Utils.arguments_dump(binding))
       false
+    end
+
+    def start_supervisor
+      @supervisor_timer = Concurrent::TimerTask.new(execution_interval: SUPERVISOR_INTERVAL_SECONDS) { supervise_executor }
+      @supervisor_timer.execute
     end
 
     def start_quit_timer
@@ -2120,3 +2164,4 @@ require_relative 'daemon/shutdown'
 require_relative 'daemon/job_metrics'
 require_relative 'daemon/command_catalog'
 require_relative 'daemon/mcp_endpoint'
+require_relative 'daemon/supervisor'

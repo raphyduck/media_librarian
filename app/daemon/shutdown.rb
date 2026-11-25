@@ -23,7 +23,7 @@ class Daemon
       @running.make_false
 
       begin
-        [@scheduler, @quit_timer, @trakt_timer].compact.each do |timer|
+        [@scheduler, @quit_timer, @trakt_timer, @supervisor_timer].compact.each do |timer|
           timer.shutdown
           timer.wait_for_termination
         end
@@ -77,6 +77,9 @@ class Daemon
       @scheduler = nil
       @quit_timer = nil
       @trakt_timer = nil
+      @supervisor_timer = nil
+      @last_job_progress_at = nil
+      @orphan_suspects = nil
       @control_thread = nil
       @control_server = nil
       @socket_thread = nil

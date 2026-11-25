@@ -45,7 +45,7 @@ class DaemonJobControlTest < Minitest::Test
     MediaLibrarian.application = nil
   end
 
-  def test_kill_terminates_running_thread
+  def test_kill_cancels_running_job_without_losing_worker
     job = Daemon.enqueue(args: ['Library', 'block'])
     worker_thread = @started_queue.pop
 
@@ -53,12 +53,18 @@ class DaemonJobControlTest < Minitest::Test
 
     Daemon.kill(jid: job.id)
 
-    assert_equal worker_thread, worker_thread.join(1), 'expected the worker thread to stop promptly after kill'
-    refute worker_thread.alive?
+    deadline = Time.now + 1
+    sleep 0.01 while job.worker_thread && Time.now < deadline
+    assert_nil job.worker_thread, 'expected the cancelled job to release its worker thread'
     assert_equal :cancelled, job.status
     assert job.finished_at
-    assert_nil job.worker_thread
     assert_equal 'Cancelled', job.error
+
+    replacement = Daemon.enqueue(args: ['Library', 'block'])
+    @started_queue.pop
+    @release_queue << nil
+    replacement.future.wait(5)
+    assert_equal :finished, replacement.status, 'expected the pool to keep its slot after a cancellation'
   end
 
   def test_thread_locals_restored_after_inline_child_execution
