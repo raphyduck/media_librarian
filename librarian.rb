@@ -118,6 +118,13 @@ class Librarian
     $stdout.reopen($stderr)
   end
 
+  def redirect_output(path)
+    FileUtils.mkdir_p(File.dirname(path))
+    $stderr.reopen(path, 'a')
+    $stderr.sync = true
+    $stdout.reopen($stderr)
+  end
+
   def trap_signals
     trap('QUIT') { @quit = true }
   end
