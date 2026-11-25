@@ -18,6 +18,33 @@ require_relative '../librarian'
 require_relative 'support/container_helpers'
 
 module TestSupport
+  # Each real MediaLibrarian::Application builds a Zeitwerk loader on app/,
+  # lib/ and min_lib/; Zeitwerk allows one loader per directory per process.
+  # Tests reset MediaLibrarian.application between cases, so a lazy rebuild
+  # used to raise. Reuse the first real loader instead (production builds a
+  # single Application, so this only exists in the test harness).
+  module SharedZeitwerkLoader
+    class << self
+      attr_accessor :loader
+    end
+
+    private
+
+    def setup_loader
+      super
+      SharedZeitwerkLoader.loader ||= @loader if @loader.is_a?(Zeitwerk::Loader)
+    rescue Zeitwerk::Error => e
+      shared = SharedZeitwerkLoader.loader
+      raise unless shared && e.message.include?('already managed by')
+
+      @loader.unregister if @loader.is_a?(Zeitwerk::Loader)
+      @loader = shared
+    end
+  end
+end
+MediaLibrarian::Application.prepend(TestSupport::SharedZeitwerkLoader)
+
+module TestSupport
   module LibrarianState
     def reset_librarian_state!
       singleton = Librarian.singleton_class
