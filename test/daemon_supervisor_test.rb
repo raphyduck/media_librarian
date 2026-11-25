@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'thread'
+require 'minitest/mock'
 require 'test_helper'
 require_relative '../app/daemon'
 require_relative '../librarian'
@@ -91,14 +92,9 @@ class DaemonSupervisorTest < Minitest::Test
     Daemon.send(:boot_framework_state)
     old_executor = Daemon.send(:instance_variable_get, :@executor)
 
-    spoken = []
-    @environment.application.speaker.define_singleton_method(:speak_up) do |str, *_rest|
-      spoken << str.to_s
-    end
-
     blocking = Daemon.enqueue(args: ['Library', 'block'])
     @started_queue.pop
-    waiting = Daemon.enqueue(args: %w[Library block])
+    waiting = Daemon.enqueue(args: %w[Library block], queue: 'other')
 
     Daemon.send(:rebuild_executor, 'test')
 
@@ -111,7 +107,8 @@ class DaemonSupervisorTest < Minitest::Test
     waiting.future.wait(5)
     assert_equal :finished, waiting.status
 
-    assert(spoken.any? { |line| line.include?('[supervisor] thread') }, 'expected the thread dump in the journal')
+    assert(@environment.application.speaker.messages.any? { |m| m.to_s.include?('[supervisor] thread') },
+           'expected the thread dump in the journal')
   end
 
   def test_stall_detection
@@ -149,12 +146,29 @@ class DaemonSupervisorTest < Minitest::Test
   end
 
   def test_supervisor_idle_during_shutdown
-    Daemon.send(:restart_requested_flag).make_true
-    Daemon.stub(:rebuild_executor, ->(*) { raise 'rebuild must not run during shutdown' }) do
+    calls = 0
+    Daemon.stub(:sweep_stuck_jobs, ->(*) { calls += 1 }) do
       Daemon.send(:supervise_executor)
+      assert_equal 1, calls, 'expected the supervisor to act when no stop is in progress'
+
+      Daemon.send(:restart_requested_flag).make_true
+      Daemon.send(:supervise_executor)
+      Daemon.send(:restart_requested_flag).make_false
+
+      Daemon.send(:force_shutdown_flag).make_true
+      Daemon.send(:supervise_executor)
+      Daemon.send(:force_shutdown_flag).make_false
+
+      @environment.application.librarian.quit = true
+      Daemon.send(:supervise_executor)
+      @environment.application.librarian.quit = false
+
+      assert_equal 1, calls, 'supervisor must not act during a voluntary stop'
     end
   ensure
     Daemon.send(:restart_requested_flag).make_false
+    Daemon.send(:force_shutdown_flag).make_false
+    @environment.application.librarian.quit = false if @environment&.application&.librarian
   end
 
   private
