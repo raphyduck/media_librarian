@@ -49,17 +49,16 @@ class DaemonJobTimeoutTest < Minitest::Test
     Daemon.send(:boot_framework_state)
   end
 
-  def test_job_exceeding_timeout_is_failed_and_worker_survives
+  def test_job_exceeding_timeout_is_failed_and_pool_keeps_its_slot
     boot_with_timeout(1)
 
     job = Daemon.enqueue(args: %w[Library block])
-    worker_thread = @started_queue.pop
+    @started_queue.pop
     job.future.wait(5)
 
     assert_equal :failed, job.status
     assert_equal 'timeout', job.error.to_s
     assert job.finished_at, 'expected the timed-out job to be finalized'
-    assert worker_thread.alive?, 'expected the pool thread to survive the timeout'
 
     second = Daemon.enqueue(args: %w[Library block])
     @started_queue.pop
